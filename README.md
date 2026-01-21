@@ -114,11 +114,11 @@ Full localization in 5 languages: **English**, **Italian**, **French**, **Spanis
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/screenshot-1.png" alt="AeroFTP Main Interface" width="800">
+  <img src="docs/screenshots/screenshot-1-2.png" alt="AeroFTP Main Interface" width="800">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/screenshot-2.png" alt="AeroFTP DevTools" width="800">
+  <img src="docs/screenshots/screenshot-1-3.png" alt="AeroFTP Cloud and Sharing" width="800">
 </p>
 
 ---
