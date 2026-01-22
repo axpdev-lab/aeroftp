@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.2.5"
+version = "1.2.6"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -56,6 +56,9 @@ open = "5"
 rand = "0.8"
 tokio-util = { version = "0.7", features = ["io"] }
 tauri-plugin-shell = "2"
+tauri-plugin-updater = "2.9.0"
+tauri-plugin-notification = "2.3.3"
+semver = "1.0.27"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

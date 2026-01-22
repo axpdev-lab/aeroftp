@@ -1,14 +1,22 @@
 # AeroCloud 2.0 - Multi-Provider Cloud Storage Roadmap
 
 > Created: 20 January 2026
-> Version: AeroFTP 1.0.0 → 1.2.3
-> Status: Sprint 2 Complete (v1.2.3 Released)
+> Version: AeroFTP 1.0.0 → 1.2.6
+> Status: Sprint 2 Complete (v1.2.6 Released)
 
 ---
 
 ## 📦 Release Log
 
-### v1.2.3 (21 January 2026)
+### v1.2.6 (22 January 2026)
+**Features:**
+- ✅ **Auto-Update System**: Automatic check for new versions on startup
+- ✅ **Smart Format Detection**: Detects installation format (DEB, AppImage, Snap, Flatpak, RPM)
+- ✅ **Update Toast**: Elegant notification badge with download link for specific format
+- ✅ **Tray Menu Check**: "Check for Updates" option in system tray menu
+- ✅ **Activity Log Integration**: Update detection logged with [Auto]/[Manual] distinction
+
+### v1.2.5 (23 January 2026)
 **Features & Fixes:**
 - ✅ **Multi-Session OAuth Switching**: Full support for switching between Google Drive, Dropbox, OneDrive tabs
   - Reconnects OAuth provider with correct credentials when switching tabs

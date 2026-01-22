@@ -2,8 +2,18 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { sendNotification } from '@tauri-apps/plugin-notification';
 import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Globe, Cloud, ExternalLink, Key } from 'lucide-react';
 import { ServerProfile } from '../types';
+
+interface UpdateInfo {
+    has_update: boolean;
+    latest_version: string | null;
+    download_url: string | null;
+    current_version: string;
+    install_format: string;
+}
+
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 
@@ -77,6 +87,59 @@ const defaultSettings: AppSettings = {
 };
 
 type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui';
+
+// Check Update Button with loading animation
+const CheckUpdateButton: React.FC = () => {
+    const [isChecking, setIsChecking] = useState(false);
+
+    const handleCheck = async () => {
+        console.log('[CheckUpdateButton] handleCheck called');
+        setIsChecking(true);
+        try {
+            console.log('[CheckUpdateButton] Invoking check_update...');
+            const info = await invoke<UpdateInfo>('check_update');
+            console.log('[CheckUpdateButton] Result:', info);
+            if (info.has_update) {
+                try {
+                    await sendNotification({
+                        title: 'Update Available!',
+                        body: `AeroFTP v${info.latest_version} is ready (.${info.install_format})`
+                    });
+                } catch {
+                    alert(`Update Available!\n\nAeroFTP v${info.latest_version} (.${info.install_format})\n\nDownload: ${info.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}`);
+                }
+            } else {
+                try {
+                    await sendNotification({
+                        title: 'Up to Date',
+                        body: `Running latest version (v${info.current_version})`
+                    });
+                } catch {
+                    alert(`Up to date!\n\nRunning AeroFTP v${info.current_version}`);
+                }
+            }
+        } catch (err) {
+            console.error('[CheckUpdateButton] Update check failed:', err);
+            alert(`Update check failed\n\n${String(err)}`);
+        } finally {
+            setIsChecking(false);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCheck}
+            disabled={isChecking}
+            className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg text-sm hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+        >
+            <svg className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {isChecking ? 'Checking...' : 'Check for Updates'}
+        </button>
+    );
+};
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel }) => {
     const [activeTab, setActiveTab] = useState<TabId>('general');
@@ -237,6 +300,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         />
                                         <span className="text-sm">Confirm before deleting files</span>
                                     </label>
+
+                                    {/* TODO: Fix CheckUpdateButton - temporarily disabled, use tray menu instead
+                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <h4 className="text-sm font-medium mb-2">Software Updates</h4>
+                                        <CheckUpdateButton />
+                                    </div>
+                                    */}
                                 </div>
                             </div>
                         )}

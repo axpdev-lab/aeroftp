@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-01-22
+
+### 🔄 Auto-Update System
+
+AeroFTP now checks for updates automatically and notifies you when a new version is available!
+
+#### Added
+- **Auto-Update Check**: Automatic check for new versions on startup (5 seconds after launch)
+- **Smart Format Detection**: Detects your installation format (DEB, AppImage, Snap, Flatpak, RPM, EXE, DMG)
+- **Update Toast**: Elegant notification badge with download link for your specific format
+- **Tray Menu Check**: "Check for Updates" option in system tray menu
+- **Activity Log Integration**: Update detection logged with [Auto]/[Manual] distinction
+- **Tauri Updater Permissions**: Added `notification:default` and `updater:default` capabilities
+
+#### Technical
+- `detect_install_format()`: New Rust function detecting app installation method
+- `UpdateInfo` struct: Extended with `install_format` field
+- `check_update` command: Matches GitHub release assets to installed format
+- `log_update_detection` command: Backend logging for version detection
+- `useRef` for update check flag: Prevents re-render loops in React
+
+#### UI/UX
+- Toast badge: Blue theme, rounded corners, shows format (e.g., "Download .deb")
+- Pulse animation on update badge
+- Activity Log shows: version available, current version, and format
+- Tray menu: Clean text without emojis
+
+---
+
 ## [1.2.5] - 2025-01-23
 
 ### 🔌 Multi-Protocol Bug Fixes

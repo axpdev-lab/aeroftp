@@ -10,6 +10,8 @@
     "core:event:default",
     "core:event:allow-emit",
     "core:event:allow-listen",
+    "notification:default",
+    "updater:default",
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",

@@ -7,6 +7,8 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::sync::Mutex;
 use tracing::{info, warn, error};
+use semver::Version;
+use reqwest::Client as HttpClient;
 
 mod ftp;
 mod sync;
@@ -112,6 +114,157 @@ pub struct LocalFileInfo {
     pub size: Option<u64>,
     pub is_dir: bool,
     pub modified: Option<String>,
+}
+
+// ============ Updater Structs ============
+
+#[derive(Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Serialize)]
+struct UpdateInfo {
+    has_update: bool,
+    latest_version: Option<String>,
+    download_url: Option<String>,
+    current_version: String,
+    install_format: String,
+}
+
+// ============ Updater Command ============
+
+/// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
+fn detect_install_format() -> String {
+    let os = std::env::consts::OS;
+    
+    match os {
+        "linux" => {
+            // Check for Snap
+            if std::env::var("SNAP").is_ok() {
+                return "snap".to_string();
+            }
+            // Check for Flatpak
+            if std::env::var("FLATPAK_ID").is_ok() {
+                return "flatpak".to_string();
+            }
+            // Check for AppImage - the executable path contains "AppImage"
+            if let Ok(exe_path) = std::env::current_exe() {
+                let path_str = exe_path.to_string_lossy();
+                if path_str.contains("AppImage") || path_str.contains(".AppImage") {
+                    return "appimage".to_string();
+                }
+            }
+            // Check for RPM-based distros (Fedora, CentOS, RHEL)
+            if std::path::Path::new("/etc/redhat-release").exists() 
+                || std::path::Path::new("/etc/fedora-release").exists() {
+                return "rpm".to_string();
+            }
+            // Default to DEB for Debian/Ubuntu based
+            "deb".to_string()
+        }
+        "windows" => {
+            // Check if installed via MSI (usually in Program Files)
+            if let Ok(exe_path) = std::env::current_exe() {
+                let path_str = exe_path.to_string_lossy().to_lowercase();
+                if path_str.contains("program files") {
+                    return "msi".to_string();
+                }
+            }
+            "exe".to_string()
+        }
+        "macos" => "dmg".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+#[tauri::command]
+async fn check_update() -> Result<UpdateInfo, String> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let install_format = detect_install_format();
+    
+    info!("Checking for updates... Current: v{}, Format: {}", current_version, install_format);
+    
+    let client = HttpClient::new();
+    let url = "https://api.github.com/repos/axpnet/aeroftp/releases/latest";
+    
+    let response = client.get(url)
+        .header("User-Agent", "AeroFTP")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch releases: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("GitHub API error: {}", response.status()));
+    }
+    
+    let release: GitHubRelease = response.json()
+        .await
+        .map_err(|e| format!("Failed to parse release info: {}", e))?;
+    
+    // Parse versions (remove 'v' prefix if present)
+    let latest_tag = release.tag_name.trim_start_matches('v');
+    let current = Version::parse(current_version)
+        .map_err(|e| format!("Failed to parse current version: {}", e))?;
+    let latest = Version::parse(latest_tag)
+        .map_err(|e| format!("Failed to parse latest version: {}", e))?;
+    
+    if latest > current {
+        // Find asset matching the installed format
+        let extension = match install_format.as_str() {
+            "deb" => ".deb",
+            "rpm" => ".rpm",
+            "appimage" => ".appimage",
+            "snap" => ".snap",
+            "flatpak" => ".flatpak",
+            "exe" => ".exe",
+            "msi" => ".msi",
+            "dmg" => ".dmg",
+            _ => "",
+        };
+        
+        let download_url = if !extension.is_empty() {
+            release.assets.iter()
+                .find(|a| a.name.to_lowercase().ends_with(extension))
+                .map(|a| a.browser_download_url.clone())
+        } else {
+            None
+        };
+        
+        info!("Update available: v{} -> v{} (format: {}, url: {:?})", 
+              current_version, latest_tag, install_format, download_url);
+        
+        return Ok(UpdateInfo {
+            has_update: true,
+            latest_version: Some(latest_tag.to_string()),
+            download_url,
+            current_version: current_version.to_string(),
+            install_format,
+        });
+    }
+    
+    info!("No update available. Current: v{}, Latest: v{}", current_version, latest_tag);
+    
+    Ok(UpdateInfo {
+        has_update: false,
+        latest_version: Some(latest_tag.to_string()),
+        download_url: None,
+        current_version: current_version.to_string(),
+        install_format,
+    })
+}
+
+#[tauri::command]
+fn log_update_detection(version: String) {
+    info!("New version detected: v{}", version);
 }
 
 // ============ FTP Commands ============
@@ -2595,6 +2748,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build())
@@ -2690,6 +2845,7 @@ pub fn run() {
             let tray_sync_now = MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
             let tray_pause = MenuItem::with_id(app, "tray_pause", "Pause Sync", true, None::<&str>)?;
             let tray_open_folder = MenuItem::with_id(app, "tray_open_folder", "Open Cloud Folder", true, None::<&str>)?;
+            let tray_check_update = MenuItem::with_id(app, "tray_check_update", "Check for Updates", true, None::<&str>)?;
             let tray_separator = PredefinedMenuItem::separator(app)?;
             let tray_show = MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?;
             let tray_quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
@@ -2699,6 +2855,7 @@ pub fn run() {
                 &tray_pause,
                 &tray_separator,
                 &tray_open_folder,
+                &tray_check_update,
                 &PredefinedMenuItem::separator(app)?,
                 &tray_show,
                 &tray_quit,
@@ -2725,6 +2882,9 @@ pub fn run() {
                         }
                         "tray_open_folder" => {
                             let _ = app.emit("menu-event", "cloud_open_folder");
+                        }
+                        "tray_check_update" => {
+                            let _ = app.emit("menu-event", "check_update");
                         }
                         "tray_show" => {
                             if let Some(window) = app.get_webview_window("main") {
@@ -2832,6 +2992,9 @@ pub fn run() {
             is_background_sync_running,
             set_tray_status,
             save_server_credentials,
+            // Updater command
+            check_update,
+            log_update_detection,
             // AI commands
             ai_chat,
             ai_test_provider,

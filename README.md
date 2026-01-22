@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.2.5-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.2.6-blue" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green" alt="Platform">
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202.0%20%2B%20React%2018-purple" alt="Built with">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange" alt="License">
@@ -28,17 +28,17 @@
 ## ✨ Features
 
 ### 🚀 Core Features
-  <img src="https://img.shields.io/badge/Version-1.2.5-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.2.6-blue" alt="Version">
 
 ### 🔗 Navigation Sync (v0.9.9+)
-| Feature | Description |
-|---------|-------------|
-| **Per-session sync** | Each tab maintains its own independent sync state |
+| Feature                  | Description                                         |
+| ------------------------ | --------------------------------------------------- |
+| **Per-session sync**     | Each tab maintains its own independent sync state   |
 | **Path coherence check** | Warning icon ⚠️ when local path doesn't match server |
-| **Automatic reset** | Sync disabled by default on new connections |
+| **Automatic reset**      | Sync disabled by default on new connections         |
 
 ### ☁️ AeroCloud
-  <img src="https://img.shields.io/badge/Version-1.2.5-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.2.6-blue" alt="Version">
 
 ### 📋 Activity Log
 Real-time operation tracking with dual themes:

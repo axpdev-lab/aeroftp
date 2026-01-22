@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+import { sendNotification } from '@tauri-apps/plugin-notification';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
@@ -110,6 +111,17 @@ const App: React.FC = () => {
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);  // Activity Log Panel visibility (collapsed by default)
+
+  // Auto-Update State
+  interface UpdateInfo {
+    has_update: boolean;
+    latest_version?: string;
+    download_url?: string;
+    current_version: string;
+    install_format: string;
+  }
+  const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
+  const updateCheckedRef = React.useRef(false); // useRef to avoid re-render loops
 
   // Multi-Session Tabs (Hybrid Cache Architecture)
   const [sessions, setSessions] = useState<FtpSession[]>([]);
@@ -371,6 +383,44 @@ const App: React.FC = () => {
   const contextMenu = useContextMenu();
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
+
+  // Auto-Update Check on startup
+  const checkForUpdate = useCallback(async (manual = false) => {
+    try {
+      const info: UpdateInfo = await invoke('check_update');
+      setUpdateAvailable(info);
+
+      if (info.has_update) {
+        sendNotification({
+          title: 'AeroFTP Update Available!',
+          body: `Version ${info.latest_version} is ready. Download for your OS.`,
+        });
+        const checkType = manual ? '[Manual]' : '[Auto]';
+        activityLog.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+        await invoke('log_update_detection', { version: info.latest_version || '' });
+      } else if (manual) {
+        sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
+        activityLog.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+      }
+    } catch (error) {
+      console.error('Update check failed:', error);
+      if (manual) {
+        activityLog.log('ERROR', `Update check failed: ${error}`, 'error');
+      }
+    }
+  }, [activityLog]);
+
+  // Check for updates on app startup (after a short delay)
+  useEffect(() => {
+    if (!updateCheckedRef.current) {
+      updateCheckedRef.current = true; // Set immediately to prevent double-call
+      const timer = setTimeout(() => {
+        checkForUpdate(false);
+      }, 5000); // Check 5 seconds after startup
+      return () => clearTimeout(timer);
+    }
+  }, []); // Empty deps - run only once on mount
+
 
   // Show toast notifications setting (default: false - toasts disabled)
   const [showToastNotifications, setShowToastNotifications] = useState(false);
@@ -843,6 +893,9 @@ const App: React.FC = () => {
         } catch (e) {
           console.error('Failed to open cloud folder:', e);
         }
+      } else if (action === 'check_update') {
+        // Check for updates from tray menu
+        checkForUpdate(true);
       }
     });
 
@@ -1229,15 +1282,15 @@ const App: React.FC = () => {
           // Ignore if not connected to OAuth
         }
         await invoke('connect_ftp', { params: targetSession.connectionParams });
-        
+
         // Only navigate to saved path if it looks like a valid FTP path
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
         const savedPath = targetSession.remotePath;
-        const isValidFtpPath = savedPath && 
-          !savedPath.includes('wwwhome') && 
+        const isValidFtpPath = savedPath &&
+          !savedPath.includes('wwwhome') &&
           !savedPath.includes('webdav') &&
           savedPath.startsWith('/');
-        
+
         if (isValidFtpPath && savedPath !== '/') {
           try {
             await invoke('change_directory', { path: savedPath });
@@ -2335,6 +2388,31 @@ const App: React.FC = () => {
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
+
+      {/* Update Available Badge */}
+      {updateAvailable?.has_update && (
+        <div className="fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-pulse border border-blue-400/30">
+          <div className="flex flex-col">
+            <span className="font-semibold">🚀 AeroFTP v{updateAvailable.latest_version} Available!</span>
+            <span className="text-xs opacity-80">Current: v{updateAvailable.current_version} ({updateAvailable.install_format?.toUpperCase()})</span>
+          </div>
+          <a
+            href={updateAvailable.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}
+            className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download .{updateAvailable.install_format || 'deb'}
+          </a>
+          <button
+            onClick={() => setUpdateAvailable(null)}
+            className="text-white/70 hover:text-white ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
+            title="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       <TransferQueue
         items={transferQueue.items}
         isVisible={transferQueue.isVisible}
