@@ -1,5 +1,5 @@
 name: aeroftp
-version: '1.2.0'
+version: '1.2.5'
 summary: Modern FTP Client - SNAP LIMITED DEMO (Use .deb/.AppImage for full access)
 description: |
   AeroFTP is a modern, open-source FTP client that combines beauty and functionality.
