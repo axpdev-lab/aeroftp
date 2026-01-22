@@ -1,7 +1,7 @@
 {
   "name": "aeroftp",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.4",
   "description": "AeroFTP - Fast, Beautiful, Reliable FTP Client",
   "type": "module",
   "scripts": {

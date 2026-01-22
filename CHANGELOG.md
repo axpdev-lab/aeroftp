@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-01-22
+
+### 🗄️ S3 Multi-Tab Improvements
+
+#### Added
+- **S3 Recursive Folder Upload**: Full support for uploading folders with subfolders to S3
+- **Go Up Always Visible**: "Go up" row now always visible in file lists (disabled at root for visual consistency)
+- **S3 Fields in Settings**: Bucket and Region fields visible when editing S3 servers in Settings panel
+
+#### Fixed
+- **S3 Upload Refresh**: File list now correctly refreshes after S3 uploads
+- **S3 Icon Sizing**: S3 server icons in saved servers list now have consistent sizing
+- **Saved Servers Header**: Title and description text no longer overlap
+
+#### Technical
+- Deep copy of `connectionParams` in session creation to prevent state mutation
+- Explicit `sessionParams` construction for S3 with preserved options
+- Added `shrink-0` class for consistent icon sizing
+
+#### Known Issues (WIP)
+- S3 reconnect may fail with "bucket name required" when switching tabs
+- FTP file list may be empty after S3 connection
+- Activity log "LIVE" states may persist
+
+---
+
+
 ## [1.2.1] - 2025-01-20
 
 ### Fixed

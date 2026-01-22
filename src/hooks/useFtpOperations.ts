@@ -107,6 +107,11 @@ export function useFtpOperations({
     useEffect(() => {
         if (!isConnected) return;
 
+        // Skip keep-alive for non-FTP providers
+        const protocol = connectionParams.protocol;
+        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+        if (isProvider) return;
+
         const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
         const keepAliveInterval = setInterval(async () => {
             try {

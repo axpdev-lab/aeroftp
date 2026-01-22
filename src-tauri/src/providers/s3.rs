@@ -8,6 +8,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use log::{debug, info, warn};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
 
@@ -102,7 +103,26 @@ impl S3Provider {
         
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
-        let query = parsed.query().unwrap_or("");
+        
+        // Query parameters must be sorted alphabetically for canonical request
+        let canonical_query = {
+            let mut params: Vec<(String, String)> = parsed.query_pairs()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            params.sort_by(|a, b| {
+                // Sort by key first, then by value
+                match a.0.cmp(&b.0) {
+                    std::cmp::Ordering::Equal => a.1.cmp(&b.1),
+                    other => other,
+                }
+            });
+            params.iter()
+                .map(|(k, v)| format!("{}={}", 
+                    urlencoding::encode(k), 
+                    urlencoding::encode(v)))
+                .collect::<Vec<_>>()
+                .join("&")
+        };
         
         headers.insert("host".to_string(), host.to_string());
         
@@ -118,11 +138,14 @@ impl S3Provider {
             }
         }
         
+        // URI-encode the path (but keep / as is)
+        let canonical_path = if path.is_empty() { "/" } else { path };
+        
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
             method,
-            path,
-            query,
+            canonical_path,
+            canonical_query,
             canonical_headers,
             signed_headers_str,
             payload_hash
@@ -180,6 +203,7 @@ impl S3Provider {
         body: Option<Vec<u8>>,
     ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Sha256, Digest};
+        use tracing::{debug, warn};
         
         let mut url = self.build_url(key);
         if let Some(params) = query_params {
@@ -192,6 +216,10 @@ impl S3Provider {
             }
         }
         
+        debug!("S3 Request: {} {}", method, url);
+        debug!("S3 Bucket: {}, Region: {}, Path-style: {}", 
+               self.config.bucket, self.config.region, self.config.path_style);
+        
         let payload = body.as_deref().unwrap_or(&[]);
         let payload_hash = {
             let mut hasher = Sha256::new();
@@ -202,27 +230,39 @@ impl S3Provider {
         let mut headers = HashMap::new();
         let authorization = self.sign_request(method.as_str(), &url, &mut headers, &payload_hash)?;
         
-        let mut request = self.client.request(method, &url);
+        let mut request = self.client.request(method.clone(), &url);
         
-        for (key, value) in headers {
-            request = request.header(&key, &value);
+        for (key, value) in headers.iter() {
+            request = request.header(key, value);
         }
-        request = request.header("Authorization", authorization);
+        request = request.header("Authorization", &authorization);
+        
+        debug!("S3 Headers: {:?}", headers);
         
         if let Some(body_data) = body {
             request = request.body(body_data);
         }
         
-        request.send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        
+        let status = response.status();
+        if !status.is_success() {
+            warn!("S3 Response Status: {} for {} {}", status, method, url);
+        }
+        
+        Ok(response)
     }
     
     /// Parse S3 ListObjectsV2 XML response
     fn parse_list_response(&self, xml: &str) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
         
+        debug!("Parsing S3 ListObjectsV2 XML response, {} bytes", xml.len());
+        
         // Parse common prefixes (directories)
-        let prefix_pattern = regex::Regex::new(r"<CommonPrefixes>.*?<Prefix>([^<]+)</Prefix>.*?</CommonPrefixes>")
+        // Note: (?s) enables DOTALL mode so . matches newlines in multi-line XML
+        let prefix_pattern = regex::Regex::new(r"(?s)<CommonPrefixes>\s*<Prefix>([^<]+)</Prefix>\s*</CommonPrefixes>")
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
         
         for cap in prefix_pattern.captures_iter(xml) {
@@ -369,7 +409,17 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
-                Err(ProviderError::AuthenticationFailed("Invalid AWS credentials".to_string()))
+                let body = response.text().await.unwrap_or_default();
+                // Extract error message from XML if present
+                let error_msg = if body.contains("<Message>") {
+                    body.split("<Message>").nth(1)
+                        .and_then(|s| s.split("</Message>").next())
+                        .unwrap_or("Access denied")
+                        .to_string()
+                } else {
+                    body.clone()
+                };
+                Err(ProviderError::AuthenticationFailed(format!("S3 auth error: {}", error_msg)))
             }
             StatusCode::NOT_FOUND => {
                 Err(ProviderError::NotFound(format!("Bucket '{}' not found", self.config.bucket)))
@@ -434,7 +484,16 @@ impl StorageProvider for S3Provider {
                     let xml = response.text().await
                         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                     
+                    // Debug: Log raw XML response (truncated for readability)
+                    let xml_preview = if xml.len() > 2000 {
+                        format!("{}... [truncated, total {} bytes]", &xml[..2000], xml.len())
+                    } else {
+                        xml.clone()
+                    };
+                    info!("S3 LIST response XML:\n{}", xml_preview);
+                    
                     let (entries, next_token) = self.parse_list_response(&xml)?;
+                    info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
                     
                     if let Some(token) = next_token {
@@ -444,7 +503,23 @@ impl StorageProvider for S3Provider {
                     }
                 }
                 status => {
-                    return Err(ProviderError::ServerError(format!("List failed with status: {}", status)));
+                    let body = response.text().await.unwrap_or_default();
+                    // Extract error message from XML if present
+                    let error_msg = if body.contains("<Message>") {
+                        body.split("<Message>").nth(1)
+                            .and_then(|s| s.split("</Message>").next())
+                            .unwrap_or(&body)
+                            .to_string()
+                    } else if body.contains("<Code>") {
+                        // Try to get the error code
+                        body.split("<Code>").nth(1)
+                            .and_then(|s| s.split("</Code>").next())
+                            .unwrap_or(&body)
+                            .to_string()
+                    } else {
+                        body
+                    };
+                    return Err(ProviderError::ServerError(format!("List failed ({}): {}", status, error_msg)));
                 }
             }
         }

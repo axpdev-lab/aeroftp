@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, Pencil, X } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
 import { SavedServers } from './SavedServers';
 import { useTranslation } from '../i18n';
@@ -59,15 +59,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 }) => {
     const t = useTranslation();
     const protocol = connectionParams.protocol; // Can be undefined
-    
+
     // Save connection state
     const [saveConnection, setSaveConnection] = useState(false);
     const [connectionName, setConnectionName] = useState('');
-    
+
     // AeroCloud state
     const [aeroCloudConfig, setAeroCloudConfig] = useState<AeroCloudConfig | null>(null);
     const [aeroCloudLoading, setAeroCloudLoading] = useState(false);
-    
+
+    // Edit state
+    const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+    const [savedServersUpdate, setSavedServersUpdate] = useState(0);
+
     // Fetch AeroCloud config when AeroCloud is selected
     useEffect(() => {
         if (protocol === 'aerocloud') {
@@ -84,29 +88,97 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     }, [protocol]);
 
-    // Save the current connection to saved servers
+    // Save the current connection to saved servers (or update existing)
     const saveToServers = () => {
-        if (!saveConnection || !protocol) return;
-        
+        // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
+        if (!protocol) return;
+
         const existingServers = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
-        const newServer: ServerProfile = {
-            id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: connectionName || connectionParams.server || protocol,
-            host: connectionParams.server,
-            port: connectionParams.port || getDefaultPort(protocol),
-            username: connectionParams.username,
-            password: connectionParams.password,
-            protocol: protocol as ProviderType,
-            initialPath: quickConnectDirs.remoteDir,
-            localInitialPath: quickConnectDirs.localDir,
-        };
-        localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+
+        if (editingProfileId) {
+            // Update existing profile
+            const updatedServers = existingServers.map((s: ServerProfile) => {
+                if (s.id === editingProfileId) {
+                    return {
+                        ...s,
+                        name: connectionName || s.name,
+                        host: connectionParams.server,
+                        port: connectionParams.port || getDefaultPort(protocol),
+                        username: connectionParams.username,
+                        password: connectionParams.password,
+                        protocol: protocol as ProviderType,
+                        options: connectionParams.options,
+                        initialPath: quickConnectDirs.remoteDir,
+                        localInitialPath: quickConnectDirs.localDir,
+                    };
+                }
+                return s;
+            });
+            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
+            setSavedServersUpdate(Date.now());
+        } else if (saveConnection) {
+            // Create new profile
+            const newServer: ServerProfile = {
+                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: connectionName || connectionParams.server || protocol,
+                host: connectionParams.server,
+                port: connectionParams.port || getDefaultPort(protocol),
+                username: connectionParams.username,
+                password: connectionParams.password,
+                protocol: protocol as ProviderType,
+                initialPath: quickConnectDirs.remoteDir,
+                localInitialPath: quickConnectDirs.localDir,
+                options: connectionParams.options,
+            };
+            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+            setSavedServersUpdate(Date.now()); // Trigger refresh
+        }
     };
 
     // Handle connect with optional save
+    // Handle connect with optional save
     const handleConnectAndSave = () => {
-        saveToServers();
-        onConnect();
+        if (editingProfileId) {
+            // In edit mode, "Save Changes" just saves and exits edit mode
+            saveToServers();
+            setEditingProfileId(null);
+            setConnectionName('');
+            setSaveConnection(false);
+            // Optionally clear form? Let's leave it as is so user can connect if they want
+        } else {
+            saveToServers();
+            onConnect();
+        }
+    };
+
+    const handleEdit = (profile: ServerProfile) => {
+        setEditingProfileId(profile.id);
+        setConnectionName(profile.name);
+        setSaveConnection(true); // Implied for editing
+
+        // Update form params
+        onConnectionParamsChange({
+            server: profile.host,
+            port: profile.port,
+            username: profile.username,
+            password: profile.password || '',
+            protocol: profile.protocol || 'ftp',
+            options: profile.options || {}
+        });
+
+        onQuickConnectDirsChange({
+            remoteDir: profile.initialPath || '',
+            localDir: profile.localInitialPath || ''
+        });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingProfileId(null);
+        setConnectionName('');
+        setSaveConnection(false);
+        // Reset params
+        onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
+        onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
     };
 
     const handleBrowseLocalDir = async () => {
@@ -164,7 +236,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         onChange={handleProtocolChange}
                         disabled={loading}
                     />
-                    
+
                     {/* Show form only when protocol is selected */}
                     {!protocol ? (
                         /* No protocol selected - show selection prompt */
@@ -196,7 +268,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <p className="text-xs text-gray-500 truncate">{aeroCloudConfig.server_profile}</p>
                                         </div>
                                     </div>
-                                    
+
                                     {/* Quick info */}
                                     <div className="grid grid-cols-2 gap-3 text-sm">
                                         <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -214,7 +286,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <p className="text-xs font-medium">{Math.round(aeroCloudConfig.sync_interval_secs / 60)} minutes</p>
                                         </div>
                                     </div>
-                                    
+
                                     {/* Actions */}
                                     <div className="flex gap-2">
                                         <button
@@ -224,7 +296,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <Settings size={16} /> Manage AeroCloud
                                         </button>
                                     </div>
-                                    
+
                                     <p className="text-xs text-center text-gray-400">
                                         AeroCloud is already configured and syncing
                                     </p>
@@ -251,7 +323,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         You can also configure AeroCloud from the status bar
                                     </p>
                                 </div>
-                        )}
+                            )}
                         </div>
                     ) : isOAuthProvider(protocol) ? (
                         <OAuthConnect
@@ -357,7 +429,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </button>
                                 </div>
                             </div>
-                            
+
                             {/* Save Connection Option */}
                             <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -372,7 +444,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         Save this connection
                                     </span>
                                 </label>
-                                
+
                                 {saveConnection && (
                                     <input
                                         type="text"
@@ -383,14 +455,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     />
                                 )}
                             </div>
-                            
-                            <button
-                                onClick={handleConnectAndSave}
-                                disabled={loading || (protocol === 's3' && !connectionParams.options?.bucket)}
-                                className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-medium py-3 rounded-xl disabled:opacity-50"
-                            >
-                                {loading ? t('connection.connecting') : (saveConnection ? 'Connect & Save' : t('common.connect'))}
-                            </button>
+
+                            <div className="flex gap-2">
+                                {editingProfileId && (
+                                    <button
+                                        onClick={handleCancelEdit}
+                                        className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                        title="Cancel Editing"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleConnectAndSave}
+                                    disabled={loading || (protocol === 's3' && !connectionParams.options?.bucket)}
+                                    className={`flex-1 text-white font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 ${editingProfileId
+                                            ? 'bg-blue-600 hover:bg-blue-700'
+                                            : 'bg-gradient-to-r from-blue-500 to-cyan-500'
+                                        }`}
+                                >
+                                    {loading ? (
+                                        t('connection.connecting')
+                                    ) : editingProfileId ? (
+                                        <>
+                                            <Save size={18} />
+                                            Save Changes
+                                        </>
+                                    ) : (
+                                        saveConnection ? 'Connect & Save' : t('common.connect')
+                                    )}
+                                </button>
+                            </div>
                         </>
                     )}
                 </div>
@@ -398,7 +493,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
             {/* Saved Servers */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
-                <SavedServers onConnect={onSavedServerConnect} />
+                <SavedServers
+                    onConnect={onSavedServerConnect}
+                    onEdit={handleEdit}
+                    lastUpdate={savedServersUpdate}
+                />
             </div>
 
             {/* Skip to File Manager Button */}

@@ -5,7 +5,7 @@ import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle }
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '../types';
 import { useTranslation } from '../i18n';
-import { getProtocolInfo } from './ProtocolSelector';
+import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 
 // OAuth settings storage key (same as SettingsPanel)
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
@@ -38,7 +38,10 @@ const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null
 
 interface SavedServersProps {
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void;
+    currentProfile?: ServerProfile; // For highlighting active connection
     className?: string;
+    onEdit: (profile: ServerProfile) => void;
+    lastUpdate?: number;
 }
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -61,23 +64,18 @@ const saveServers = (servers: ServerProfile[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
 };
 
-export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className = '' }) => {
+export const SavedServers: React.FC<SavedServersProps> = ({
+    onConnect,
+    currentProfile,
+    className = '',
+    onEdit,
+    lastUpdate
+}) => {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
+
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
-    const [formData, setFormData] = useState<Partial<ServerProfile>>({
-        name: '',
-        host: '',
-        port: 21,
-        username: '',
-        password: '',
-        initialPath: '',
-        localInitialPath: '',
-        protocol: 'ftp',
-    });
 
     // Protocol colors for avatar
     const protocolColors: Record<string, string> = {
@@ -94,71 +92,41 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
 
     useEffect(() => {
         setServers(getSavedServers());
-    }, []);
-
-    const handleSave = () => {
-        // OAuth providers don't require host/username
-        const isOAuth = formData.protocol && isOAuthProvider(formData.protocol);
-        if (!isOAuth && (!formData.host || !formData.username)) return;
-        if (isOAuth && !formData.name) return;
-
-        const newServer: ServerProfile = {
-            id: editingId || generateId(),
-            name: formData.name || formData.host || '',
-            host: formData.host || '',
-            port: formData.port || 21,
-            username: formData.username || '',
-            password: formData.password,
-            protocol: formData.protocol || 'ftp',
-            initialPath: formData.initialPath,
-            localInitialPath: formData.localInitialPath,
-            lastConnected: editingId ? servers.find(s => s.id === editingId)?.lastConnected : undefined,
-        };
-
-        let updated: ServerProfile[];
-        if (editingId) {
-            updated = servers.map(s => s.id === editingId ? newServer : s);
-        } else {
-            updated = [...servers, newServer];
-        }
-
-        setServers(updated);
-        saveServers(updated);
-        resetForm();
-    };
+    }, [lastUpdate]);
 
     const handleDelete = (id: string) => {
+        // Prevent deletion if connecting
+        if (oauthConnecting === id) return;
+
         const updated = servers.filter(s => s.id !== id);
         setServers(updated);
         saveServers(updated);
     };
 
     const handleEdit = (server: ServerProfile) => {
-        setFormData(server);
-        setEditingId(server.id);
-        setShowAddForm(true);
+        onEdit(server);
     };
 
     const handleConnect = async (server: ServerProfile) => {
         // Clear any previous OAuth error
         setOauthError(null);
-        
+
         // Check if this is an OAuth provider
         if (server.protocol && isOAuthProvider(server.protocol)) {
             const providerKey = getOAuthProviderKey(server.protocol);
             const oauthSettings = getOAuthSettings();
-            
+
             if (!providerKey || !oauthSettings) {
                 setOauthError('OAuth credentials not configured. Please go to Settings > Cloud Storage to configure your credentials.');
                 return;
             }
-            
+
             const credentials = oauthSettings[providerKey];
             if (!credentials?.clientId || !credentials?.clientSecret) {
                 setOauthError(`Please configure ${server.protocol === 'googledrive' ? 'Google Drive' : server.protocol === 'dropbox' ? 'Dropbox' : 'OneDrive'} credentials in Settings > Cloud Storage.`);
                 return;
             }
-            
+
             // Start OAuth flow
             setOauthConnecting(server.id);
             try {
@@ -170,7 +138,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                         client_secret: credentials.clientSecret,
                     }
                 });
-                
+
                 // Then connect
                 const displayName = await invoke<string>('oauth2_connect', {
                     params: {
@@ -179,14 +147,14 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                         client_secret: credentials.clientSecret,
                     }
                 });
-                
+
                 // Update last connected
                 const updated = servers.map(s =>
                     s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
                 );
                 setServers(updated);
                 saveServers(updated);
-                
+
                 // Call onConnect with OAuth params
                 onConnect({
                     server: displayName,
@@ -194,7 +162,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                     password: '',
                     protocol: server.protocol,
                 }, server.initialPath, server.localInitialPath);
-                
+
             } catch (e) {
                 setOauthError(e instanceof Error ? e.message : String(e));
             } finally {
@@ -202,7 +170,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
             }
             return;
         }
-        
+
         // Non-OAuth: Update last connected
         const updated = servers.map(s =>
             s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
@@ -210,41 +178,39 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
         setServers(updated);
         saveServers(updated);
 
-        // Build connection params
-        const serverString = server.port !== 21 ? `${server.host}:${server.port}` : server.host;
+        // Build connection params - for S3/WebDAV, don't modify the host with port
+        const isProviderProtocol = server.protocol && ['s3', 'webdav'].includes(server.protocol);
+        const serverString = isProviderProtocol
+            ? server.host  // S3/WebDAV: use host as-is (includes scheme)
+            : (server.port !== 21 ? `${server.host}:${server.port}` : server.host);
+
         onConnect({
             server: serverString,
             username: server.username,
             password: server.password || '',
             protocol: server.protocol || 'ftp',
+            port: server.port,
             displayName: server.name,  // Pass custom name for tab display
+            options: server.options,   // Pass S3/WebDAV options
         }, server.initialPath, server.localInitialPath);
     };
 
-    const resetForm = () => {
-        setFormData({ name: '', host: '', port: 21, username: '', password: '', initialPath: '', localInitialPath: '', protocol: 'ftp' });
-        setEditingId(null);
-        setShowAddForm(false);
-    };
+
 
     return (
         <div className={`${className}`}>
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
                     <Server size={20} />
                     {t('connection.savedServers')}
                 </h3>
-                <button
-                    onClick={() => setShowAddForm(true)}
-                    className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-                    title={t('connection.saveServer')}
-                >
-                    <Plus size={16} />
-                </button>
+                <div className="text-xs text-gray-500 font-normal mt-1">
+                    Select a server to connect, or click Edit to load into the form.
+                </div>
             </div>
 
             {/* Server list */}
-            {servers.length === 0 && !showAddForm && (
+            {servers.length === 0 && (
                 <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">
                     {t('connection.noSavedServers')}
                 </p>
@@ -279,7 +245,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                             disabled={oauthConnecting !== null}
                             className="flex-1 text-left flex items-center gap-3 disabled:cursor-wait"
                         >
-                            <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} flex items-center justify-center text-white ${oauthConnecting === server.id ? 'animate-pulse' : ''}`}>
+                            <div className={`w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} flex items-center justify-center text-white ${oauthConnecting === server.id ? 'animate-pulse' : ''}`}>
                                 {isOAuthProvider(server.protocol || 'ftp') ? (
                                     <Cloud size={18} />
                                 ) : (
@@ -297,7 +263,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                                     </span>
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    {isOAuthProvider(server.protocol || 'ftp') 
+                                    {isOAuthProvider(server.protocol || 'ftp')
                                         ? 'OAuth2 Connection'
                                         : `${server.username}@${server.host}:${server.port}`
                                     }
@@ -324,135 +290,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({ onConnect, className
                 ))}
             </div>
 
-            {/* Add/Edit form */}
-            {showAddForm && (
-                <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-xl space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{editingId ? t('connection.editServer') : t('connection.saveServer')}</h4>
-                        <button onClick={resetForm} className="p-1 text-gray-500 hover:text-gray-700">
-                            <X size={16} />
-                        </button>
-                    </div>
-                    
-                    {/* Protocol Selector */}
-                    <select
-                        value={formData.protocol || 'ftp'}
-                        onChange={e => setFormData({ ...formData, protocol: e.target.value as ProviderType })}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                    >
-                        <optgroup label="Traditional">
-                            <option value="ftp">FTP</option>
-                            <option value="ftps">FTPS (Secure)</option>
-                            <option value="webdav" disabled>WebDAV (Soon)</option>
-                            <option value="s3" disabled>S3 (Soon)</option>
-                        </optgroup>
-                        <optgroup label="Cloud Providers">
-                            {/* AeroCloud removed - has dedicated panel via Quick Connect */}
-                            <option value="googledrive">Google Drive</option>
-                            <option value="dropbox">Dropbox</option>
-                            <option value="onedrive">OneDrive</option>
-                        </optgroup>
-                    </select>
-                    
-                    <input
-                        type="text"
-                        placeholder={t('connection.serverName') + (isOAuthProvider(formData.protocol || 'ftp') ? ' *' : '')}
-                        value={formData.name || ''}
-                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                    />
-                    
-                    {/* Only show server/credentials for non-OAuth */}
-                    {!isOAuthProvider(formData.protocol || 'ftp') && (
-                        <>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder={t('connection.server') + ' *'}
-                                    value={formData.host || ''}
-                                    onChange={e => setFormData({ ...formData, host: e.target.value })}
-                                    className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                />
-                                <input
-                                    type="number"
-                                    placeholder={t('connection.port')}
-                                    value={formData.port || 21}
-                                    onChange={e => setFormData({ ...formData, port: parseInt(e.target.value) || 21 })}
-                                    className="w-20 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder={t('connection.username') + ' *'}
-                                value={formData.username || ''}
-                                onChange={e => setFormData({ ...formData, username: e.target.value })}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                            />
-                            <input
-                                type="password"
-                                placeholder={t('connection.password')}
-                                value={formData.password || ''}
-                                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                            />
-                            <input
-                                type="text"
-                                placeholder={t('browser.remote') + ' ' + t('browser.path')}
-                                value={formData.initialPath || ''}
-                                onChange={e => setFormData({ ...formData, initialPath: e.target.value })}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                            />
-                        </>
-                    )}
-                    
-                    {/* OAuth hint */}
-                    {isOAuthProvider(formData.protocol || 'ftp') && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                            OAuth credentials will be requested when you connect
-                        </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            placeholder={t('browser.local') + ' ' + t('browser.path')}
-                            value={formData.localInitialPath || ''}
-                            onChange={e => setFormData({ ...formData, localInitialPath: e.target.value })}
-                            className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                        />
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                try {
-                                    const selected = await open({
-                                        directory: true,
-                                        multiple: false,
-                                        title: t('browser.local')
-                                    });
-                                    if (selected && typeof selected === 'string') {
-                                        setFormData({ ...formData, localInitialPath: selected });
-                                    }
-                                } catch (e) {
-                                    console.error('Failed to open folder picker:', e);
-                                }
-                            }}
-                            className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                            title={t('common.browse')}
-                        >
-                            <FolderOpen size={16} />
-                        </button>
-                    </div>
-                    <button
-                        onClick={handleSave}
-                        disabled={isOAuthProvider(formData.protocol || 'ftp') 
-                            ? !formData.name 
-                            : (!formData.host || !formData.username)}
-                        className="w-full py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
-                    >
-                        <Check size={16} />
-                        {t('common.save')}
-                    </button>
-                </div>
-            )}
+            {/* Form removed - use main panel for adding/editing */}
         </div>
     );
 };

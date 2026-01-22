@@ -25,6 +25,7 @@ interface UseFileOperationsParams {
     syncBasePaths?: { remote: string; local: string };
     showHiddenFiles?: boolean;
     isConnected?: boolean;
+    protocol?: string;
 }
 
 export function useFileOperations({
@@ -47,7 +48,8 @@ export function useFileOperations({
     isSyncNavigation,
     syncBasePaths,
     showHiddenFiles,
-    isConnected
+    isConnected,
+    protocol
 }: UseFileOperationsParams) {
 
     const activityLog = useActivityLog();
@@ -82,7 +84,16 @@ export function useFileOperations({
 
     const changeRemoteDirectory = useCallback(async (path: string) => {
         try {
-            const response: FileListResponse = await invoke('change_directory', { path });
+            // Use provider_change_dir for S3 and WebDAV, change_directory for FTP
+            const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+            let response: FileListResponse;
+
+            if (isProviderProtocol) {
+                response = await invoke('provider_change_dir', { path });
+            } else {
+                response = await invoke('change_directory', { path });
+            }
+
             setRemoteFiles(response.files);
             setCurrentRemotePath(response.current_path);
             activityLog.log('NAVIGATE', `Remote: ${response.current_path}`, 'success');
@@ -108,7 +119,7 @@ export function useFileOperations({
             activityLog.log('ERROR', `Failed to navigate: ${path}`, 'error');
             toast.error('Error', `Failed to change directory: ${error}`);
         }
-    }, [isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog]);
+    }, [protocol, isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog]);
 
     const changeLocalDirectory = useCallback(async (path: string) => {
         await loadLocalFiles(path);
@@ -124,14 +135,22 @@ export function useFileOperations({
             const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
             const newRemotePath = relativePath ? basePath + relPath : basePath;
             try {
-                const response: FileListResponse = await invoke('change_directory', { path: newRemotePath });
+                // Use provider_change_dir for S3 and WebDAV, change_directory for FTP
+                const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+                let response: FileListResponse;
+
+                if (isProviderProtocol) {
+                    response = await invoke('provider_change_dir', { path: newRemotePath });
+                } else {
+                    response = await invoke('change_directory', { path: newRemotePath });
+                }
                 setRemoteFiles(response.files);
                 setCurrentRemotePath(response.current_path);
             } catch {
                 setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
             }
         }
-    }, [loadLocalFiles, isSyncNavigation, syncBasePaths, isConnected, activityLog, setRemoteFiles, setCurrentRemotePath, setSyncNavDialog]);
+    }, [loadLocalFiles, protocol, isSyncNavigation, syncBasePaths, isConnected, activityLog, setRemoteFiles, setCurrentRemotePath, setSyncNavDialog]);
 
     // ===================================
     // MUTATION Operations (Delete, Rename, Create)
@@ -260,7 +279,7 @@ export function useFileOperations({
                 const messages = [];
                 if (folderCount > 0) messages.push(`${folderCount} folder${folderCount > 1 ? 's' : ''}`);
                 if (fileCount > 0) messages.push(`${fileCount} file${fileCount > 1 ? 's' : ''}`);
-                
+
                 if (errors > 0) {
                     toast.warning('Delete Complete', `${deleted} deleted, ${errors} failed`);
                 } else {

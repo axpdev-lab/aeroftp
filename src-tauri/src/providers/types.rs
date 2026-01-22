@@ -215,7 +215,13 @@ impl S3Config {
         let endpoint = if config.host.is_empty() || config.host == "s3.amazonaws.com" {
             None
         } else {
-            Some(config.host.clone())
+            // Ensure endpoint has scheme
+            let host = config.host.trim();
+            if host.starts_with("http://") || host.starts_with("https://") {
+                Some(host.to_string())
+            } else {
+                Some(format!("https://{}", host))
+            }
         };
         
         let path_style = config.extra.get("path_style")

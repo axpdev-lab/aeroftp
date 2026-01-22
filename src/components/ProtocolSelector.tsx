@@ -100,10 +100,9 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <Cloud size={16} />,
         description: 'Nextcloud, ownCloud, Synology',
         defaultPort: 443,
-        badge: 'Soon',
+        badge: 'Beta',
         color: 'text-orange-500',
         tooltip: 'WebDAV protocol - compatible with Nextcloud, ownCloud, Synology NAS',
-        disabled: true,
     },
     {
         type: 's3',
@@ -111,10 +110,9 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <AwsS3Logo size={18} />,
         description: 'AWS S3, MinIO, R2, B2',
         defaultPort: 443,
-        badge: 'Soon',
+        badge: 'Beta',
         color: 'text-amber-600',
         tooltip: 'S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2',
-        disabled: true,
     },
     // Cloud Storage Providers (AeroCloud FIRST!)
     {
@@ -249,9 +247,11 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Secure'
                                     ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                    : protocol.badge === 'Soon'
-                                        ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                    : protocol.badge === 'Beta'
+                                        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
+                                        : protocol.badge === 'Soon'
+                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
                                     {protocol.badge}
                                 </span>
@@ -294,12 +294,12 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             </div>
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Sync'
-                                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
-                                        : protocol.badge === 'OAuth'
-                                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                                            : protocol.badge === 'Soon'
-                                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
+                                    : protocol.badge === 'OAuth'
+                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                                        : protocol.badge === 'Soon'
+                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
                                     {protocol.badge}
                                 </span>

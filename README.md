@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.2.3-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.2.4-blue" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green" alt="Platform">
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202.0%20%2B%20React%2018-purple" alt="Built with">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange" alt="License">
@@ -28,42 +28,7 @@
 ## ✨ Features
 
 ### 🚀 Core Features
-| Feature | Description |
-|---------|-------------|
-| **Lightning Fast** | Built with Rust for optimal performance and memory safety |
-| **Beautiful UI** | Modern design with dark/light themes and glassmorphism effects |
-| **Dual Panel** | Remote and local file browsing side by side |
-| **Multi-Tab Sessions** | Open multiple servers simultaneously with independent sessions |
-| **FTPS & SFTP Support** | Secure FTP over TLS and SSH-based transfers |
-| **Async Transfers** | Non-blocking operations with real-time progress tracking |
-| **Folder Recursion** | Full recursive upload/download/delete with progress badges |
-
-### ☁️ Multi-Provider Support (v1.2.3)
-| Provider | Status | Features |
-|----------|--------|----------|
-| **FTP/FTPS** | ✅ Full | Browse, upload, download, sync, resume |
-| **SFTP** | ✅ Full | SSH-based secure transfers |
-| **Google Drive** | ✅ Full | OAuth2, browse, upload, download, **share links** |
-| **Dropbox** | ✅ Full | OAuth2, browse, upload, download, **share links** |
-| **OneDrive** | ✅ Full | OAuth2, browse, upload, download, **share links** |
-| **WebDAV** | 🔄 Beta | Nextcloud, ownCloud, Synology compatible |
-| **S3** | 🔄 Beta | AWS, MinIO, Backblaze B2, Cloudflare R2 |
-
-### 🔗 Multi-Session OAuth Switching (NEW in v1.2.3)
-Switch seamlessly between multiple cloud provider tabs without losing connection state:
-- **Independent Sessions** - Each tab maintains its own OAuth connection
-- **Smart Reconnection** - Automatically reconnects with correct credentials when switching
-- **Clean Session Management** - Properly disconnects previous provider before connecting new one
-- **StatusBar Integration** - Shows correct provider name instead of `undefined@undefined`
-
-### 🔗 Share Links (v1.2.2)
-Create public sharing links directly from the interface:
-| Provider | How It Works |
-|----------|-------------|
-| **Google Drive** | Creates "anyone with link can view" permission |
-| **Dropbox** | Uses native Sharing API |
-| **OneDrive** | Creates anonymous sharing link via Microsoft Graph |
-| **AeroCloud** | Uses configured `public_url_base` |
+  <img src="https://img.shields.io/badge/Version-1.2.4-blue" alt="Version">
 
 ### 🔗 Navigation Sync (v0.9.9+)
 | Feature | Description |
@@ -73,13 +38,7 @@ Create public sharing links directly from the interface:
 | **Automatic reset** | Sync disabled by default on new connections |
 
 ### ☁️ AeroCloud
-| Feature | Description |
-|---------|-------------|
-| **Background Sync** | Automatic file synchronization with configurable intervals |
-| **Conflict Detection** | Smart handling of file conflicts with visual indicators |
-| **Activity Filtering** | Toggle cloud sync messages in Activity Log |
-| **Dashboard** | Visual sync status and controls |
-| **Custom Names** | Set personalized display names for cloud tabs |
+  <img src="https://img.shields.io/badge/Version-1.2.4-blue" alt="Version">
 
 ### 📋 Activity Log
 Real-time operation tracking with dual themes:
@@ -92,19 +51,7 @@ Real-time operation tracking with dual themes:
 
 ### 🛠️ DevTools Panel
 Integrated developer tools:
-| Tab | Feature |
-|-----|---------|
-| **Preview** | Syntax-highlighted file preview with syntax detection |
-| **Editor** | Monaco Editor with 20+ language modes |
-| **Terminal** | Local PTY terminal with GitHub Dark theme |
-
-### 🤖 AI Assistant (AeroAgent)
-| Feature | Description |
-|---------|-------------|
-| **Multi-Provider** | Gemini, OpenAI, Anthropic, Ollama support |
-| **FTP Tools** | List, compare, sync files via natural language |
-| **Smart Context** | Insert file paths with `@` mention |
-| **Visual Chat** | Integrated chat interface with conversation history |
+  <img src="https://img.shields.io/badge/Version-1.2.4-blue" alt="Version">
 
 ### 🌍 Internationalization
 Full localization in 5 languages: **English**, **Italian**, **French**, **Spanish**, **Chinese**
@@ -128,3 +75,4 @@ Full localization in 5 languages: **English**, **Italian**, **French**, **Spanis
 ### Snap Store (Linux)
 ```bash
 sudo snap install aeroftp
+  <img src="https://img.shields.io/badge/Version-1.2.4-blue" alt="Version">

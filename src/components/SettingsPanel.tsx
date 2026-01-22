@@ -433,6 +433,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                 />
+
+                                                {/* S3 Specific Fields */}
+                                                {editingServer.protocol === 's3' && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Bucket Name"
+                                                            value={editingServer.options?.bucket || ''}
+                                                            onChange={e => setEditingServer({
+                                                                ...editingServer,
+                                                                options: { ...editingServer.options, bucket: e.target.value }
+                                                            })}
+                                                            className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Region (e.g., us-east-1)"
+                                                            value={editingServer.options?.region || ''}
+                                                            onChange={e => setEditingServer({
+                                                                ...editingServer,
+                                                                options: { ...editingServer.options, region: e.target.value }
+                                                            })}
+                                                            className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        />
+                                                    </div>
+                                                )}
                                                 <input
                                                     type="text"
                                                     placeholder="Remote Path (optional)"
@@ -756,7 +782,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                 <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
                                     <p className="text-sm text-blue-700 dark:text-blue-300">
-                                        <strong>Note:</strong> OAuth2 credentials are stored locally and never sent to AeroFTP servers. 
+                                        <strong>Note:</strong> OAuth2 credentials are stored locally and never sent to AeroFTP servers.
                                         Tokens are securely stored in your system keyring.
                                     </p>
                                 </div>
