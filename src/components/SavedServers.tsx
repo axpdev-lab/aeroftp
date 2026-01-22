@@ -130,23 +130,26 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             // Start OAuth flow
             setOauthConnecting(server.id);
             try {
-                // First authenticate
-                await invoke('oauth2_full_auth', {
-                    params: {
-                        provider: server.protocol === 'googledrive' ? 'google_drive' : server.protocol,
-                        client_id: credentials.clientId,
-                        client_secret: credentials.clientSecret,
-                    }
-                });
+                const oauthProvider = server.protocol === 'googledrive' ? 'google_drive' : server.protocol;
+                const params = {
+                    provider: oauthProvider,
+                    client_id: credentials.clientId,
+                    client_secret: credentials.clientSecret,
+                };
 
-                // Then connect
-                const displayName = await invoke<string>('oauth2_connect', {
-                    params: {
-                        provider: server.protocol === 'googledrive' ? 'google_drive' : server.protocol,
-                        client_id: credentials.clientId,
-                        client_secret: credentials.clientSecret,
-                    }
-                });
+                // Check if tokens already exist - if so, skip auth flow and just connect
+                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider });
+
+                if (!hasTokens) {
+                    // No tokens - need full auth flow (opens browser)
+                    console.log('[SavedServers] No OAuth tokens, starting full auth...');
+                    await invoke('oauth2_full_auth', { params });
+                } else {
+                    console.log('[SavedServers] OAuth tokens found, skipping auth flow');
+                }
+
+                // Connect using stored tokens
+                const displayName = await invoke<string>('oauth2_connect', { params });
 
                 // Update last connected
                 const updated = servers.map(s =>

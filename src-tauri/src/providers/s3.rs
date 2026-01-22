@@ -240,6 +240,8 @@ impl S3Provider {
         debug!("S3 Headers: {:?}", headers);
         
         if let Some(body_data) = body {
+            // Explicitly set Content-Length for empty bodies (required by some S3-compatible services like Backblaze B2)
+            request = request.header("Content-Length", body_data.len().to_string());
             request = request.body(body_data);
         }
         

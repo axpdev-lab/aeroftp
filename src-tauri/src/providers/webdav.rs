@@ -86,17 +86,26 @@ impl WebDavProvider {
         // Simple XML parsing for WebDAV multistatus response
         // In production, consider using quick-xml for proper parsing
         
-        // Find all <d:response> or <D:response> elements
-        let response_pattern = regex::Regex::new(r"(?s)<[dD]:response>(.*?)</[dD]:response>")
+        // Find all response elements with various namespace prefixes:
+        // <d:response>, <D:response>, <DAV:response>, <response>, <lp1:response>, etc.
+        let response_pattern = regex::Regex::new(r"(?s)<(?:[a-zA-Z0-9_]+:)?response[^>]*>(.*?)</(?:[a-zA-Z0-9_]+:)?response>")
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        
+        tracing::info!("[WebDAV] Parsing XML with base_path: {}, url: {}", base_path, self.config.url);
+        
+        let match_count = response_pattern.captures_iter(xml).count();
+        tracing::info!("[WebDAV] Found {} response elements in XML", match_count);
         
         for cap in response_pattern.captures_iter(xml) {
             if let Some(response_content) = cap.get(1) {
                 let content = response_content.as_str();
+                tracing::info!("[WebDAV] Processing response element, content length: {}", content.len());
                 
                 // Extract href
                 let href = self.extract_tag_content(content, "href");
+                tracing::info!("[WebDAV] Extracted href: {:?}", href);
                 if href.is_none() {
+                    tracing::warn!("[WebDAV] No href found in response element");
                     continue;
                 }
                 let href = href.unwrap();
@@ -105,15 +114,34 @@ impl WebDavProvider {
                 let decoded_href = urlencoding::decode(&href).unwrap_or_else(|_| href.clone().into());
                 let clean_path = decoded_href.trim_end_matches('/');
                 let base_clean = base_path.trim_end_matches('/');
+                let url_clean = self.config.url.trim_end_matches('/');
                 
-                if clean_path == base_clean || clean_path == self.config.url.trim_end_matches('/') {
+                tracing::info!("[WebDAV] clean_path: {}, base_clean: {}, url_clean: {}", clean_path, base_clean, url_clean);
+                
+                // Check if this is the directory itself (not a child entry)
+                // Handle various formats: full URL, absolute path, or relative path
+                let is_self_reference = clean_path == base_clean 
+                    || clean_path == url_clean
+                    || clean_path.ends_with(base_clean)
+                    || (base_clean == "/" && clean_path == url_clean)
+                    || clean_path.ends_with(&format!("/{}", base_clean.trim_start_matches('/')))
+                    || (base_clean != "/" && url_clean.ends_with(clean_path));
+                
+                if is_self_reference {
+                    tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
                     continue;
                 }
                 
-                // Check if it's a collection (directory)
-                let is_dir = content.contains("<d:collection") || 
-                             content.contains("<D:collection") ||
-                             content.contains("resourcetype><collection");
+                // Check if it's a collection (directory) - handle various namespace formats
+                // DriveHQ uses <a:collection/> and <a:iscollection>1</a:iscollection>
+                let is_dir = content.contains(":collection/>") ||
+                             content.contains(":collection />") ||
+                             content.contains("<collection/>") ||
+                             content.contains("<collection />") ||
+                             content.contains(">1</a:iscollection>") ||
+                             content.contains(">1</d:iscollection>") ||
+                             content.contains(">1</D:iscollection>") ||
+                             content.contains("iscollection>1</");
                 
                 // Extract content length
                 let size: u64 = self.extract_tag_content(content, "getcontentlength")
@@ -173,14 +201,18 @@ impl WebDavProvider {
         Ok(entries)
     }
     
-    /// Extract content from an XML tag (handles both d: and D: prefixes)
+    /// Extract content from an XML tag (handles various namespace prefixes)
     fn extract_tag_content(&self, xml: &str, tag: &str) -> Option<String> {
-        // Try various namespace prefixes
+        // Try various namespace prefixes used by different WebDAV servers
+        // DriveHQ uses 'a:', Nextcloud uses 'd:', some use 'D:', etc.
         let patterns = [
-            format!(r"<d:{}[^>]*>([^<]*)</d:{}>", tag, tag),
-            format!(r"<D:{}[^>]*>([^<]*)</D:{}>", tag, tag),
+            // Generic pattern: any single-letter or word prefix (handles a:, d:, D:, DAV:, lp1:, etc.)
+            format!(r"<[a-zA-Z][a-zA-Z0-9]*:{}[^>]*>([^<]*)</[a-zA-Z][a-zA-Z0-9]*:{}>", tag, tag),
+            // No prefix
             format!(r"<{}[^>]*>([^<]*)</{}>", tag, tag),
-            format!(r"<lp1:{}[^>]*>([^<]*)</lp1:{}>", tag, tag),
+            // CDATA content (DriveHQ uses CDATA for displayname)
+            format!(r"<[a-zA-Z][a-zA-Z0-9]*:{}[^>]*><!\[CDATA\[(.*?)\]\]></[a-zA-Z][a-zA-Z0-9]*:{}>", tag, tag),
+            format!(r"<{}[^>]*><!\[CDATA\[(.*?)\]\]></{}>", tag, tag),
         ];
         
         for pattern in patterns {
@@ -274,6 +306,8 @@ impl StorageProvider for WebDavProvider {
             path.to_string()
         };
         
+        tracing::info!("[WebDAV] Listing path: {}", list_path);
+        
         let response = self.request(webdav_methods::propfind(), &list_path).await
             .header("Depth", "1")
             .header("Content-Type", "application/xml")
@@ -292,21 +326,33 @@ impl StorageProvider for WebDavProvider {
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         
-        match response.status() {
+        let status = response.status();
+        tracing::info!("[WebDAV] List response status: {}", status);
+        
+        match status {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                self.parse_propfind_response(&xml, &list_path)
+                tracing::info!("[WebDAV] Response XML length: {} bytes", xml.len());
+                // Log full XML for debugging WebDAV issues
+                tracing::info!("[WebDAV] Full XML response:\n{}", xml);
+                
+                let entries = self.parse_propfind_response(&xml, &list_path)?;
+                tracing::info!("[WebDAV] Parsed {} entries", entries.len());
+                Ok(entries)
             }
             StatusCode::NOT_FOUND => {
+                tracing::warn!("[WebDAV] Path not found: {}", list_path);
                 Err(ProviderError::NotFound(list_path))
             }
             StatusCode::UNAUTHORIZED => {
                 self.connected = false;
+                tracing::error!("[WebDAV] Unauthorized - session expired");
                 Err(ProviderError::AuthenticationFailed("Session expired".to_string()))
             }
             status => {
+                tracing::error!("[WebDAV] Server error: {}", status);
                 Err(ProviderError::ServerError(format!("Server returned status: {}", status)))
             }
         }

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2025-01-23
+
+### 🔌 Multi-Protocol Bug Fixes
+
+#### Fixed
+- **WebDAV DriveHQ Support**: Fixed WebDAV provider not showing files/folders when connecting to DriveHQ
+  - Added support for `a:` namespace prefix (DriveHQ uses non-standard XML namespace)
+  - Added CDATA content extraction for displayname fields
+  - Added `<a:iscollection>` detection for directory identification
+  - Namespace-agnostic regex patterns now support any XML prefix
+- **FTP Path Persistence**: Fixed issue where FTP servers inherited WebDAV's remote directory (`/wwwhome`)
+  - Fixed race condition where `connectionParams.protocol` was stale during session switching
+  - Added explicit protocol parameter to `changeRemoteDirectory()` calls
+  - Added FTP-specific path validation in `switchSession` to reset WebDAV paths
+- **S3 Mkdir on Backblaze B2**: Fixed "411 Length Required" error when creating folders on Backblaze B2
+  - Added explicit `Content-Length: 0` header for empty body PUT requests
+  - Improved S3-compatible storage compatibility
+
+#### Improved
+- **Session Tab Icons**: Enhanced visual feedback for all protocols in session tabs
+  - Provider-specific icons now show for S3, WebDAV, and OAuth providers
+  - Connected/disconnected status indicator with opacity feedback
+  - S3 tabs now show orange database icon for better recognition
+  - OAuth providers (Google Drive, Dropbox, OneDrive) show branded icons with status
+
+#### Technical
+- Updated `parse_propfind_response()` regex to support any XML namespace prefix
+- Updated `extract_tag_content()` to handle CDATA wrapped values
+- Added `isProviderProtocol()` helper for tab icon rendering logic
+- Explicit protocol passing prevents React state race conditions
+
+---
+
 ## [1.2.4] - 2026-01-22
 
 ### 🗄️ S3 Multi-Tab Improvements

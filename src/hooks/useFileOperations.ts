@@ -60,13 +60,21 @@ export function useFileOperations({
 
     const loadRemoteFiles = useCallback(async () => {
         try {
-            const response: FileListResponse = await invoke('list_files');
+            // Use provider_list_files for S3 and WebDAV, list_files for FTP
+            const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+            let response: FileListResponse;
+
+            if (isProviderProtocol) {
+                response = await invoke('provider_list_files', { path: null });
+            } else {
+                response = await invoke('list_files');
+            }
             setRemoteFiles(response.files);
             setCurrentRemotePath(response.current_path);
         } catch (error) {
             toast.error('Error', `Failed to list files: ${error}`);
         }
-    }, [setRemoteFiles, setCurrentRemotePath, toast]);
+    }, [setRemoteFiles, setCurrentRemotePath, toast, protocol]);
 
     const loadLocalFiles = useCallback(async (path: string) => {
         try {

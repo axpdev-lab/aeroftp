@@ -121,6 +121,9 @@ const App: React.FC = () => {
   // Mapping from backend transfer_id to queue item id (for folder progress updates)
   const transferIdToQueueId = React.useRef<Map<string, string>>(new Map());
 
+  // Mapping from backend transfer_id to activity log entry id (for updating running -> complete)
+  const transferIdToLogId = React.useRef<Map<string, string>>(new Map());
+
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
 
@@ -498,9 +501,10 @@ const App: React.FC = () => {
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
-        // Folder scan started - find and update queue item
-        activityLog.log(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
+        // Folder scan started - create log entry and track for later update
+        const logId = activityLog.log(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
           `${locationLabel} ${data.message || data.filename}`, 'running');
+        transferIdToLogId.current.set(data.transfer_id, logId);
 
         // Try to match with queue item by filename and mark as folder
         const queueItem = transferQueue.items.find(i => i.filename === data.filename && i.status === 'pending');
@@ -533,7 +537,19 @@ const App: React.FC = () => {
         }
       } else if (data.event_type === 'complete') {
         setActiveTransfer(null);
-        activityLog.log('SUCCESS', `${locationLabel} ${data.message || data.filename}`, 'success');
+
+        // Update existing log entry from 'running' to 'success' instead of creating new
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        if (logId) {
+          activityLog.updateEntry(logId, {
+            status: 'success',
+            message: `${locationLabel} ✓ ${data.message || data.filename}`
+          });
+          transferIdToLogId.current.delete(data.transfer_id);
+        } else {
+          // Fallback: create new entry if no tracked entry exists
+          activityLog.log('SUCCESS', `${locationLabel} ${data.message || data.filename}`, 'success');
+        }
 
         // Complete the queue item
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
@@ -546,7 +562,18 @@ const App: React.FC = () => {
         else if (data.direction === 'download') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
-        activityLog.log('ERROR', `${data.message}`, 'error');
+
+        // Update existing log entry to error status instead of creating new
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        if (logId) {
+          activityLog.updateEntry(logId, {
+            status: 'error',
+            message: `${locationLabel} ✗ ${data.message || data.filename}`
+          });
+          transferIdToLogId.current.delete(data.transfer_id);
+        } else {
+          activityLog.log('ERROR', `${data.message}`, 'error');
+        }
 
         // Fail the queue item
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
@@ -646,7 +673,20 @@ const App: React.FC = () => {
       let response: FileListResponse;
       if (isProvider) {
         // Use provider API
+        console.log('[loadRemoteFiles] Calling provider_list_files...');
         response = await invoke('provider_list_files', { path: null });
+        console.log('[loadRemoteFiles] Provider response:', {
+          fileCount: response.files?.length ?? 0,
+          currentPath: response.current_path,
+          files: response.files?.slice(0, 5) // Log first 5 files
+        });
+
+        // Log to activity if we got files
+        if (response.files?.length > 0) {
+          activityLog.log('INFO', `📂 Loaded ${response.files.length} items from ${protocol}`, 'success');
+        } else {
+          activityLog.log('INFO', `⚠️ No files returned from ${protocol} provider`, 'running');
+        }
       } else {
         // Use FTP API
         response = await invoke('list_files');
@@ -654,6 +694,8 @@ const App: React.FC = () => {
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
     } catch (error) {
+      console.error('[loadRemoteFiles] Error:', error);
+      activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error('Error', `Failed to list files: ${error}`);
     }
   };
@@ -896,8 +938,14 @@ const App: React.FC = () => {
         notify.success('Connected', `Connected to ${providerName}`);
 
         // Load files using provider API
+        console.log('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
           path: quickConnectDirs.remoteDir || null
+        });
+        console.log('[connectToFtp] provider_list_files response:', {
+          fileCount: response.files?.length ?? 0,
+          currentPath: response.current_path,
+          rawFiles: response.files
         });
 
         // Convert provider entries to RemoteFile format
@@ -909,6 +957,7 @@ const App: React.FC = () => {
           modified: f.modified,
           permissions: f.permissions,
         }));
+        console.log('[connectToFtp] Converted files:', files.length);
         setRemoteFiles(files);
         setCurrentRemotePath(response.current_path);
 
@@ -965,7 +1014,8 @@ const App: React.FC = () => {
       notify.success('Connected', `Connected to ${connectionParams.server}`);
       // Navigate to initial remote directory if specified
       if (quickConnectDirs.remoteDir) {
-        await changeRemoteDirectory(quickConnectDirs.remoteDir);
+        // Pass protocol explicitly to avoid stale state from previous provider session
+        await changeRemoteDirectory(quickConnectDirs.remoteDir, connectionParams.protocol || 'ftp');
       } else {
         await loadRemoteFiles();
       }
@@ -1145,8 +1195,26 @@ const App: React.FC = () => {
           } catch (e) { console.error('Option recovery failed', e); }
         }
 
+        // First disconnect any existing connections
+        try { await invoke('provider_disconnect'); } catch { }
         try { await invoke('disconnect_ftp'); } catch { }
-        await invoke('provider_connect', { params: connectParams });
+
+        // Build provider connection params in the format expected by provider_connect
+        const providerParams = {
+          protocol: protocol,
+          server: connectParams.server,
+          port: connectParams.port,
+          username: connectParams.username,
+          password: connectParams.password,
+          initial_path: targetSession.remotePath || null,
+          bucket: connectParams.options?.bucket,
+          region: connectParams.options?.region || 'us-east-1',
+          endpoint: connectParams.options?.endpoint || null,
+          path_style: connectParams.options?.pathStyle || false,
+        };
+
+        console.log('[switchSession] provider_connect params:', providerParams);
+        await invoke('provider_connect', { params: providerParams });
         if (targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
         }
@@ -1161,7 +1229,23 @@ const App: React.FC = () => {
           // Ignore if not connected to OAuth
         }
         await invoke('connect_ftp', { params: targetSession.connectionParams });
-        await invoke('change_directory', { path: targetSession.remotePath });
+        
+        // Only navigate to saved path if it looks like a valid FTP path
+        // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
+        const savedPath = targetSession.remotePath;
+        const isValidFtpPath = savedPath && 
+          !savedPath.includes('wwwhome') && 
+          !savedPath.includes('webdav') &&
+          savedPath.startsWith('/');
+        
+        if (isValidFtpPath && savedPath !== '/') {
+          try {
+            await invoke('change_directory', { path: savedPath });
+          } catch (pathError) {
+            console.warn('[switchSession] Could not restore FTP path, using root:', pathError);
+            // Path doesn't exist on this server, stay at root
+          }
+        }
         response = await invoke('list_files');
       }
 
@@ -2472,15 +2556,27 @@ const App: React.FC = () => {
               setSyncBasePaths(null);
               const logId = humanLog.logStart('CONNECT', { server: params.server });
               try {
+                // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
+                try { await invoke('provider_disconnect'); } catch { }
+
                 await invoke('connect_ftp', { params });
                 setIsConnected(true);
                 humanLog.logSuccess('CONNECT', { server: params.server }, logId);
                 notify.success('Connected', `Connected to ${params.server}`);
+
+                // Get the actual remote path after connection
+                let actualRemotePath = '/';
                 if (initialPath) {
-                  await changeRemoteDirectory(initialPath);
+                  // Pass the protocol explicitly to avoid using stale state from previous session
+                  await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
+                  actualRemotePath = initialPath;
                 } else {
                   await loadRemoteFiles();
+                  // After loadRemoteFiles, currentRemotePath will be updated
+                  actualRemotePath = currentRemotePath.startsWith('/') && !currentRemotePath.includes('wwwhome')
+                    ? currentRemotePath : '/';
                 }
+
                 if (localInitialPath) {
                   await changeLocalDirectory(localInitialPath);
                 }
@@ -2489,7 +2585,7 @@ const App: React.FC = () => {
                 createSession(
                   sessionName,
                   params,
-                  initialPath || currentRemotePath,
+                  initialPath || '/',  // Use '/' as default, not currentRemotePath from previous session
                   localInitialPath || currentLocalPath
                 );
               } catch (error) {
