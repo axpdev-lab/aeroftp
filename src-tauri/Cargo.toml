@@ -68,5 +68,11 @@ ctr = "0.9"
 ring = "0.17.14"
 zeroize = "1.8.2"
 
+# SFTP Support (Sprint 3 - v1.3.0)
+# Dependencies for full implementation (uncomment when ready):
+# russh = "0.48"
+# russh-sftp = "2.0"
+# russh-keys = "0.48"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]

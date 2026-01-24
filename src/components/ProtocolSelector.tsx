@@ -103,6 +103,16 @@ const PROTOCOLS: ProtocolInfo[] = [
         tooltip: 'FTP with TLS/SSL encryption - secure connection',
     },
     {
+        type: 'sftp',
+        name: 'SFTP',
+        icon: <Lock size={16} />,
+        description: 'SSH File Transfer',
+        defaultPort: 22,
+        badge: 'Secure',
+        color: 'text-emerald-500',
+        tooltip: 'SFTP over SSH - secure shell file transfer, supports key authentication',
+    },
+    {
         type: 'webdav',
         name: 'WebDAV',
         icon: <Cloud size={16} />,

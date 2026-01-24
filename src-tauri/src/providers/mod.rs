@@ -5,22 +5,23 @@
 //! to work with FTP, WebDAV, S3, and other storage systems through a common interface.
 //!
 //! # Architecture
-//! 
+//!
 //! ```text
-//! ┌─────────────────────────────────────────────┐
-//! │           StorageProvider Trait             │
-//! │  connect, list, upload, download, etc.      │
-//! └─────────────────────────────────────────────┘
-//!                      │
-//!    ┌───────┬─────────┼─────────┬────────┐
-//!    ▼       ▼         ▼         ▼        ▼
-//! ┌─────┐ ┌──────┐ ┌─────┐ ┌────────┐ ┌────────┐
-//! │ FTP │ │WebDAV│ │ S3  │ │ GDrive │ │Dropbox │
-//! └─────┘ └──────┘ └─────┘ └────────┘ └────────┘
+//! ┌─────────────────────────────────────────────────────────┐
+//! │              StorageProvider Trait                       │
+//! │    connect, list, upload, download, mkdir, etc.          │
+//! └─────────────────────────────────────────────────────────┘
+//!                           │
+//!    ┌──────┬───────┬───────┼───────┬────────┬────────┐
+//!    ▼      ▼       ▼       ▼       ▼        ▼        ▼
+//! ┌─────┐┌──────┐┌──────┐┌─────┐┌────────┐┌────────┐┌──────┐
+//! │ FTP ││ SFTP ││WebDAV││ S3  ││ GDrive ││Dropbox ││ MEGA │
+//! └─────┘└──────┘└──────┘└─────┘└────────┘└────────┘└──────┘
 //! ```
 
 pub mod types;
 pub mod ftp;
+pub mod sftp;
 pub mod webdav;
 pub mod s3;
 pub mod oauth2;
@@ -31,6 +32,7 @@ pub mod mega;
 
 pub use types::*;
 pub use ftp::FtpProvider;
+pub use sftp::SftpProvider;
 pub use webdav::WebDavProvider;
 pub use s3::S3Provider;
 pub use google_drive::GoogleDriveProvider;
@@ -186,8 +188,8 @@ impl ProviderFactory {
                 Ok(Box::new(S3Provider::new(s3_config)))
             }
             ProviderType::Sftp => {
-                // SFTP will be added later
-                Err(ProviderError::NotSupported("SFTP provider not yet implemented".to_string()))
+                let sftp_config = SftpConfig::from_provider_config(config)?;
+                Ok(Box::new(SftpProvider::new(sftp_config)))
             }
             ProviderType::AeroCloud => {
                 // AeroCloud uses FTP internally but is configured via CloudPanel
@@ -214,6 +216,7 @@ impl ProviderFactory {
         vec![
             ProviderType::Ftp,
             ProviderType::Ftps,
+            ProviderType::Sftp,
             ProviderType::WebDav,
             ProviderType::S3,
             ProviderType::AeroCloud,

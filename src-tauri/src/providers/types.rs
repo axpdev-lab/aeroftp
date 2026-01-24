@@ -245,6 +245,49 @@ impl S3Config {
     }
 }
 
+/// SFTP-specific configuration
+#[derive(Debug, Clone)]
+pub struct SftpConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    /// Password authentication (optional if using key)
+    pub password: Option<String>,
+    /// Path to private key file (e.g., ~/.ssh/id_rsa)
+    pub private_key_path: Option<String>,
+    /// Passphrase for encrypted private key
+    pub key_passphrase: Option<String>,
+    /// Initial directory to navigate to
+    pub initial_path: Option<String>,
+    /// Connection timeout in seconds
+    pub timeout_secs: u64,
+}
+
+impl SftpConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let username = config.username.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Username required for SFTP".to_string()))?;
+
+        let private_key_path = config.extra.get("private_key_path").cloned();
+        let key_passphrase = config.extra.get("key_passphrase").cloned();
+
+        let timeout_secs = config.extra.get("timeout")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+
+        Ok(Self {
+            host: config.host.clone(),
+            port: config.effective_port(),
+            username,
+            password: config.password.clone(),
+            private_key_path,
+            key_passphrase,
+            initial_path: config.initial_path.clone(),
+            timeout_secs,
+        })
+    }
+}
+
 /// MEGA configuration
 #[derive(Debug, Clone)]
 pub struct MegaConfig {

@@ -37,6 +37,11 @@ export interface ProviderOptions {
   // WebDAV-specific
   // (no extra options needed, uses standard auth)
 
+  // SFTP-specific
+  private_key_path?: string;  // Path to SSH private key
+  key_passphrase?: string;    // Passphrase for encrypted keys
+  timeout?: number;           // Connection timeout in seconds
+
   // OAuth-specific (for Google Drive, Dropbox, OneDrive)
   clientId?: string;
   clientSecret?: string;
