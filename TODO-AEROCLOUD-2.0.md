@@ -253,16 +253,35 @@ aws-config = "1"
 
 ---
 
-## 📋 Sprint 3: Multi-Session Architecture & Encryption (v1.3.0)
+## 📋 Sprint 3: SFTP + Encryption (v1.3.0) - PRIORITY
 
-### Goals
-- [x] **Multi-session backend support** ✅ COMPLETED in v1.2.3
-- [ ] Cryptomator-compatible client-side encryption
-- [ ] Multi-cloud unified view
-- [ ] Cross-cloud file operations
+> Based on [Competitor Analysis](docs/COMPETITOR-ANALYSIS.md) - Closing critical gaps
 
-### Multi-Session Architecture ✅ IMPLEMENTED
-Implemented `MultiProviderState` in `session_manager.rs`:
+### HIGH PRIORITY - Gap Closure
+All major competitors (FileZilla, Cyberduck, WinSCP) have these features:
+
+- [ ] **SFTP Support** ⚡ CRITICAL
+  - Use `russh` or `ssh2` crate for SSH/SFTP
+  - Implement `SftpProvider` following `StorageProvider` trait
+  - Support key-based authentication (id_rsa, id_ed25519)
+  - Support password authentication
+  - Add SFTP to ProtocolSelector (port 22 default)
+  - Test with OpenSSH servers
+
+- [ ] **Cryptomator Encryption** (like Cyberduck)
+  - Implement Cryptomator vault format v8
+  - AES-256-GCM encryption layer
+  - Filename encryption/obfuscation
+  - Support vaults on any provider (FTP, S3, WebDAV, Cloud)
+
+- [ ] **Keyboard Shortcuts**
+  - F2 → Rename
+  - Del/Backspace → Delete (with confirmation)
+  - Ctrl+C/Ctrl+V → Copy/Paste (planned)
+  - Enter → Open file/folder
+  - Ctrl+R → Refresh
+
+### Multi-Session Architecture ✅ COMPLETED (v1.2.3)
 ```rust
 pub struct MultiProviderState {
     pub sessions: RwLock<HashMap<String, ProviderSession>>,
@@ -270,26 +289,52 @@ pub struct MultiProviderState {
 }
 ```
 
-### Tasks
-- [x] Refactor ProviderState to support multiple active sessions
-- [x] Add session_id parameter to all provider commands
-- [x] Update frontend to pass session_id with each operation
-- [x] Implement proper session lifecycle (create, switch, close)
-- [ ] Implement Cryptomator vault format
-- [ ] AES-256-GCM encryption layer
-- [ ] Filename encryption/obfuscation
-- [x] Multi-tab cloud browser with independent sessions
-- [ ] Drag & drop between clouds
+---
+
+## 📋 Sprint 4: UX & Performance (v1.4.0)
+
+### Advanced File Management
+- [ ] **Drag & Drop Cross-Panel**
+  - Remote → Local = Download
+  - Local → Remote = Upload
+  - Drop on folder = Move into folder
+  - Visual feedback ("ghost" image)
+
+- [ ] **File Versioning** (like Mountain Duck 5)
+  - Show version history for S3/cloud providers
+  - Restore previous versions
+  - Compare versions
+
+- [ ] **Bandwidth Throttling** (like FileZilla)
+  - Configurable upload/download speed limits
+  - Per-connection or global limits
+  - Useful for background sync
+
+- [ ] **Smart Disconnect Policy**
+  - Disable Keep-Alive for stateless providers
+  - Graceful reconnection on network errors
 
 ---
 
-## 📋 Sprint 4: Advanced Features (v1.4.0)
+## 📋 Sprint 5: Advanced Features (v1.5.0)
 
-### Goals
-- [ ] CDN integration (CloudFront)
-- [ ] Share links generation
-- [ ] File versioning support
-- [ ] Bandwidth throttling
+### Automation & CLI
+- [ ] **CLI Mode** (like WinSCP)
+  - `aeroftp connect user@host`
+  - `aeroftp sync /local /remote`
+  - Scriptable commands
+
+- [ ] **More Languages**
+  - FileZilla has 47 languages
+  - Target: German, Portuguese, Japanese, Korean
+
+- [ ] **Azure Blob Storage**
+  - Already in Cyberduck
+  - Microsoft ecosystem users
+
+- [ ] **CDN Integration**
+  - CloudFront invalidation
+  - Presigned URL generation
 
 ---
 
@@ -346,16 +391,29 @@ src-tauri/src/
 
 ---
 
-## 📊 Compatibility Matrix (Target)
+## 📊 Compatibility Matrix (Current v1.2.7)
 
-| Provider     | Browse | Upload | Download | Sync | Share |
-| ------------ | ------ | ------ | -------- | ---- | ----- |
-| FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     |
-| SFTP         | ✅      | ✅      | ✅        | ✅    | ❌     |
-| WebDAV       | 🔄      | 🔄      | 🔄        | 🔄    | 🔄     |
-| S3           | 🔄      | 🔄      | 🔄        | 🔄    | 🔄     |
-| Google Drive | ✅      | ✅      | ✅        | 📋    | 📋     |
-| Dropbox      | 📋      | 📋      | 📋        | 📋    | 📋     |
-| OneDrive     | 📋      | 📋      | 📋        | 📋    | 📋     |
+| Provider     | Browse | Upload | Download | Sync | Share | Status |
+| ------------ | ------ | ------ | -------- | ---- | ----- | ------ |
+| FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     | Stable |
+| SFTP         | 📋      | 📋      | 📋        | 📋    | ❌     | v1.3.0 |
+| WebDAV       | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
+| S3           | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
+| Google Drive | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |
+| Dropbox      | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |
+| OneDrive     | ✅      | ✅      | ✅        | 📋    | ✅     | Beta |
+| MEGA.nz      | ✅      | ✅      | ✅        | 📋    | ❌     | Stable |
 
-Legend: ✅ Done | 🔄 In Progress | 📋 Planned | ❌ Not Applicable
+Legend: ✅ Done | 📋 Planned | ❌ Not Applicable
+
+### Unique Features vs Competitors
+
+| Feature | AeroFTP | FileZilla | Cyberduck | WinSCP |
+|---------|---------|-----------|-----------|--------|
+| MEGA.nz Support | ✅ | ❌ | ❌ | ❌ |
+| AeroCloud Sync | ✅ | ❌ | ❌ | ❌ |
+| Monaco Editor | ✅ | ❌ | ❌ | Basic |
+| AI Assistant | ✅ | ❌ | ❌ | ❌ |
+| Integrated Terminal | ✅ | ❌ | ❌ | PuTTY |
+
+See [docs/COMPETITOR-ANALYSIS.md](docs/COMPETITOR-ANALYSIS.md) for full comparison.
