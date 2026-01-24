@@ -16,10 +16,11 @@ const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 const TEXT_EXTENSIONS = ['txt', 'log', 'ini', 'cfg', 'conf', 'env'];
 const CODE_EXTENSIONS = [
     'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
-    'json', 'xml', 'yaml', 'yml', 'toml',
+    'json', 'xml', 'yaml', 'yml', 'toml', 'webmanifest',
     'php', 'py', 'rb', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
     'sql', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-    'vue', 'svelte', 'astro'
+    'vue', 'svelte', 'astro',
+    'htaccess', 'config', 'conf'
 ];
 
 /**
@@ -27,7 +28,10 @@ const CODE_EXTENSIONS = [
  */
 export function getFileExtension(filename: string): string {
     const parts = filename.toLowerCase().split('.');
-    return parts.length > 1 ? parts.pop() || '' : '';
+    if (parts.length > 1) return parts.pop() || '';
+    // Handle files like .htaccess where parts=['', 'htaccess']
+    if (filename.startsWith('.')) return filename.substring(1).toLowerCase();
+    return '';
 }
 
 /**
@@ -48,11 +52,19 @@ export function getPreviewCategory(filename: string): PreviewCategory {
 }
 
 /**
- * Check if file is previewable (not code)
+ * Check if file is previewable in Universal Preview (media, pdf, text, code)
  */
 export function isPreviewable(filename: string): boolean {
     const category = getPreviewCategory(filename);
-    return ['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category);
+    return ['image', 'audio', 'video', 'pdf', 'text', 'markdown', 'code'].includes(category);
+}
+
+/**
+ * Check if file can be viewed as source (code, text, markdown)
+ */
+export function isSourceViewable(filename: string): boolean {
+    const category = getPreviewCategory(filename);
+    return ['code', 'text', 'markdown'].includes(category);
 }
 
 /**

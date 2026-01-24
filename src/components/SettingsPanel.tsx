@@ -301,12 +301,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <span className="text-sm">Confirm before deleting files</span>
                                     </label>
 
-                                    {/* TODO: Fix CheckUpdateButton - temporarily disabled, use tray menu instead
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <h4 className="text-sm font-medium mb-2">Software Updates</h4>
                                         <CheckUpdateButton />
                                     </div>
-                                    */}
                                 </div>
                             </div>
                         )}

@@ -60,6 +60,10 @@ pub struct ProviderConnectionParams {
     pub endpoint: Option<String>,
     /// Use path-style URLs for S3
     pub path_style: Option<bool>,
+    /// Save session keys (MEGA)
+    pub save_session: Option<bool>,
+    /// Session expiry timestamp (MEGA)
+    pub session_expires_at: Option<i64>,
 }
 
 impl ProviderConnectionParams {
@@ -71,6 +75,7 @@ impl ProviderConnectionParams {
             "sftp" => ProviderType::Sftp,
             "webdav" => ProviderType::WebDav,
             "s3" => ProviderType::S3,
+            "mega" => ProviderType::Mega,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -96,10 +101,26 @@ impl ProviderConnectionParams {
             }
         }
 
+        // Add MEGA-specific options
+        if provider_type == ProviderType::Mega {
+            if self.save_session.unwrap_or(false) {
+                extra.insert("save_session".to_string(), "true".to_string());
+            }
+            if let Some(ts) = self.session_expires_at {
+                extra.insert("session_expires_at".to_string(), ts.to_string());
+            }
+        }
+
+        let host = if provider_type == ProviderType::Mega {
+            "mega.nz".to_string()
+        } else {
+            self.server.clone()
+        };
+
         Ok(ProviderConfig {
-            name: format!("{}@{}", self.username, self.server),
+            name: format!("{}@{}", self.username, host),
             provider_type,
-            host: self.server.clone(),
+            host,
             port: self.port,
             username: Some(self.username.clone()),
             password: Some(self.password.clone()),
@@ -240,8 +261,14 @@ pub async fn provider_change_dir(
     let provider = provider_lock.as_mut()
         .ok_or("Not connected to any provider")?;
     
-    provider.cd(&path).await
-        .map_err(|e| format!("Failed to change directory: {}", e))?;
+    // Handle ".." specifically to go to parent directory
+    if path == ".." {
+        provider.cd_up().await
+            .map_err(|e| format!("Failed to go up: {}", e))?;
+    } else {
+        provider.cd(&path).await
+            .map_err(|e| format!("Failed to change directory: {}", e))?;
+    }
     
     let files = provider.list(".").await
         .map_err(|e| format!("Failed to list files: {}", e))?;

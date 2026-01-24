@@ -197,21 +197,22 @@ export function ActivityLogProvider({ children }: ActivityLogProviderProps): Rea
 // ============================================================================
 
 /**
- * Get the appropriate icon/emoji for an operation type
+ * Get the Lucide icon name for an operation type
+ * Icons are rendered in ActivityLogPanel component
  */
 export function getOperationIcon(operation: OperationType): string {
     const icons: Record<OperationType, string> = {
-        CONNECT: '🔗',
-        DISCONNECT: '🔌',
-        UPLOAD: '⬆️',
-        DOWNLOAD: '⬇️',
-        DELETE: '🗑️',
-        RENAME: '✏️',
-        MKDIR: '📁',
-        NAVIGATE: '📂',
-        ERROR: '❌',
-        INFO: 'ℹ️',
-        SUCCESS: '✅',
+        CONNECT: 'plug',
+        DISCONNECT: 'unplug',
+        UPLOAD: 'upload',
+        DOWNLOAD: 'download',
+        DELETE: 'trash-2',
+        RENAME: 'pencil',
+        MKDIR: 'folder-plus',
+        NAVIGATE: 'folder-open',
+        ERROR: 'alert-circle',
+        INFO: 'info',
+        SUCCESS: 'check-circle',
     };
     return icons[operation];
 }

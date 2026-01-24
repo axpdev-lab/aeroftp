@@ -14,7 +14,7 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive';
+export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega';
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -40,6 +40,11 @@ export interface ProviderOptions {
   // OAuth-specific (for Google Drive, Dropbox, OneDrive)
   clientId?: string;
   clientSecret?: string;
+
+  // MEGA-specific
+  save_session?: boolean;
+  session_expires_at?: number; // Timestamp (ms)
+  logout_on_disconnect?: boolean;
 }
 
 export interface ConnectionParams {

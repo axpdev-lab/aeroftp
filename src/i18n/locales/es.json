@@ -272,6 +272,38 @@
             "copyright": "© 2025-2026 Todos los derechos reservados",
             "supportDev": "Apoyar Desarrollo",
             "donateWith": "Donar con Crypto"
+        },
+        "activity": {
+            "connect_start": "Conectando a {server}...",
+            "connect_success": "Conectado a {server} correctamente",
+            "connect_error": "Error de conexión a {server}. Verifique credenciales.",
+            "disconnect_start": "Desconectando...",
+            "disconnect_success": "Desconectado del servidor",
+            "disconnect_error": "Error al desconectar",
+            "upload_start": "[Remoto] Subiendo {filename}...",
+            "upload_success": "[Remoto] Subido {filename} ({size} en {time})",
+            "upload_error": "[Remoto] Error al subir {filename}",
+            "download_start": "[Local] Descargando {filename}...",
+            "download_success": "[Local] Descargado {filename} ({size} en {time})",
+            "download_error": "[Local] Error al descargar {filename}",
+            "delete_start": "[{location}] Eliminando {filename}...",
+            "delete_success": "[{location}] Eliminado {filename}",
+            "delete_error": "[{location}] No se pudo eliminar {filename}",
+            "mkdir_start": "[{location}] Creando carpeta {foldername}...",
+            "mkdir_success": "[{location}] Carpeta {foldername} creada",
+            "mkdir_error": "[{location}] No se pudo crear la carpeta",
+            "rename_start": "[{location}] Renombrando {oldname} a {newname}...",
+            "rename_success": "[{location}] Renombrado {oldname} a {newname}",
+            "rename_error": "[{location}] Error al renombrar",
+            "navigate_success": "[{location}] Navegado a {path}",
+            "sync_start": "Sincronizando AeroCloud con {server}...",
+            "sync_success": "AeroCloud sincronizado con {server}",
+            "sync_error": "Error de sincronización AeroCloud: {message}",
+            "nav_sync_enabled": "[Sync] Sincronización nav. activa: {remote} <-> {local}",
+            "nav_sync_disabled": "[Sync] Sincronización nav. desactivada",
+            "reconnect_start": "Reconectando a {server}...",
+            "reconnect_success": "Reconectado a {server}",
+            "reconnect_error": "Error de reconexión"
         }
     }
 }

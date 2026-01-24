@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '../types';
 import { useTranslation } from '../i18n';
@@ -108,6 +108,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     };
 
     const handleConnect = async (server: ServerProfile) => {
+        // Check expiry for MEGA (Beta v0.5.0)
+        if (server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at) {
+            onEdit(server); // Redirect to edit to renew session
+            return;
+        }
+
         // Clear any previous OAuth error
         setOauthError(null);
 
@@ -258,6 +264,11 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                             <div>
                                 <div className="font-medium flex items-center gap-2">
                                     {server.name || server.host}
+                                    {server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title="Session expired (24h)">
+                                            <Clock size={10} /> EXP
+                                        </span>
+                                    )}
                                     {oauthConnecting === server.id && (
                                         <span className="text-xs text-blue-500 animate-pulse">Authenticating...</span>
                                     )}

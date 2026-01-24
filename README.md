@@ -27,7 +27,7 @@
 
 ---
 
-## ✨ Key Features (v1.2.6)
+## ✨ Key Features (v1.2.7)
 
 ### AeroCloud – Your Personal Cloud on Any FTP Server
 - Turn **any FTP server** into a private personal cloud
@@ -39,10 +39,11 @@
 
 ### Multi-protocol Support
 - FTP / FTPS (TLS/SSL)
-- **WebDAV** (tested and pre-configured: Nextcloud, ownCloud, Synology, DriveHQ – Beta)
-- **S3-compatible** (tested and pre-configured: Backblaze B2, Wasabi – Beta)
+- **WebDAV** (tested: Nextcloud, ownCloud, Synology, DriveHQ)
+- **S3-compatible** (tested: Backblaze B2, Wasabi, MinIO)
+- **MEGA.nz** – 20GB free, client-side encryption (requires MEGAcmd)
+- OAuth cloud integrations: **Google Drive**, **Dropbox**, **OneDrive**
 - Custom connection for any WebDAV or S3-compatible server
-- OAuth cloud integrations: Google Drive, Dropbox, OneDrive
 
 ### File Management
 - **List/Grid view** with **image thumbnails** (local + remote)
@@ -58,7 +59,7 @@
 
 ### Pro DevTools
 - **Monaco Editor** (VS Code engine) for file editing
-- Integrated **terminal** with full shell
+- Integrated **terminal** with Tokyo Night theme
 - **AeroAgent**: AI assistant for commands, file analysis and automation
 
 ### Smart Updater
@@ -71,7 +72,7 @@
 - Full i18n (EN/IT/FR/ES/ZH)
 - Preserves saved connections/OAuth across updates
 
-**Roadmap**: Full SFTP support, end-to-end encryption, advanced multi-device AeroCloud, additional specific WebDAV/S3 providers and free cloud services (e.g. MEGA and others)
+**Roadmap**: Full SFTP support, end-to-end encryption, advanced multi-device AeroCloud, Cryptomator vault support
 
 ---
 

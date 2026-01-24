@@ -58,6 +58,7 @@ import { SortableHeader, SortField, SortOrder } from './components/SortableHeade
 import ActivityLogPanel from './components/ActivityLogPanel';
 import { useActivityLog } from './hooks/useActivityLog';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
+import { useTranslation } from './i18n';
 
 // ============ Main App ============
 const App: React.FC = () => {
@@ -135,6 +136,8 @@ const App: React.FC = () => {
 
   // Mapping from backend transfer_id to activity log entry id (for updating running -> complete)
   const transferIdToLogId = React.useRef<Map<string, string>>(new Map());
+  // Maps filenames to manually started log IDs (to merge frontend and backend logs)
+  const pendingFileLogIds = React.useRef<Map<string, string>>(new Map());
 
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
@@ -143,6 +146,8 @@ const App: React.FC = () => {
   const [showLocalPreview, setShowLocalPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState<LocalFile | null>(null);
   const [previewImageBase64, setPreviewImageBase64] = useState<string | null>(null);
+
+  const t = useTranslation();
 
   // DevTools Panel
   const [devToolsOpen, setDevToolsOpen] = useState(false);
@@ -235,8 +240,8 @@ const App: React.FC = () => {
   // Helper: Check if current connection is a Provider (non-FTP)
   const isCurrentOAuthProvider = React.useMemo(() => {
     const protocol = connectionParams.protocol;
-    // Includes OAuth providers AND other providers like S3, WebDAV
-    return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+    // Includes OAuth providers AND other providers like S3, WebDAV, MEGA
+    return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
   }, [connectionParams.protocol]);
 
   // Load image preview as base64 when file changes
@@ -429,11 +434,11 @@ const App: React.FC = () => {
   // Returns toast ID for compatibility with removeToast
   const notify = React.useMemo(() => ({
     success: (title: string, message?: string): string | null => {
-      activityLog.log('SUCCESS', message ? `${title}: ${message}` : title, 'success');
+      // activityLog.log('SUCCESS', message ? `${title}: ${message}` : title, 'success'); // Removed duplicate log
       return showToastNotifications ? toast.success(title, message) : null;
     },
     error: (title: string, message?: string): string => {
-      activityLog.log('ERROR', message ? `${title}: ${message}` : title, 'error');
+      // activityLog.log('ERROR', message ? `${title}: ${message}` : title, 'error'); // Removed duplicate log
       // Errors always show as toast (critical)
       return toast.error(title, message);
     },
@@ -455,7 +460,7 @@ const App: React.FC = () => {
     // Skip keep-alive for non-FTP providers (OAuth, S3, WebDAV)
     const protocol = connectionParams.protocol;
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav'].includes(protocol);
+    const isProvider = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
     if (isOAuth || isProvider) {
       console.log('[Keep-Alive] Skipping for non-FTP provider:', protocol);
       return;
@@ -471,12 +476,12 @@ const App: React.FC = () => {
 
         // Connection lost - attempt auto-reconnect
         setIsReconnecting(true);
-        humanLog.log('DISCONNECT', '⚠️ Connection lost - server timeout', 'error');
+        humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
         notify.info('Reconnecting...', 'Connection lost, attempting to reconnect');
 
         try {
           await invoke('reconnect_ftp');
-          humanLog.log('CONNECT', `✅ Back online! Reconnected to ${connectionParams.server}`, 'success');
+          humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: connectionParams.server }, 'success');
           notify.success('Reconnected', 'FTP connection restored');
           // Refresh file list after reconnection
           const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
@@ -484,7 +489,7 @@ const App: React.FC = () => {
           setCurrentRemotePath(response.current_path);
         } catch (reconnectError) {
           console.error('Auto-reconnect failed:', reconnectError);
-          humanLog.log('DISCONNECT', '❌ Couldn\'t reconnect - please connect manually', 'error');
+          humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
           notify.error('Connection Lost', 'Could not reconnect. Please reconnect manually.');
           setIsConnected(false);
         } finally {
@@ -546,14 +551,19 @@ const App: React.FC = () => {
   useEffect(() => {
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
       const data = event.payload;
-      const locationLabel = data.direction === 'local' ? '🖥️' : data.direction === 'remote' ? '🌐' :
-        data.direction === 'download' ? '⬇️' : '⬆️';
+      // locationLabel replaced by i18n logic in handlers
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
-        // Folder scan started - create log entry and track for later update
-        const logId = activityLog.log(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
-          `${locationLabel} ${data.message || data.filename}`, 'running');
+        let logId = '';
+        // Check if we have a pending manual log for this file (deduplication)
+        if (pendingFileLogIds.current.has(data.filename)) {
+          logId = pendingFileLogIds.current.get(data.filename)!;
+          pendingFileLogIds.current.delete(data.filename);
+        } else {
+          // Folder scan started - create log entry and track for later update
+          logId = humanLog.logStart(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD', { filename: data.filename });
+        }
         transferIdToLogId.current.set(data.transfer_id, logId);
 
         // Try to match with queue item by filename and mark as folder
@@ -565,15 +575,17 @@ const App: React.FC = () => {
         }
       } else if (data.event_type === 'file_start') {
         // Individual file transfer starting
-        activityLog.log(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
-          `${locationLabel} ${data.filename}`, 'running', data.message);
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw(data.direction === 'download' ? 'activity.download_start' : 'activity.upload_start',
+          data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
+          { filename: data.filename, location: loc }, 'running');
       } else if (data.event_type === 'file_complete') {
-        // Individual file transfer complete
-        activityLog.log(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
-          `${locationLabel} ✓ ${data.filename}`, 'success', data.message);
+        // Individual file transfer complete - Log suppressed to avoid duplicate with 'complete' event which has details
       } else if (data.event_type === 'file_error') {
         // Individual file transfer error
-        activityLog.log('ERROR', `${locationLabel} ✗ ${data.filename}`, 'error', data.message);
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
+          'ERROR', { filename: data.filename, location: loc }, 'error');
       } else if (data.event_type === 'progress' && data.progress) {
         setActiveTransfer(data.progress);
 
@@ -588,18 +600,39 @@ const App: React.FC = () => {
       } else if (data.event_type === 'complete') {
         setActiveTransfer(null);
 
+        // Attempt to extract stats from the original english message if available
+        // e.g. "Uploaded file.txt (10MB in 2s)"
+        let size = '';
+        let time = '';
+        if (data.message) {
+          const match = data.message.match(/\(([^)]+)\)$/);
+          if (match) {
+            const content = match[1];
+            if (content.includes(' in ')) {
+              const parts = content.split(' in ');
+              size = parts[0];
+              time = parts[1];
+            } else {
+              size = content;
+            }
+          }
+        }
+
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
+        const details = size && time ? `(${size} in ${time})` : size ? `(${size})` : '';
+        const formattedMessage = t(successKey, { filename: data.filename, location: loc, details });
+
         // Update existing log entry from 'running' to 'success' instead of creating new
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
           activityLog.updateEntry(logId, {
             status: 'success',
-            message: `${locationLabel} ✓ ${data.message || data.filename}`
+            message: formattedMessage
           });
           transferIdToLogId.current.delete(data.transfer_id);
-        } else {
-          // Fallback: create new entry if no tracked entry exists
-          activityLog.log('SUCCESS', `${locationLabel} ${data.message || data.filename}`, 'success');
         }
+        // No fallback - avoid duplicate logs. The JS function handles its own logging.
 
         // Complete the queue item
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
@@ -613,16 +646,20 @@ const App: React.FC = () => {
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
 
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const errorKey = data.direction === 'upload' ? 'activity.upload_error' : 'activity.download_error';
+        const formattedMessage = t(errorKey, { filename: data.filename, location: loc });
+
         // Update existing log entry to error status instead of creating new
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
           activityLog.updateEntry(logId, {
             status: 'error',
-            message: `${locationLabel} ✗ ${data.message || data.filename}`
+            message: formattedMessage
           });
           transferIdToLogId.current.delete(data.transfer_id);
         } else {
-          activityLog.log('ERROR', `${data.message}`, 'error');
+          humanLog.logRaw(errorKey, 'ERROR', { filename: data.filename, location: loc }, 'error');
         }
 
         // Fail the queue item
@@ -641,26 +678,27 @@ const App: React.FC = () => {
       // ========== DELETE EVENTS ==========
       else if (data.event_type === 'delete_start') {
         // Folder delete scan started
-        activityLog.log('DELETE', `${locationLabel} ${data.message || data.filename}`, 'running');
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
       } else if (data.event_type === 'delete_file_start') {
         // Individual file delete starting
-        activityLog.log('DELETE', `${locationLabel} ${data.filename}`, 'running', data.message);
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
       } else if (data.event_type === 'delete_file_complete') {
         // Individual file deleted
-        activityLog.log('DELETE', `${locationLabel} ✓ ${data.filename}`, 'success');
-      } else if (data.event_type === 'delete_file_error') {
-        // Individual file delete error
-        activityLog.log('ERROR', `${locationLabel} ✗ ${data.filename}`, 'error', data.message);
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
       } else if (data.event_type === 'delete_dir_complete') {
         // Directory removed
-        activityLog.log('DELETE', `${locationLabel} 📁 ${data.filename}`, 'success');
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
       } else if (data.event_type === 'delete_complete') {
-        // Folder delete complete
-        activityLog.log('SUCCESS', `${locationLabel} ${data.message || data.filename}`, 'success');
+        // Folder delete complete (Task)
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
-        activityLog.log('ERROR', `${locationLabel} ${data.message}`, 'error');
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');
       }
     });
     return () => { unlisten.then(fn => fn()); };
@@ -717,7 +755,7 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided (for cases where state isn't updated yet)
       const protocol = overrideProtocol || connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
       console.log('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -733,9 +771,9 @@ const App: React.FC = () => {
 
         // Log to activity if we got files
         if (response.files?.length > 0) {
-          activityLog.log('INFO', `📂 Loaded ${response.files.length} items from ${protocol}`, 'success');
+          humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: protocol }, 'success');
         } else {
-          activityLog.log('INFO', `⚠️ No files returned from ${protocol} provider`, 'running');
+          activityLog.log('INFO', `No files returned from ${protocol} provider`, 'running');
         }
       } else {
         // Use FTP API
@@ -824,6 +862,9 @@ const App: React.FC = () => {
     let lastCloudLogStatus = '';
     let lastCloudLogTime = 0;
 
+    // Track cloud sync log ID for updating status
+    let cloudSyncLogId: string | null = null;
+
     // Listen for cloud sync status events
     const unlistenStatus = listen<{ status: string; message: string }>('cloud-sync-status', (event) => {
       const { status, message } = event.payload;
@@ -843,7 +884,14 @@ const App: React.FC = () => {
         setIsCloudActive(true);
         // Refresh last_sync timestamp for badges
         setCloudLastSync(new Date().toISOString());
-        humanLog.log('INFO', '☁️ AeroCloud sync completed ✓', 'success');
+        // Only log success if we were actually syncing (has a running log)
+        if (cloudSyncLogId) {
+          activityLog.updateEntry(cloudSyncLogId, {
+            status: 'success',
+            message: t('activity.sync_success', { server: cloudServerName })
+          });
+          cloudSyncLogId = null;
+        }
       } else if (status === 'idle') {
         setCloudSyncing(false);
         setIsCloudActive(true);
@@ -851,11 +899,20 @@ const App: React.FC = () => {
         // Actually transferring files now
         setCloudSyncing(true);
         setIsCloudActive(true);
-        humanLog.log('INFO', '☁️ AeroCloud syncing...', 'running');
+        // Create log entry and track for update
+        cloudSyncLogId = humanLog.logRaw('activity.sync_start', 'INFO', { server: cloudServerName }, 'running');
       } else if (status === 'error') {
         setCloudSyncing(false);
         console.error('Cloud sync error:', message);
-        humanLog.log('ERROR', `☁️ AeroCloud sync failed: ${message}`, 'error');
+        if (cloudSyncLogId) {
+          activityLog.updateEntry(cloudSyncLogId, {
+            status: 'error',
+            message: t('activity.sync_error', { server: cloudServerName, message })
+          });
+          cloudSyncLogId = null;
+        } else {
+          humanLog.logRaw('activity.sync_error', 'ERROR', { server: cloudServerName, message }, 'error');
+        }
       } else if (status === 'disabled') {
         setCloudSyncing(false);
         setIsCloudActive(false);
@@ -912,7 +969,7 @@ const App: React.FC = () => {
     console.log('[connectToFtp] connectionParams:', connectionParams);
     console.log('[connectToFtp] protocol:', protocol);
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav'].includes(protocol);
+    const isProvider = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
     console.log('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
@@ -939,9 +996,9 @@ const App: React.FC = () => {
       return;
     }
 
-    // S3 and WebDAV use provider_connect
+    // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if (!connectionParams.server || !connectionParams.username) {
+      if ((!connectionParams.server && protocol !== 'mega') || !connectionParams.username) {
         notify.error('Missing Fields', 'Please fill in endpoint and credentials');
         return;
       }
@@ -953,8 +1010,13 @@ const App: React.FC = () => {
       setLoading(true);
       setIsSyncNavigation(false);
       setSyncBasePaths(null);
-      const providerName = protocol === 's3' ? `S3: ${connectionParams.options?.bucket}` : `WebDAV: ${connectionParams.server}`;
-      const logId = humanLog.logStart('CONNECT', { server: providerName });
+      const providerName = protocol === 's3'
+        ? `S3: ${connectionParams.options?.bucket}`
+        : protocol === 'mega'
+          ? `MEGA: ${connectionParams.username}`
+          : `WebDAV: ${connectionParams.server}`;
+      const protocolLabel = protocol.toUpperCase();
+      const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
       try {
         // Disconnect any existing provider first
@@ -981,13 +1043,16 @@ const App: React.FC = () => {
           region: connectionParams.options?.region || 'us-east-1',
           endpoint: connectionParams.options?.endpoint || null,
           path_style: connectionParams.options?.pathStyle || false,
+          save_session: connectionParams.options?.save_session,
+          session_expires_at: connectionParams.options?.session_expires_at,
         };
+
 
         console.log('[connectToFtp] provider_connect params:', providerParams);
         await invoke('provider_connect', { params: providerParams });
 
         setIsConnected(true);
-        humanLog.logSuccess('CONNECT', { server: providerName }, logId);
+        humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
         notify.success('Connected', `Connected to ${providerName}`);
 
         // Load files using provider API
@@ -1053,7 +1118,8 @@ const App: React.FC = () => {
     // Reset navigation sync for new connection
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
-    const logId = humanLog.logStart('CONNECT', { server: connectionParams.server });
+    const protocolLabel = (connectionParams.protocol || 'FTP').toUpperCase();
+    const logId = humanLog.logStart('CONNECT', { server: connectionParams.server, protocol: protocolLabel });
     try {
       // First disconnect any active OAuth provider to avoid conflicts
       try {
@@ -1063,7 +1129,8 @@ const App: React.FC = () => {
       }
       await invoke('connect_ftp', { params: connectionParams });
       setIsConnected(true);
-      humanLog.logSuccess('CONNECT', { server: connectionParams.server }, logId);
+      const protocol = (connectionParams.protocol || 'FTP').toUpperCase();
+      humanLog.logSuccess('CONNECT', { server: connectionParams.server, protocol }, logId);
       notify.success('Connected', `Connected to ${connectionParams.server}`);
       // Navigate to initial remote directory if specified
       if (quickConnectDirs.remoteDir) {
@@ -1179,11 +1246,13 @@ const App: React.FC = () => {
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isS3OrWebDAV = protocol && ['s3', 'webdav'].includes(protocol);
+    // Treat 'mega' as a general provider like S3/WebDAV, not legacy FTP
+    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
-    humanLog.log('CONNECT', `🔄 Reconnecting to ${targetSession.serverName}...`, 'running');
+    const protocolLabel = (protocol || 'FTP').toUpperCase();
+    const reconnectLogId = humanLog.logRaw('activity.reconnect_start', 'CONNECT', { server: targetSession.serverName }, 'running');
 
     try {
       let response: FileListResponse;
@@ -1303,7 +1372,10 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
-      humanLog.log('CONNECT', `✅ Reconnected to ${targetSession.serverName}`, 'success');
+      activityLog.updateEntry(reconnectLogId, {
+        status: 'success',
+        message: t('activity.reconnect_success', { server: targetSession.serverName })
+      });
 
       // Refresh remote files with real data
       setRemoteFiles(response.files);
@@ -1319,7 +1391,10 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.log('Reconnect error:', e);
-      humanLog.log('ERROR', `❌ Failed to reconnect to ${targetSession.serverName}: ${e}`, 'error');
+      activityLog.updateEntry(reconnectLogId, {
+        status: 'error',
+        message: t('activity.reconnect_error', { server: targetSession.serverName })
+      });
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
       // Even on error, ensure local path is set correctly from session cache
       setCurrentLocalPath(targetSession.localPath);
@@ -1331,7 +1406,7 @@ const App: React.FC = () => {
     if (!session) return;
 
     // Log the tab closure
-    humanLog.log('DISCONNECT', `👋 Closed tab: ${session.serverName}`, 'success');
+    humanLog.logRaw('activity.disconnect_success', 'DISCONNECT', {}, 'success');
 
     // If closing active session, switch to another or disconnect
     if (sessionId === activeSessionId) {
@@ -1469,7 +1544,7 @@ const App: React.FC = () => {
             setLoading(true);
             await invoke('connect_ftp', { params });
             setConnectionParams(params);
-            humanLog.log('CONNECT', `🔄 Switched to AeroCloud server: ${cloudConfig.server_profile}`, 'success');
+            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})` }, 'success');
           } catch (connError) {
             console.log('Failed to connect to cloud server:', connError);
             notify.error('Connection Failed', `Failed to connect to cloud server: ${connError}`);
@@ -1541,7 +1616,7 @@ const App: React.FC = () => {
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
 
-      humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})` }, logId);
+      humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: 'FTP' }, logId);
       notify.success('Connected', `Connected to AeroCloud (${cloudConfig.server_profile})`);
 
       // Trigger a sync after connecting to cloud
@@ -1564,7 +1639,7 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided (for cases where state isn't updated yet)
       const protocol = overrideProtocol || connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
 
       let response: FileListResponse;
       if (isProvider) {
@@ -1659,22 +1734,23 @@ const App: React.FC = () => {
       // Enabling sync: save current paths as base
       setSyncBasePaths({ remote: currentRemotePath, local: currentLocalPath });
       notify.success('Navigation Sync Enabled', `Syncing: ${currentRemotePath} ↔ ${currentLocalPath}`);
-      humanLog.log('NAVIGATE', `🔗 Navigation sync enabled: ${currentRemotePath} ↔ ${currentLocalPath}`, 'success');
+      humanLog.logRaw('activity.nav_sync_enabled', 'NAVIGATE', { remote: currentRemotePath, local: currentLocalPath }, 'success');
     } else {
       setSyncBasePaths(null);
       notify.info('Navigation Sync Disabled');
-      humanLog.log('NAVIGATE', '🔓 Navigation sync disabled', 'success');
+      humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, 'success');
     }
     setIsSyncNavigation(!isSyncNavigation);
   };
 
   const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number) => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
+    pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
 
     // Check if we're using a Provider
     const protocol = connectionParams.protocol;
-    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
 
     try {
       if (isDir) {
@@ -1690,7 +1766,7 @@ const App: React.FC = () => {
             await invoke('download_folder', { params });
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          humanLog.log('DOWNLOAD', `📥 Downloaded folder ${fileName} in ${elapsed}s`, 'success');
+          humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${fileName} in ${elapsed}s`, 'success');
           humanLog.updateEntry(logId, { status: 'success', message: `📥 Downloaded folder ${fileName} in ${elapsed}s` });
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
@@ -1709,9 +1785,8 @@ const App: React.FC = () => {
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const sizeStr = fileSize ? formatBytes(fileSize) : '';
-          const msg = sizeStr
-            ? `📥 Got ${fileName} (${sizeStr}) in ${elapsed}s`
-            : `📥 Got ${fileName} in ${elapsed}s`;
+          const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
+          const msg = t('activity.download_success', { filename: fileName, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
@@ -1725,11 +1800,12 @@ const App: React.FC = () => {
 
   const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number) => {
     const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+    pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
     const startTime = Date.now();
     try {
       // Check if we're using a Provider
       const protocol = connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
 
       if (isDir) {
         if (isProvider) {
@@ -1765,7 +1841,9 @@ const App: React.FC = () => {
           await processFolder(localFilePath, remoteRootForFolder);
 
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          humanLog.updateEntry(logId, { message: `🚀 Uploaded folder ${fileName} in ${elapsed}s` });
+          const details = `(${elapsed}s)`;
+          const msg = t('activity.upload_success', { filename: fileName, details });
+          humanLog.updateEntry(logId, { message: msg });
           // Refresh list
           loadRemoteFiles();
           return;
@@ -1774,7 +1852,9 @@ const App: React.FC = () => {
         const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath };
         await invoke('upload_folder', { params });
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        humanLog.updateEntry(logId, { status: 'success', message: `🚀 Uploaded folder ${fileName} in ${elapsed}s` });
+        const details = `(${elapsed}s)`;
+        const msg = t('activity.upload_success', { filename: fileName, details });
+        humanLog.updateEntry(logId, { status: 'success', message: msg });
       } else {
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
 
@@ -1786,9 +1866,8 @@ const App: React.FC = () => {
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const sizeStr = fileSize ? formatBytes(fileSize) : '';
-        const msg = sizeStr
-          ? `🚀 Uploaded ${fileName} (${sizeStr}) in ${elapsed}s`
-          : `🚀 Uploaded ${fileName} in ${elapsed}s`;
+        const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
+        const msg = t('activity.upload_success', { filename: fileName, details });
         humanLog.updateEntry(logId, { status: 'success', message: msg });
       }
     } catch (error) {
@@ -2057,7 +2136,11 @@ const App: React.FC = () => {
           if (file) {
             try {
               // Use provider commands for OAuth providers
-              if (isCurrentOAuthProvider) {
+              // Check provider status for this operation context
+              const protocol = connectionParams.protocol;
+              const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+
+              if (isProvider) {
                 if (file.is_dir) {
                   await invoke('provider_delete_dir', { path: file.path, recursive: true });
                 } else {
@@ -2066,13 +2149,13 @@ const App: React.FC = () => {
               } else {
                 await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
               }
+
               if (file.is_dir) {
                 deletedFolders.push(name);
               } else {
                 deletedFiles.push(name);
               }
-              // Log each file individually
-              humanLog.log('DELETE', `🗑️ Deleted: ${name}${file.is_dir ? ' 📁' : ''}`, 'success');
+              // Individual logs removed - summary handles all
             } catch { }
           }
         }
@@ -2082,7 +2165,9 @@ const App: React.FC = () => {
         const parts = [];
         if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
         if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-        humanLog.updateEntry(logId, { status: 'success', message: `✅ Cleanup complete: ${parts.join(' and ')} removed` });
+        const count = deletedFolders.length + deletedFiles.length;
+        const msg = t('activity.delete_multiple_success', { count });
+        humanLog.updateEntry(logId, { status: 'success', message: msg });
         notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
       }
     });
@@ -2109,8 +2194,7 @@ const App: React.FC = () => {
               } else {
                 deletedFiles.push(name);
               }
-              // Log each file individually
-              humanLog.log('DELETE', `🗑️ Deleted: ${name}${file.is_dir ? ' 📁' : ''}`, 'success');
+              // Individual logs removed - summary handles all
             } catch { }
           }
         }
@@ -2120,7 +2204,9 @@ const App: React.FC = () => {
         const parts = [];
         if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
         if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-        humanLog.updateEntry(logId, { status: 'success', message: `✅ Cleanup complete: ${parts.join(' and ')} removed` });
+        const count = deletedFolders.length + deletedFiles.length;
+        const msg = t('activity.delete_multiple_success', { count });
+        humanLog.updateEntry(logId, { status: 'success', message: msg });
         notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
       }
     });
@@ -2135,8 +2221,10 @@ const App: React.FC = () => {
         setConfirmDialog(null);
         const logId = humanLog.logStart('DELETE', { filename: fileName });
         try {
-          // Use provider commands for OAuth providers
-          if (isCurrentOAuthProvider) {
+          const protocol = connectionParams.protocol;
+          const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+
+          if (isProvider) {
             if (isDir) {
               await invoke('provider_delete_dir', { path, recursive: true });
             } else {
@@ -2192,8 +2280,10 @@ const App: React.FC = () => {
           const newPath = parentDir + '/' + newName;
 
           if (isRemote) {
-            // Use provider commands for OAuth providers
-            if (isCurrentOAuthProvider) {
+            const protocol = connectionParams.protocol;
+            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+
+            if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
             } else {
               await invoke('rename_remote_file', { from: path, to: newPath });
@@ -2223,10 +2313,11 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('MKDIR', { foldername: name });
         try {
           if (isRemote) {
-            const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
-            // Use provider_mkdir for Providers, create_remote_folder for FTP
             const protocol = connectionParams.protocol;
-            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+
+            const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
+
             if (isProvider) {
               await invoke('provider_mkdir', { path });
             } else {
@@ -2377,8 +2468,16 @@ const App: React.FC = () => {
   };
 
   const handleRemoteFileAction = async (file: RemoteFile) => {
-    if (file.is_dir) await changeRemoteDirectory(file.name);
-    else await downloadFile(file.path, file.name, currentLocalPath, false);
+    if (file.is_dir) {
+      // Use file.path for providers (WebDAV/S3) that need absolute paths
+      // file.name works for FTP which handles relative paths
+      const protocol = connectionParams.protocol;
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+      const targetPath = isProvider ? file.path : file.name;
+      await changeRemoteDirectory(targetPath);
+    } else {
+      await downloadFile(file.path, file.name, currentLocalPath, false);
+    }
   };
 
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
@@ -2555,16 +2654,21 @@ const App: React.FC = () => {
                 return;
               }
 
-              // Check if this is a provider protocol (S3, WebDAV)
-              const isProvider = params.protocol && ['s3', 'webdav'].includes(params.protocol);
+              // Check if this is a provider protocol (S3, WebDAV, MEGA)
+              const isProvider = params.protocol && ['s3', 'webdav', 'mega'].includes(params.protocol);
 
               if (isProvider) {
                 // S3/WebDAV connection via provider_connect
                 setLoading(true);
                 setIsSyncNavigation(false);
                 setSyncBasePaths(null);
-                const providerName = params.displayName || (params.protocol === 's3' ? `S3: ${params.options?.bucket || 'bucket'}` : `WebDAV: ${params.server}`);
-                const logId = humanLog.logStart('CONNECT', { server: providerName });
+                const providerName = params.displayName || (params.protocol === 's3'
+                  ? `S3: ${params.options?.bucket || 'bucket'}`
+                  : params.protocol === 'mega'
+                    ? `MEGA: ${params.username}`
+                    : `WebDAV: ${params.server}`);
+                const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
                 try {
                   // Disconnect any existing connections
@@ -2583,13 +2687,15 @@ const App: React.FC = () => {
                     region: params.options?.region || 'us-east-1',
                     endpoint: params.options?.endpoint || null,
                     path_style: params.options?.pathStyle || false,
+                    save_session: params.options?.save_session,
+                    session_expires_at: params.options?.session_expires_at,
                   };
 
                   console.log('[onSavedServerConnect] provider_connect params:', providerParams);
                   await invoke('provider_connect', { params: providerParams });
 
                   setIsConnected(true);
-                  humanLog.logSuccess('CONNECT', { server: providerName }, logId);
+                  humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
                   notify.success('Connected', `Connected to ${providerName}`);
 
                   // Load files using provider API
@@ -2632,14 +2738,15 @@ const App: React.FC = () => {
               // Reset navigation sync for new connection
               setIsSyncNavigation(false);
               setSyncBasePaths(null);
-              const logId = humanLog.logStart('CONNECT', { server: params.server });
+              const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+              const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
               try {
                 // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
                 try { await invoke('provider_disconnect'); } catch { }
 
                 await invoke('connect_ftp', { params });
                 setIsConnected(true);
-                humanLog.logSuccess('CONNECT', { server: params.server }, logId);
+                humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
                 notify.success('Connected', `Connected to ${params.server}`);
 
                 // Get the actual remote path after connection
@@ -3282,16 +3389,16 @@ const App: React.FC = () => {
         onClose={() => setDevToolsOpen(false)}
         onClearFile={() => setDevToolsPreviewFile(null)}
         onSaveFile={async (content, file) => {
-          const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: content.length });
+          const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
           try {
             if (file.isRemote) {
               await invoke('save_remote_file', { path: file.path, content });
-              humanLog.logSuccess('UPLOAD', { filename: file.name, size: content.length }, logId);
+              humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
               notify.success('File Saved', `${file.name} saved to server`);
               await loadRemoteFiles();
             } else {
               await invoke('save_local_file', { path: file.path, content });
-              humanLog.log('INFO', `💾 Saved ${file.name} locally`, 'success');
+              humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
               notify.success('File Saved', `${file.name} saved locally`);
               await loadLocalFiles(currentLocalPath);
             }
@@ -3309,6 +3416,7 @@ const App: React.FC = () => {
           if (protocol === 'googledrive') return 'Google Drive';
           if (protocol === 'dropbox') return 'Dropbox';
           if (protocol === 'onedrive') return 'OneDrive';
+          if (protocol === 'mega') return 'MEGA';
           // For FTP/FTPS/SFTP/etc, show username@server
           return connectionParams.server ? `${connectionParams.username}@${connectionParams.server}` : undefined;
         })() : undefined}
@@ -3329,6 +3437,7 @@ const App: React.FC = () => {
         showActivityLog={showActivityLog}
         activityLogCount={activityLog.entries.length}
         onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
+        updateAvailable={updateAvailable}
       />
     </div>
   );

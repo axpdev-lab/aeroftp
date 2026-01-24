@@ -272,6 +272,38 @@
             "copyright": "© 2025-2026 保留所有权利",
             "supportDev": "支持开发",
             "donateWith": "加密货币捐赠"
+        },
+        "activity": {
+            "connect_start": "正在连接 {server}...",
+            "connect_success": "已连接到 {server}",
+            "connect_error": "连接 {server} 失败，请检查凭据。",
+            "disconnect_start": "正在断开...",
+            "disconnect_success": "已断开服务器连接",
+            "disconnect_error": "断开连接出错",
+            "upload_start": "[远程] 正在上传 {filename}...",
+            "upload_success": "[远程] 已上传 {filename}（{size} 用时 {time}）",
+            "upload_error": "[远程] 上传 {filename} 失败",
+            "download_start": "[本地] 正在下载 {filename}...",
+            "download_success": "[本地] 已下载 {filename}（{size} 用时 {time}）",
+            "download_error": "[本地] 下载 {filename} 失败",
+            "delete_start": "[{location}] 正在删除 {filename}...",
+            "delete_success": "[{location}] 已删除 {filename}",
+            "delete_error": "[{location}] 无法删除 {filename}",
+            "mkdir_start": "[{location}] 正在创建文件夹 {foldername}...",
+            "mkdir_success": "[{location}] 已创建文件夹 {foldername}",
+            "mkdir_error": "[{location}] 无法创建文件夹",
+            "rename_start": "[{location}] 正在重命名 {oldname} 为 {newname}...",
+            "rename_success": "[{location}] 已重命名 {oldname} 为 {newname}",
+            "rename_error": "[{location}] 重命名失败",
+            "navigate_success": "[{location}] 已导航至 {path}",
+            "sync_start": "正在与 {server} 同步 AeroCloud...",
+            "sync_success": "AeroCloud 已与 {server} 同步",
+            "sync_error": "AeroCloud 同步失败: {message}",
+            "nav_sync_enabled": "[同步] 导航同步已启用: {remote} <-> {local}",
+            "nav_sync_disabled": "[同步] 导航同步已禁用",
+            "reconnect_start": "正在重新连接 {server}...",
+            "reconnect_success": "已重新连接到 {server}",
+            "reconnect_error": "重新连接失败"
         }
     }
 }

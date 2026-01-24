@@ -27,6 +27,7 @@ pub mod oauth2;
 pub mod google_drive;
 pub mod dropbox;
 pub mod onedrive;
+pub mod mega;
 
 pub use types::*;
 pub use ftp::FtpProvider;
@@ -35,6 +36,7 @@ pub use s3::S3Provider;
 pub use google_drive::GoogleDriveProvider;
 pub use dropbox::DropboxProvider;
 pub use onedrive::OneDriveProvider;
+pub use mega::MegaProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -200,6 +202,10 @@ impl ProviderFactory {
                     "OAuth2 providers must be connected using oauth2_start_auth and oauth2_connect commands".to_string()
                 ))
             }
+            ProviderType::Mega => {
+                let mega_config = MegaConfig::from_provider_config(config)?;
+                Ok(Box::new(MegaProvider::new(mega_config)))
+            }
         }
     }
     
@@ -214,6 +220,7 @@ impl ProviderFactory {
             ProviderType::GoogleDrive,
             ProviderType::Dropbox,
             ProviderType::OneDrive,
+            ProviderType::Mega,
         ]
     }
 }

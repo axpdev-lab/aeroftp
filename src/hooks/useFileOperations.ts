@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { RemoteFile, LocalFile, FileListResponse } from '../types';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { useActivityLog } from './useActivityLog';
+import { useTranslation } from '../i18n';
 
 interface UseFileOperationsParams {
     toast: any;
@@ -53,6 +54,10 @@ export function useFileOperations({
 }: UseFileOperationsParams) {
 
     const activityLog = useActivityLog();
+    const t = useTranslation();
+    console.log('[DEBUG] useFileOperations hook init. Protocol:', protocol);
+
+    const getLoc = (isRemote: boolean) => isRemote ? t('browser.remote') : t('browser.local');
 
     // ===================================
     // LOADING FILES
@@ -60,8 +65,8 @@ export function useFileOperations({
 
     const loadRemoteFiles = useCallback(async () => {
         try {
-            // Use provider_list_files for S3 and WebDAV, list_files for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+            // Use provider_list_files for S3, WebDAV and MEGA, list_files for FTP
+            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
             let response: FileListResponse;
 
             if (isProviderProtocol) {
@@ -92,19 +97,23 @@ export function useFileOperations({
 
     const changeRemoteDirectory = useCallback(async (path: string) => {
         try {
-            // Use provider_change_dir for S3 and WebDAV, change_directory for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+            // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
+            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+            console.log('[DEBUG] changeRemoteDirectory', { path, protocol, isProviderProtocol });
+
             let response: FileListResponse;
 
             if (isProviderProtocol) {
+                console.log('[DEBUG] Invoking provider_change_dir');
                 response = await invoke('provider_change_dir', { path });
             } else {
+                console.log('[DEBUG] Invoking change_directory (FTP fallback)');
                 response = await invoke('change_directory', { path });
             }
 
             setRemoteFiles(response.files);
             setCurrentRemotePath(response.current_path);
-            activityLog.log('NAVIGATE', `Remote: ${response.current_path}`, 'success');
+            activityLog.log('NAVIGATE', t('activity.navigate_success', { path: response.current_path, location: getLoc(true) }), 'success');
 
             // Navigation Sync: mirror to local panel if enabled
             if (isSyncNavigation && syncBasePaths) {
@@ -127,11 +136,11 @@ export function useFileOperations({
             activityLog.log('ERROR', `Failed to navigate: ${path}`, 'error');
             toast.error('Error', `Failed to change directory: ${error}`);
         }
-    }, [protocol, isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog]);
+    }, [protocol, isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog, t]);
 
     const changeLocalDirectory = useCallback(async (path: string) => {
         await loadLocalFiles(path);
-        activityLog.log('NAVIGATE', `Local: ${path}`, 'success');
+        activityLog.log('NAVIGATE', t('activity.navigate_success', { path, location: getLoc(false) }), 'success');
 
         // Navigation Sync: mirror to remote panel if enabled
         if (isSyncNavigation && syncBasePaths && isConnected) {
@@ -143,8 +152,8 @@ export function useFileOperations({
             const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
             const newRemotePath = relativePath ? basePath + relPath : basePath;
             try {
-                // Use provider_change_dir for S3 and WebDAV, change_directory for FTP
-                const isProviderProtocol = protocol && ['s3', 'webdav'].includes(protocol);
+                // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
+                const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
                 let response: FileListResponse;
 
                 if (isProviderProtocol) {
@@ -158,7 +167,7 @@ export function useFileOperations({
                 setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
             }
         }
-    }, [loadLocalFiles, protocol, isSyncNavigation, syncBasePaths, isConnected, activityLog, setRemoteFiles, setCurrentRemotePath, setSyncNavDialog]);
+    }, [loadLocalFiles, protocol, isSyncNavigation, syncBasePaths, isConnected, activityLog, setRemoteFiles, setCurrentRemotePath, setSyncNavDialog, t]);
 
     // ===================================
     // MUTATION Operations (Delete, Rename, Create)
@@ -176,21 +185,21 @@ export function useFileOperations({
                         const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
                         await invoke('create_remote_folder', { path });
                         await loadRemoteFiles();
-                        activityLog.log('MKDIR', `Created remote folder: ${name}`, 'success');
+                        activityLog.log('MKDIR', t('activity.mkdir_success', { foldername: name, location: getLoc(true) }), 'success');
                     } else {
                         const path = currentLocalPath + '/' + name;
                         await invoke('create_local_folder', { path });
                         await loadLocalFiles(currentLocalPath);
-                        activityLog.log('MKDIR', `Created local folder: ${name}`, 'success');
+                        activityLog.log('MKDIR', t('activity.mkdir_success', { foldername: name, location: getLoc(false) }), 'success');
                     }
                     toast.success('Created', name);
                 } catch (error) {
-                    activityLog.log('ERROR', `Failed to create folder: ${name}`, 'error');
+                    activityLog.log('ERROR', t('activity.mkdir_error', { location: '' }), 'error');
                     toast.error('Create Failed', String(error));
                 }
             }
         });
-    }, [currentRemotePath, currentLocalPath, loadRemoteFiles, loadLocalFiles, activityLog, toast, setInputDialog]);
+    }, [currentRemotePath, currentLocalPath, loadRemoteFiles, loadLocalFiles, activityLog, toast, setInputDialog, t]);
 
     const renameFile = useCallback((path: string, currentName: string, isRemote: boolean) => {
         setInputDialog({
@@ -206,20 +215,20 @@ export function useFileOperations({
                     if (isRemote) {
                         await invoke('rename_remote_file', { from: path, to: newPath });
                         await loadRemoteFiles();
-                        activityLog.log('RENAME', `Renamed remote: ${currentName} → ${newName}`, 'success');
+                        activityLog.log('RENAME', t('activity.rename_success', { oldname: currentName, newname: newName, location: getLoc(true) }), 'success');
                     } else {
                         await invoke('rename_local_file', { from: path, to: newPath });
                         await loadLocalFiles(currentLocalPath);
-                        activityLog.log('RENAME', `Renamed local: ${currentName} → ${newName}`, 'success');
+                        activityLog.log('RENAME', t('activity.rename_success', { oldname: currentName, newname: newName, location: getLoc(false) }), 'success');
                     }
                     toast.success('Renamed', newName);
                 } catch (error) {
-                    activityLog.log('ERROR', `Failed to rename: ${currentName}`, 'error');
+                    activityLog.log('ERROR', t('activity.rename_error', { location: '' }), 'error');
                     toast.error('Rename Failed', String(error));
                 }
             }
         });
-    }, [loadRemoteFiles, loadLocalFiles, currentLocalPath, activityLog, toast, setInputDialog]);
+    }, [loadRemoteFiles, loadLocalFiles, currentLocalPath, activityLog, toast, setInputDialog, t]);
 
     const deleteRemoteFile = useCallback((path: string, isDir: boolean) => {
         const fileName = path.split('/').pop() || path;

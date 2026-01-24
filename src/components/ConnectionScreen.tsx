@@ -6,12 +6,14 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, Pencil, X } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, Pencil, X, Lock } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
 import { SavedServers } from './SavedServers';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { OAuthConnect } from './OAuthConnect';
+import { ProviderSelector } from './ProviderSelector';
+import { getProviderById, ProviderConfig } from '../providers';
 
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -72,6 +74,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
 
+    // Provider selection state (for S3/WebDAV)
+    const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+    const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
+
+    // Protocol selector open state (to hide form when selector is open)
+    const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
+
     // Fetch AeroCloud config when AeroCloud is selected
     useEffect(() => {
         if (protocol === 'aerocloud') {
@@ -93,6 +102,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
 
+        // MEGA: Add/Update session expiry (24h)
+        const optionsToSave = { ...connectionParams.options };
+        if (protocol === 'mega') {
+            optionsToSave.session_expires_at = Date.now() + 24 * 60 * 60 * 1000;
+        }
+
         const existingServers = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
 
         if (editingProfileId) {
@@ -107,7 +122,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         username: connectionParams.username,
                         password: connectionParams.password,
                         protocol: protocol as ProviderType,
-                        options: connectionParams.options,
+                        options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
                     };
@@ -128,7 +143,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
-                options: connectionParams.options,
+                options: optionsToSave,
             };
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
             setSavedServersUpdate(Date.now()); // Trigger refresh
@@ -193,11 +208,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleProtocolChange = (newProtocol: ProviderType) => {
+        // Reset provider selection when protocol changes
+        setSelectedProviderId(null);
         onConnectionParamsChange({
             ...connectionParams,
             protocol: newProtocol,
             port: getDefaultPort(newProtocol),
+            options: {},
         });
+    };
+
+    // Handle provider selection (for S3/WebDAV)
+    const handleProviderSelect = (provider: ProviderConfig) => {
+        setSelectedProviderId(provider.id);
+
+        // Apply provider defaults
+        const newParams: ConnectionParams = {
+            ...connectionParams,
+            protocol: provider.protocol as ProviderType,
+            server: provider.defaults?.server || '',
+            port: provider.defaults?.port || getDefaultPort(provider.protocol as ProviderType),
+            options: {
+                ...connectionParams.options,
+                pathStyle: provider.defaults?.pathStyle,
+                region: provider.defaults?.region,
+            },
+        };
+        onConnectionParamsChange(newParams);
     };
 
     // Dynamic server placeholder based on protocol
@@ -235,11 +272,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         value={protocol}
                         onChange={handleProtocolChange}
                         disabled={loading}
+                        onOpenChange={setIsProtocolSelectorOpen}
                     />
 
-                    {/* Show form only when protocol is selected */}
-                    {!protocol ? (
-                        /* No protocol selected - show selection prompt */
+                    {/* Show form only when protocol is selected AND selector is closed */}
+                    {!protocol || isProtocolSelectorOpen ? (
+                        /* No protocol selected or selector is open - show selection prompt */
                         <div className="py-8 text-center text-gray-500 dark:text-gray-400">
                             <p className="text-sm">Select a protocol above to configure your connection</p>
                         </div>
@@ -355,137 +393,341 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onConnect();
                             }}
                         />
+                    ) : (protocol === 's3' || protocol === 'webdav' || protocol === 'mega') && !selectedProviderId && !editingProfileId ? (
+                        /* Show provider selector for S3/WebDAV/MEGA (skip when editing) */
+                        <div className="py-2">
+                            <ProviderSelector
+                                selectedProvider={selectedProviderId || undefined}
+                                onSelect={handleProviderSelect}
+                                category={protocol as any}
+                                stableOnly={false}
+                                compact={false}
+                            />
+                            <p className="text-xs text-gray-500 text-center mt-3">
+                                Select a provider above or choose "Custom" for manual configuration
+                            </p>
+                        </div>
                     ) : (
                         <>
-                            {/* Traditional connection fields */}
-                            <div>
-                                <label className="block text-sm font-medium mb-1.5">
-                                    {protocol === 's3' ? 'Endpoint' : t('connection.server')}
-                                </label>
-                                <input
-                                    type="text"
-                                    value={connectionParams.server}
-                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                    placeholder={getServerPlaceholder()}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1.5">{getUsernameLabel()}</label>
-                                <input
-                                    type="text"
-                                    value={connectionParams.username}
-                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                    placeholder={protocol === 's3' ? 'AKIAIOSFODNN7EXAMPLE' : t('connection.usernamePlaceholder')}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1.5">{getPasswordLabel()}</label>
-                                <input
-                                    type="password"
-                                    value={connectionParams.password}
-                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                    placeholder={t('connection.passwordPlaceholder')}
-                                />
-                            </div>
-
-                            {/* Protocol-specific fields */}
-                            <ProtocolFields
-                                protocol={protocol}
-                                options={connectionParams.options || {}}
-                                onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
-                                disabled={loading}
-                            />
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1.5">{t('browser.remote')} {t('browser.path')}</label>
-                                <input
-                                    type="text"
-                                    value={quickConnectDirs.remoteDir}
-                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                    placeholder={protocol === 's3' ? '/prefix/' : '/www'}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1.5">{t('browser.local')} {t('browser.path')}</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={quickConnectDirs.localDir}
-                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                        className="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                        placeholder="/home/user/projects"
-                                    />
+                            {/* Selected Provider Header (for S3/WebDAV) */}
+                            {selectedProvider && (
+                                <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 rounded-xl mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-lg flex items-center justify-center">
+                                            <Cloud size={16} style={{ color: selectedProvider.color }} />
+                                        </div>
+                                        <div>
+                                            <span className="font-medium text-sm">{selectedProvider.name}</span>
+                                            {selectedProvider.isGeneric && (
+                                                <span className="text-xs text-gray-500 ml-2">(Custom)</span>
+                                            )}
+                                        </div>
+                                    </div>
                                     <button
-                                        type="button"
-                                        onClick={handleBrowseLocalDir}
-                                        className="px-4 py-3 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-xl transition-colors"
-                                        title={t('common.browse')}
+                                        onClick={() => setSelectedProviderId(null)}
+                                        className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
                                     >
-                                        <FolderOpen size={18} />
+                                        Change
                                     </button>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Save Connection Option */}
-                            <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={saveConnection}
-                                        onChange={(e) => setSaveConnection(e.target.checked)}
-                                        className="w-4 h-4 rounded text-blue-500"
+                            {/* Connection Fields Area */}
+                            {protocol === 'mega' ? (
+                                /* MEGA Specific Form (Beta v0.5.0) */
+                                <div className="space-y-4 pt-2">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">Email Account</label>
+                                        <input
+                                            type="email"
+                                            value={connectionParams.username}
+                                            onChange={(e) => onConnectionParamsChange({
+                                                ...connectionParams,
+                                                username: e.target.value,
+                                                server: 'mega.nz', // Force dummy server for internal logic
+                                                port: 443
+                                            })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                            placeholder="your-email@mega.nz"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">Password</label>
+                                        <input
+                                            type="password"
+                                            value={connectionParams.password}
+                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                            placeholder="Your MEGA password"
+                                        />
+                                    </div>
+
+                                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
+                                        <p className="font-medium mb-1">⚠️ Requirement: MEGAcmd</p>
+                                        <p className="opacity-80">
+                                            This feature requires the free <strong>MEGAcmd</strong> tool installed and running on your system.
+                                            <a
+                                                href="https://mega.io/cmd"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block mt-1 underline hover:text-blue-600 dark:hover:text-blue-300"
+                                            >
+                                                Download MEGAcmd
+                                            </a>
+                                        </p>
+                                    </div>
+
+                                    <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={connectionParams.options?.save_session !== false} // Default true
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, save_session: e.target.checked }
+                                                })}
+                                                className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                            />
+                                            <div>
+                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">Remember session (24h)</span>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                    Session keys stored securely in system keyring
+                                                </p>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-center gap-3 cursor-pointer mt-3 pt-3 border-t border-red-200 dark:border-red-900/30">
+                                            <input
+                                                type="checkbox"
+                                                checked={!!connectionParams.options?.logout_on_disconnect} // Default false
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, logout_on_disconnect: e.target.checked }
+                                                })}
+                                                className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                            />
+                                            <div>
+                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">Logout on disconnect</span>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                    Terminate MEGAcmd session when closing connection
+                                                </p>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    {/* Optional Remote Path */}
+                                    <div className="pt-2">
+                                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                            Optional Settings
+                                        </label>
+                                        <div className="space-y-2">
+                                            <input
+                                                type="text"
+                                                value={quickConnectDirs.remoteDir}
+                                                onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                placeholder="Initial remote folder (e.g. /Backup)"
+                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.localDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder="Initial local folder"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleBrowseLocalDir}
+                                                    className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                    title="Browse"
+                                                >
+                                                    <FolderOpen size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Save Connection Option (re-added) */}
+                                    <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={saveConnection}
+                                                onChange={(e) => setSaveConnection(e.target.checked)}
+                                                className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                            />
+                                            <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                <Save size={14} />
+                                                Save to Saved Servers
+                                            </span>
+                                        </label>
+
+                                        {saveConnection && (
+                                            <div className="mt-2 animate-fade-in-down">
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder="Connection Name (e.g. My Personal MEGA)"
+                                                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <button
+                                            onClick={handleConnectAndSave}
+                                            disabled={loading || !connectionParams.username || !connectionParams.password}
+                                            className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                                        >
+                                            {loading ? (
+                                                <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Connecting...</>
+                                            ) : (
+                                                <><Cloud size={20} /> Secure Login</>
+                                            )}
+                                        </button>
+                                        <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
+                                            <Lock size={12} /> End-to-end encrypted connection
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Traditional connection fields (FTP/S3/WebDAV) */
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">
+                                            {protocol === 's3' ? 'Endpoint' : t('connection.server')}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={connectionParams.server}
+                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                            placeholder={getServerPlaceholder()}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">{getUsernameLabel()}</label>
+                                        <input
+                                            type="text"
+                                            value={connectionParams.username}
+                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                            placeholder={protocol === 's3' ? 'AKIAIOSFODNN7EXAMPLE' : t('connection.usernamePlaceholder')}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">{getPasswordLabel()}</label>
+                                        <input
+                                            type="password"
+                                            value={connectionParams.password}
+                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                            placeholder={t('connection.passwordPlaceholder')}
+                                        />
+                                    </div>
+
+                                    {/* Protocol-specific fields */}
+                                    <ProtocolFields
+                                        protocol={protocol}
+                                        options={connectionParams.options || {}}
+                                        onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
+                                        disabled={loading}
                                     />
-                                    <span className="text-sm flex items-center gap-1">
-                                        <Save size={14} />
-                                        Save this connection
-                                    </span>
-                                </label>
 
-                                {saveConnection && (
-                                    <input
-                                        type="text"
-                                        value={connectionName}
-                                        onChange={(e) => setConnectionName(e.target.value)}
-                                        placeholder="Connection name (optional)"
-                                        className="w-full mt-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                    />
-                                )}
-                            </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">{t('browser.remote')} {t('browser.path')}</label>
+                                        <input
+                                            type="text"
+                                            value={quickConnectDirs.remoteDir}
+                                            onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                            placeholder={protocol === 's3' ? '/prefix/' : '/www'}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">{t('browser.local')} {t('browser.path')}</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={quickConnectDirs.localDir}
+                                                onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                className="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                                placeholder="/home/user/projects"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleBrowseLocalDir}
+                                                className="px-4 py-3 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-xl transition-colors"
+                                                title={t('common.browse')}
+                                            >
+                                                <FolderOpen size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
 
-                            <div className="flex gap-2">
-                                {editingProfileId && (
-                                    <button
-                                        onClick={handleCancelEdit}
-                                        className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                                        title="Cancel Editing"
-                                    >
-                                        <X size={20} />
-                                    </button>
-                                )}
-                                <button
-                                    onClick={handleConnectAndSave}
-                                    disabled={loading || (protocol === 's3' && !connectionParams.options?.bucket)}
-                                    className={`flex-1 text-white font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 ${editingProfileId
-                                            ? 'bg-blue-600 hover:bg-blue-700'
-                                            : 'bg-gradient-to-r from-blue-500 to-cyan-500'
-                                        }`}
-                                >
-                                    {loading ? (
-                                        t('connection.connecting')
-                                    ) : editingProfileId ? (
-                                        <>
-                                            <Save size={18} />
-                                            Save Changes
-                                        </>
-                                    ) : (
-                                        saveConnection ? 'Connect & Save' : t('common.connect')
-                                    )}
-                                </button>
-                            </div>
+                                    {/* Save Connection Option */}
+                                    <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={saveConnection}
+                                                onChange={(e) => setSaveConnection(e.target.checked)}
+                                                className="w-4 h-4 rounded text-blue-500"
+                                            />
+                                            <span className="text-sm flex items-center gap-1">
+                                                <Save size={14} />
+                                                Save this connection
+                                            </span>
+                                        </label>
+
+                                        {saveConnection && (
+                                            <input
+                                                type="text"
+                                                value={connectionName}
+                                                onChange={(e) => setConnectionName(e.target.value)}
+                                                placeholder="Connection name (optional)"
+                                                className="w-full mt-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                            />
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        {editingProfileId && (
+                                            <button
+                                                onClick={handleCancelEdit}
+                                                className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                                title="Cancel Editing"
+                                            >
+                                                <X size={20} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleConnectAndSave}
+                                            disabled={loading || (protocol === 's3' && !connectionParams.options?.bucket)}
+                                            className={`flex-1 text-white font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 ${editingProfileId
+                                                ? 'bg-blue-600 hover:bg-blue-700'
+                                                : 'bg-gradient-to-r from-blue-500 to-cyan-500'
+                                                }`}
+                                        >
+                                            {loading ? (
+                                                t('connection.connecting')
+                                            ) : editingProfileId ? (
+                                                <>
+                                                    <Save size={18} />
+                                                    Save Changes
+                                                </>
+                                            ) : (
+                                                saveConnection ? 'Connect & Save' : t('common.connect')
+                                            )}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
                 </div>

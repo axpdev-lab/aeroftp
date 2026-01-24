@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.2.6"
+version = "1.2.7"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -59,6 +59,14 @@ tauri-plugin-shell = "2"
 tauri-plugin-updater = "2.9.0"
 tauri-plugin-notification = "2.3.3"
 semver = "1.0.27"
+
+# MEGA Integration (Quick Connect Beta v0.5.0)
+secrecy = "0.8"
+aes = "0.8"
+cbc = "0.1"
+ctr = "0.9"
+ring = "0.17.14"
+zeroize = "1.8.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

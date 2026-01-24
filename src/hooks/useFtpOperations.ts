@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { RemoteFile, LocalFile, FtpSession, ConnectionParams, FileListResponse } from '../types';
 import { useActivityLog } from './useActivityLog';
+import { useTranslation } from '../i18n';
 
 interface UseFtpOperationsParams {
     connectionParams: ConnectionParams;
@@ -47,6 +48,7 @@ export function useFtpOperations({
 
     const [isReconnecting, setIsReconnecting] = useState(false);
     const activityLog = useActivityLog();
+    const t = useTranslation();
 
     const connectToFtp = useCallback(async () => {
         if (!connectionParams.server || !connectionParams.username) {
@@ -55,12 +57,12 @@ export function useFtpOperations({
         }
 
         setLoading(true);
-        const logId = activityLog.log('CONNECT', `Connecting to ${connectionParams.server}...`, 'running');
+        const logId = activityLog.log('CONNECT', t('activity.connect_start', { server: connectionParams.server }), 'running');
 
         try {
             await invoke('connect_ftp', { params: connectionParams });
             setIsConnected(true);
-            activityLog.updateEntry(logId, { status: 'success', message: `Connected to ${connectionParams.server}` });
+            activityLog.updateEntry(logId, { status: 'success', message: t('activity.connect_success', { server: connectionParams.server }) });
             toast.success('Connected', `Connected to ${connectionParams.server}`);
 
             // Navigate to initial remote directory if specified
@@ -80,10 +82,10 @@ export function useFtpOperations({
         } finally {
             setLoading(false);
         }
-    }, [connectionParams, quickConnectDirs, activityLog, toast, changeRemoteDirectory, loadRemoteFiles, changeLocalDirectory, setLoading]);
+    }, [connectionParams, quickConnectDirs, activityLog, toast, changeRemoteDirectory, loadRemoteFiles, changeLocalDirectory, setLoading, t]);
 
     const disconnectFromFtp = useCallback(async () => {
-        activityLog.log('DISCONNECT', `Disconnecting from ${connectionParams.server}...`, 'running');
+        activityLog.log('DISCONNECT', t('activity.disconnect_start'), 'running');
         try {
             await invoke('disconnect_ftp');
             setIsConnected(false);
@@ -95,21 +97,21 @@ export function useFtpOperations({
             // Close DevTools panel and clear preview
             setDevToolsOpen(false);
             setDevToolsPreviewFile(null);
-            activityLog.log('DISCONNECT', `Disconnected from server`, 'success');
+            activityLog.log('DISCONNECT', t('activity.disconnect_success'), 'success');
             toast.info('Disconnected', 'Disconnected from server');
         } catch (error) {
-            activityLog.log('ERROR', `Disconnection failed: ${error}`, 'error');
+            activityLog.log('ERROR', t('activity.disconnect_error'), 'error');
             toast.error('Error', `Disconnection failed: ${error}`);
         }
-    }, [connectionParams.server, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setSessions, setActiveSessionId, setDevToolsOpen, setDevToolsPreviewFile]);
+    }, [connectionParams.server, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setSessions, setActiveSessionId, setDevToolsOpen, setDevToolsPreviewFile, t]);
 
     // Keep-Alive logic
     useEffect(() => {
         if (!isConnected) return;
 
-        // Skip keep-alive for non-FTP providers
+        // Skip keep-alive for non-FTP providers (stateless REST APIs don't need keep-alive)
         const protocol = connectionParams.protocol;
-        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav'].includes(protocol);
+        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
         if (isProvider) return;
 
         const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
@@ -121,11 +123,13 @@ export function useFtpOperations({
 
                 // Connection lost - attempt auto-reconnect
                 setIsReconnecting(true);
+                activityLog.log('DISCONNECT', t('activity.disconnect_error'), 'error');
                 toast.info('Reconnecting...', 'Connection lost, attempting to reconnect');
 
                 try {
                     await invoke('reconnect_ftp');
                     toast.success('Reconnected', 'FTP connection restored');
+                    activityLog.log('CONNECT', t('activity.reconnect_success', { server: connectionParams.server }), 'success');
                     // Refresh file list after reconnection
                     const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
                     setRemoteFiles(response.files);
@@ -133,6 +137,7 @@ export function useFtpOperations({
                 } catch (reconnectError) {
                     console.error('Auto-reconnect failed:', reconnectError);
                     toast.error('Connection Lost', 'Could not reconnect. Please reconnect manually.');
+                    activityLog.log('DISCONNECT', t('activity.reconnect_error'), 'error');
                     setIsConnected(false);
                 } finally {
                     setIsReconnecting(false);
@@ -141,7 +146,7 @@ export function useFtpOperations({
         }, KEEP_ALIVE_INTERVAL);
 
         return () => clearInterval(keepAliveInterval);
-    }, [isConnected, toast, setRemoteFiles, setCurrentRemotePath]);
+    }, [isConnected, toast, setRemoteFiles, setCurrentRemotePath, t, connectionParams.server]);
 
     return {
         isConnected,

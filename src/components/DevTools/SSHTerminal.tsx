@@ -7,20 +7,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import 'xterm/css/xterm.css';
 
-// Custom terminal styles
+// Custom terminal styles (Tokyo Night theme)
 const terminalStyles = `
 .xterm .xterm-cursor-layer {
     z-index: 10;
 }
 .xterm .xterm-cursor {
-    background-color: #00ff00 !important;
+    background-color: #7aa2f7 !important;
     opacity: 1 !important;
 }
 .xterm .xterm-cursor-block {
-    background-color: #00ff00 !important;
+    background-color: #7aa2f7 !important;
 }
 .xterm .xterm-cursor-outline {
-    outline: 2px solid #00ff00 !important;
+    outline: 2px solid #7aa2f7 !important;
 }
 `;
 
@@ -66,28 +66,28 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             cols: 80,
             rows: 24,
             theme: {
-                background: '#0d1117',      // GitHub dark background
-                foreground: '#c9d1d9',      // Light gray text
-                cursor: '#00ff00',          // Neon green cursor
-                cursorAccent: '#000000',
-                selectionBackground: '#264f78',
-                selectionForeground: '#ffffff',
-                black: '#484f58',
-                red: '#ff7b72',
-                green: '#3fb950',
-                yellow: '#d29922',
-                blue: '#58a6ff',
-                magenta: '#bc8cff',
-                cyan: '#39c5cf',
-                white: '#b1bac4',
-                brightBlack: '#6e7681',
-                brightRed: '#ffa198',
-                brightGreen: '#56d364',
-                brightYellow: '#e3b341',
-                brightBlue: '#79c0ff',
-                brightMagenta: '#d2a8ff',
-                brightCyan: '#56d4dd',
-                brightWhite: '#f0f6fc',
+                background: '#1a1b26',      // Tokyo Night background
+                foreground: '#c0caf5',      // Light lavender text
+                cursor: '#7aa2f7',          // Blue cursor (visible)
+                cursorAccent: '#1a1b26',
+                selectionBackground: '#33467c',
+                selectionForeground: '#c0caf5',
+                black: '#15161e',
+                red: '#f7768e',
+                green: '#9ece6a',
+                yellow: '#e0af68',
+                blue: '#7aa2f7',
+                magenta: '#bb9af7',
+                cyan: '#7dcfff',
+                white: '#a9b1d6',
+                brightBlack: '#414868',
+                brightRed: '#f7768e',
+                brightGreen: '#9ece6a',
+                brightYellow: '#e0af68',
+                brightBlue: '#7aa2f7',
+                brightMagenta: '#bb9af7',
+                brightCyan: '#7dcfff',
+                brightWhite: '#c0caf5',
             },
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
             fontSize: 14,
@@ -117,28 +117,28 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         // Force re-apply theme after open (fixes WebKit rendering issues)
         setTimeout(() => {
             xterm.options.theme = {
-                background: '#0d1117',
-                foreground: '#c9d1d9',
-                cursor: '#00ff00',
-                cursorAccent: '#000000',
-                selectionBackground: '#264f78',
-                selectionForeground: '#ffffff',
-                black: '#484f58',
-                red: '#ff7b72',
-                green: '#3fb950',
-                yellow: '#d29922',
-                blue: '#58a6ff',
-                magenta: '#bc8cff',
-                cyan: '#39c5cf',
-                white: '#b1bac4',
-                brightBlack: '#6e7681',
-                brightRed: '#ffa198',
-                brightGreen: '#56d364',
-                brightYellow: '#e3b341',
-                brightBlue: '#79c0ff',
-                brightMagenta: '#d2a8ff',
-                brightCyan: '#56d4dd',
-                brightWhite: '#f0f6fc',
+                background: '#1a1b26',
+                foreground: '#c0caf5',
+                cursor: '#7aa2f7',
+                cursorAccent: '#1a1b26',
+                selectionBackground: '#33467c',
+                selectionForeground: '#c0caf5',
+                black: '#15161e',
+                red: '#f7768e',
+                green: '#9ece6a',
+                yellow: '#e0af68',
+                blue: '#7aa2f7',
+                magenta: '#bb9af7',
+                cyan: '#7dcfff',
+                white: '#a9b1d6',
+                brightBlack: '#414868',
+                brightRed: '#f7768e',
+                brightGreen: '#9ece6a',
+                brightYellow: '#e0af68',
+                brightBlue: '#7aa2f7',
+                brightMagenta: '#bb9af7',
+                brightCyan: '#7dcfff',
+                brightWhite: '#c0caf5',
             };
             xterm.refresh(0, xterm.rows - 1);
         }, 50);

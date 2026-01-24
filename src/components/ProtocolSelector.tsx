@@ -51,12 +51,20 @@ const AwsS3Logo: React.FC<{ size?: number; className?: string }> = ({ size = 16,
     </svg>
 );
 
+const MegaLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+        <circle cx="12" cy="12" r="12" fill="#D9272E" />
+        <path fill="#ffffff" d="M6.5 16V8h1.8l2.2 4.5L12.7 8h1.8v8h-1.5v-5.2l-1.8 3.7h-1.4l-1.8-3.7V16H6.5z" />
+    </svg>
+);
+
 interface ProtocolSelectorProps {
     value: ProviderType | '' | undefined;
     onChange: (protocol: ProviderType) => void;
     disabled?: boolean;
     className?: string;
     showLabel?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
 }
 
 interface ProtocolInfo {
@@ -159,6 +167,17 @@ const PROTOCOLS: ProtocolInfo[] = [
         isCloudStorage: true,
         tooltip: 'Microsoft OneDrive - 5GB free storage, OAuth2 authentication',
     },
+    {
+        type: 'mega',
+        name: 'MEGA',
+        icon: <MegaLogo size={18} />,
+        description: 'Secure Cloud Storage',
+        defaultPort: 443,
+        badge: 'Secure',
+        color: 'text-red-600',
+        isCloudStorage: true,
+        tooltip: 'MEGA.nz - Client-side encryption, 20GB free',
+    },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -180,9 +199,16 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     disabled = false,
     className = '',
     showLabel = true,
+    onOpenChange,
 }) => {
     const selectedProtocol = value ? getProtocolInfo(value) : null;
     const [isOpen, setIsOpen] = React.useState(false);
+
+    // Notify parent when isOpen changes
+    const handleOpenChange = (newIsOpen: boolean) => {
+        setIsOpen(newIsOpen);
+        onOpenChange?.(newIsOpen);
+    };
 
     return (
         <div className={className}>
@@ -194,7 +220,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
             <div className="relative">
                 <button
                     type="button"
-                    onClick={() => !disabled && setIsOpen(!isOpen)}
+                    onClick={() => !disabled && handleOpenChange(!isOpen)}
                     disabled={disabled}
                     className="w-full px-4 py-3 pl-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-left cursor-pointer focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between"
                 >
@@ -224,7 +250,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             onClick={() => {
                                 if (!protocol.disabled) {
                                     onChange(protocol.type);
-                                    setIsOpen(false);
+                                    handleOpenChange(false);
                                 }
                             }}
                             disabled={disabled || protocol.disabled}
@@ -270,7 +296,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             onClick={() => {
                                 if (!protocol.disabled) {
                                     onChange(protocol.type);
-                                    setIsOpen(false);
+                                    handleOpenChange(false);
                                 }
                             }}
                             disabled={disabled || protocol.disabled}
@@ -457,6 +483,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         googledrive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
         dropbox: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         onedrive: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+        mega: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
     };
 
     return (

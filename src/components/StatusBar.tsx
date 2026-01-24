@@ -1,6 +1,14 @@
 import * as React from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download } from 'lucide-react';
 import { useTranslation } from '../i18n';
+
+interface UpdateInfo {
+    has_update: boolean;
+    latest_version?: string;
+    current_version?: string;
+    download_url?: string;
+    install_format?: string;
+}
 
 interface StatusBarProps {
     isConnected: boolean;
@@ -17,6 +25,7 @@ interface StatusBarProps {
     transferQueueCount?: number;
     showActivityLog?: boolean;
     activityLogCount?: number;
+    updateAvailable?: UpdateInfo | null;
     onToggleDevTools?: () => void;
     onToggleSync?: () => void;
     onToggleCloud?: () => void;
@@ -39,6 +48,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     transferQueueCount = 0,
     showActivityLog = true,
     activityLogCount = 0,
+    updateAvailable,
     onToggleDevTools,
     onToggleSync,
     onToggleCloud,
@@ -68,6 +78,20 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         </>
                     )}
                 </div>
+
+                {/* Update Available Button */}
+                {updateAvailable?.has_update && (
+                    <a
+                        href={updateAvailable.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md animate-pulse"
+                        title={`Download AeroFTP v${updateAvailable.latest_version}`}
+                    >
+                        <Download size={11} />
+                        <span>Update Available</span>
+                    </a>
+                )}
 
                 {/* Separator */}
                 <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />

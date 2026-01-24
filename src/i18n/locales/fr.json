@@ -272,6 +272,38 @@
             "copyright": "© 2025-2026 Tous droits réservés",
             "supportDev": "Soutenir le Développement",
             "donateWith": "Donner en Crypto"
+        },
+        "activity": {
+            "connect_start": "Connexion à {server}...",
+            "connect_success": "Connecté à {server} avec succès",
+            "connect_error": "Échec de la connexion à {server}. Vérifiez vos identifiants.",
+            "disconnect_start": "Déconnexion en cours...",
+            "disconnect_success": "Déconnecté du serveur",
+            "disconnect_error": "Erreur lors de la déconnexion",
+            "upload_start": "[Distant] Envoi de {filename}...",
+            "upload_success": "[Distant] Envoyé {filename} ({size} en {time})",
+            "upload_error": "[Distant] Échec de l'envoi de {filename}",
+            "download_start": "[Local] Téléchargement de {filename}...",
+            "download_success": "[Local] Téléchargé {filename} ({size} en {time})",
+            "download_error": "[Local] Échec du téléchargement de {filename}",
+            "delete_start": "[{location}] Suppression de {filename}...",
+            "delete_success": "[{location}] Supprimé {filename}",
+            "delete_error": "[{location}] Impossible de supprimer {filename}",
+            "mkdir_start": "[{location}] Création du dossier {foldername}...",
+            "mkdir_success": "[{location}] Dossier {foldername} créé",
+            "mkdir_error": "[{location}] Impossible de créer le dossier",
+            "rename_start": "[{location}] Renommage de {oldname} en {newname}...",
+            "rename_success": "[{location}] Renommé {oldname} en {newname}",
+            "rename_error": "[{location}] Échec du renommage",
+            "navigate_success": "[{location}] Navigation vers {path}",
+            "sync_start": "Synchronisation AeroCloud avec {server}...",
+            "sync_success": "AeroCloud synchronisé avec {server}",
+            "sync_error": "Échec synchro AeroCloud: {message}",
+            "nav_sync_enabled": "[Sync] Synchro navigation active: {remote} <-> {local}",
+            "nav_sync_disabled": "[Sync] Synchro navigation désactivée",
+            "reconnect_start": "Reconnexion à {server}...",
+            "reconnect_success": "Reconnecté à {server}",
+            "reconnect_error": "Échec de la reconnexion"
         }
     }
 }

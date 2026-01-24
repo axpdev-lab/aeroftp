@@ -29,6 +29,8 @@ pub enum ProviderType {
     Dropbox,
     /// Microsoft OneDrive (OAuth2)
     OneDrive,
+    /// MEGA.nz Cloud Storage
+    Mega,
 }
 
 impl fmt::Display for ProviderType {
@@ -43,6 +45,7 @@ impl fmt::Display for ProviderType {
             ProviderType::GoogleDrive => write!(f, "Google Drive"),
             ProviderType::Dropbox => write!(f, "Dropbox"),
             ProviderType::OneDrive => write!(f, "OneDrive"),
+            ProviderType::Mega => write!(f, "MEGA"),
         }
     }
 }
@@ -60,6 +63,7 @@ impl ProviderType {
             ProviderType::GoogleDrive => 443,
             ProviderType::Dropbox => 443,
             ProviderType::OneDrive => 443,
+            ProviderType::Mega => 443,
         }
     }
     
@@ -73,7 +77,8 @@ impl ProviderType {
             ProviderType::AeroCloud |  // AeroCloud recommends FTPS
             ProviderType::GoogleDrive |
             ProviderType::Dropbox |
-            ProviderType::OneDrive
+            ProviderType::OneDrive |
+            ProviderType::Mega
         )
     }
     
@@ -236,6 +241,39 @@ impl S3Config {
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
+        })
+    }
+}
+
+/// MEGA configuration
+#[derive(Debug, Clone)]
+pub struct MegaConfig {
+    pub email: String,
+    pub password: secrecy::Secret<String>,
+    pub save_session: bool,
+    pub logout_on_disconnect: Option<bool>,
+}
+
+impl MegaConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let email = config.username.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Email required for MEGA".to_string()))?;
+            
+        let password = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Password required for MEGA".to_string()))?;
+            
+        let save_session = config.extra.get("save_session")
+            .map(|v| v == "true")
+            .unwrap_or(true);
+            
+        let logout_on_disconnect = config.extra.get("logout_on_disconnect")
+            .map(|v| v == "true");
+
+        Ok(Self {
+            email,
+            password: secrecy::Secret::new(password),
+            save_session,
+            logout_on_disconnect,
         })
     }
 }

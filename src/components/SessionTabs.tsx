@@ -29,7 +29,7 @@ const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -81,6 +81,14 @@ const ProviderIcon: React.FC<{
             return (
                 <Database size={size} className={`${combinedClass} text-orange-500`} />
             );
+        case 'mega':
+            // MEGA.nz logo - red circle with M
+            return (
+                <svg className={combinedClass} width={size} height={size} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="12" fill="#D9272E" />
+                    <path fill="#ffffff" d="M6.5 16V8h1.8l2.2 4.5L12.7 8h1.8v8h-1.5v-5.2l-1.8 3.7h-1.4l-1.8-3.7V16H6.5z" />
+                </svg>
+            );
         default:
             return <Wifi size={size} className={combinedClass} />;
     }
@@ -94,6 +102,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'onedrive': return 'text-sky-500';
         case 's3': return 'text-orange-500';
         case 'webdav': return 'text-purple-500';
+        case 'mega': return 'text-red-600';
         default: return 'text-green-500';
     }
 };

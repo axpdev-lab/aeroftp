@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.7] - 2026-01-25
+
+### 🔴 MEGA.nz Integration Complete
+
+Full integration of MEGA.nz cloud storage with official branding and stability improvements.
+
+#### Added
+- **MEGA Official Logo**: Red circle with white "M" icon in protocol selector and session tabs
+- **MEGA Provider Recognition**: Proper icon display in session tabs, status indicators, and badges
+- **Update Available Button**: Purple gradient button in status bar when new version is available (links to download)
+- **Check for Updates in Settings**: Re-enabled manual update check button in Settings > General
+
+#### Fixed
+- **MEGA Keep-Alive**: Fixed false "disconnected" status by excluding MEGA from FTP keep-alive ping (MEGA is stateless REST API)
+- **MEGA Directory Navigation**: Fixed folder navigation using absolute paths instead of relative
+- **Terminal Theme**: Restored Tokyo Night theme for better readability (cursor visible, distinct colors)
+- **Protocol Selector UX**: Form now hides when protocol dropdown is open (prevents visual clutter)
+- **Edit Saved Servers**: S3/WebDAV/MEGA servers now open directly to form when editing (skip provider selector)
+
+#### Technical
+- Added `'mega'` to keep-alive skip list in `useFtpOperations.ts` and `App.tsx`
+- Added `MegaLogo` SVG component in `ProtocolSelector.tsx`
+- Added MEGA case in `SessionTabs.tsx` (`isProviderProtocol`, `ProviderIcon`, `getProviderColor`)
+- Terminal theme changed from GitHub Dark to Tokyo Night in `SSHTerminal.tsx`
+- Added `onOpenChange` callback to `ProtocolSelector` for form visibility control
+- Added `!editingProfileId` condition to skip provider selector when editing
+- Added `UpdateInfo` interface and `updateAvailable` prop to `StatusBar.tsx`
+- Uncommented `CheckUpdateButton` in `SettingsPanel.tsx`
+
+---
+
 ## [1.2.6] - 2026-01-22
 
 ### 🔄 Auto-Update System

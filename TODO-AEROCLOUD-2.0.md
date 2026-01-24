@@ -1,12 +1,21 @@
 # AeroCloud 2.0 - Multi-Provider Cloud Storage Roadmap
 
 > Created: 20 January 2026
-> Version: AeroFTP 1.0.0 → 1.2.6
-> Status: Sprint 2 Complete (v1.2.6 Released)
+> Version: AeroFTP 1.0.0 → 1.2.7
+> Status: Sprint 2.5 Complete (v1.2.7 Released)
 
 ---
 
 ## 📦 Release Log
+
+### v1.2.7 (25 January 2026)
+**MEGA.nz Integration Complete:**
+- ✅ **MEGA Official Logo**: Red circle with white "M" icon everywhere
+- ✅ **Keep-Alive Fix**: No more false disconnects (MEGA is stateless)
+- ✅ **Directory Navigation**: Fixed absolute path handling
+- ✅ **Terminal Theme**: Tokyo Night restored (cursor visible, colors distinct)
+- ✅ **Protocol Selector UX**: Form hides when dropdown open
+- ✅ **Edit Saved Servers**: Direct to form for S3/WebDAV/MEGA
 
 ### v1.2.6 (22 January 2026)
 **Features:**
@@ -178,15 +187,69 @@ aws-config = "1"
 ### Known Limitations
 > ✅ **Session Switching Fixed in v1.2.3**: Full multi-session OAuth switching now works correctly.
 
+### Tested Providers ✅
+| Protocol | Provider     | Status    | Notes                                             |
+| -------- | ------------ | --------- | ------------------------------------------------- |
+| WebDAV   | DriveHQ      | ✅ Tested  | Full support, works with `/wwwhome` path          |
+| S3       | Backblaze B2 | ✅ Tested  | Full support, requires bucket + endpoint + region |
+| OAuth    | Google Drive | ✅ Tested  | Browse, upload, download, delete, share           |
+| OAuth    | Dropbox      | ✅ Tested  | v1.2.2 implementation                             |
+| OAuth    | OneDrive     | 🔄 Partial | Needs more testing                                |
+
 ### Remaining Tasks
 - [x] Dropbox API v2 provider implementation (v1.2.2)
 - [ ] Microsoft Graph API provider (OneDrive) - partially working
-- [ ] MEGA.nz provider (MEGAcmd REST API)
-- [ ] WebDAV testing (Nextcloud, Synology)
-- [ ] S3 testing (AWS, MinIO, R2)
+- [x] MEGA.nz provider (MEGAcmd REST API) - ✅ Completed (v1.2.6)
+- [ ] WebDAV testing: Nextcloud, Synology, Other providers
+- [ ] S3 testing: AWS, MinIO, Cloudflare R2, Wasabi
 - [ ] Secure token storage (keyring)
 - [ ] Token refresh handling
 - [ ] Test OAuth flow on macOS/Windows
+
+### Planned: Certified Providers in Connect Screen
+> Idea: Instead of generic "WebDAV" / "S3" options, offer **certified providers** with pre-configured:
+> - Provider-specific placeholders and hints
+> - Correct default endpoints and ports
+> - Tested and verified integration
+> 
+> **Proposed structure:**
+> ```
+> WebDAV Providers:
+>   - DriveHQ (tested ✅)
+>   - Nextcloud
+>   - Synology NAS
+>   - pCloud
+>   - Custom WebDAV (manual config)
+> 
+> S3 Providers:
+>   - Backblaze B2 (tested ✅)
+>   - AWS S3
+>   - Cloudflare R2
+>   - MinIO
+>   - Wasabi
+>   - Custom S3 (manual config)
+> ```
+> This certifies each integration and provides appropriate UX for each provider.
+
+---
+
+## 📋 Sprint 2.5: UX Enhancements (Drag & Drop, Move)
+
+### Advanced File Management
+- [ ] **Native "Move" Function**:
+  - Add "Move to..." context menu item
+  - Implement visual dialog for destination folder selection
+  - Map to `provider_rename` (Provider side move)
+- [ ] **Advanced Drag & Drop**:
+  - **Nested Drop**: Drop file onto a folder row to move it there
+  - **Panel-to-Panel**: Drag form Remote <-> Local for direct transfer (Upload/Download)
+  - Visual feedback ("ghost" image dragging)
+- [ ] **Smart Disconnect Policy**:
+  - Disable aggressive Keep-Alive for stateless providers (MEGA, Local)
+  - Prevent UI from resetting to login screen on transient network errors
+- [ ] **Keyboard Shortcuts**:
+  - F2 (Rename), Del (Delete), Ctrl+C/V (Copy/Paste planned)
+
 
 ---
 

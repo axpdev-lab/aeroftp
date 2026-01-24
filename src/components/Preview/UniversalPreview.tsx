@@ -113,6 +113,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
             case 'markdown':
             case 'text':
+            case 'code':
                 return <TextViewer file={file} onError={handleViewerError} />;
 
             default:

@@ -386,7 +386,17 @@ impl StorageProvider for WebDavProvider {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                if xml.contains("<d:collection") || xml.contains("<D:collection") {
+                // Check for collection using various namespace formats (d:, D:, a:, lp1:, or no prefix)
+                let is_collection = xml.contains(":collection/>") ||
+                                   xml.contains(":collection />") ||
+                                   xml.contains("<collection/>") ||
+                                   xml.contains("<collection />") ||
+                                   xml.contains(">1</a:iscollection>") ||
+                                   xml.contains(">1</d:iscollection>") ||
+                                   xml.contains(">1</D:iscollection>") ||
+                                   xml.contains("iscollection>1</");
+                
+                if is_collection {
                     self.current_path = path.to_string();
                     Ok(())
                 } else {
@@ -635,7 +645,14 @@ impl StorageProvider for WebDavProvider {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                let is_dir = xml.contains("<d:collection") || xml.contains("<D:collection");
+                let is_dir = xml.contains(":collection/>") ||
+                             xml.contains(":collection />") ||
+                             xml.contains("<collection/>") ||
+                             xml.contains("<collection />") ||
+                             xml.contains(">1</a:iscollection>") ||
+                             xml.contains(">1</d:iscollection>") ||
+                             xml.contains(">1</D:iscollection>") ||
+                             xml.contains("iscollection>1</");
                 let size: u64 = self.extract_tag_content(&xml, "getcontentlength")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);

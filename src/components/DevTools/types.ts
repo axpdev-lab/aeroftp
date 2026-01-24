@@ -55,8 +55,14 @@ export const getFileLanguage = (filename: string): string => {
         'toml': 'toml',
         'ini': 'ini',
         'conf': 'ini',
+        'htaccess': 'ini',
+        'env': 'ini',
         'txt': 'text',
         'log': 'text',
+        'webmanifest': 'json',
+        'vue': 'html',
+        'svelte': 'html',
+        'astro': 'html',
     };
     return langMap[ext] || 'text';
 };
@@ -83,6 +89,7 @@ export const isPreviewable = (filename: string): boolean => {
         'html', 'htm', 'php', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass', 'less',
         'json', 'xml', 'svg', 'md', 'markdown', 'py', 'rb', 'java', 'c', 'cpp', 'h',
         'rs', 'go', 'sh', 'bash', 'sql', 'yaml', 'yml', 'toml', 'ini', 'conf', 'txt', 'log',
+        'htaccess', 'env', 'webmanifest', 'vue', 'svelte', 'astro',
         // Images
         'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp',
     ];

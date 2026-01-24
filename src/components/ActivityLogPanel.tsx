@@ -9,12 +9,17 @@
  * - Collapsible design
  * - Resizable height with drag handle
  * - Typewriter effect for live writing animation
- * - Theme toggle: Professional (default) / Cyber (optional)
+ * - Theme follows app theme (light/dark) or can use cyber mode
  */
 
 import * as React from 'react';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { X, Trash2, ChevronDown, GripHorizontal, Terminal, Zap, Sparkles, Cloud } from 'lucide-react';
+import {
+    X, Trash2, ChevronDown, GripHorizontal, Terminal, Zap, Sparkles, Cloud,
+    Plug, Unplug, Upload, Download, FolderPlus, FolderOpen, Pencil,
+    AlertCircle, Info, CheckCircle, Copy,
+    type LucideIcon
+} from 'lucide-react';
 import { useActivityLog, LogEntry, OperationType, getOperationIcon, formatTimestamp } from '../hooks/useActivityLog';
 import { useTranslation } from '../i18n';
 
@@ -22,15 +27,98 @@ import { useTranslation } from '../i18n';
 // Theme Types
 // ============================================================================
 
-type LogTheme = 'professional' | 'cyber';
+type LogTheme = 'light' | 'dark' | 'cyber';
+
+// ============================================================================
+// Icon Mapping - Lucide icons for operations
+// ============================================================================
+
+const OPERATION_ICONS: Record<string, LucideIcon> = {
+    plug: Plug,
+    unplug: Unplug,
+    upload: Upload,
+    download: Download,
+    'trash-2': Trash2,
+    pencil: Pencil,
+    'folder-plus': FolderPlus,
+    'folder-open': FolderOpen,
+    'alert-circle': AlertCircle,
+    info: Info,
+    'check-circle': CheckCircle,
+};
+
+/**
+ * Render a Lucide icon component from icon name
+ */
+const OperationIcon: React.FC<{ iconName: string; className?: string }> = ({ iconName, className }) => {
+    const IconComponent = OPERATION_ICONS[iconName];
+    if (!IconComponent) {
+        return <span className={className}>•</span>;
+    }
+    return <IconComponent size={12} className={className} />;
+};
 
 // ============================================================================
 // Theme Configurations
 // ============================================================================
 
 const THEMES = {
-    professional: {
-        // Tokio Night / Antigravity inspired
+    light: {
+        // Light theme - clean and professional
+        panel: 'bg-gray-50 border-t border-gray-200',
+        header: 'bg-white border-b border-gray-200',
+        headerText: 'text-gray-700',
+        headerIcon: 'text-blue-600',
+        resize: 'hover:bg-blue-100',
+        resizeActive: 'bg-blue-200',
+        scrollbar: 'scrollbar-thumb-gray-300 scrollbar-track-gray-100',
+        emptyText: 'text-gray-400',
+        emptyIcon: 'text-gray-300',
+        button: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
+        buttonDanger: 'text-gray-500 hover:text-red-600 hover:bg-red-50',
+        select: 'bg-white text-gray-700 border-gray-300 focus:ring-blue-500 focus:border-blue-500',
+        badge: 'bg-blue-100 text-blue-700 border-blue-300',
+        badgeIcon: 'text-blue-600',
+        count: 'text-gray-400',
+        jumpButton: 'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200',
+        // Row colors
+        row: {
+            default: 'border-transparent hover:bg-gray-100 hover:border-gray-300',
+            running: 'border-blue-400 bg-blue-50',
+            success: 'border-green-400/50 hover:border-green-500',
+            error: 'border-red-400 bg-red-50',
+        },
+        timestamp: 'text-gray-400',
+        status: {
+            pending: 'text-gray-500',
+            running: 'text-blue-600',
+            success: 'text-green-600',
+            error: 'text-red-600',
+        },
+        operation: {
+            CONNECT: 'text-blue-600',
+            DISCONNECT: 'text-orange-500',
+            UPLOAD: 'text-green-600',
+            DOWNLOAD: 'text-sky-600',
+            DELETE: 'text-red-600',
+            RENAME: 'text-amber-600',
+            MKDIR: 'text-purple-600',
+            NAVIGATE: 'text-sky-600',
+            ERROR: 'text-red-600',
+            INFO: 'text-gray-600',
+            SUCCESS: 'text-green-600',
+        },
+        operationGlow: {
+            CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
+            DELETE: '', RENAME: '', MKDIR: '', NAVIGATE: '',
+            ERROR: '', INFO: '', SUCCESS: '',
+        },
+        liveIndicator: 'bg-blue-500',
+        liveText: 'text-blue-600',
+        cursor: 'bg-blue-500',
+    },
+    dark: {
+        // Tokio Night / Antigravity inspired (renamed from professional)
         panel: 'bg-[#1a1b26] border-t border-[#292e42]',
         header: 'bg-[#16161e] border-b border-[#292e42]',
         headerText: 'text-[#a9b1d6]',
@@ -74,19 +162,11 @@ const THEMES = {
             INFO: 'text-[#a9b1d6]',
             SUCCESS: 'text-[#9ece6a]',
         },
-        // No glow effect for professional theme
+        // No glow effect for dark theme
         operationGlow: {
-            CONNECT: '',
-            DISCONNECT: '',
-            UPLOAD: '',
-            DOWNLOAD: '',
-            DELETE: '',
-            RENAME: '',
-            MKDIR: '',
-            NAVIGATE: '',
-            ERROR: '',
-            INFO: '',
-            SUCCESS: '',
+            CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
+            DELETE: '', RENAME: '', MKDIR: '', NAVIGATE: '',
+            ERROR: '', INFO: '', SUCCESS: '',
         },
         liveIndicator: 'bg-[#7aa2f7]',
         liveText: 'text-[#7aa2f7]',
@@ -216,7 +296,7 @@ interface ActivityLogPanelProps {
     minHeight?: number;
     /** Maximum height */
     maxHeight?: number;
-    /** Theme: 'professional' (default) or 'cyber' */
+    /** Theme: 'light', 'dark' (default), or 'cyber' */
     theme?: LogTheme;
 }
 
@@ -226,7 +306,7 @@ interface ActivityLogPanelProps {
 
 interface LogEntryRowProps {
     entry: LogEntry;
-    themeConfig: typeof THEMES.professional;
+    themeConfig: typeof THEMES.dark;
     isLatest: boolean;
 }
 
@@ -235,15 +315,15 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
     const statusClass = themeConfig.status[entry.status] || themeConfig.status.pending;
     const opClass = themeConfig.operation[entry.operation] || themeConfig.operation.INFO;
     const opGlow = themeConfig.operationGlow?.[entry.operation] || '';
-    
+
     // Typewriter effect only for the latest running entry
     const shouldAnimate = isLatest && entry.status === 'running';
     const { displayText, isTyping } = useTypewriter(entry.message, 8, shouldAnimate);
 
     const rowClass = entry.status === 'error' ? themeConfig.row.error :
-                     entry.status === 'running' ? themeConfig.row.running :
-                     entry.status === 'success' ? themeConfig.row.success :
-                     themeConfig.row.default;
+        entry.status === 'running' ? themeConfig.row.running :
+            entry.status === 'success' ? themeConfig.row.success :
+                themeConfig.row.default;
 
     return (
         <div className={`flex items-start gap-2 py-0.5 px-3 font-mono text-xs border-l-2 transition-colors ${rowClass}`}>
@@ -252,9 +332,9 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 {formatTimestamp(entry.timestamp)}
             </span>
 
-            {/* Icon - NO glow, just color */}
-            <span className={`shrink-0 w-5 text-center ${opClass}`} aria-hidden="true">
-                {icon}
+            {/* Icon - Lucide component, no glow */}
+            <span className={`shrink-0 w-5 flex items-center justify-center ${opClass}`} aria-hidden="true">
+                <OperationIcon iconName={icon} className={opClass} />
             </span>
 
             {/* Operation type badge - WITH glow for cyber theme */}
@@ -267,8 +347,8 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 {shouldAnimate ? displayText : entry.message}
                 {/* Blinking cursor during typing */}
                 {isTyping && (
-                    <span className={`inline-block w-[2px] h-3.5 ml-0.5 animate-[blink_0.5s_infinite] align-middle ${themeConfig.cursor}`} 
-                          style={{ animationTimingFunction: 'steps(1)' }} />
+                    <span className={`inline-block w-[2px] h-3.5 ml-0.5 animate-[blink_0.5s_infinite] align-middle ${themeConfig.cursor}`}
+                        style={{ animationTimingFunction: 'steps(1)' }} />
                 )}
                 {entry.details && (
                     <span className="text-[#565f89] ml-2 italic">({entry.details})</span>
@@ -305,7 +385,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     initialHeight = 150,
     minHeight = 80,
     maxHeight = 400,
-    theme: themeProp = 'professional',
+    theme: themeProp = 'dark',
 }) => {
     const t = useTranslation();
     const { entries, clear, runningCount } = useActivityLog();
@@ -363,26 +443,26 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     // Filter entries
     const filteredEntries = useMemo(() => {
         let result = entries;
-        
+
         // Filter by operation type
         if (filterType !== 'ALL') {
             result = result.filter(e => e.operation === filterType);
         }
-        
+
         // Filter out AeroCloud sync messages if disabled
         if (!showCloudSync) {
             result = result.filter(e => !e.message.toLowerCase().includes('aerocloud'));
         }
-        
+
         return result;
     }, [entries, filterType, showCloudSync]);
 
     // Find the latest entry for typewriter effect
     const latestEntryId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
-    // Toggle theme
+    // Toggle theme: cycles through light -> dark -> cyber -> light
     const toggleTheme = () => {
-        setLocalTheme(prev => prev === 'professional' ? 'cyber' : 'professional');
+        setLocalTheme(prev => prev === 'light' ? 'dark' : prev === 'dark' ? 'cyber' : 'light');
     };
 
     // Don't render if not visible
@@ -398,7 +478,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
             {localTheme === 'cyber' && (
                 <>
                     {/* Scanlines effect - more visible */}
-                    <div 
+                    <div
                         className="absolute inset-0 pointer-events-none z-0"
                         style={{
                             background: 'repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,255,255,0.03) 1px, rgba(0,0,0,0.25) 2px)',
@@ -406,13 +486,13 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         }}
                     />
                     {/* CRT flicker */}
-                    <div 
+                    <div
                         className="absolute inset-0 pointer-events-none z-0 animate-pulse opacity-[0.02]"
                         style={{ background: 'radial-gradient(ellipse at center, rgba(34,211,238,0.1) 0%, transparent 70%)' }}
                     />
                     {/* Grid pattern */}
-                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0" 
-                        style={{ 
+                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0"
+                        style={{
                             backgroundImage: 'linear-gradient(0deg, transparent 24%, rgba(34,211,238,0.3) 25%, rgba(34,211,238,0.3) 26%, transparent 27%, transparent 74%, rgba(34,211,238,0.3) 75%, rgba(34,211,238,0.3) 76%, transparent 77%), linear-gradient(90deg, transparent 24%, rgba(34,211,238,0.3) 25%, rgba(34,211,238,0.3) 26%, transparent 27%, transparent 74%, rgba(34,211,238,0.3) 75%, rgba(34,211,238,0.3) 76%, transparent 77%)',
                             backgroundSize: '50px 50px'
                         }}
@@ -474,7 +554,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     <button
                         onClick={toggleTheme}
                         className={`p-1.5 rounded transition-all ${themeConfig.button}`}
-                        title={`Switch to ${localTheme === 'professional' ? 'Cyber' : 'Professional'} theme`}
+                        title={`Switch theme (current: ${localTheme})`}
                     >
                         <Sparkles size={12} className={localTheme === 'cyber' ? 'text-cyan-400' : ''} />
                     </button>
@@ -494,6 +574,20 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         <option value="NAVIGATE">Navigate</option>
                         <option value="ERROR">Errors</option>
                     </select>
+
+                    {/* Copy All button */}
+                    <button
+                        onClick={() => {
+                            const logText = filteredEntries.map(e =>
+                                `[${formatTimestamp(e.timestamp)}] ${e.operation} - ${e.message}`
+                            ).join('\n');
+                            navigator.clipboard.writeText(logText);
+                        }}
+                        className={`p-1.5 rounded transition-all ${themeConfig.button}`}
+                        title="Copy all logs"
+                    >
+                        <Copy size={12} />
+                    </button>
 
                     {/* Clear button */}
                     <button
@@ -528,9 +622,9 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     </div>
                 ) : (
                     filteredEntries.map(entry => (
-                        <LogEntryRow 
-                            key={entry.id} 
-                            entry={entry} 
+                        <LogEntryRow
+                            key={entry.id}
+                            entry={entry}
                             themeConfig={themeConfig}
                             isLatest={entry.id === latestEntryId}
                         />
