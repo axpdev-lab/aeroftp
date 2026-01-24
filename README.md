@@ -1,4 +1,4 @@
-# 🚀 AeroFTP
+# AeroFTP
 
 <p align="center">
   <img src="https://github.com/axpnet/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP/FTPS, WebDAV, S3 and Cloud Storage. Turn any FTP server into your personal cloud with AeroCloud, advanced logging, pro DevTools and AeroAgent AI.
+  Cross-platform desktop client for FTP/FTPS, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, and MEGA. Turn any FTP server into your personal cloud with AeroCloud.
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
 ---
 
-## ✨ Key Features (v1.2.7)
+## Key Features (v1.2.7)
 
 ### AeroCloud – Your Personal Cloud on Any FTP Server
 - Turn **any FTP server** into a private personal cloud
@@ -76,23 +76,26 @@
 
 ---
 
-## 🛠️ Installation
+## Installation
 
-**Linux Snap (recommended)**
+### Linux Snap
 ```bash
 sudo snap install aeroftp
 ```
+> **Note:** Snap version has limited filesystem access due to strict confinement (`~/snap/aeroftp/` only). For full filesystem access, use .deb or .AppImage.
 
-**Other formats**
-
-Download from https://github.com/axpnet/aeroftp/releases/latest
-
-(.deb/.rpm/.AppImage for Linux | .exe/.msi for Windows | .dmg for macOS)
+### Other Formats
+Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+- **Linux:** .deb, .rpm, .AppImage
+- **Windows:** .exe, .msi
+- **macOS:** .dmg
 
 ---
 
-## 📄 License
+## License
 
-GPL-3.0
+GPL-3.0 - See [LICENSE](LICENSE) for details.
 
-_Made with ❤️ from Sicily ⚡_
+---
+
+*Built with Rust (Tauri 2) + React 18 + TypeScript*
