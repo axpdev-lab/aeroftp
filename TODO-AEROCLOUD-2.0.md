@@ -260,13 +260,16 @@ aws-config = "1"
 ### HIGH PRIORITY - Gap Closure
 All major competitors (FileZilla, Cyberduck, WinSCP) have these features:
 
-- [ ] **SFTP Support** ⚡ CRITICAL
-  - Use `russh` or `ssh2` crate for SSH/SFTP
-  - Implement `SftpProvider` following `StorageProvider` trait
-  - Support key-based authentication (id_rsa, id_ed25519)
-  - Support password authentication
-  - Add SFTP to ProtocolSelector (port 22 default)
-  - Test with OpenSSH servers
+- [ ] **SFTP Support** ⚡ CRITICAL - Foundation Complete
+  - ✅ Created `SftpProvider` stub implementing `StorageProvider` trait
+  - ✅ Added `SftpConfig` with password and key authentication fields
+  - ✅ Added SFTP to ProtocolSelector (port 22 default, "Secure" badge)
+  - ✅ Added SFTP options to TypeScript types (private_key_path, passphrase, timeout)
+  - ✅ Prepared Cargo.toml with `russh` dependencies (commented until full impl)
+  - [ ] Implement full SSH connection using `russh` crate
+  - [ ] Support key-based authentication (id_rsa, id_ed25519)
+  - [ ] Support password authentication
+  - [ ] Test with OpenSSH servers
 
 - [ ] **Cryptomator Encryption** (like Cyberduck)
   - Implement Cryptomator vault format v8
@@ -396,7 +399,7 @@ src-tauri/src/
 | Provider     | Browse | Upload | Download | Sync | Share | Status |
 | ------------ | ------ | ------ | -------- | ---- | ----- | ------ |
 | FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     | Stable |
-| SFTP         | 📋      | 📋      | 📋        | 📋    | ❌     | v1.3.0 |
+| SFTP         | 📋      | 📋      | 📋        | 📋    | ❌     | Foundation ✅ |
 | WebDAV       | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
 | S3           | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
 | Google Drive | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |
