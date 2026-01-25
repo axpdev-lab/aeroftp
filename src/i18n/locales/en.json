@@ -279,6 +279,14 @@
             "supportDev": "Support Development",
             "donateWith": "Donate with Crypto"
         },
+        "support": {
+            "title": "Support AeroFTP",
+            "subtitle": "Your support helps keep AeroFTP free!",
+            "fiatSection": "Donate with Card",
+            "cryptoSection": "Donate with Crypto",
+            "thanks": "Thank you for your support!",
+            "footer": "Every donation helps development"
+        },
         "activity": {
             "connect_start": "Connecting to {server} ({protocol})...",
             "connect_success": "Connected to {server} via {protocol}",

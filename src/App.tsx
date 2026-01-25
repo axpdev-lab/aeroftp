@@ -28,6 +28,7 @@ import { ContextMenu, useContextMenu, ContextMenuItem } from './components/Conte
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { AboutDialog } from './components/AboutDialog';
+import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
@@ -43,7 +44,7 @@ import {
   Download, Upload, Pencil, Trash2, X, ArrowUp, ArrowDown,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, FileCode, Music, File, FileSpreadsheet, FileType, Code, Database, Clock,
-  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info
+  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info, Heart
 } from 'lucide-react';
 
 // Extracted utilities and components (Phase 1 modularization)
@@ -93,6 +94,7 @@ const App: React.FC = () => {
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void } | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
@@ -725,6 +727,7 @@ const App: React.FC = () => {
       const id = event.payload;
       switch (id) {
         case 'about': setShowAboutDialog(true); break;
+        case 'support': setShowSupportDialog(true); break;
         case 'shortcuts': setShowShortcutsDialog(true); break;
         case 'settings': setShowSettingsPanel(true); break;
         case 'refresh':
@@ -2853,6 +2856,7 @@ const App: React.FC = () => {
         currentPermissions={permissionsDialog?.file.permissions || undefined}
       />
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
+      <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
       <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
       <SettingsPanel
         isOpen={showSettingsPanel}
@@ -2886,8 +2890,17 @@ const App: React.FC = () => {
       {showMenuBar && (
         <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between px-6 py-3">
-            <Logo size="md" isConnected={isConnected} hasActivity={hasActivity || hasQueueActivity} isReconnecting={isReconnecting} />
+            <Logo size="sm" isConnected={isConnected} hasActivity={hasActivity || hasQueueActivity} isReconnecting={isReconnecting} />
             <div className="flex items-center gap-3">
+              {/* Support button */}
+              <button
+                onClick={() => setShowSupportDialog(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg text-sm font-medium hover:from-pink-600 hover:to-rose-600 transition-all shadow-sm hover:shadow-md"
+                title="Supporta lo sviluppo"
+              >
+                <Heart size={14} />
+                <span className="hidden sm:inline">Supporta</span>
+              </button>
               {/* Quick System Menu Bar Toggle */}
               <button
                 onClick={async () => {

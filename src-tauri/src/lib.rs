@@ -2934,6 +2934,7 @@ pub fn run() {
             let settings = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+,"))?;
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
             let shortcuts = MenuItem::with_id(app, "shortcuts", "Keyboard Shortcuts", true, Some("F1"))?;
+            let support = MenuItem::with_id(app, "support", "Support Development ❤️", true, None::<&str>)?;
             
             // File menu
             let file_menu = Submenu::with_items(
@@ -2996,6 +2997,8 @@ pub fn run() {
                 true,
                 &[
                     &shortcuts,
+                    &PredefinedMenuItem::separator(app)?,
+                    &support,
                     &PredefinedMenuItem::separator(app)?,
                     &about,
                 ],

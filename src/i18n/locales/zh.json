@@ -273,6 +273,14 @@
             "supportDev": "支持开发",
             "donateWith": "加密货币捐赠"
         },
+        "support": {
+            "title": "支持 AeroFTP",
+            "subtitle": "您的支持帮助保持 AeroFTP 免费！",
+            "fiatSection": "银行卡捐赠",
+            "cryptoSection": "加密货币捐赠",
+            "thanks": "感谢您的支持！",
+            "footer": "每一笔捐赠都有助于开发"
+        },
         "activity": {
             "connect_start": "正在连接 {server}...",
             "connect_success": "已连接到 {server}",

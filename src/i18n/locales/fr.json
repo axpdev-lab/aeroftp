@@ -273,6 +273,14 @@
             "supportDev": "Soutenir le Développement",
             "donateWith": "Donner en Crypto"
         },
+        "support": {
+            "title": "Soutenir AeroFTP",
+            "subtitle": "Votre soutien aide à garder AeroFTP gratuit!",
+            "fiatSection": "Donner par Carte",
+            "cryptoSection": "Donner en Crypto",
+            "thanks": "Merci pour votre soutien!",
+            "footer": "Chaque don aide au développement"
+        },
         "activity": {
             "connect_start": "Connexion à {server}...",
             "connect_success": "Connecté à {server} avec succès",

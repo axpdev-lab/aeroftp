@@ -297,6 +297,16 @@ export interface TranslationKeys {
         supportDev: string;
         donateWith: string;
     };
+
+    // Support dialog
+    support: {
+        title: string;
+        subtitle: string;
+        fiatSection: string;
+        cryptoSection: string;
+        thanks: string;
+        footer: string;
+    };
 }
 
 /**
