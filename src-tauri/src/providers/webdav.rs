@@ -26,6 +26,7 @@ mod webdav_methods {
         Method::from_bytes(b"MKCOL").unwrap()
     }
     
+    #[allow(dead_code)]
     pub fn copy() -> Method {
         Method::from_bytes(b"COPY").unwrap()
     }

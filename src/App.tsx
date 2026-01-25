@@ -38,13 +38,15 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
 import { CloudPanel } from './components/CloudPanel';
+import { OverwriteDialog, OverwriteAction, FileCompareInfo } from './components/OverwriteDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
   Sun, Moon, Monitor, FolderUp, RefreshCw, FolderPlus, FolderOpen,
   Download, Upload, Pencil, Trash2, X, ArrowUp, ArrowDown,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, FileCode, Music, File, FileSpreadsheet, FileType, Code, Database, Clock,
-  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info, Heart
+  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info, Heart,
+  Lock, Server
 } from 'lucide-react';
 
 // Extracted utilities and components (Phase 1 modularization)
@@ -52,8 +54,8 @@ import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIc
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties } from './components/Dialogs';
 import { TransferProgressBar } from './components/Transfer';
 
-// Extracted components (Phase 2 modularization)  
-import { useTheme, ThemeToggle, Theme } from './hooks/useTheme';
+// Extracted components (Phase 2 modularization)
+import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import ActivityLogPanel from './components/ActivityLogPanel';
@@ -96,6 +98,15 @@ const App: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+  // Overwrite dialog state
+  const [overwriteDialog, setOverwriteDialog] = useState<{
+    isOpen: boolean;
+    source: FileCompareInfo | null;
+    destination: FileCompareInfo | null;
+    queueCount: number;
+    resolve: ((result: { action: OverwriteAction; applyToAll: boolean; newName?: string }) => void) | null;
+  }>({ isOpen: false, source: null, destination: null, queueCount: 0, resolve: null });
+  const [overwriteApplyToAll, setOverwriteApplyToAll] = useState<{ action: OverwriteAction; enabled: boolean }>({ action: 'overwrite', enabled: false });
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showCloudPanel, setShowCloudPanel] = useState(false);
@@ -111,6 +122,12 @@ const App: React.FC = () => {
   const [systemMenuVisible, setSystemMenuVisible] = useState(false);  // Native system menu bar (File, Edit, View, Help) - hidden by default
   const [compactMode, setCompactMode] = useState(false);  // Compact UI mode
   const [showHiddenFiles, setShowHiddenFiles] = useState(true);  // Developer-first: show all files by default
+  const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(true);  // Show confirmation dialog before delete
+  const [showStatusBar, setShowStatusBar] = useState(true);  // Show/hide status bar
+  const [defaultLocalPath, setDefaultLocalPath] = useState('');  // Default local folder on startup
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');  // UI font size
+  const [doubleClickAction, setDoubleClickAction] = useState<'preview' | 'download'>('preview');  // What happens on double-click
+  const [rememberLastFolder, setRememberLastFolder] = useState(true);  // Remember last visited folders
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
@@ -354,7 +371,7 @@ const App: React.FC = () => {
       setSystemMenuVisible(showMenu);
       invoke('toggle_menu_bar', { visible: showMenu });
 
-      // Load compact mode setting and show hidden files setting
+      // Load all settings from localStorage
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
         if (typeof parsed.compactMode === 'boolean') {
@@ -365,6 +382,24 @@ const App: React.FC = () => {
         }
         if (typeof parsed.showToastNotifications === 'boolean') {
           setShowToastNotifications(parsed.showToastNotifications);
+        }
+        if (typeof parsed.confirmBeforeDelete === 'boolean') {
+          setConfirmBeforeDelete(parsed.confirmBeforeDelete);
+        }
+        if (typeof parsed.showStatusBar === 'boolean') {
+          setShowStatusBar(parsed.showStatusBar);
+        }
+        if (typeof parsed.defaultLocalPath === 'string') {
+          setDefaultLocalPath(parsed.defaultLocalPath);
+        }
+        if (parsed.fontSize && ['small', 'medium', 'large'].includes(parsed.fontSize)) {
+          setFontSize(parsed.fontSize);
+        }
+        if (parsed.doubleClickAction && ['preview', 'download'].includes(parsed.doubleClickAction)) {
+          setDoubleClickAction(parsed.doubleClickAction);
+        }
+        if (typeof parsed.rememberLastFolder === 'boolean') {
+          setRememberLastFolder(parsed.rememberLastFolder);
         }
       }
     } catch (e) {
@@ -386,6 +421,24 @@ const App: React.FC = () => {
           if (typeof parsed.showToastNotifications === 'boolean') {
             setShowToastNotifications(parsed.showToastNotifications);
           }
+          if (typeof parsed.confirmBeforeDelete === 'boolean') {
+            setConfirmBeforeDelete(parsed.confirmBeforeDelete);
+          }
+          if (typeof parsed.showStatusBar === 'boolean') {
+            setShowStatusBar(parsed.showStatusBar);
+          }
+          if (typeof parsed.defaultLocalPath === 'string') {
+            setDefaultLocalPath(parsed.defaultLocalPath);
+          }
+          if (parsed.fontSize && ['small', 'medium', 'large'].includes(parsed.fontSize)) {
+            setFontSize(parsed.fontSize);
+          }
+          if (parsed.doubleClickAction && ['preview', 'download'].includes(parsed.doubleClickAction)) {
+            setDoubleClickAction(parsed.doubleClickAction);
+          }
+          if (typeof parsed.rememberLastFolder === 'boolean') {
+            setRememberLastFolder(parsed.rememberLastFolder);
+          }
         }
       } catch (e) { }
     };
@@ -398,7 +451,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, isDark } = useTheme();
   const toast = useToast();
   const contextMenu = useContextMenu();
   const humanLog = useHumanizedLog();
@@ -809,6 +862,31 @@ const App: React.FC = () => {
 
   useEffect(() => {
     (async () => {
+      // Check for saved settings with defaultLocalPath or last visited folder
+      try {
+        const savedSettings = localStorage.getItem(SETTINGS_KEY);
+        if (savedSettings) {
+          const parsed = JSON.parse(savedSettings);
+
+          // If rememberLastFolder is enabled, try to load last visited folder
+          if (parsed.rememberLastFolder && parsed.lastLocalPath) {
+            try {
+              await loadLocalFiles(parsed.lastLocalPath);
+              return;
+            } catch { /* Fall through to next option */ }
+          }
+
+          // Try defaultLocalPath from settings
+          if (parsed.defaultLocalPath) {
+            try {
+              await loadLocalFiles(parsed.defaultLocalPath);
+              return;
+            } catch { /* Fall through to next option */ }
+          }
+        }
+      } catch { /* Fall through to default */ }
+
+      // Default: try home directory, then downloads
       try { await loadLocalFiles(await homeDir()); }
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
     })();
@@ -1726,6 +1804,18 @@ const App: React.FC = () => {
     await loadLocalFiles(path);
     humanLog.logNavigate(path, false);
 
+    // Save last local path if remember folder is enabled
+    if (rememberLastFolder) {
+      try {
+        const savedSettings = localStorage.getItem(SETTINGS_KEY);
+        const settings = savedSettings ? JSON.parse(savedSettings) : {};
+        settings.lastLocalPath = path;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      } catch (e) {
+        console.error('Failed to save last local path:', e);
+      }
+    }
+
     // Navigation Sync: mirror to remote panel if enabled
     if (isSyncNavigation && syncBasePaths && isConnected) {
       const relativePath = path.startsWith(syncBasePaths.local)
@@ -1788,6 +1878,113 @@ const App: React.FC = () => {
       humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, 'success');
     }
     setIsSyncNavigation(!isSyncNavigation);
+  };
+
+  /**
+   * Check if a file exists and prompt for overwrite decision
+   * Uses local file list to check for download, remote file list for upload
+   * Respects fileExistsAction setting from Settings panel
+   */
+  const checkOverwrite = async (
+    sourceName: string,
+    sourceSize: number,
+    sourceModified: Date | undefined,
+    sourceIsRemote: boolean,
+    queueCount: number = 0
+  ): Promise<{ action: OverwriteAction; newName?: string }> => {
+    // If "apply to all" is already set (for current batch), use that decision
+    if (overwriteApplyToAll.enabled) {
+      return { action: overwriteApplyToAll.action };
+    }
+
+    // Check if destination file exists in the appropriate file list
+    let destFile: LocalFile | RemoteFile | undefined;
+
+    if (sourceIsRemote) {
+      // Download scenario: check if local file exists
+      destFile = localFiles.find(f => f.name === sourceName && !f.is_dir);
+    } else {
+      // Upload scenario: check if remote file exists
+      destFile = remoteFiles.find(f => f.name === sourceName && !f.is_dir);
+    }
+
+    // If file doesn't exist, proceed with transfer
+    if (!destFile) {
+      return { action: 'overwrite' };
+    }
+
+    // File exists - check settings for configured behavior
+    try {
+      const savedSettings = localStorage.getItem('aeroftp_settings');
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        const fileExistsAction = settings.fileExistsAction as 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume';
+
+        // If user has configured a default action (not 'ask'), apply it automatically
+        if (fileExistsAction && fileExistsAction !== 'ask') {
+          if (fileExistsAction === 'overwrite' || fileExistsAction === 'resume') {
+            // Resume not fully implemented yet, treat as overwrite
+            return { action: 'overwrite' };
+          }
+          if (fileExistsAction === 'skip') {
+            return { action: 'skip' };
+          }
+          if (fileExistsAction === 'rename') {
+            // Auto-generate unique name: file.txt → file (1).txt
+            const ext = sourceName.includes('.') ? '.' + sourceName.split('.').pop() : '';
+            const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
+            let counter = 1;
+            let newName = `${baseName} (${counter})${ext}`;
+
+            // Find a unique name
+            const existingNames = sourceIsRemote
+              ? localFiles.map(f => f.name)
+              : remoteFiles.map(f => f.name);
+
+            while (existingNames.includes(newName)) {
+              counter++;
+              newName = `${baseName} (${counter})${ext}`;
+            }
+            return { action: 'rename', newName };
+          }
+        }
+      }
+    } catch (e) {
+      // If settings can't be read, fall back to asking
+      console.warn('[checkOverwrite] Could not read settings:', e);
+    }
+
+    // Setting is 'ask' or not set - show dialog and wait for user decision
+    return new Promise((resolve) => {
+      setOverwriteDialog({
+        isOpen: true,
+        source: {
+          name: sourceName,
+          size: sourceSize,
+          modified: sourceModified,
+          isRemote: sourceIsRemote,
+        },
+        destination: {
+          name: destFile!.name,
+          size: destFile!.size || 0,
+          modified: destFile!.modified ? new Date(destFile!.modified) : undefined,
+          isRemote: !sourceIsRemote,
+        },
+        queueCount,
+        resolve: (result) => {
+          // If apply to all is selected, save the decision for current batch
+          if (result.applyToAll) {
+            setOverwriteApplyToAll({ action: result.action, enabled: true });
+          }
+          resolve({ action: result.action, newName: result.newName });
+        },
+      });
+    });
+  };
+
+  // Reset apply-to-all when transfer queue is empty
+  const resetOverwriteSettings = () => {
+    setOverwriteApplyToAll({ action: 'overwrite', enabled: false });
   };
 
   const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number) => {
@@ -2075,6 +2272,9 @@ const App: React.FC = () => {
   const uploadMultipleFiles = async (filesOverride?: string[]) => {
     if (!isConnected) return;
 
+    // Reset apply-to-all for new batch
+    resetOverwriteSettings();
+
     // Use override or fallback to selected state
     const targetNames = filesOverride || Array.from(selectedLocalFiles);
 
@@ -2083,33 +2283,71 @@ const App: React.FC = () => {
       const filesToUpload = targetNames.map(name => {
         const file = localFiles.find(f => f.name === name);
         // Use verified absolute path from backend
-        return file ? file.path : null;
-      }).filter(Boolean) as string[];
+        return file ? { path: file.path, file } : null;
+      }).filter(Boolean) as { path: string; file: LocalFile }[];
 
       if (filesToUpload.length > 0) {
         // Queue shows progress - no toast needed
 
         // Add all files to queue first
-        const queueItems = filesToUpload.map(filePath => {
+        const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
-          const file = localFiles.find(f => f.path === filePath);
           const size = file?.size || 0;
-          return { id: transferQueue.addItem(fileName, filePath, size, 'upload'), filePath, fileName };
+          return { id: transferQueue.addItem(fileName, filePath, size, 'upload'), filePath, fileName, file };
         });
 
-        // Upload sequentially with queue tracking
-        for (const item of queueItems) {
+        // Upload sequentially with queue tracking and overwrite checking
+        let skippedCount = 0;
+        for (let i = 0; i < queueItems.length; i++) {
+          const item = queueItems[i];
+          const remainingInQueue = queueItems.length - i - 1;
+
+          // Check for overwrite (only for files, not directories)
+          if (!item.file.is_dir) {
+            const overwriteResult = await checkOverwrite(
+              item.fileName,
+              item.file.size || 0,
+              item.file.modified ? new Date(item.file.modified) : undefined,
+              false, // sourceIsRemote = false for upload
+              remainingInQueue
+            );
+
+            if (overwriteResult.action === 'cancel') {
+              // Cancel entire batch
+              transferQueue.failTransfer(item.id, 'Cancelled by user');
+              for (let j = i + 1; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+              }
+              break;
+            }
+
+            if (overwriteResult.action === 'skip') {
+              transferQueue.completeTransfer(item.id); // Mark as complete (skipped)
+              humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
+              skippedCount++;
+              continue;
+            }
+
+            // For rename, we would need to modify the destination - for now, just proceed
+            // TODO: Implement rename logic
+          }
+
           transferQueue.startTransfer(item.id);
           try {
-            const file = localFiles.find(f => f.path === item.filePath);
-            await uploadFile(item.filePath, item.fileName, file?.is_dir || false, file?.size || undefined);
+            await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined);
             transferQueue.completeTransfer(item.id);
           } catch (error) {
             transferQueue.failTransfer(item.id, String(error));
           }
         }
 
+        // Reset apply-to-all after batch completes
+        resetOverwriteSettings();
+
         // Queue shows completion - no toast needed
+        if (skippedCount > 0) {
+          notify.info(`${skippedCount} file(s) skipped`);
+        }
         setSelectedLocalFiles(new Set());
         loadRemoteFiles();
         return;
@@ -2127,11 +2365,40 @@ const App: React.FC = () => {
     const files = Array.isArray(selected) ? selected : [selected];
 
     if (files.length > 0) {
-      notify.info('Upload Started', `Uploading ${files.length} file(s)...`);
-      for (const filePath of files) {
-        // Extract filename from full path (cross-platform handle)
+      // Reset for dialog-selected files too
+      resetOverwriteSettings();
+      let skippedCount = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        const filePath = files[i];
         const fileName = filePath.replace(/^.*[\\\/]/, '');
+        const remainingInQueue = files.length - i - 1;
+
+        // Check for overwrite
+        const overwriteResult = await checkOverwrite(
+          fileName,
+          0, // Size unknown from dialog
+          undefined, // Modified unknown from dialog
+          false, // sourceIsRemote = false for upload
+          remainingInQueue
+        );
+
+        if (overwriteResult.action === 'cancel') {
+          break;
+        }
+
+        if (overwriteResult.action === 'skip') {
+          humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
+          skippedCount++;
+          continue;
+        }
+
         await uploadFile(filePath, fileName, false);
+      }
+
+      resetOverwriteSettings();
+      if (skippedCount > 0) {
+        notify.info(`${skippedCount} file(s) skipped`);
       }
     }
   };
@@ -2141,6 +2408,9 @@ const App: React.FC = () => {
     if (!isConnected) return;
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
+
+    // Reset apply-to-all for new batch
+    resetOverwriteSettings();
 
     const filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
     if (filesToDownload.length > 0) {
@@ -2152,8 +2422,42 @@ const App: React.FC = () => {
         file
       }));
 
-      // Download sequentially with queue tracking
-      for (const item of queueItems) {
+      // Download sequentially with queue tracking and overwrite checking
+      let skippedCount = 0;
+      for (let i = 0; i < queueItems.length; i++) {
+        const item = queueItems[i];
+        const remainingInQueue = queueItems.length - i - 1;
+
+        // Check for overwrite (only for files, not directories)
+        if (!item.file.is_dir) {
+          const overwriteResult = await checkOverwrite(
+            item.file.name,
+            item.file.size || 0,
+            item.file.modified ? new Date(item.file.modified) : undefined,
+            true, // sourceIsRemote
+            remainingInQueue
+          );
+
+          if (overwriteResult.action === 'cancel') {
+            // Cancel entire batch
+            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            for (let j = i + 1; j < queueItems.length; j++) {
+              transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+            }
+            break;
+          }
+
+          if (overwriteResult.action === 'skip') {
+            transferQueue.completeTransfer(item.id); // Mark as complete (skipped)
+            humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: item.file.name }, 'success');
+            skippedCount++;
+            continue;
+          }
+
+          // For rename, we would need to modify the destination - for now, just proceed
+          // TODO: Implement rename logic
+        }
+
         transferQueue.startTransfer(item.id);
         try {
           await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined);
@@ -2163,7 +2467,13 @@ const App: React.FC = () => {
         }
       }
 
+      // Reset apply-to-all after batch completes
+      resetOverwriteSettings();
+
       // Queue shows completion - no toast needed
+      if (skippedCount > 0) {
+        notify.info(`${skippedCount} file(s) skipped`);
+      }
       setSelectedRemoteFiles(new Set());
       await loadLocalFiles(currentLocalPath);  // Refresh local panel
     }
@@ -2173,148 +2483,201 @@ const App: React.FC = () => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
-    setConfirmDialog({
-      message: `Delete ${names.length} selected items?`,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
-        const deletedFiles: string[] = [];
-        const deletedFolders: string[] = [];
-        // Get protocol from active session as fallback (outside loop for efficiency)
-        const activeSession = sessions.find(s => s.id === activeSessionId);
-        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+    const performDelete = async () => {
+      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+      const deletedFiles: string[] = [];
+      const deletedFolders: string[] = [];
+      // Get protocol from active session as fallback (outside loop for efficiency)
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
-        for (const name of names) {
-          const file = remoteFiles.find(f => f.name === name);
-          if (file) {
-            try {
-              if (isProvider) {
-                if (file.is_dir) {
-                  await invoke('provider_delete_dir', { path: file.path, recursive: true });
-                } else {
-                  await invoke('provider_delete_file', { path: file.path });
-                }
-              } else {
-                await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
-              }
-
+      for (const name of names) {
+        const file = remoteFiles.find(f => f.name === name);
+        if (file) {
+          try {
+            if (isProvider) {
               if (file.is_dir) {
-                deletedFolders.push(name);
+                await invoke('provider_delete_dir', { path: file.path, recursive: true });
               } else {
-                deletedFiles.push(name);
+                await invoke('provider_delete_file', { path: file.path });
               }
-              // Individual logs removed - summary handles all
-            } catch { }
-          }
+            } else {
+              await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
+            }
+
+            if (file.is_dir) {
+              deletedFolders.push(name);
+            } else {
+              deletedFiles.push(name);
+            }
+            // Individual logs removed - summary handles all
+          } catch { }
         }
-        await loadRemoteFiles();
-        setSelectedRemoteFiles(new Set());
-        // Summary message
-        const parts = [];
-        if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
-        if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-        const count = deletedFolders.length + deletedFiles.length;
-        const msg = t('activity.delete_multiple_success', { count });
-        humanLog.updateEntry(logId, { status: 'success', message: msg });
-        notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
       }
-    });
+      await loadRemoteFiles();
+      setSelectedRemoteFiles(new Set());
+      // Summary message
+      const parts = [];
+      if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
+      if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
+      const count = deletedFolders.length + deletedFiles.length;
+      const msg = t('activity.delete_multiple_success', { count });
+      humanLog.updateEntry(logId, { status: 'success', message: msg });
+      notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+    };
+
+    // Check if confirmation is enabled
+    if (confirmBeforeDelete) {
+      setConfirmDialog({
+        message: `Delete ${names.length} selected items?`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await performDelete();
+        }
+      });
+    } else {
+      performDelete();
+    }
   };
 
   const deleteMultipleLocalFiles = (filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedLocalFiles);
     if (names.length === 0) return;
 
-    setConfirmDialog({
-      message: `Delete ${names.length} selected items?`,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
-        const deletedFiles: string[] = [];
-        const deletedFolders: string[] = [];
-        for (const name of names) {
-          const file = localFiles.find(f => f.name === name);
-          if (file) {
-            try {
-              await invoke('delete_local_file', { path: file.path });
-              if (file.is_dir) {
-                deletedFolders.push(name);
-              } else {
-                deletedFiles.push(name);
-              }
-              // Individual logs removed - summary handles all
-            } catch { }
-          }
+    const performDelete = async () => {
+      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+      const deletedFiles: string[] = [];
+      const deletedFolders: string[] = [];
+      for (const name of names) {
+        const file = localFiles.find(f => f.name === name);
+        if (file) {
+          try {
+            await invoke('delete_local_file', { path: file.path });
+            if (file.is_dir) {
+              deletedFolders.push(name);
+            } else {
+              deletedFiles.push(name);
+            }
+            // Individual logs removed - summary handles all
+          } catch { }
         }
-        await loadLocalFiles(currentLocalPath);
-        setSelectedLocalFiles(new Set());
-        // Summary message
-        const parts = [];
-        if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
-        if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-        const count = deletedFolders.length + deletedFiles.length;
-        const msg = t('activity.delete_multiple_success', { count });
-        humanLog.updateEntry(logId, { status: 'success', message: msg });
-        notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
       }
-    });
+      await loadLocalFiles(currentLocalPath);
+      setSelectedLocalFiles(new Set());
+      // Summary message
+      const parts = [];
+      if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
+      if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
+      const count = deletedFolders.length + deletedFiles.length;
+      const msg = t('activity.delete_multiple_success', { count });
+      humanLog.updateEntry(logId, { status: 'success', message: msg });
+      notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+    };
+
+    // Check if confirmation is enabled
+    if (confirmBeforeDelete) {
+      setConfirmDialog({
+        message: `Delete ${names.length} selected items?`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await performDelete();
+        }
+      });
+    } else {
+      performDelete();
+    }
   };
 
-  // File operations with proper confirm BEFORE action
+  // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean) => {
     const fileName = path.split('/').pop() || path;
-    setConfirmDialog({
-      message: `Delete "${fileName}"?`,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        const logId = humanLog.logStart('DELETE', { filename: fileName });
-        try {
-          // Get protocol from active session as fallback
-          const activeSession = sessions.find(s => s.id === activeSessionId);
-          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-          const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
-          if (isProvider) {
-            if (isDir) {
-              await invoke('provider_delete_dir', { path, recursive: true });
-            } else {
-              await invoke('provider_delete_file', { path });
-            }
+    const performDelete = async () => {
+      const logId = humanLog.logStart('DELETE', { filename: fileName });
+      try {
+        // Get protocol from active session as fallback
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+
+        if (isProvider) {
+          if (isDir) {
+            await invoke('provider_delete_dir', { path, recursive: true });
           } else {
-            await invoke('delete_remote_file', { path, isDir });
+            await invoke('provider_delete_file', { path });
           }
-          humanLog.logSuccess('DELETE', { filename: fileName }, logId);
-          notify.success('Deleted', fileName);
-          await loadRemoteFiles();
+        } else {
+          await invoke('delete_remote_file', { path, isDir });
         }
-        catch (error) {
-          humanLog.logError('DELETE', { filename: fileName }, logId);
-          notify.error('Delete Failed', String(error));
-        }
+        humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+        notify.success('Deleted', fileName);
+        await loadRemoteFiles();
       }
-    });
+      catch (error) {
+        humanLog.logError('DELETE', { filename: fileName }, logId);
+        notify.error('Delete Failed', String(error));
+      }
+    };
+
+    // Check if confirmation is enabled
+    if (confirmBeforeDelete) {
+      setConfirmDialog({
+        message: `Delete "${fileName}"?`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await performDelete();
+        }
+      });
+    } else {
+      performDelete();
+    }
   };
 
   const deleteLocalFile = (path: string) => {
     const fileName = path.split('/').pop() || path;
-    setConfirmDialog({
-      message: `Delete "${fileName}"?`,
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        const logId = humanLog.logStart('DELETE', { filename: fileName });
-        try {
-          await invoke('delete_local_file', { path });
-          humanLog.logSuccess('DELETE', { filename: fileName }, logId);
-          notify.success('Deleted', fileName);
-          await loadLocalFiles(currentLocalPath);
-        }
-        catch (error) {
-          humanLog.logError('DELETE', { filename: fileName }, logId);
-          notify.error('Delete Failed', String(error));
-        }
+
+    const performDelete = async () => {
+      const logId = humanLog.logStart('DELETE', { filename: fileName });
+      try {
+        await invoke('delete_local_file', { path });
+        humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+        notify.success('Deleted', fileName);
+        await loadLocalFiles(currentLocalPath);
       }
-    });
+      catch (error) {
+        humanLog.logError('DELETE', { filename: fileName }, logId);
+        notify.error('Delete Failed', String(error));
+      }
+    };
+
+    // Check if confirmation is enabled
+    if (confirmBeforeDelete) {
+      setConfirmDialog({
+        message: `Delete "${fileName}"?`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await performDelete();
+        }
+      });
+    } else {
+      performDelete();
+    }
+  };
+
+  // Legacy wrapper to maintain compatibility - removed duplicate error handling
+  const deleteLocalFileInternal = async (path: string) => {
+    const fileName = path.split('/').pop() || path;
+    const logId = humanLog.logStart('DELETE', { filename: fileName });
+    try {
+      await invoke('delete_local_file', { path });
+      humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+      notify.success('Deleted', fileName);
+      await loadLocalFiles(currentLocalPath);
+    } catch (error) {
+      humanLog.logError('DELETE', { filename: fileName }, logId);
+      notify.error('Delete Failed', String(error));
+    }
   };
 
   const renameFile = (path: string, currentName: string, isRemote: boolean) => {
@@ -2702,6 +3065,9 @@ const App: React.FC = () => {
       const sourcePath = sourcePaths[i];
       const destPath = `${targetPath}/${fileName}`;
 
+      // Log move start
+      const logId = humanLog.logStart('MOVE', { isRemote, filename: fileName });
+
       try {
         if (isRemote) {
           // Remote file move (rename)
@@ -2714,8 +3080,12 @@ const App: React.FC = () => {
           // Local file move
           await invoke('rename_local_file', { from: sourcePath, to: destPath });
         }
+        // Log move success
+        humanLog.logSuccess('MOVE', { isRemote, filename: fileName, destination: targetPath }, logId);
         notify.success(`Moved ${fileName}`, `→ ${targetPath}`);
       } catch (err) {
+        // Log move error
+        humanLog.logError('MOVE', { isRemote, filename: fileName }, logId);
         notify.error(`Failed to move ${fileName}`, String(err));
       }
     }
@@ -2757,14 +3127,26 @@ const App: React.FC = () => {
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
     } else {
-      await downloadFile(file.path, file.name, currentLocalPath, false);
+      // Respect double-click action setting
+      if (doubleClickAction === 'preview') {
+        const category = getPreviewCategory(file.name);
+        if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+          await openUniversalPreview(file, true);
+        } else if (isPreviewable(file.name)) {
+          openDevToolsPreview(file, true);
+        }
+        // If file is not previewable, do nothing on double-click
+      } else {
+        // Download action
+        await downloadFile(file.path, file.name, currentLocalPath, false);
+      }
     }
   };
 
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
 
   return (
-    <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''}`}>
+    <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
@@ -2857,6 +3239,24 @@ const App: React.FC = () => {
       />
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
+      <OverwriteDialog
+        isOpen={overwriteDialog.isOpen}
+        source={overwriteDialog.source!}
+        destination={overwriteDialog.destination!}
+        queueCount={overwriteDialog.queueCount}
+        onDecision={(action, applyToAll, newName) => {
+          if (overwriteDialog.resolve) {
+            overwriteDialog.resolve({ action, applyToAll, newName });
+          }
+          setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+        onCancel={() => {
+          if (overwriteDialog.resolve) {
+            overwriteDialog.resolve({ action: 'cancel', applyToAll: false });
+          }
+          setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
       <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
       <SettingsPanel
         isOpen={showSettingsPanel}
@@ -2892,14 +3292,13 @@ const App: React.FC = () => {
           <div className="flex items-center justify-between px-6 py-3">
             <Logo size="sm" isConnected={isConnected} hasActivity={hasActivity || hasQueueActivity} isReconnecting={isReconnecting} />
             <div className="flex items-center gap-3">
-              {/* Support button */}
+              {/* Support button - subtle heart icon */}
               <button
                 onClick={() => setShowSupportDialog(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg text-sm font-medium hover:from-pink-600 hover:to-rose-600 transition-all shadow-sm hover:shadow-md"
-                title="Supporta lo sviluppo"
+                className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 transition-colors"
+                title={t('about.supportDev')}
               >
-                <Heart size={14} />
-                <span className="hidden sm:inline">Supporta</span>
+                <Heart size={18} className="fill-current" />
               </button>
               {/* Quick System Menu Bar Toggle */}
               <button
@@ -2914,16 +3313,24 @@ const App: React.FC = () => {
                 <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
               </button>
               <ThemeToggle theme={theme} setTheme={setTheme} />
+              {/* Settings button - always visible */}
+              <button
+                onClick={() => setShowSettingsPanel(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title={`${t('settings.title')} (Ctrl+,)`}
+              >
+                <Settings size={18} className="text-gray-500 dark:text-gray-400" />
+              </button>
               {isConnected ? (
                 <button onClick={disconnectFromFtp} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm hover:shadow-md flex items-center gap-2">
-                  <X size={16} /> Disconnect
+                  <X size={16} /> {t('common.disconnect')}
                 </button>
               ) : !showConnectionScreen && (
                 <button
                   onClick={() => setShowConnectionScreen(true)}
                   className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2"
                 >
-                  <Cloud size={16} /> Connect
+                  <Cloud size={16} /> {t('common.connect')}
                 </button>
               )}
             </div>
@@ -3209,10 +3616,6 @@ const App: React.FC = () => {
                 >
                   <Eye size={16} /><span className="hidden lg:inline">Preview</span>
                 </button>
-                <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1" />
-                <button onClick={() => setShowSettingsPanel(true)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5" title="Settings (Ctrl+,)">
-                  <Settings size={16} />
-                </button>
               </div>
             </div>
 
@@ -3220,17 +3623,50 @@ const App: React.FC = () => {
             <div className="flex h-[calc(100vh-220px)]">
               {/* Remote */}
               <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-                <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  <Globe size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-green-500'} />
-                  <input
-                    type="text"
-                    value={isConnected ? currentRemotePath : 'Not Connected'}
-                    onChange={(e) => setCurrentRemotePath(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
-                    disabled={!isConnected}
-                    className="flex-1 bg-transparent border-none outline-none text-sm cursor-text select-all disabled:cursor-default disabled:text-gray-400"
-                    title={isConnected ? "Click to edit path, Enter to navigate" : "Not connected to server"}
-                  />
+                <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                  <div className="flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden">
+                    {/* Protocol icon inside address bar (like Chrome favicon) */}
+                    <div className="flex-shrink-0 px-2.5 flex items-center" title={(() => {
+                        const protocol = connectionParams.protocol || 'ftp';
+                        switch (protocol) {
+                          case 's3': return 'Amazon S3';
+                          case 'webdav': return 'WebDAV';
+                          case 'sftp': return 'SFTP (Secure)';
+                          case 'ftps': return 'FTPS (Secure)';
+                          case 'googledrive': return 'Google Drive';
+                          case 'dropbox': return 'Dropbox';
+                          case 'onedrive': return 'OneDrive';
+                          case 'mega': return 'MEGA';
+                          default: return 'FTP';
+                        }
+                      })()}>
+                      {(() => {
+                        const protocol = connectionParams.protocol || 'ftp';
+                        const iconClass = isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
+                        switch (protocol) {
+                          case 's3': return <Cloud size={14} className={iconClass} />;
+                          case 'webdav': return <Server size={14} className={iconClass} />;
+                          case 'sftp': return <Lock size={14} className={iconClass} />;
+                          case 'ftps': return <Shield size={14} className={iconClass} />;
+                          case 'googledrive': return <Cloud size={14} className={iconClass} />;
+                          case 'dropbox': return <Archive size={14} className={iconClass} />;
+                          case 'onedrive': return <Cloud size={14} className={iconClass} />;
+                          case 'mega': return <Shield size={14} className={iconClass} />;
+                          default: return <Globe size={14} className={iconClass} />;
+                        }
+                      })()}
+                    </div>
+                    <input
+                      type="text"
+                      value={isConnected ? currentRemotePath : 'Not Connected'}
+                      onChange={(e) => setCurrentRemotePath(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
+                      disabled={!isConnected}
+                      className="flex-1 px-2.5 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900"
+                      title={isConnected ? "Click to edit path, Enter to navigate" : "Not connected to server"}
+                      placeholder="/path/to/directory"
+                    />
+                  </div>
                 </div>
                 <div className="flex-1 overflow-auto">
                   {!isConnected ? (
@@ -3402,22 +3838,29 @@ const App: React.FC = () => {
 
               {/* Local */}
               <div className={`${showLocalPreview ? 'w-1/3' : 'w-1/2'} flex flex-col transition-all duration-300`}>
-                <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  {isLocalPathCoherent ? (
-                    <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
-                  ) : (
-                    <span title="Local path doesn't match the connected server">
-                      <AlertTriangle size={14} className="text-amber-500" />
-                    </span>
-                  )}
-                  <input
-                    type="text"
-                    value={currentLocalPath}
-                    onChange={(e) => setCurrentLocalPath(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
-                    className={`flex-1 bg-transparent border-none outline-none text-sm cursor-text select-all ${!isLocalPathCoherent ? 'text-amber-500' : ''}`}
-                    title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "⚠️ Local path doesn't match the connected server"}
-                  />
+                <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                  <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
+                    {/* Local icon inside address bar (like Chrome favicon) */}
+                    <div
+                      className="flex-shrink-0 px-2.5 flex items-center"
+                      title={isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
+                    >
+                      {isLocalPathCoherent ? (
+                        <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
+                      ) : (
+                        <AlertTriangle size={14} className="text-amber-500" />
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={currentLocalPath}
+                      onChange={(e) => setCurrentLocalPath(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
+                      className={`flex-1 px-2.5 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                      title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "⚠️ Local path doesn't match the connected server"}
+                      placeholder="/path/to/local/directory"
+                    />
+                  </div>
                 </div>
                 <div className="flex-1 overflow-auto">
                   {viewMode === 'list' ? (
@@ -3476,10 +3919,20 @@ const App: React.FC = () => {
                               if (file.is_dir) {
                                 changeLocalDirectory(file.path);
                               } else {
-                                if (isConnected) {
-                                  uploadFile(file.path, file.name, false);
+                                // Respect double-click action setting
+                                if (doubleClickAction === 'preview') {
+                                  const category = getPreviewCategory(file.name);
+                                  if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+                                    openUniversalPreview(file, false);
+                                  } else if (isPreviewable(file.name)) {
+                                    openDevToolsPreview(file, false);
+                                  }
                                 } else {
-                                  openInFileManager(file.path);
+                                  if (isConnected) {
+                                    uploadFile(file.path, file.name, false);
+                                  } else {
+                                    openInFileManager(file.path);
+                                  }
                                 }
                               }
                             }}
@@ -3555,10 +4008,20 @@ const App: React.FC = () => {
                             if (file.is_dir) {
                               changeLocalDirectory(file.path);
                             } else {
-                              if (isConnected) {
-                                uploadFile(file.path, file.name, false);
+                              // Respect double-click action setting
+                              if (doubleClickAction === 'preview') {
+                                const category = getPreviewCategory(file.name);
+                                if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+                                  openUniversalPreview(file, false);
+                                } else if (isPreviewable(file.name)) {
+                                  openDevToolsPreview(file, false);
+                                }
                               } else {
-                                openInFileManager(file.path);
+                                if (isConnected) {
+                                  uploadFile(file.path, file.name, false);
+                                } else {
+                                  openInFileManager(file.path);
+                                }
                               }
                             }
                           }}
@@ -3749,6 +4212,7 @@ const App: React.FC = () => {
         initialHeight={150}
         minHeight={80}
         maxHeight={400}
+        theme={getLogTheme(theme, isDark)}
       />
 
       {/* DevTools V2 - 3-Column Responsive Layout (at bottom, below ActivityLog) */}
@@ -3759,6 +4223,7 @@ const App: React.FC = () => {
         remotePath={currentRemotePath}
         onClose={() => setDevToolsOpen(false)}
         onClearFile={() => setDevToolsPreviewFile(null)}
+        editorTheme={getMonacoTheme(theme, isDark)}
         onSaveFile={async (content, file) => {
           const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
           try {
@@ -3780,40 +4245,42 @@ const App: React.FC = () => {
         }}
       />
 
-      <StatusBar
-        isConnected={isConnected}
-        serverInfo={isConnected ? (() => {
-          // Get protocol from active session as fallback
-          const activeSession = sessions.find(s => s.id === activeSessionId);
-          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-          if (protocol === 'googledrive') return 'Google Drive';
-          if (protocol === 'dropbox') return 'Dropbox';
-          if (protocol === 'onedrive') return 'OneDrive';
-          if (protocol === 'mega') return 'MEGA';
-          // For FTP/FTPS/SFTP/etc, show username@server or session name
-          const server = connectionParams.server || activeSession?.connectionParams?.server;
-          const username = connectionParams.username || activeSession?.connectionParams?.username;
-          return server ? `${username}@${server}` : activeSession?.serverName;
-        })() : undefined}
-        remotePath={currentRemotePath}
-        localPath={currentLocalPath}
-        remoteFileCount={remoteFiles.length}
-        localFileCount={localFiles.length}
-        activePanel={activePanel}
-        devToolsOpen={devToolsOpen}
-        onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
-        onToggleSync={() => setShowSyncPanel(true)}
-        onToggleCloud={() => setShowCloudPanel(true)}
-        cloudEnabled={isCloudActive}
-        cloudSyncing={cloudSyncing}
-        transferQueueActive={transferQueue.hasActiveTransfers}
-        transferQueueCount={transferQueue.items.length}
-        onToggleTransferQueue={transferQueue.toggle}
-        showActivityLog={showActivityLog}
-        activityLogCount={activityLog.entries.length}
-        onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
-        updateAvailable={updateAvailable}
-      />
+      {showStatusBar && (
+        <StatusBar
+          isConnected={isConnected}
+          serverInfo={isConnected ? (() => {
+            // Get protocol from active session as fallback
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+            if (protocol === 'googledrive') return 'Google Drive';
+            if (protocol === 'dropbox') return 'Dropbox';
+            if (protocol === 'onedrive') return 'OneDrive';
+            if (protocol === 'mega') return 'MEGA';
+            // For FTP/FTPS/SFTP/etc, show username@server or session name
+            const server = connectionParams.server || activeSession?.connectionParams?.server;
+            const username = connectionParams.username || activeSession?.connectionParams?.username;
+            return server ? `${username}@${server}` : activeSession?.serverName;
+          })() : undefined}
+          remotePath={currentRemotePath}
+          localPath={currentLocalPath}
+          remoteFileCount={remoteFiles.length}
+          localFileCount={localFiles.length}
+          activePanel={activePanel}
+          devToolsOpen={devToolsOpen}
+          onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
+          onToggleSync={() => setShowSyncPanel(true)}
+          onToggleCloud={() => setShowCloudPanel(true)}
+          cloudEnabled={isCloudActive}
+          cloudSyncing={cloudSyncing}
+          transferQueueActive={transferQueue.hasActiveTransfers}
+          transferQueueCount={transferQueue.items.length}
+          onToggleTransferQueue={transferQueue.toggle}
+          showActivityLog={showActivityLog}
+          activityLogCount={activityLog.entries.length}
+          onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
+          updateAvailable={updateAvailable}
+        />
+      )}
     </div>
   );
 };

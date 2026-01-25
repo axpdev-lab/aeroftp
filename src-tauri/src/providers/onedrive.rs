@@ -17,9 +17,10 @@ use super::{
 /// Microsoft Graph API base URL
 const GRAPH_API_BASE: &str = "https://graph.microsoft.com/v1.0";
 
-/// OneDrive item metadata
+/// OneDrive item metadata (fields needed for API response deserialization)
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct DriveItem {
     id: String,
     name: String,
@@ -38,6 +39,7 @@ struct DriveItem {
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct FolderFacet {
     child_count: Option<i32>,
 }
@@ -50,6 +52,7 @@ struct FileFacet {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct ParentReference {
     drive_id: Option<String>,
     id: Option<String>,
@@ -79,12 +82,13 @@ impl OneDriveConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let client_id = config.extra.get("client_id")
             .ok_or_else(|| ProviderError::Other("Missing client_id".to_string()))?;
         let client_secret = config.extra.get("client_secret")
             .ok_or_else(|| ProviderError::Other("Missing client_secret".to_string()))?;
-        
+
         Ok(Self::new(client_id, client_secret))
     }
 }
@@ -131,12 +135,14 @@ impl OneDriveProvider {
         self.oauth_manager.has_tokens(OAuthProvider::OneDrive)
     }
 
-    /// Start OAuth flow
+    /// Start OAuth flow (called via oauth2_start_auth command)
+    #[allow(dead_code)]
     pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
         self.oauth_manager.start_auth_flow(&self.oauth_config()).await
     }
 
-    /// Complete OAuth flow
+    /// Complete OAuth flow (called via oauth2_connect command)
+    #[allow(dead_code)]
     pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
         self.oauth_manager.complete_auth_flow(&self.oauth_config(), code, state).await?;
         Ok(())

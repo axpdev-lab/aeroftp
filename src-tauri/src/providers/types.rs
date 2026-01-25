@@ -68,11 +68,12 @@ impl ProviderType {
     }
     
     /// Check if this provider uses encryption by default
+    #[allow(dead_code)]
     pub fn uses_encryption(&self) -> bool {
-        matches!(self, 
-            ProviderType::Ftps | 
-            ProviderType::Sftp | 
-            ProviderType::WebDav | 
+        matches!(self,
+            ProviderType::Ftps |
+            ProviderType::Sftp |
+            ProviderType::WebDav |
             ProviderType::S3 |
             ProviderType::AeroCloud |  // AeroCloud recommends FTPS
             ProviderType::GoogleDrive |
@@ -81,17 +82,19 @@ impl ProviderType {
             ProviderType::Mega
         )
     }
-    
+
     /// Check if this provider requires OAuth2 authentication
+    #[allow(dead_code)]
     pub fn requires_oauth2(&self) -> bool {
-        matches!(self, 
+        matches!(self,
             ProviderType::GoogleDrive |
             ProviderType::Dropbox |
             ProviderType::OneDrive
         )
     }
-    
+
     /// Check if this is an AeroCloud provider (uses FTP backend with sync)
+    #[allow(dead_code)]
     pub fn is_aerocloud(&self) -> bool {
         matches!(self, ProviderType::AeroCloud)
     }
@@ -293,6 +296,8 @@ impl SftpConfig {
 pub struct MegaConfig {
     pub email: String,
     pub password: secrecy::Secret<String>,
+    /// Whether to save session for reconnection (used in future session persistence)
+    #[allow(dead_code)]
     pub save_session: bool,
     pub logout_on_disconnect: Option<bool>,
 }
@@ -371,8 +376,9 @@ impl RemoteEntry {
             metadata: Default::default(),
         }
     }
-    
-    /// Create a new file entry
+
+    /// Create a new file entry (used in tests and future provider implementations)
+    #[allow(dead_code)]
     pub fn file(name: String, path: String, size: u64) -> Self {
         Self {
             name,
@@ -389,8 +395,9 @@ impl RemoteEntry {
             metadata: Default::default(),
         }
     }
-    
-    /// Get file extension
+
+    /// Get file extension (used in tests and MIME type detection)
+    #[allow(dead_code)]
     pub fn extension(&self) -> Option<&str> {
         if self.is_dir {
             return None;
@@ -401,67 +408,69 @@ impl RemoteEntry {
 
 /// Provider error type
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum ProviderError {
     #[error("Not connected to server")]
     NotConnected,
-    
+
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
-    
+
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
-    
+
     #[error("Path not found: {0}")]
     NotFound(String),
-    
+
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
-    
+
     #[error("Path already exists: {0}")]
     AlreadyExists(String),
-    
+
     #[error("Directory not empty: {0}")]
     DirectoryNotEmpty(String),
-    
+
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    
+
     #[error("Operation not supported: {0}")]
     NotSupported(String),
-    
+
     #[error("Transfer cancelled")]
     Cancelled,
-    
+
     #[error("Transfer failed: {0}")]
     TransferFailed(String),
-    
+
     #[error("Timeout")]
     Timeout,
-    
+
     #[error("Network error: {0}")]
     NetworkError(String),
-    
+
     #[error("Parse error: {0}")]
     ParseError(String),
-    
+
     #[error("Server error: {0}")]
     ServerError(String),
-    
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    
+
     #[error("Unknown error: {0}")]
     Unknown(String),
-    
+
     #[error("{0}")]
     Other(String),
 }
 
 impl ProviderError {
     /// Check if this error is recoverable (can retry)
+    #[allow(dead_code)]
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,
@@ -472,8 +481,9 @@ impl ProviderError {
     }
 }
 
-/// Transfer progress information
+/// Transfer progress information (for future progress events)
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct TransferProgressInfo {
     /// Bytes transferred so far
     pub bytes_transferred: u64,
@@ -487,6 +497,7 @@ pub struct TransferProgressInfo {
     pub eta_seconds: Option<u64>,
 }
 
+#[allow(dead_code)]
 impl TransferProgressInfo {
     pub fn new(bytes_transferred: u64, total_bytes: u64) -> Self {
         let percentage = if total_bytes > 0 {
@@ -494,7 +505,7 @@ impl TransferProgressInfo {
         } else {
             0.0
         };
-        
+
         Self {
             bytes_transferred,
             total_bytes,

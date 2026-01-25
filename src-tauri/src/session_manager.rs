@@ -22,7 +22,8 @@ pub struct SessionInfo {
     pub protocol: String,
     /// Current remote path
     pub current_path: String,
-    /// Creation timestamp
+    /// Creation timestamp (for future session timeout/metrics)
+    #[allow(dead_code)]
     pub created_at: std::time::Instant,
     /// Last activity timestamp
     pub last_activity: std::time::Instant,
@@ -32,6 +33,8 @@ pub struct SessionInfo {
 pub struct ProviderSession {
     pub info: SessionInfo,
     pub provider: Box<dyn StorageProvider>,
+    /// Provider configuration (for reconnection/serialization)
+    #[allow(dead_code)]
     pub config: Option<ProviderConfig>,
 }
 
@@ -96,6 +99,7 @@ impl MultiProviderState {
 
     /// Get a mutable reference to a session's provider
     /// Returns None if session doesn't exist
+    #[allow(dead_code)]
     pub async fn get_session_mut<F, R>(&self, session_id: &str, f: F) -> Result<R, ProviderError>
     where
         F: FnOnce(&mut ProviderSession) -> Result<R, ProviderError>,
@@ -103,10 +107,10 @@ impl MultiProviderState {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(session_id)
             .ok_or_else(|| ProviderError::NotConnected)?;
-        
+
         // Update last activity
         session.info.last_activity = std::time::Instant::now();
-        
+
         f(session)
     }
 
@@ -185,16 +189,19 @@ impl MultiProviderState {
     }
 
     /// Get the count of active sessions
+    #[allow(dead_code)]
     pub async fn session_count(&self) -> usize {
         self.sessions.read().await.len()
     }
 
     /// Check if a session exists
+    #[allow(dead_code)]
     pub async fn has_session(&self, session_id: &str) -> bool {
         self.sessions.read().await.contains_key(session_id)
     }
 
     /// Close all sessions (cleanup on app shutdown)
+    #[allow(dead_code)]
     pub async fn close_all_sessions(&self) {
         let mut sessions = self.sessions.write().await;
         
@@ -211,15 +218,16 @@ impl MultiProviderState {
 
     // ============ Provider Operations (delegated to session) ============
 
-    /// List files in a session
+    /// List files in a session (sync closure version - use list_files_async instead)
+    #[allow(dead_code)]
     pub async fn list_files(
         &self,
         session_id: Option<&str>,
-        path: &str,
+        _path: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
-        self.get_session_mut(&sid, |session| {
+
+        self.get_session_mut(&sid, |_session| {
             // We need to return a future, but we're in a sync closure
             // This is a limitation - we'll handle it differently
             Err(ProviderError::Other("Use async version".to_string()))

@@ -1,14 +1,17 @@
 {
   "name": "aeroftp",
   "private": true,
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "AeroFTP - Fast, Beautiful, Reliable FTP Client",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "i18n:validate": "npx tsx scripts/i18n-validate.ts",
+    "i18n:sync": "npx tsx scripts/i18n-sync.ts",
+    "i18n:stats": "npx tsx scripts/i18n-stats.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

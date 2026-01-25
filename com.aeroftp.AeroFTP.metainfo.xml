@@ -10,26 +10,27 @@
   
   <description>
     <p>
-      AeroFTP is a modern FTP client built with Tauri that combines beauty and functionality.
-      It offers a sleek interface with powerful features for managing your FTP connections.
+      AeroFTP is a modern multi-protocol file transfer client built with Tauri.
+      It supports FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers
+      including Google Drive, Dropbox, OneDrive, and MEGA.
     </p>
     <p>Features:</p>
     <ul>
-      <li>Multi-language support - English, Italian, Spanish, French, Chinese</li>
-      <li>Fast transfers with real-time progress monitoring</li>
-      <li>AeroCloud file synchronization</li>
-      <li>Beautiful, modern dark/light themes</li>
-      <li>Dual-pane file browser for local and remote files</li>
-      <li>File synchronization with conflict detection</li>
-      <li>Integrated DevTools with Monaco code editor, terminal, and AI chat</li>
+      <li>51 languages with RTL support (Arabic, Hebrew, Persian, Urdu)</li>
+      <li>AeroCloud - Turn any FTP server into your personal cloud</li>
+      <li>Multi-protocol: FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA</li>
+      <li>Smart Overwrite Dialog with file comparison view</li>
+      <li>Properties Dialog with checksum calculation (MD5/SHA-256)</li>
+      <li>Compress and extract ZIP archives</li>
+      <li>Drag and drop file organization</li>
+      <li>Dual-pane file browser with list and grid views</li>
+      <li>Integrated DevTools: Monaco code editor, terminal, AI assistant</li>
       <li>Built-in media player and image preview</li>
-      <li>Multi-session tabs with connection caching</li>
-      <li>Secure FTPS connection profiles</li>
-      <li>Keyboard shortcuts for power users</li>
-      <li>Activity Log Panel with FileZilla-style real-time logging</li>
+      <li>Multi-session tabs with connection persistence</li>
+      <li>Activity Log with real-time transfer monitoring</li>
     </ul>
     <p>
-      Built with Rust (Tauri) and React/TypeScript. Open source under GPL-3.0 license.
+      Built with Rust (Tauri 2) and React 18/TypeScript. Open source under GPL-3.0 license.
     </p>
   </description>
   
@@ -64,21 +65,42 @@
   
   <languages>
     <lang percentage="100">en</lang>
-    <lang percentage="100">it</lang>
+    <lang percentage="100">de</lang>
     <lang percentage="100">es</lang>
     <lang percentage="100">fr</lang>
+    <lang percentage="100">it</lang>
+    <lang percentage="100">ja</lang>
+    <lang percentage="100">ko</lang>
+    <lang percentage="100">pt</lang>
+    <lang percentage="100">ru</lang>
     <lang percentage="100">zh</lang>
+    <lang percentage="100">ar</lang>
+    <lang percentage="100">he</lang>
   </languages>
   
   <releases>
+    <release version="1.2.8" date="2026-01-25">
+      <description>
+        <p>Global Multilingual Edition (51 Languages) + File Management Pro</p>
+        <ul>
+          <li>51 languages including RTL support (Arabic, Hebrew, Persian, Urdu)</li>
+          <li>SFTP protocol with SSH key authentication</li>
+          <li>Smart Overwrite Dialog with file comparison</li>
+          <li>Properties Dialog with checksum calculation (MD5/SHA-256)</li>
+          <li>Compress/Extract ZIP archives</li>
+          <li>Drag and drop file organization</li>
+          <li>MEGA.nz integration with 20GB free storage</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-01-20">
       <description>
-        <p>☁️ Google Drive &amp; OAuth Providers (Sprint 2)</p>
+        <p>Google Drive and OAuth Providers</p>
         <ul>
           <li>Google Drive Integration (OAuth2)</li>
           <li>New OAuth Settings panel with secure token storage</li>
           <li>Provider icons in session tabs</li>
-          <li>Fixed critical session switching bugs (FTP ↔ OAuth)</li>
+          <li>Fixed critical session switching bugs (FTP to OAuth)</li>
           <li>Improved OAuth callback handling with local server</li>
         </ul>
       </description>

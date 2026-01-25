@@ -101,6 +101,7 @@ impl SftpProvider {
     }
 
     /// Get mutable SFTP session or error if not connected
+    #[allow(dead_code)]
     fn get_sftp_mut(&mut self) -> Result<&mut SftpSession, ProviderError> {
         self.sftp.as_mut().ok_or(ProviderError::NotConnected)
     }

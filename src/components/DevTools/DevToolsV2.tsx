@@ -13,6 +13,8 @@ interface DevToolsV2Props {
     onClose: () => void;
     onSaveFile?: (content: string, file: PreviewFile) => Promise<void>;
     onClearFile?: () => void;
+    /** Monaco editor theme: 'vs' (light), 'vs-dark', or 'tokyo-night' */
+    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night';
 }
 
 type PanelVisibility = {
@@ -35,12 +37,29 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     onClose,
     onSaveFile,
     onClearFile,
+    editorTheme = 'tokyo-night',
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(window.innerWidth);
     const [isMaximized, setIsMaximized] = useState(false);
     const [height, setHeight] = useState(350);
     const isDragging = useRef(false);
+
+    // Derive light mode from editor theme
+    const isLightTheme = editorTheme === 'vs';
+
+    // Theme-aware classes
+    const theme = {
+        panel: isLightTheme ? 'bg-gray-50 text-gray-900' : 'bg-gray-900 text-gray-100',
+        toolbar: isLightTheme ? 'bg-gray-100 border-gray-300' : 'bg-gray-800 border-gray-700',
+        border: isLightTheme ? 'border-gray-300' : 'border-gray-700',
+        resizeHandle: isLightTheme ? 'bg-gray-300 hover:bg-blue-500' : 'bg-gray-700 hover:bg-blue-500',
+        buttonInactive: isLightTheme ? 'text-gray-500 hover:text-gray-900 hover:bg-gray-200' : 'text-gray-400 hover:text-white hover:bg-gray-700',
+        buttonHover: isLightTheme ? 'hover:bg-gray-200' : 'hover:bg-gray-700',
+        text: isLightTheme ? 'text-gray-600' : 'text-gray-400',
+        divider: isLightTheme ? 'bg-gray-300' : 'bg-gray-600',
+        panelHeader: isLightTheme ? 'bg-gray-100/50 border-gray-300' : 'bg-gray-800/50 border-gray-700',
+    };
 
     // Panel visibility state
     const [panels, setPanels] = useState<PanelVisibility>({
@@ -154,7 +173,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     return (
         <div
             ref={containerRef}
-            className="bg-gray-900 text-gray-100 border-t border-gray-700 flex flex-col flex-shrink-0"
+            className={`${theme.panel} border-t ${theme.border} flex flex-col flex-shrink-0`}
             style={{
                 height: isMaximized ? maxHeight : height,
                 maxHeight: maxHeight
@@ -163,14 +182,14 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             {/* Resize handle */}
             <div
                 onMouseDown={handleMouseDown}
-                className="h-1.5 bg-gray-700 hover:bg-blue-500 cursor-ns-resize transition-colors flex-shrink-0"
+                className={`h-1.5 ${theme.resizeHandle} cursor-ns-resize transition-colors flex-shrink-0`}
             />
 
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex-shrink-0">
+            <div className={`flex items-center justify-between px-3 py-1.5 ${theme.toolbar} border-b flex-shrink-0`}>
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-400">DevTools</span>
-                    <div className="w-px h-4 bg-gray-600" />
+                    <span className={`text-xs font-medium ${theme.text}`}>DevTools</span>
+                    <div className={`w-px h-4 ${theme.divider}`} />
 
                     {/* Panel toggles */}
                     <div className="flex items-center gap-1">
@@ -178,7 +197,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             onClick={() => togglePanel('editor')}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.editor
                                 ? 'bg-blue-600 text-white'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                : theme.buttonInactive
                                 }`}
                             title="Toggle Editor"
                         >
@@ -189,7 +208,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             onClick={() => togglePanel('terminal')}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.terminal
                                 ? 'bg-green-600 text-white'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                : theme.buttonInactive
                                 }`}
                             title="Toggle Terminal"
                         >
@@ -200,7 +219,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             onClick={() => togglePanel('chat')}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.chat
                                 ? 'bg-purple-600 text-white'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                : theme.buttonInactive
                                 }`}
                             title="Toggle Agent"
                         >
@@ -213,14 +232,14 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setIsMaximized(!isMaximized)}
-                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                        className={`p-1 ${theme.buttonHover} rounded transition-colors`}
                         title={isMaximized ? 'Restore' : 'Maximize'}
                     >
                         {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                        className={`p-1 ${theme.buttonHover} rounded transition-colors`}
                         title="Close DevTools"
                     >
                         <X size={14} />
@@ -231,7 +250,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             {/* 3-Column Content Area */}
             <div className="flex-1 flex overflow-hidden">
                 {visiblePanels.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                    <div className={`flex-1 flex items-center justify-center ${theme.text} text-sm`}>
                         <Columns3 size={24} className="mr-2 opacity-50" />
                         No panels active. Click the buttons above to show Editor, Terminal, or AI Chat.
                     </div>
@@ -239,12 +258,12 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                     <>
                         {visiblePanels.includes('editor') && (
                             <div
-                                className="border-r border-gray-700 flex flex-col overflow-hidden"
+                                className={`border-r ${theme.border} flex flex-col overflow-hidden`}
                                 style={{ width: panelWidth }}
                             >
-                                <div className="px-2 py-1 bg-gray-800/50 border-b border-gray-700 flex items-center gap-2">
+                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <Code size={12} className="text-blue-400" />
-                                    <span className="text-xs text-gray-400">
+                                    <span className={`text-xs ${theme.text}`}>
                                         {previewFile?.name || 'No file open'}
                                     </span>
                                 </div>
@@ -258,6 +277,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                         }}
                                         onClose={() => onClearFile?.()}
                                         className="h-full"
+                                        theme={editorTheme}
                                     />
                                 </div>
                             </div>
@@ -265,14 +285,15 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
                         {visiblePanels.includes('terminal') && (
                             <div
-                                className="border-r border-gray-700 flex flex-col overflow-hidden"
+                                className={`border-r ${theme.border} flex flex-col overflow-hidden`}
                                 style={{ width: panelWidth }}
                             >
-                                <div className="px-2 py-1 bg-gray-800/50 border-b border-gray-700 flex items-center gap-2">
+                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <Terminal size={12} className="text-green-400" />
-                                    <span className="text-xs text-gray-400">Terminal</span>
+                                    <span className={`text-xs ${theme.text}`}>Terminal</span>
                                 </div>
-                                <div className="flex-1 overflow-hidden">
+                                <div className="flex-1 overflow-hidden bg-gray-900">
+                                    {/* Terminal always stays dark - traditional */}
                                     <SSHTerminal className="h-full" localPath={localPath} />
                                 </div>
                             </div>
@@ -283,12 +304,12 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: panelWidth }}
                             >
-                                <div className="px-2 py-1 bg-gray-800/50 border-b border-gray-700 flex items-center gap-2">
+                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <MessageSquare size={12} className="text-purple-400" />
-                                    <span className="text-xs text-gray-400">AI Assistant</span>
+                                    <span className={`text-xs ${theme.text}`}>AI Assistant</span>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} />
+                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} />
                                 </div>
                             </div>
                         )}

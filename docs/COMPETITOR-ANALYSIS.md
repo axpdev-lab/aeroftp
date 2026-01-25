@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
 > Last Updated: 25 January 2026
-> Version: v1.2.7 (MEGA Integration + UI Consistency)
+> Version: v1.2.8 (Global Multilingual + File Management Pro)
 
 ---
 
@@ -90,7 +90,7 @@
 | AppImage | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Homebrew | 📋 | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Auto-Update | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| i18n Languages | 5 | 47 | ~10 | ~15 | ~5 | ~5 |
+| i18n Languages | **51** | 47 | ~10 | ~15 | ~5 | ~5 |
 
 **Legend:** ✅ Available | 📋 Planned | 🔄 In Progress | ❌ Not Available
 
@@ -139,6 +139,14 @@
 1. ✅ **MEGA.nz Integration** - 20GB free encrypted storage (UNIQUE - no competitor has this)
 2. ✅ **SFTP Support** - Password and SSH key authentication
 3. ✅ **UI Consistency** - Protocol icons standardized across app
+
+### v1.2.8 - COMPLETED (In Testing)
+1. ✅ **Overwrite Confirmation** - Like FileZilla/Cyberduck/WinSCP
+2. ✅ **Properties/Checksum** - File metadata and MD5/SHA-256
+3. ✅ **Compress/Archive** - ZIP creation and extraction
+4. ✅ **51 Languages** - Surpassed FileZilla (47 languages)!
+5. ✅ **Same-panel Drag & Drop** - Move files to folders
+6. ✅ **Activity Log Move Tracking** - File operations fully logged
 
 ### v1.3.0 - Critical Gap Closure
 1. **Cryptomator Encryption** - Cyberduck's premium feature

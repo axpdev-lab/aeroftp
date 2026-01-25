@@ -1,12 +1,23 @@
 # AeroCloud 2.0 - Multi-Provider Cloud Storage Roadmap
 
 > Created: 20 January 2026
-> Version: AeroFTP 1.0.0 → 1.2.7
-> Status: Sprint 2.5 Complete (v1.2.7 Released)
+> Version: AeroFTP 1.0.0 → 1.2.8
+> Status: Sprint 2.5 Complete (v1.2.8 In Testing)
 
 ---
 
 ## 📦 Release Log
+
+### v1.2.8 (25 January 2026) - IN TESTING
+**Global Multilingual + File Management Pro Features:**
+- ✅ **Overwrite Confirmation**: Dialog when files exist at destination (Overwrite/Skip/Rename)
+- ✅ **Activity Log Moves**: File moves (drag to folder) now tracked with MOVE operation
+- ✅ **Properties Dialog**: Full file metadata viewer with checksum
+- ✅ **Compress/Archive**: ZIP creation and extraction
+- ✅ **Drag & Drop Basic**: Move files within same panel by dragging to folders
+- ✅ **51 Languages**: Global expansion from 5 to 51 languages
+- ✅ **RTL Support**: Arabic, Hebrew, Urdu, Persian
+- ✅ **UI Polish**: Support modal icons, address bar icons, translations fixed
 
 ### v1.2.7 (25 January 2026)
 **MEGA.nz Integration Complete:**
@@ -240,10 +251,16 @@ aws-config = "1"
   - Add "Move to..." context menu item
   - Implement visual dialog for destination folder selection
   - Map to `provider_rename` (Provider side move)
-- [ ] **Advanced Drag & Drop**:
-  - **Nested Drop**: Drop file onto a folder row to move it there
-  - **Panel-to-Panel**: Drag form Remote <-> Local for direct transfer (Upload/Download)
-  - Visual feedback ("ghost" image dragging)
+- [x] **Basic Drag & Drop** ✅ COMPLETE (v1.2.8):
+  - ✅ **Nested Drop**: Drop file onto a folder row to move it there
+  - ✅ Works in both list and grid views
+  - ✅ Multi-select drag support
+  - ✅ Visual feedback (green highlight on drop target, opacity on dragged files)
+  - ✅ Supported on all protocols (FTP, SFTP, WebDAV, S3, Cloud providers)
+- [ ] **Advanced Drag & Drop** (v1.4.0):
+  - **Panel-to-Panel**: Drag from Remote <-> Local for direct transfer (Upload/Download)
+  - External file drop support (Tauri file drop API)
+  - Drag to desktop for download
 - [ ] **Smart Disconnect Policy**:
   - Disable aggressive Keep-Alive for stateless providers (MEGA, Local)
   - Prevent UI from resetting to login screen on transient network errors
@@ -299,11 +316,12 @@ pub struct MultiProviderState {
 ## 📋 Sprint 4: UX & Performance (v1.4.0)
 
 ### Advanced File Management
-- [ ] **Drag & Drop Cross-Panel**
+- [x] **Basic Drag & Drop** ✅ (v1.2.8) - Same-panel move to folder
+- [ ] **Drag & Drop Cross-Panel** (extends v1.2.8 foundation)
   - Remote → Local = Download
   - Local → Remote = Upload
-  - Drop on folder = Move into folder
-  - Visual feedback ("ghost" image)
+  - External file drop (Tauri file drop API)
+  - Drag to desktop = Download
 
 - [ ] **File Versioning** (like Mountain Duck 5)
   - Show version history for S3/cloud providers
@@ -396,18 +414,18 @@ src-tauri/src/
 
 ---
 
-## 📊 Compatibility Matrix (Current v1.2.7)
+## 📊 Compatibility Matrix (Current v1.2.8)
 
-| Provider     | Browse | Upload | Download | Sync | Share | Status |
-| ------------ | ------ | ------ | -------- | ---- | ----- | ------ |
-| FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     | Stable |
-| SFTP         | ✅      | ✅      | ✅        | 📋    | ❌     | **v1.3.0** |
-| WebDAV       | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
-| S3           | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
-| Google Drive | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |
-| Dropbox      | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |
-| OneDrive     | ✅      | ✅      | ✅        | 📋    | ✅     | Beta |
-| MEGA.nz      | ✅      | ✅      | ✅        | 📋    | ❌     | Stable |
+| Provider     | Browse | Upload | Download | Sync | Share | Overwrite | Status |
+| ------------ | ------ | ------ | -------- | ---- | ----- | --------- | ------ |
+| FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     | ✅        | Stable |
+| SFTP         | ✅      | ✅      | ✅        | 📋    | ❌     | ✅        | **v1.3.0** |
+| WebDAV       | ✅      | ✅      | ✅        | ✅    | 📋     | ✅        | Stable |
+| S3           | ✅      | ✅      | ✅        | ✅    | ✅     | ✅        | Stable |
+| Google Drive | ✅      | ✅      | ✅        | 📋    | ✅     | ✅        | Stable |
+| Dropbox      | ✅      | ✅      | ✅        | 📋    | ✅     | ✅        | Stable |
+| OneDrive     | ✅      | ✅      | ✅        | 📋    | ✅     | ✅        | Beta |
+| MEGA.nz      | ✅      | ✅      | ✅        | 📋    | ❌     | ✅        | Stable |
 
 Legend: ✅ Done | 📋 Planned | ❌ Not Applicable
 
@@ -420,5 +438,9 @@ Legend: ✅ Done | 📋 Planned | ❌ Not Applicable
 | Monaco Editor | ✅ | ❌ | ❌ | Basic |
 | AI Assistant | ✅ | ❌ | ❌ | ❌ |
 | Integrated Terminal | ✅ | ❌ | ❌ | PuTTY |
+| Overwrite Dialog | ✅ | ✅ | ✅ | ✅ |
+| 51 Languages | ✅ | 47 | ~10 | ~15 |
+| Properties/Checksum | ✅ | ✅ | ✅ | ✅ |
+| Compress/Archive | ✅ | ❌ | ✅ | ✅ |
 
 See [docs/COMPETITOR-ANALYSIS.md](docs/COMPETITOR-ANALYSIS.md) for full comparison.

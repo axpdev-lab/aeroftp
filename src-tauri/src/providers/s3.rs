@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
 
@@ -763,7 +763,7 @@ impl StorageProvider for S3Provider {
         Ok(())
     }
     
-    async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+    async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
         // S3 doesn't support rename directly - must copy + delete
         // For now, return not supported (copy is expensive for large files)
         Err(ProviderError::NotSupported(

@@ -23,6 +23,8 @@ interface AIChatProps {
     className?: string;
     remotePath?: string;
     localPath?: string;
+    /** Theme hint - AI Chat stays dark but may use for future enhancements */
+    isLightTheme?: boolean;
 }
 
 // Get provider icon based on type
@@ -48,7 +50,7 @@ interface SelectedModel {
     displayName: string;
 }
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [showModelSelector, setShowModelSelector] = useState(false);

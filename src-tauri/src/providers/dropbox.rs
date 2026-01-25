@@ -20,6 +20,7 @@ const CONTENT_BASE: &str = "https://content.dropboxapi.com/2";
 
 /// Dropbox file metadata
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DropboxMetadata {
     #[serde(rename = ".tag")]
     tag: String,
@@ -56,6 +57,7 @@ impl DropboxConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let app_key = config.extra.get("app_key")
             .or_else(|| config.extra.get("client_id"))
@@ -63,7 +65,7 @@ impl DropboxConfig {
         let app_secret = config.extra.get("app_secret")
             .or_else(|| config.extra.get("client_secret"))
             .ok_or_else(|| ProviderError::Other("Missing app_secret".to_string()))?;
-        
+
         Ok(Self::new(app_key, app_secret))
     }
 }
@@ -105,12 +107,14 @@ impl DropboxProvider {
         self.oauth_manager.has_tokens(OAuthProvider::Dropbox)
     }
 
-    /// Start OAuth flow
+    /// Start OAuth flow (called via oauth2_start_auth command)
+    #[allow(dead_code)]
     pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
         self.oauth_manager.start_auth_flow(&self.oauth_config()).await
     }
 
-    /// Complete OAuth flow
+    /// Complete OAuth flow (called via oauth2_connect command)
+    #[allow(dead_code)]
     pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
         self.oauth_manager.complete_auth_flow(&self.oauth_config(), code, state).await?;
         Ok(())
@@ -226,7 +230,6 @@ impl StorageProvider for DropboxProvider {
         }
 
         // Validate by getting account info
-        let body = serde_json::json!(null);
         let url = format!("{}/users/get_current_account", API_BASE);
         
         let response = self.client

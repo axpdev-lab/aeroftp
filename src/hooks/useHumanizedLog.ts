@@ -21,6 +21,7 @@ export interface HumanizedLogParams {
     foldername?: string;
     server?: string;
     path?: string;
+    destination?: string; // for move operations
     count?: number;
     folders?: number;
     files?: number;
@@ -38,7 +39,7 @@ export interface HumanizedLogParams {
 export type HumanizedOperationType =
     | 'CONNECT' | 'DISCONNECT'
     | 'UPLOAD' | 'DOWNLOAD'
-    | 'DELETE' | 'RENAME' | 'MKDIR'
+    | 'DELETE' | 'RENAME' | 'MKDIR' | 'MOVE'
     | 'NAVIGATE'
     | 'DELETE_MULTIPLE' | 'UPLOAD_MULTIPLE' | 'DOWNLOAD_MULTIPLE'
     | 'SYNC' | 'RECONNECT';

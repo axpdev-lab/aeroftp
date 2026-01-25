@@ -1,8 +1,8 @@
 # AeroFTP - Session TODO
 
-> Aggiornato: 20 gennaio 2026
-> Versione Corrente: **v1.2.2**
-> Sprint Corrente: **Sprint 2 - OAuth2 Cloud Providers** ✅ COMPLETATO
+> Aggiornato: 25 gennaio 2026
+> Versione Corrente: **v1.2.8**
+> Sprint Corrente: **Sprint 2.5 - UX & File Management** ✅ COMPLETATO
 
 ---
 
@@ -12,66 +12,82 @@
 |--------|---------|----------|-------|
 | **Sprint 1** | Multi-Protocol (WebDAV, S3) | v1.1.0 | ✅ Rilasciato |
 | **Sprint 2** | OAuth2 Cloud Providers | v1.2.2 | ✅ Completato |
-| **Sprint 3** | End-to-End Encryption | v1.3.0 | ⏳ Prossimo |
+| **Sprint 2.5** | MEGA + UX + File Management | v1.2.8 | ✅ In Testing |
+| **Sprint 3** | Encryption (Cryptomator) | v1.3.0 | ⏳ Prossimo |
 | **Sprint 4** | Collaborative Sharing | v1.4.0 | 📋 Pianificato |
-| **Sprint 5** | Progressive Web App | v1.5.0 | 📋 Pianificato |
+| **Sprint 5** | CLI/Automation | v1.5.0 | 📋 Pianificato |
 
 ---
 
-## ✅ Sprint 2 - Completato (v1.2.2)
+## ✅ Sprint 2.5 - Completato (v1.2.8)
 
-### Backend Rust (Providers)
-- [x] oauth2.rs - Core OAuth2 con PKCE, token management, keyring
-- [x] google_drive.rs - Google Drive API v3 + Share Link
-- [x] dropbox.rs - Dropbox API v2 + Share Link
-- [x] onedrive.rs - Microsoft Graph API + Share Link
-- [x] Tauri commands OAuth2 registrati
-- [x] OAuth callback page con logo ufficiale AeroFTP
-- [x] `provider_create_share_link` - Comando per creare share link nativi
+### File Management Pro Features
+- [x] Properties Dialog - File metadata, MIME type, permissions
+- [x] Checksum Verification - MD5/SHA-256 in Properties
+- [x] Compress/Archive - ZIP creation and extraction
+- [x] Overwrite Confirmation Dialog - Smart file conflict resolution
+- [x] Same-panel Drag & Drop - Move files to folders
+- [x] Activity Log Move Tracking - MOVE operation type
 
-### Frontend React
-- [x] useOAuth2.ts - Hook per OAuth flow
-- [x] OAuthConnect.tsx - Componente UI OAuth
-- [x] ProtocolSelector.tsx - Aggiunto OAuth providers
-- [x] types.ts - Aggiunto googledrive | dropbox | onedrive
-- [x] Context menu con "Create Share Link" per OAuth providers
-- [x] Context menu con "Copy Share Link" per AeroCloud
+### Global Multilingual Expansion
+- [x] 46 nuove lingue (da 5 a 51 totali)
+- [x] Supporto RTL (Arabic, Hebrew, Urdu, Persian)
+- [x] Superato FileZilla (47 lingue)!
 
-### Settings & UX
-- [x] Tab "Cloud Providers" in Settings per OAuth credentials
-- [x] Finestra più grande (1440x900)
-- [x] Toast notifications disabilitate di default
-- [x] Toggle "Show Toast Notifications" nei Settings
-- [x] notify wrapper per ActivityLog + Toast condizionale
-- [x] Custom AeroCloud tab name setting
+### UI Polish
+- [x] Support Modal icons - Official SVG logos
+- [x] Address bar icons - Chrome-style (no backgrounds)
+- [x] Disconnect/Connect button translations fixed
+- [x] Crypto icons with brand colors
 
-### Bug Fixes v1.2.1
-- [x] Tab switching: aggiornamento file remoti al cambio server
-- [x] OAuth → FTP switch: mostra connection screen correttamente
-- [x] AeroCloud: passaggio parametro protocol per evitare errori
-- [x] New tab (+): mostra connection screen invece di tab vuota
+### v1.2.7 (MEGA Integration)
+- [x] MEGA.nz provider completo
+- [x] Keep-Alive fix per stateless providers
+- [x] Terminal Tokyo Night theme
+- [x] Protocol selector UX improvements
 
-### Features v1.2.2
-- [x] Share Link nativo per Google Drive, Dropbox, OneDrive
-- [x] Share Link per AeroCloud con public_url_base
-- [x] OAuth folder download ricorsivo
-- [x] FTP dopo OAuth corretto
+### v1.2.6 (Auto-Update)
+- [x] Auto-Update System
+- [x] Smart Format Detection (DEB, AppImage, Snap, etc.)
+- [x] Update Toast notifications
 
 ---
 
 ## 📋 Sprint 3 - Encryption (Prossimo)
 
-### Obiettivi
-- [ ] Encryption at-rest per file sincronizzati
-- [ ] Client-side encryption con chiave utente
-- [ ] Zero-knowledge design
-- [ ] Gestione chiavi sicura
+### Obiettivi v1.3.0
+- [ ] Cryptomator vault support
+- [ ] Client-side encryption layer
+- [ ] Keyboard Shortcuts (F2, Del, Ctrl+C/V)
+- [ ] Cross-panel Drag & Drop
+- [ ] Host key verification per SFTP
+
+---
+
+## 📈 Competitor Comparison
+
+### Languages
+| Client | Languages | Status |
+|--------|-----------|--------|
+| **AeroFTP** | **51** | 🥇 Leader |
+| FileZilla | 47 | 🥈 |
+| WinSCP | ~15 | |
+| Cyberduck | ~10 | |
+
+### Unique Features
+| Feature | AeroFTP | Others |
+|---------|---------|--------|
+| MEGA.nz | ✅ | ❌ |
+| AeroCloud Sync | ✅ | ❌ |
+| Monaco Editor | ✅ | ❌ |
+| AI Assistant | ✅ | ❌ |
+| 51 Languages | ✅ | ❌ |
 
 ---
 
 ## 🔧 Quick Commands
 
-\`\`\`bash
+```bash
 # Build frontend
 cd /var/www/html/FTP_CLIENT_GUI && npm run build
 
@@ -85,24 +101,25 @@ npm run tauri build
 npm run tauri dev
 
 # Create release tag
-git tag v1.2.0 && git push origin v1.2.0
-\`\`\`
+git tag v1.2.8 && git push origin v1.2.8
+```
 
 ---
 
 ## 📝 Note Tecniche
 
+### Overwrite Dialog
+- Shows when files exist at destination
+- Overwrite, Skip, Rename, Cancel options
+- "Apply to all" for batch operations
+- Tracks skipped files in Activity Log
+
+### Activity Log MOVE
+- New operation type for drag-to-folder moves
+- Teal color icon in all themes
+- Translation keys: move_start, move_success, move_error
+
 ### OAuth2 Callback Server
 - Porta: 17548
 - Redirect URI: http://localhost:17548/callback
 - Da configurare nelle console developer di ogni provider
-
-### Provider Developer Consoles
-- **Google**: https://console.cloud.google.com/apis/credentials
-- **Dropbox**: https://www.dropbox.com/developers/apps
-- **OneDrive**: https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps
-
-### Token Storage
-- Keyring integration (cross-platform)
-- Service: aeroftp
-- Username: {provider}_tokens (es: googledrive_tokens)

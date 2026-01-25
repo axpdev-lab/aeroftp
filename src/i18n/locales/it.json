@@ -136,7 +136,13 @@
             "clearCompleted": "Cancella Completati",
             "cancelAll": "Annulla Tutti",
             "pauseAll": "Pausa Tutti",
-            "resumeAll": "Riprendi Tutti"
+            "resumeAll": "Riprendi Tutti",
+            "activityLog": "Registro attività",
+            "noActivity": "Nessuna attività",
+            "clearLog": "Cancella registro",
+            "jumpToLatest": "Vai all'ultimo",
+            "running": "in esecuzione",
+            "entries": "voci"
         },
         "settings": {
             "title": "Impostazioni",

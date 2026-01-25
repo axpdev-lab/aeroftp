@@ -27,52 +27,68 @@
 
 ---
 
-## Key Features (v1.2.7)
+## Key Features (v1.2.8)
 
-### AeroCloud – Your Personal Cloud on Any FTP Server
+### Global Multilingual Support - 51 Languages
+AeroFTP now supports more languages than any other FTP client on the market:
+- **51 languages** including all major world languages
+- **RTL support** for Arabic, Hebrew, Persian, and Urdu
+- Automatic UI direction switching for RTL languages
+- Type-safe translation system with fallback to English
+
+### AeroCloud - Your Personal Cloud on Any FTP Server
 - Turn **any FTP server** into a private personal cloud
-- **Bidirectional sync** (new files local ↔ remote)
-- Automatic interval sync + **manual sync button** (in app + tray menu)
+- **Bidirectional sync** (new files local to remote)
+- Automatic interval sync with manual sync button (in app and tray menu)
 - **Dedicated tray icon**: Close the app, AeroCloud keeps running in background
 - **Share link** for remote folder (secure sharing)
-- Per-project local folders + navigation sync with coherence check
+- Per-project local folders with navigation sync
 
 ### Multi-protocol Support
 - FTP / FTPS (TLS/SSL)
+- **SFTP** (SSH File Transfer Protocol) - Native Rust implementation
 - **WebDAV** (tested: Nextcloud, ownCloud, Synology, DriveHQ)
 - **S3-compatible** (tested: Backblaze B2, Wasabi, MinIO)
-- **MEGA.nz** – 20GB free, client-side encryption (requires MEGAcmd)
+- **MEGA.nz** - 20GB free, client-side encryption
 - OAuth cloud integrations: **Google Drive**, **Dropbox**, **OneDrive**
 - Custom connection for any WebDAV or S3-compatible server
 
-### File Management
-- **List/Grid view** with **image thumbnails** (local + remote)
+### Advanced File Management
+- **Smart Overwrite Dialog**: File conflict resolution with comparison view
+  - Shows source vs destination (size, date, which is newer)
+  - Actions: Overwrite, Skip, Rename, Cancel
+  - "Apply to all" for batch operations
+  - Configurable default behavior in Settings
+- **Properties Dialog**: Detailed file/folder metadata with checksum calculation
+- **Compress/Extract**: Create and extract ZIP archives
+- **Drag and Drop**: Move files within panels
+- **List/Grid view** with image thumbnails (local and remote)
 - Built-in **media player** for audio/video
-- Preview for images, TXT, INI, code files
-- Intelligent upload/sync queue with progress
+- Preview for images, text, and code files
 
-### Advanced Activity Log
-- Themes: Tokyo Night / Cyber neon
-- Typewriter effect, badge counter (0→99+)
-- Humanized messages in 5 languages
-- AeroCloud message filter
+### Activity Log
+- Multiple themes: Tokyo Night, Cyber neon, Light
+- Typewriter effect with badge counter
+- Humanized messages in all supported languages
+- Operation filtering (uploads, downloads, AeroCloud)
 
-### Pro DevTools
+### DevTools Panel
 - **Monaco Editor** (VS Code engine) for file editing
 - Integrated **terminal** with Tokyo Night theme
-- **AeroAgent**: AI assistant for commands, file analysis and automation
+- **AeroAgent**: AI assistant for commands, file analysis, and automation
 
 ### Smart Updater
-- Auto-check on startup + manual check (Settings/About)
-- Desktop notification + purple badge button
-- Direct download link for your OS (.deb/.exe/.dmg)
+- Auto-check on startup with manual check option
+- Desktop notification with download badge
+- Direct download link for your platform
 
-### Other Highlights
-- Elegant dark Tailwind interface
-- Full i18n (EN/IT/FR/ES/ZH)
-- Preserves saved connections/OAuth across updates
+### Additional Features
+- Light and dark theme support
+- Keyboard shortcuts for common operations
+- Preserves saved connections and OAuth tokens across updates
+- Cross-platform: Linux, Windows, macOS
 
-**Roadmap**: Full SFTP support, end-to-end encryption, advanced multi-device AeroCloud, Cryptomator vault support
+**Roadmap**: End-to-end encryption, advanced multi-device AeroCloud sync, Cryptomator vault support
 
 ---
 
@@ -89,6 +105,28 @@ Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/lates
 - **Linux:** .deb, .rpm, .AppImage
 - **Windows:** .exe, .msi
 - **macOS:** .dmg
+
+---
+
+## Support the Project
+
+AeroFTP is free and open source software. If you find it useful, please consider supporting its development:
+
+### Donate
+
+- **GitHub Sponsors**: [github.com/sponsors/axpnet](https://github.com/sponsors/axpnet)
+- **Buy Me a Coffee**: [buymeacoffee.com/axpnet](https://buymeacoffee.com/axpnet)
+
+### Cryptocurrency
+
+- **Bitcoin (BTC)**: `bc1qdxur90s5j4s55rwe9rc9n95fau4rg3tfatfhkn`
+- **Ethereum (ETH/EVM)**: `0x08F9D9C41E833539Fd733e19119A89f0664c3AeE`
+- **Solana (SOL)**: `25A8sBNqzbR9rvrd3qyYwBkwirEh1pUiegUG6CrswHrd`
+- **Litecoin (LTC)**: `LTk8iRvUqAtYyer8SPAkEAakpPXxfFY1D1`
+
+### Contributing
+
+Contributions are welcome. Please open an issue to discuss proposed changes before submitting a pull request.
 
 ---
 

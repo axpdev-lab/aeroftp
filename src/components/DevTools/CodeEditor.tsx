@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
-import { Save, X, RotateCcw, FileCode, Palette } from 'lucide-react';
+import { Save, X, RotateCcw, FileCode } from 'lucide-react';
 import { PreviewFile, getFileLanguage } from './types';
 
 // Tokyo Night theme colors - in honor of Antigravity! 🌃
@@ -38,13 +38,15 @@ const tokyoNightTheme = {
     },
 };
 
-type EditorTheme = 'vs-dark' | 'tokyo-night';
+type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night';
 
 interface CodeEditorProps {
     file: PreviewFile | null;
     onSave: (content: string) => Promise<void>;
     onClose: () => void;
     className?: string;
+    /** Monaco theme: 'vs' (light), 'vs-dark', or 'tokyo-night' */
+    theme?: EditorTheme;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -52,6 +54,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     onSave,
     onClose,
     className = '',
+    theme: themeProp = 'tokyo-night',
 }) => {
     const editorRef = useRef<any>(null);
     const monacoRef = useRef<any>(null);
@@ -59,8 +62,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [originalContent, setOriginalContent] = useState('');
-    const [theme, setTheme] = useState<EditorTheme>('tokyo-night');
-    const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const theme = themeProp; // Use prop directly
 
     const handleEditorDidMount: OnMount = (editor, monaco) => {
         editorRef.current = editor;
@@ -170,11 +172,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         return map[lang] || lang;
     };
 
-    const themes: { id: EditorTheme; name: string; icon: string }[] = [
-        { id: 'tokyo-night', name: 'Tokyo Night', icon: '🌃' },
-        { id: 'vs-dark', name: 'VS Dark', icon: '🌑' },
-    ];
-
     if (!file) {
         return (
             <div className={`flex flex-col items-center justify-center h-full text-gray-400 ${className}`}>
@@ -185,48 +182,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         );
     }
 
+    // Theme-aware header styling
+    const isLightTheme = theme === 'vs';
+    const headerBg = isLightTheme ? 'bg-gray-100' : 'bg-gray-800';
+    const headerBorder = isLightTheme ? 'border-gray-300' : 'border-gray-700';
+    const headerText = isLightTheme ? 'text-gray-700' : 'text-gray-300';
+    const buttonBg = isLightTheme ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600';
+    const hoverBg = isLightTheme ? 'hover:bg-gray-200' : 'hover:bg-gray-700';
+
     return (
         <div className={`flex flex-col h-full ${className}`}>
             {/* Editor Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-                <div className="flex items-center gap-2 text-sm text-gray-300">
+            <div className={`flex items-center justify-between px-4 py-2 ${headerBg} border-b ${headerBorder}`}>
+                <div className={`flex items-center gap-2 text-sm ${headerText}`}>
                     <FileCode size={14} />
                     <span className="font-medium">{file.name}</span>
-                    {hasChanges && <span className="text-yellow-400">• Modified</span>}
-                    {file.isRemote && <span className="text-blue-400 ml-2">Remote</span>}
+                    {hasChanges && <span className="text-yellow-500">• Modified</span>}
+                    {file.isRemote && <span className="text-blue-500 ml-2">Remote</span>}
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Theme Selector */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowThemeMenu(!showThemeMenu)}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                            title="Change theme"
-                        >
-                            <Palette size={12} />
-                            <span>Tema</span>
-                        </button>
-                        {showThemeMenu && (
-                            <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-10 py-1 min-w-[140px]">
-                                {themes.map((t) => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => { setTheme(t.id); setShowThemeMenu(false); }}
-                                        className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-700 flex items-center gap-2 ${theme === t.id ? 'text-blue-400' : 'text-gray-300'}`}
-                                    >
-                                        <span>{t.icon}</span>
-                                        <span>{t.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
                     <button
                         onClick={handleReset}
                         disabled={!hasChanges}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+                        className={`flex items-center gap-1 px-2 py-1 text-xs ${buttonBg} disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors`}
                         title="Reset changes"
                     >
                         <RotateCcw size={12} />
@@ -243,7 +222,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                        className={`p-1 ${hoverBg} rounded transition-colors`}
                         title="Close editor"
                     >
                         <X size={14} />

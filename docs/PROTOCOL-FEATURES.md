@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 25 January 2026
-> Version: v1.2.7
+> Version: v1.2.8
 
 ---
 
@@ -95,9 +95,10 @@ if (supportsNativeShareLink && !file.is_dir) {
 | Preview | ✅ | ❌ | ✅ | ❌ | ✅ |
 | Edit | ✅ Monaco | ✅ External | ✅ External | ✅ Internal | ✅ External |
 | Share Link | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Properties | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Compress | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Checksum | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Properties | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Compress | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Checksum | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Overwrite Dialog | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Unique AeroFTP Features
 - **Monaco Code Editor**: VS Code-quality editing directly in the client
@@ -106,11 +107,16 @@ if (supportsNativeShareLink && !file.is_dir) {
 - **AI Assistant**: File analysis and command suggestions
 - **Multiple Cloud Providers**: Google Drive, Dropbox, OneDrive, S3, MEGA in one client
 
-### Missing Operations (vs Competitors)
-1. **Properties Dialog**: Show detailed file metadata
-2. **Compress/Archive**: Create ZIP/TAR from remote files
-3. **Checksum Verification**: MD5/SHA verification
-4. **Open With External App**: Launch files in associated apps
+### Previously Missing - Now Implemented (v1.2.8) ✅
+1. ✅ **Properties Dialog**: Full file metadata with MIME type
+2. ✅ **Compress/Archive**: ZIP creation and extraction
+3. ✅ **Checksum Verification**: MD5/SHA-256 in Properties dialog
+4. ✅ **Overwrite Confirmation**: Smart conflict resolution dialog
+
+### Still Missing (vs Competitors)
+1. **Open With External App**: Launch files in associated apps
+2. **Keyboard Shortcuts**: F2, Del, Ctrl+C/V
+3. **Cross-panel Drag & Drop**: Panel-to-panel transfers
 
 ---
 
@@ -215,19 +221,23 @@ onDrop={(e) => handleDrop(e, targetPath)}
 
 ## Recommendations
 
-### Immediate (v1.2.8)
-1. **Fix S3 Share Link**: Add S3 to context menu Share Link providers
-2. **Update Description**: Remove "drag & drop" claim until implemented
+### Completed (v1.2.8) ✅
+1. ✅ **Fix S3 Share Link**: S3 added to context menu Share Link providers
+2. ✅ **Properties Dialog**: Full file metadata with checksum
+3. ✅ **Compress/Archive**: ZIP creation and extraction
+4. ✅ **Basic Drag & Drop**: Same-panel file moves to folders
+5. ✅ **Overwrite Confirmation**: Smart file conflict resolution
+6. ✅ **Activity Log Moves**: File moves now tracked
 
 ### Short-term (v1.3.0)
-1. **SFTP Integration**: Complete (done)
+1. ✅ **SFTP Integration**: Complete (done)
 2. **Keyboard Shortcuts**: F2 (rename), Del (delete), Ctrl+C/V (copy)
-3. **Properties Dialog**: Show file metadata
+3. **Cryptomator Encryption**: Client-side encryption layer
 
 ### Medium-term (v1.4.0)
-1. **Drag & Drop**: Full implementation with visual feedback
+1. **Cross-panel Drag & Drop**: Local ↔ Remote transfers via drag
 2. **External File Drop**: Tauri file drop integration
-3. **Move Operation**: Explicit move vs copy
+3. **File Versioning**: History for cloud providers
 
 ---
 

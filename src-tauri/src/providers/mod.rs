@@ -44,11 +44,15 @@ pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 use async_trait::async_trait;
 
 /// Unified storage provider trait
-/// 
+///
 /// All storage backends must implement this trait to be used with AeroFTP.
 /// This enables protocol-agnostic file operations and makes it easy to add
 /// new storage providers in the future.
+///
+/// Note: Some trait methods are not yet used but are part of the planned API
+/// for future features (Properties dialog, chmod support, etc.)
 #[async_trait]
+#[allow(dead_code)]
 pub trait StorageProvider: Send + Sync {
     /// Get the provider type identifier
     fn provider_type(&self) -> ProviderType;
@@ -212,6 +216,7 @@ impl ProviderFactory {
     }
     
     /// Get list of all supported provider types
+    #[allow(dead_code)]
     pub fn supported_types() -> Vec<ProviderType> {
         vec![
             ProviderType::Ftp,

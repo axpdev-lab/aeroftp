@@ -123,7 +123,8 @@ impl StoredTokens {
 pub struct OAuth2Manager {
     /// Pending PKCE verifiers for ongoing auth flows
     pending_verifiers: Arc<RwLock<HashMap<String, PkceCodeVerifier>>>,
-    /// Callback server port
+    /// Callback server port (used in redirect URL generation)
+    #[allow(dead_code)]
     callback_port: u16,
 }
 

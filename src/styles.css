@@ -805,3 +805,433 @@ tbody tr:hover .lucide-file-text {
 .compact-mode .file-grid-size {
   font-size: 9px;
 }
+
+/* ======================================
+   Font Size Options
+   Small, Medium (default), Large
+   ====================================== */
+
+/* Small Font Size */
+.font-size-small {
+  font-size: 12px;
+}
+
+.font-size-small table {
+  font-size: 11px;
+}
+
+.font-size-small .text-sm {
+  font-size: 10px;
+}
+
+.font-size-small .text-xs {
+  font-size: 9px;
+}
+
+.font-size-small button {
+  font-size: 11px;
+}
+
+/* Medium Font Size (default) */
+.font-size-medium {
+  font-size: 14px;
+}
+
+/* Large Font Size */
+.font-size-large {
+  font-size: 16px;
+}
+
+.font-size-large table {
+  font-size: 15px;
+}
+
+.font-size-large .text-sm {
+  font-size: 14px;
+}
+
+.font-size-large .text-xs {
+  font-size: 12px;
+}
+
+.font-size-large button {
+  font-size: 15px;
+}
+
+.font-size-large th,
+.font-size-large td {
+  padding: 12px 16px;
+}
+
+/* ======================================
+   RTL (Right-to-Left) Language Support
+   For Arabic, Hebrew, Persian, Urdu
+   ====================================== */
+
+/* Global RTL direction */
+html[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Flex direction reversal for RTL */
+html[dir="rtl"] .flex-row,
+[dir="rtl"] .flex {
+  flex-direction: row-reverse;
+}
+
+/* Keep certain elements LTR even in RTL mode */
+html[dir="rtl"] .ltr-always {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Code and paths should remain LTR */
+html[dir="rtl"] code,
+html[dir="rtl"] pre,
+html[dir="rtl"] .font-mono,
+html[dir="rtl"] .truncate-path,
+html[dir="rtl"] input[type="text"],
+html[dir="rtl"] input[type="password"],
+html[dir="rtl"] input[type="email"] {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Table alignment for RTL */
+html[dir="rtl"] table {
+  direction: rtl;
+}
+
+html[dir="rtl"] th,
+html[dir="rtl"] td {
+  text-align: right;
+}
+
+/* Size and modified columns stay right-aligned in RTL (which is left visually) */
+html[dir="rtl"] td:nth-child(2),
+html[dir="rtl"] th:nth-child(2),
+html[dir="rtl"] td:nth-child(3),
+html[dir="rtl"] th:nth-child(3) {
+  text-align: left;
+}
+
+/* File browser panels - reverse layout */
+html[dir="rtl"] .file-browser-container {
+  flex-direction: row-reverse;
+}
+
+/* Icons and buttons spacing */
+html[dir="rtl"] .gap-2 {
+  gap: 0.5rem;
+}
+
+html[dir="rtl"] button svg {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+/* Context menu alignment */
+html[dir="rtl"] .context-menu {
+  text-align: right;
+}
+
+html[dir="rtl"] .context-menu-item {
+  flex-direction: row-reverse;
+}
+
+/* Status bar */
+html[dir="rtl"] .status-bar {
+  flex-direction: row-reverse;
+}
+
+/* Panel headers */
+html[dir="rtl"] .panel-header {
+  flex-direction: row-reverse;
+}
+
+/* Breadcrumb / path bar */
+html[dir="rtl"] .path-bar {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Transfer queue */
+html[dir="rtl"] .transfer-item {
+  flex-direction: row-reverse;
+}
+
+/* File grid items */
+html[dir="rtl"] .file-grid-item {
+  direction: rtl;
+}
+
+/* Dialogs and modals */
+html[dir="rtl"] .dialog-header {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .dialog-footer {
+  flex-direction: row-reverse;
+}
+
+/* Form labels */
+html[dir="rtl"] label {
+  text-align: right;
+}
+
+/* Checkboxes and radio buttons */
+html[dir="rtl"] input[type="checkbox"],
+html[dir="rtl"] input[type="radio"] {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+/* Progress bars */
+html[dir="rtl"] .progress-bar {
+  direction: ltr;
+}
+
+/* Tooltips */
+html[dir="rtl"] .tooltip {
+  text-align: right;
+}
+
+/* Tab panels */
+html[dir="rtl"] .tab-list {
+  flex-direction: row-reverse;
+}
+
+/* Scrollbar position for RTL */
+html[dir="rtl"] ::-webkit-scrollbar {
+  left: 0;
+  right: auto;
+}
+
+/* Settings panel */
+html[dir="rtl"] .settings-sidebar {
+  border-left: 1px solid var(--color-border);
+  border-right: none;
+}
+
+/* File item hover effect reverse */
+html[dir="rtl"] tbody tr:hover {
+  transform: translateX(-2px);
+}
+
+/* Animation adjustments for RTL */
+html[dir="rtl"] .animate-slide-in-right {
+  animation-name: slide-in-left;
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Border radius adjustments for RTL */
+html[dir="rtl"] .rounded-l-lg {
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+
+html[dir="rtl"] .rounded-r-lg {
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+}
+
+/* Margin and padding adjustments */
+html[dir="rtl"] .ml-2 {
+  margin-left: 0;
+  margin-right: 0.5rem;
+}
+
+html[dir="rtl"] .mr-2 {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+html[dir="rtl"] .ml-4 {
+  margin-left: 0;
+  margin-right: 1rem;
+}
+
+html[dir="rtl"] .mr-4 {
+  margin-right: 0;
+  margin-left: 1rem;
+}
+
+html[dir="rtl"] .pl-2 {
+  padding-left: 0;
+  padding-right: 0.5rem;
+}
+
+html[dir="rtl"] .pr-2 {
+  padding-right: 0;
+  padding-left: 0.5rem;
+}
+
+html[dir="rtl"] .pl-4 {
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+html[dir="rtl"] .pr-4 {
+  padding-right: 0;
+  padding-left: 1rem;
+}
+
+/* Icon positioning */
+html[dir="rtl"] .icon-left {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+html[dir="rtl"] .icon-right {
+  margin-left: 0;
+  margin-right: 0.5rem;
+}
+
+/* Toast notifications */
+html[dir="rtl"] .toast {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Activity log */
+html[dir="rtl"] .activity-log-item {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+/* Keep numbers and technical content LTR */
+html[dir="rtl"] .file-size,
+html[dir="rtl"] .file-date,
+html[dir="rtl"] .timestamp,
+html[dir="rtl"] .port-number,
+html[dir="rtl"] .version-number {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* ======================================
+   Tokyo Night Theme
+   A beautiful dark theme with purple accents
+   ====================================== */
+
+html.tokyo {
+  --tokyo-bg: #1a1b26;
+  --tokyo-bg-dark: #16161e;
+  --tokyo-bg-highlight: #292e42;
+  --tokyo-fg: #c0caf5;
+  --tokyo-fg-dark: #a9b1d6;
+  --tokyo-fg-gutter: #3b4261;
+  --tokyo-comment: #565f89;
+  --tokyo-cyan: #7dcfff;
+  --tokyo-blue: #7aa2f7;
+  --tokyo-purple: #9d7cd8;
+  --tokyo-magenta: #bb9af7;
+  --tokyo-orange: #ff9e64;
+  --tokyo-yellow: #e0af68;
+  --tokyo-green: #9ece6a;
+  --tokyo-red: #f7768e;
+}
+
+/* Tokyo Night - Override dark mode colors */
+html.tokyo.dark {
+  --color-bg-primary: var(--tokyo-bg);
+  --color-bg-secondary: var(--tokyo-bg-dark);
+  --color-bg-tertiary: var(--tokyo-bg-highlight);
+  --color-text-primary: var(--tokyo-fg);
+  --color-text-secondary: var(--tokyo-fg-dark);
+  --color-text-muted: var(--tokyo-comment);
+  --color-accent: var(--tokyo-purple);
+  --color-accent-hover: var(--tokyo-magenta);
+  --color-border: var(--tokyo-fg-gutter);
+}
+
+/* Tokyo Night specific styling */
+html.tokyo .dark\:bg-gray-900 {
+  background-color: var(--tokyo-bg) !important;
+}
+
+html.tokyo .dark\:bg-gray-800 {
+  background-color: var(--tokyo-bg-dark) !important;
+}
+
+html.tokyo .dark\:bg-gray-700 {
+  background-color: var(--tokyo-bg-highlight) !important;
+}
+
+html.tokyo .dark\:border-gray-700,
+html.tokyo .dark\:border-gray-600 {
+  border-color: var(--tokyo-fg-gutter) !important;
+}
+
+html.tokyo .dark\:text-gray-100,
+html.tokyo .dark\:text-white {
+  color: var(--tokyo-fg) !important;
+}
+
+html.tokyo .dark\:text-gray-400,
+html.tokyo .dark\:text-gray-300 {
+  color: var(--tokyo-fg-dark) !important;
+}
+
+/* Tokyo Night accents */
+html.tokyo .text-blue-500,
+html.tokyo .dark\:text-blue-400 {
+  color: var(--tokyo-blue) !important;
+}
+
+html.tokyo .bg-blue-500,
+html.tokyo .dark\:bg-blue-600 {
+  background-color: var(--tokyo-purple) !important;
+}
+
+html.tokyo .bg-blue-500:hover,
+html.tokyo .hover\:bg-blue-600:hover {
+  background-color: var(--tokyo-magenta) !important;
+}
+
+/* Tokyo Night folder icons */
+html.tokyo .text-yellow-500 {
+  color: var(--tokyo-yellow) !important;
+}
+
+/* Tokyo Night success/error colors */
+html.tokyo .text-green-500,
+html.tokyo .text-green-600 {
+  color: var(--tokyo-green) !important;
+}
+
+html.tokyo .text-red-500,
+html.tokyo .text-red-600 {
+  color: var(--tokyo-red) !important;
+}
+
+/* Tokyo Night gradient override for header */
+html.tokyo .dark\:from-gray-900 {
+  --tw-gradient-from: var(--tokyo-bg) !important;
+}
+
+html.tokyo .dark\:to-gray-800 {
+  --tw-gradient-to: var(--tokyo-bg-dark) !important;
+}
+
+/* Tokyo Night scrollbar */
+html.tokyo::-webkit-scrollbar-track {
+  background: var(--tokyo-bg-dark);
+}
+
+html.tokyo::-webkit-scrollbar-thumb {
+  background: var(--tokyo-fg-gutter);
+}
+
+html.tokyo::-webkit-scrollbar-thumb:hover {
+  background: var(--tokyo-comment);
+}

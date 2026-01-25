@@ -1779,7 +1779,7 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
 
         } else if path.is_dir() {
             // Add directory recursively
-            let base_name = path.file_name()
+            let _base_name = path.file_name()
                 .ok_or("Invalid directory name")?
                 .to_string_lossy();
 
@@ -1819,7 +1819,6 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
 #[tauri::command]
 async fn extract_archive(archive_path: String, output_dir: String) -> Result<String, String> {
     use std::fs::{self, File};
-    use std::io::Read;
     use zip::ZipArchive;
 
     let file = File::open(&archive_path)

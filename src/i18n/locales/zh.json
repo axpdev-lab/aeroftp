@@ -136,7 +136,13 @@
             "clearCompleted": "清除已完成",
             "cancelAll": "取消全部",
             "pauseAll": "暂停全部",
-            "resumeAll": "继续全部"
+            "resumeAll": "继续全部",
+            "activityLog": "活动日志",
+            "noActivity": "暂无活动",
+            "clearLog": "清除日志",
+            "jumpToLatest": "跳转到最新",
+            "running": "进行中",
+            "entries": "条目"
         },
         "settings": {
             "title": "设置",
@@ -311,7 +317,13 @@
             "nav_sync_disabled": "[同步] 导航同步已禁用",
             "reconnect_start": "正在重新连接 {server}...",
             "reconnect_success": "已重新连接到 {server}",
-            "reconnect_error": "重新连接失败"
+            "reconnect_error": "重新连接失败",
+            "delete_file_success": "[{location}] 文件已删除: {filename}",
+            "delete_dir_success": "[{location}] 文件夹已删除: {filename}",
+            "delete_task_success": "[{location}] 操作完成: {filename}",
+            "delete_multiple_start": "正在删除 {count} 个项目...",
+            "delete_multiple_success": "清理完成: 已删除 {count} 个",
+            "loaded_items": "已从 {provider} 加载 {count} 个项目"
         }
     }
 }

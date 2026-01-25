@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "1.2.7",
+    "version": "1.2.8",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -14,9 +14,9 @@
             {
                 "title": "AeroFTP",
                 "width": 1440,
-                "height": 900,
+                "height": 1000,
                 "minWidth": 1024,
-                "minHeight": 700,
+                "minHeight": 800,
                 "resizable": true,
                 "fullscreen": false,
                 "decorations": true,

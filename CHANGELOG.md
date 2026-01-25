@@ -5,13 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.8] - 2026-01-25 (Development)
+## [1.2.8] - 2026-01-25
 
-### Feature Parity with Competitors
+### Global Multilingual + File Management Pro Features
 
-Closing the gap with FileZilla, Cyberduck, and WinSCP by adding essential file management features.
+Major release closing feature gaps with competitors and expanding to 51 languages worldwide.
 
-#### Added
+#### Added - File Management Pro Features
+- **Overwrite Confirmation Dialog**: Smart file conflict resolution
+  - Shows when uploading/downloading files that already exist
+  - Comparison view: source vs destination (size, date)
+  - Color-coded: "Source is newer" (green) / "Source is older" (orange)
+  - Actions: Overwrite, Skip, Rename, Cancel
+  - "Apply to all" checkbox for batch operations
+  - All skipped files tracked in Activity Log
+
+- **Activity Log: File Move Tracking**:
+  - New 'MOVE' operation type with teal icon
+  - Logs when files are dragged into folders
+  - Shows source file and destination folder
+  - Full theme support (light, dark, cyber)
+
 - **Properties Dialog**: View detailed file/folder metadata
   - File name, path, size, type, MIME type
   - Permissions (with octal conversion)
@@ -47,20 +61,45 @@ Closing the gap with FileZilla, Cyberduck, and WinSCP by adding essential file m
   - Symlink detection and resolution
   - UI: Private key file browser, passphrase field, timeout configuration
 
+#### Added - Global Multilingual Expansion (51 Languages)
+- **46 New Languages**: From 5 to 51 total languages
+  - **European**: German, Portuguese, Russian, Dutch, Polish, Swedish, Danish, Norwegian, Finnish, Czech, Hungarian, Romanian, Ukrainian, Greek, Slovak, Bulgarian, Croatian, Serbian, Slovenian, Macedonian, Lithuanian, Latvian, Estonian, Catalan, Galician, Basque, Welsh, Icelandic
+  - **Asian**: Japanese, Korean, Vietnamese, Thai, Indonesian, Khmer, Georgian, Armenian
+  - **Middle East (RTL)**: Arabic, Hebrew, Persian, Urdu
+  - **Future-proof**: Bengali, Hindi, Swahili, Filipino support ready
+- **RTL Language Support**: Full right-to-left layout for Arabic, Hebrew, Urdu, Persian
+- **i18n Automation Scripts**: Validation, sync, stats tools for translation maintenance
+
 #### Fixed
-- **S3 Share Link**: S3 pre-signed URLs now available in context menu (was missing, only OAuth providers shown)
+- **Disconnect Button Translation**: Fixed broken translation key (`connection.disconnect` → `common.disconnect`)
+- **Connect Button Translation**: Same fix for connect button
+- **Support Modal Theme**: Full light/dark theme support for all elements (buttons, borders, text, crypto panel)
+- **Support Modal Icons**: Official SVG logos for GitHub, Buy Me a Coffee, Litecoin
+- **Support Modal Width**: Increased to 540px to prevent crypto addresses from wrapping
+- **Crypto Icons**: Official Bitcoin, Ethereum, Solana, Litecoin icons with brand colors
+- **File Exists Setting**: Overwrite dialog now respects Settings > File Handling > "When file exists" preference
+  - If set to "Overwrite", "Skip", or "Rename", applies automatically without showing dialog
+  - Only shows dialog when set to "Ask each time" (default)
+- **Address Bar Icons**: Favicon-style icons no longer have colored backgrounds (Chrome-style)
+- **S3 Share Link**: S3 pre-signed URLs now available in context menu (was missing)
 - **Share Link Logic**: Updated to include S3 in native share link providers list
+- **Rust Compilation Warnings**: Fixed all 37 warnings with proper `#[allow(dead_code)]` annotations for future API methods
 
 #### Technical
 - New Rust dependencies: `md-5`, `zip`, `walkdir`
 - New commands: `calculate_checksum`, `compress_files`, `extract_archive`
 - New component: `PropertiesDialog` with MIME type detection
+- New component: `OverwriteDialog` for file conflict resolution
+- New Activity Log operation: `MOVE` with icon and translations
+- Updated `HumanizedLogParams` with `destination` field
+- Added 46 locale JSON files with complete translations
 
 #### Documentation
 - Created `docs/PROTOCOL-FEATURES.md` with comprehensive protocol feature matrix
 - Documented Share Link support per protocol
 - Competitor comparison for file operations
 - Drag & Drop analysis and roadmap
+- Updated multilingual expansion plan
 
 ---
 

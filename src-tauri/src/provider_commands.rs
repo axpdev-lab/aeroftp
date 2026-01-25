@@ -347,7 +347,7 @@ pub async fn provider_pwd(
 /// Download a file from the remote server
 #[tauri::command]
 pub async fn provider_download_file(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -379,7 +379,7 @@ pub async fn provider_download_file(
 /// Download a folder recursively from the remote server (OAuth providers)
 #[tauri::command]
 pub async fn provider_download_folder(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -444,7 +444,7 @@ pub async fn provider_download_folder(
 /// Upload a file to the remote server
 #[tauri::command]
 pub async fn provider_upload_file(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,

@@ -21,6 +21,7 @@ const UPLOAD_API_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
 /// Google Drive file metadata from API
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct DriveFile {
     id: String,
     name: String,
@@ -57,12 +58,13 @@ impl GoogleDriveConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let client_id = config.extra.get("client_id")
             .ok_or_else(|| ProviderError::Other("Missing client_id".to_string()))?;
         let client_secret = config.extra.get("client_secret")
             .ok_or_else(|| ProviderError::Other("Missing client_secret".to_string()))?;
-        
+
         Ok(Self::new(client_id, client_secret))
     }
 }
@@ -109,12 +111,14 @@ impl GoogleDriveProvider {
         self.oauth_manager.has_tokens(OAuthProvider::Google)
     }
 
-    /// Start OAuth flow - returns URL to open
+    /// Start OAuth flow - returns URL to open (called via oauth2_start_auth command)
+    #[allow(dead_code)]
     pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
         self.oauth_manager.start_auth_flow(&self.oauth_config()).await
     }
 
-    /// Complete OAuth flow with code
+    /// Complete OAuth flow with code (called via oauth2_connect command)
+    #[allow(dead_code)]
     pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
         self.oauth_manager.complete_auth_flow(&self.oauth_config(), code, state).await?;
         Ok(())
@@ -162,7 +166,8 @@ impl GoogleDriveProvider {
         Ok(all_files)
     }
 
-    /// Get file by ID
+    /// Get file by ID (for future stat implementation)
+    #[allow(dead_code)]
     async fn get_file(&self, file_id: &str) -> Result<DriveFile, ProviderError> {
         let url = format!(
             "{}/files/{}?fields=id,name,mimeType,size,modifiedTime,parents",

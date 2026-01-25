@@ -15,9 +15,9 @@
 import * as React from 'react';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import {
-    X, Trash2, ChevronDown, GripHorizontal, Terminal, Zap, Sparkles, Cloud,
+    X, Trash2, ChevronDown, GripHorizontal, Terminal, Zap, Cloud,
     Plug, Unplug, Upload, Download, FolderPlus, FolderOpen, Pencil,
-    AlertCircle, Info, CheckCircle, Copy,
+    AlertCircle, Info, CheckCircle, Copy, Move,
     type LucideIcon
 } from 'lucide-react';
 import { useActivityLog, LogEntry, OperationType, getOperationIcon, formatTimestamp } from '../hooks/useActivityLog';
@@ -40,6 +40,7 @@ const OPERATION_ICONS: Record<string, LucideIcon> = {
     download: Download,
     'trash-2': Trash2,
     pencil: Pencil,
+    move: Move,
     'folder-plus': FolderPlus,
     'folder-open': FolderOpen,
     'alert-circle': AlertCircle,
@@ -102,6 +103,7 @@ const THEMES = {
             DOWNLOAD: 'text-sky-600',
             DELETE: 'text-red-600',
             RENAME: 'text-amber-600',
+            MOVE: 'text-teal-600',
             MKDIR: 'text-purple-600',
             NAVIGATE: 'text-sky-600',
             ERROR: 'text-red-600',
@@ -110,7 +112,7 @@ const THEMES = {
         },
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
-            DELETE: '', RENAME: '', MKDIR: '', NAVIGATE: '',
+            DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '',
             ERROR: '', INFO: '', SUCCESS: '',
         },
         liveIndicator: 'bg-blue-500',
@@ -156,6 +158,7 @@ const THEMES = {
             DOWNLOAD: 'text-[#7dcfff]',
             DELETE: 'text-[#f7768e]',
             RENAME: 'text-[#e0af68]',
+            MOVE: 'text-[#73daca]',
             MKDIR: 'text-[#bb9af7]',
             NAVIGATE: 'text-[#7dcfff]',
             ERROR: 'text-[#f7768e]',
@@ -165,7 +168,7 @@ const THEMES = {
         // No glow effect for dark theme
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
-            DELETE: '', RENAME: '', MKDIR: '', NAVIGATE: '',
+            DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '',
             ERROR: '', INFO: '', SUCCESS: '',
         },
         liveIndicator: 'bg-[#7aa2f7]',
@@ -211,6 +214,7 @@ const THEMES = {
             DOWNLOAD: 'text-blue-400',
             DELETE: 'text-rose-500',
             RENAME: 'text-amber-400',
+            MOVE: 'text-teal-400',
             MKDIR: 'text-violet-400',
             NAVIGATE: 'text-sky-400',
             ERROR: 'text-rose-500',
@@ -224,6 +228,7 @@ const THEMES = {
             DOWNLOAD: 'drop-shadow-[0_0_6px_rgba(96,165,250,0.8)]',
             DELETE: 'drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]',
             RENAME: 'drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]',
+            MOVE: 'drop-shadow-[0_0_6px_rgba(45,212,191,0.8)]',
             MKDIR: 'drop-shadow-[0_0_6px_rgba(167,139,250,0.8)]',
             NAVIGATE: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.8)]',
             ERROR: 'drop-shadow-[0_0_6px_rgba(244,63,94,1)]',
@@ -396,9 +401,9 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     const [showCloudSync, setShowCloudSync] = useState(true);  // Toggle to show/hide AeroCloud sync messages
     const [height, setHeight] = useState(initialHeight);
     const [isResizing, setIsResizing] = useState(false);
-    const [localTheme, setLocalTheme] = useState<LogTheme>(themeProp);
 
-    const themeConfig = THEMES[localTheme];
+    // Use theme from props (controlled by app-level theme)
+    const themeConfig = THEMES[themeProp];
 
     // Auto-scroll to bottom when new entries arrive
     useEffect(() => {
@@ -460,11 +465,6 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     // Find the latest entry for typewriter effect
     const latestEntryId = entries.length > 0 ? entries[entries.length - 1].id : null;
 
-    // Toggle theme: cycles through light -> dark -> cyber -> light
-    const toggleTheme = () => {
-        setLocalTheme(prev => prev === 'light' ? 'dark' : prev === 'dark' ? 'cyber' : 'light');
-    };
-
     // Don't render if not visible
     if (!isVisible) return null;
 
@@ -475,7 +475,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
             style={{ height }}
         >
             {/* Cyber grid background (only for cyber theme) */}
-            {localTheme === 'cyber' && (
+            {themeProp === 'cyber' && (
                 <>
                     {/* Scanlines effect - more visible */}
                     <div
@@ -548,15 +548,6 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         title={showCloudSync ? 'Hide AeroCloud sync messages' : 'Show AeroCloud sync messages'}
                     >
                         <Cloud size={12} className={showCloudSync ? 'text-[#7dcfff]' : ''} />
-                    </button>
-
-                    {/* Theme toggle */}
-                    <button
-                        onClick={toggleTheme}
-                        className={`p-1.5 rounded transition-all ${themeConfig.button}`}
-                        title={`Switch theme (current: ${localTheme})`}
-                    >
-                        <Sparkles size={12} className={localTheme === 'cyber' ? 'text-cyan-400' : ''} />
                     </button>
 
                     {/* Filter dropdown */}

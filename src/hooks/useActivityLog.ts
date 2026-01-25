@@ -22,6 +22,7 @@ export type OperationType =
     | 'DOWNLOAD'
     | 'DELETE'
     | 'RENAME'
+    | 'MOVE'
     | 'MKDIR'
     | 'NAVIGATE'
     | 'ERROR'
@@ -208,6 +209,7 @@ export function getOperationIcon(operation: OperationType): string {
         DOWNLOAD: 'download',
         DELETE: 'trash-2',
         RENAME: 'pencil',
+        MOVE: 'move',
         MKDIR: 'folder-plus',
         NAVIGATE: 'folder-open',
         ERROR: 'alert-circle',

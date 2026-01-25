@@ -136,7 +136,13 @@
             "clearCompleted": "Limpiar Completados",
             "cancelAll": "Cancelar Todos",
             "pauseAll": "Pausar Todos",
-            "resumeAll": "Reanudar Todos"
+            "resumeAll": "Reanudar Todos",
+            "activityLog": "Registro de actividad",
+            "noActivity": "Sin actividad aún",
+            "clearLog": "Limpiar registro",
+            "jumpToLatest": "Ir al último",
+            "running": "en ejecución",
+            "entries": "entradas"
         },
         "settings": {
             "title": "Configuración",
@@ -311,7 +317,13 @@
             "nav_sync_disabled": "[Sync] Sincronización nav. desactivada",
             "reconnect_start": "Reconectando a {server}...",
             "reconnect_success": "Reconectado a {server}",
-            "reconnect_error": "Error de reconexión"
+            "reconnect_error": "Error de reconexión",
+            "delete_file_success": "[{location}] Archivo eliminado: {filename}",
+            "delete_dir_success": "[{location}] Carpeta eliminada: {filename}",
+            "delete_task_success": "[{location}] Operación completada: {filename}",
+            "delete_multiple_start": "Eliminando {count} elementos...",
+            "delete_multiple_success": "Limpieza completada: {count} eliminados",
+            "loaded_items": "{count} elementos cargados de {provider}"
         }
     }
 }

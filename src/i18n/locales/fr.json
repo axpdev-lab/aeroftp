@@ -136,7 +136,13 @@
             "clearCompleted": "Effacer les Terminés",
             "cancelAll": "Tout Annuler",
             "pauseAll": "Tout Mettre en Pause",
-            "resumeAll": "Tout Reprendre"
+            "resumeAll": "Tout Reprendre",
+            "activityLog": "Journal d'activité",
+            "noActivity": "Aucune activité",
+            "clearLog": "Effacer le journal",
+            "jumpToLatest": "Aller au dernier",
+            "running": "en cours",
+            "entries": "entrées"
         },
         "settings": {
             "title": "Paramètres",
@@ -311,7 +317,13 @@
             "nav_sync_disabled": "[Sync] Synchro navigation désactivée",
             "reconnect_start": "Reconnexion à {server}...",
             "reconnect_success": "Reconnecté à {server}",
-            "reconnect_error": "Échec de la reconnexion"
+            "reconnect_error": "Échec de la reconnexion",
+            "delete_file_success": "[{location}] Fichier supprimé: {filename}",
+            "delete_dir_success": "[{location}] Dossier supprimé: {filename}",
+            "delete_task_success": "[{location}] Opération terminée: {filename}",
+            "delete_multiple_start": "Suppression de {count} éléments...",
+            "delete_multiple_success": "Nettoyage terminé: {count} supprimés",
+            "loaded_items": "{count} éléments chargés depuis {provider}"
         }
     }
 }
