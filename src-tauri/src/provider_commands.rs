@@ -40,7 +40,7 @@ impl Default for ProviderState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConnectionParams {
-    /// Protocol type: "ftp", "ftps", "webdav", "s3"
+    /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega"
     pub protocol: String,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
@@ -64,6 +64,12 @@ pub struct ProviderConnectionParams {
     pub save_session: Option<bool>,
     /// Session expiry timestamp (MEGA)
     pub session_expires_at: Option<i64>,
+    /// SFTP: Path to private key file
+    pub private_key_path: Option<String>,
+    /// SFTP: Passphrase for encrypted private key
+    pub key_passphrase: Option<String>,
+    /// SFTP: Connection timeout in seconds
+    pub timeout: Option<u64>,
 }
 
 impl ProviderConnectionParams {
@@ -108,6 +114,23 @@ impl ProviderConnectionParams {
             }
             if let Some(ts) = self.session_expires_at {
                 extra.insert("session_expires_at".to_string(), ts.to_string());
+            }
+        }
+
+        // Add SFTP-specific options
+        if provider_type == ProviderType::Sftp {
+            if let Some(ref key_path) = self.private_key_path {
+                if !key_path.is_empty() {
+                    extra.insert("private_key_path".to_string(), key_path.clone());
+                }
+            }
+            if let Some(ref passphrase) = self.key_passphrase {
+                if !passphrase.is_empty() {
+                    extra.insert("key_passphrase".to_string(), passphrase.clone());
+                }
+            }
+            if let Some(timeout) = self.timeout {
+                extra.insert("timeout".to_string(), timeout.to_string());
             }
         }
 

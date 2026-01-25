@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Globe, Server } from 'lucide-react';
+import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider } from '../types';
 
 interface CloudTabState {
@@ -75,35 +75,43 @@ const ProviderIcon: React.FC<{
                 </svg>
             );
         case 'webdav':
-            return <Globe size={size} className={combinedClass} />;
+            // WebDAV - Cloud icon orange (like ProtocolSelector)
+            return <Cloud size={size} className={`${combinedClass} text-orange-500`} />;
         case 's3':
-            // S3 bucket icon - orange database/bucket style
-            return (
-                <Database size={size} className={`${combinedClass} text-orange-500`} />
-            );
+            // S3 bucket icon - orange/amber database style
+            return <Database size={size} className={`${combinedClass} text-amber-600`} />;
         case 'mega':
-            // MEGA.nz logo - red circle with M
+            // MEGA.nz official logo
             return (
-                <svg className={combinedClass} width={size} height={size} viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="12" fill="#D9272E" />
-                    <path fill="#ffffff" d="M6.5 16V8h1.8l2.2 4.5L12.7 8h1.8v8h-1.5v-5.2l-1.8 3.7h-1.4l-1.8-3.7V16H6.5z" />
+                <svg className={combinedClass} width={size} height={size} viewBox="0 0 512 512">
+                    <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
+                    <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff"/>
                 </svg>
             );
+        case 'sftp':
+            // SFTP - Lock icon green (secure SSH file transfer)
+            return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
+        case 'ftps':
+            // FTPS - Shield icon green (FTP over TLS/SSL)
+            return <ShieldCheck size={size} className={`${combinedClass} text-green-500`} />;
         default:
+            // FTP - standard green wifi
             return <Wifi size={size} className={combinedClass} />;
     }
 };
 
-// Get color for provider
+// Get color for provider (matches icons)
 const getProviderColor = (protocol: ProviderType | undefined): string => {
     switch (protocol) {
         case 'googledrive': return 'text-red-500';
         case 'dropbox': return 'text-blue-500';
         case 'onedrive': return 'text-sky-500';
-        case 's3': return 'text-orange-500';
-        case 'webdav': return 'text-purple-500';
+        case 's3': return 'text-amber-600';      // S3 - amber
+        case 'webdav': return 'text-orange-500'; // WebDAV - orange
         case 'mega': return 'text-red-600';
-        default: return 'text-green-500';
+        case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
+        case 'ftps': return 'text-green-500';    // FTPS - green (shield)
+        default: return 'text-green-500';        // FTP - green
     }
 };
 

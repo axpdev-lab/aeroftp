@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.8] - 2026-01-25 (Development)
+
+### Feature Parity with Competitors
+
+Closing the gap with FileZilla, Cyberduck, and WinSCP by adding essential file management features.
+
+#### Added
+- **Properties Dialog**: View detailed file/folder metadata
+  - File name, path, size, type, MIME type
+  - Permissions (with octal conversion)
+  - Modified date
+  - Protocol-specific info (remote files show protocol name)
+  - Integrated checksum calculation
+
+- **Checksum Verification** (MD5/SHA-256):
+  - Calculate checksums directly in Properties dialog
+  - Click "Calculate" to compute on-demand
+  - Copy checksum to clipboard
+  - Uses streaming for large files (64KB buffer)
+
+- **Compress/Archive**:
+  - Right-click → "Compress" to create ZIP from selected files/folders
+  - Supports multi-select compression
+  - Recursive folder compression with preserved structure
+  - "Extract Here" option for ZIP files
+  - Deflate compression (level 6)
+
+- **Drag & Drop (Basic)**: Move files within the same panel by dragging to folders
+  - Works in both list and grid views
+  - Multi-select drag support (drag selected files)
+  - Visual feedback: green highlight on valid drop targets
+  - Works for both local and remote files
+  - Supported on all protocols (FTP, SFTP, WebDAV, S3, Cloud providers)
+
+- **SFTP Protocol Support** (v1.3.0 Feature Preview):
+  - Full SFTP implementation using `russh` + `russh-sftp`
+  - Password and SSH key authentication (id_rsa, id_ed25519)
+  - Encrypted key support with passphrase
+  - All file operations: list, upload, download, mkdir, delete, rename, stat, chmod
+  - Symlink detection and resolution
+  - UI: Private key file browser, passphrase field, timeout configuration
+
+#### Fixed
+- **S3 Share Link**: S3 pre-signed URLs now available in context menu (was missing, only OAuth providers shown)
+- **Share Link Logic**: Updated to include S3 in native share link providers list
+
+#### Technical
+- New Rust dependencies: `md-5`, `zip`, `walkdir`
+- New commands: `calculate_checksum`, `compress_files`, `extract_archive`
+- New component: `PropertiesDialog` with MIME type detection
+
+#### Documentation
+- Created `docs/PROTOCOL-FEATURES.md` with comprehensive protocol feature matrix
+- Documented Share Link support per protocol
+- Competitor comparison for file operations
+- Drag & Drop analysis and roadmap
+
+---
+
 ## [1.2.7] - 2026-01-25
 
 ### 🔴 MEGA.nz Integration Complete
@@ -23,6 +82,17 @@ Full integration of MEGA.nz cloud storage with official branding and stability i
 - **Terminal Theme**: Restored Tokyo Night theme for better readability (cursor visible, distinct colors)
 - **Protocol Selector UX**: Form now hides when protocol dropdown is open (prevents visual clutter)
 - **Edit Saved Servers**: S3/WebDAV/MEGA servers now open directly to form when editing (skip provider selector)
+- **Form State on Connect**: Form no longer appears briefly when connecting to saved server; only shows on Edit
+- **OAuth Reconnection**: Fixed Google Drive/Dropbox/OneDrive reconnection when switching tabs (protocol fallback)
+- **MEGA Quick Connect Styling**: Removed red background from MEGA in protocol selector (now uses standard styling)
+
+#### Changed
+- **Session Tab Icons**: Standardized icons for protocol consistency across the app:
+  - FTPS: Shield icon (green) - secure FTP over TLS
+  - SFTP: Lock icon (emerald) - secure SSH file transfer
+  - WebDAV: Cloud icon (orange) - matches protocol selector
+  - S3: Database icon (amber) - storage bucket style
+  - Disconnected state: WifiOff icon for FTP protocols
 
 #### Technical
 - Added `'mega'` to keep-alive skip list in `useFtpOperations.ts` and `App.tsx`
@@ -33,6 +103,8 @@ Full integration of MEGA.nz cloud storage with official branding and stability i
 - Added `!editingProfileId` condition to skip provider selector when editing
 - Added `UpdateInfo` interface and `updateAvailable` prop to `StatusBar.tsx`
 - Uncommented `CheckUpdateButton` in `SettingsPanel.tsx`
+- Added protocol fallback to active session in 15+ functions for tab switching
+- Updated `SessionTabs.tsx` icons: Lock, ShieldCheck for SFTP/FTPS
 
 ---
 

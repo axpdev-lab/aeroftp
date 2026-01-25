@@ -43,12 +43,12 @@ import {
   Download, Upload, Pencil, Trash2, X, ArrowUp, ArrowDown,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, FileCode, Music, File, FileSpreadsheet, FileType, Code, Database, Clock,
-  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2
+  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info
 } from 'lucide-react';
 
 // Extracted utilities and components (Phase 1 modularization)
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
-import { ConfirmDialog, InputDialog, SyncNavDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties } from './components/Dialogs';
 import { TransferProgressBar } from './components/Transfer';
 
 // Extracted components (Phase 2 modularization)  
@@ -91,6 +91,7 @@ const App: React.FC = () => {
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void } | null>(null);
+  const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -160,6 +161,16 @@ const App: React.FC = () => {
   // View Mode (list/grid)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
+
+  // Drag & Drop State
+  interface DragData {
+    files: string[];  // File names being dragged
+    sourcePaths: string[];  // Full paths of files being dragged
+    isRemote: boolean;  // Whether dragging from remote or local panel
+    sourceDir: string;  // Source directory path
+  }
+  const [dragData, setDragData] = useState<DragData | null>(null);
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);  // Folder being hovered over
 
   // Sync Badge Helper - returns badge element if file is in cloud folder
   const getSyncBadge = (filePath: string, fileModified: string | undefined, isLocal: boolean) => {
@@ -239,10 +250,12 @@ const App: React.FC = () => {
 
   // Helper: Check if current connection is a Provider (non-FTP)
   const isCurrentOAuthProvider = React.useMemo(() => {
-    const protocol = connectionParams.protocol;
+    // Get protocol from active session as fallback
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     // Includes OAuth providers AND other providers like S3, WebDAV, MEGA
     return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
-  }, [connectionParams.protocol]);
+  }, [connectionParams.protocol, sessions, activeSessionId]);
 
   // Load image preview as base64 when file changes
   useEffect(() => {
@@ -458,7 +471,9 @@ const App: React.FC = () => {
     if (!isConnected) return;
 
     // Skip keep-alive for non-FTP providers (OAuth, S3, WebDAV)
-    const protocol = connectionParams.protocol;
+    // Get protocol from active session as fallback
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
     const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
     if (isOAuth || isProvider) {
@@ -753,8 +768,9 @@ const App: React.FC = () => {
   const loadRemoteFiles = async (overrideProtocol?: string) => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
-      // Use override protocol if provided (for cases where state isn't updated yet)
-      const protocol = overrideProtocol || connectionParams.protocol;
+      // Use override protocol if provided, then connectionParams, then active session (most robust)
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
       console.log('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
@@ -1010,11 +1026,13 @@ const App: React.FC = () => {
       setLoading(true);
       setIsSyncNavigation(false);
       setSyncBasePaths(null);
-      const providerName = protocol === 's3'
-        ? `S3: ${connectionParams.options?.bucket}`
+      // Use displayName if available, otherwise use server/bucket/username
+      // No protocol prefix in tab name - icon distinguishes the protocol
+      const providerName = connectionParams.displayName || (protocol === 's3'
+        ? connectionParams.options?.bucket || 'S3'
         : protocol === 'mega'
-          ? `MEGA: ${connectionParams.username}`
-          : `WebDAV: ${connectionParams.server}`;
+          ? connectionParams.username
+          : connectionParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -1045,6 +1063,10 @@ const App: React.FC = () => {
           path_style: connectionParams.options?.pathStyle || false,
           save_session: connectionParams.options?.save_session,
           session_expires_at: connectionParams.options?.session_expires_at,
+          // SFTP-specific options
+          private_key_path: connectionParams.options?.private_key_path || null,
+          key_passphrase: connectionParams.options?.key_passphrase || null,
+          timeout: connectionParams.options?.timeout || 30,
         };
 
 
@@ -1274,8 +1296,29 @@ const App: React.FC = () => {
         }
 
         // Get OAuth credentials from localStorage
-        const clientId = localStorage.getItem(`oauth_${protocol}_client_id`);
-        const clientSecret = localStorage.getItem(`oauth_${protocol}_client_secret`);
+        // Try new structured format first (aeroftp_oauth_settings)
+        let clientId: string | null = null;
+        let clientSecret: string | null = null;
+
+        try {
+          const oauthSettingsJson = localStorage.getItem('aeroftp_oauth_settings');
+          if (oauthSettingsJson) {
+            const oauthSettings = JSON.parse(oauthSettingsJson);
+            const providerKey = protocol === 'googledrive' ? 'googledrive' : protocol;
+            if (oauthSettings[providerKey]) {
+              clientId = oauthSettings[providerKey].clientId;
+              clientSecret = oauthSettings[providerKey].clientSecret;
+            }
+          }
+        } catch (e) {
+          console.warn('[switchSession] Failed to parse OAuth settings:', e);
+        }
+
+        // Fall back to legacy per-provider storage
+        if (!clientId || !clientSecret) {
+          clientId = localStorage.getItem(`oauth_${protocol}_client_id`);
+          clientSecret = localStorage.getItem(`oauth_${protocol}_client_secret`);
+        }
 
         if (!clientId || !clientSecret) {
           throw new Error(`OAuth credentials not found for ${protocol}`);
@@ -1637,8 +1680,9 @@ const App: React.FC = () => {
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string) => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
-      // Use override protocol if provided (for cases where state isn't updated yet)
-      const protocol = overrideProtocol || connectionParams.protocol;
+      // Use override protocol if provided, then connectionParams, then active session (most robust)
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
       let response: FileListResponse;
@@ -1748,8 +1792,9 @@ const App: React.FC = () => {
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
 
-    // Check if we're using a Provider
-    const protocol = connectionParams.protocol;
+    // Check if we're using a Provider (get protocol from active session as fallback)
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
     try {
@@ -1803,8 +1848,9 @@ const App: React.FC = () => {
     pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
     const startTime = Date.now();
     try {
-      // Check if we're using a Provider
-      const protocol = connectionParams.protocol;
+      // Check if we're using a Provider (get protocol from active session as fallback)
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
       if (isDir) {
@@ -2131,15 +2177,15 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
         const deletedFiles: string[] = [];
         const deletedFolders: string[] = [];
+        // Get protocol from active session as fallback (outside loop for efficiency)
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+
         for (const name of names) {
           const file = remoteFiles.find(f => f.name === name);
           if (file) {
             try {
-              // Use provider commands for OAuth providers
-              // Check provider status for this operation context
-              const protocol = connectionParams.protocol;
-              const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
-
               if (isProvider) {
                 if (file.is_dir) {
                   await invoke('provider_delete_dir', { path: file.path, recursive: true });
@@ -2221,7 +2267,9 @@ const App: React.FC = () => {
         setConfirmDialog(null);
         const logId = humanLog.logStart('DELETE', { filename: fileName });
         try {
-          const protocol = connectionParams.protocol;
+          // Get protocol from active session as fallback
+          const activeSession = sessions.find(s => s.id === activeSessionId);
+          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
           if (isProvider) {
@@ -2280,7 +2328,9 @@ const App: React.FC = () => {
           const newPath = parentDir + '/' + newName;
 
           if (isRemote) {
-            const protocol = connectionParams.protocol;
+            // Get protocol from active session as fallback
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
             if (isProvider) {
@@ -2313,7 +2363,9 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('MKDIR', { foldername: name });
         try {
           if (isRemote) {
-            const protocol = connectionParams.protocol;
+            // Get protocol from active session as fallback
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
@@ -2354,6 +2406,12 @@ const App: React.FC = () => {
     const downloadLabel = count > 1 ? `Download (${count})` : 'Download';
     const filesToUse = Array.from(selection);
 
+    // Get protocol from active session as fallback (for context menu operations)
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const currentProtocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const currentServer = connectionParams.server || activeSession?.connectionParams?.server;
+    const currentUsername = connectionParams.username || activeSession?.connectionParams?.username;
+
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
       // Media files (images, audio, video, pdf) use Universal Preview modal
@@ -2362,12 +2420,24 @@ const App: React.FC = () => {
       { label: 'View Source', icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: 'Rename', icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
       { label: 'Permissions', icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 },
+      {
+        label: 'Properties', icon: <Info size={14} />, action: () => setPropertiesDialog({
+          name: file.name,
+          path: file.path,
+          size: file.size,
+          is_dir: file.is_dir,
+          modified: file.modified,
+          permissions: file.permissions,
+          isRemote: true,
+          protocol: currentProtocol,
+        }), disabled: count > 1
+      },
       { label: 'Delete', icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
       { label: 'Copy Path', icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success('Path copied'); } },
       { label: 'Copy Name', icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success('Name copied'); } },
       {
         label: 'Copy FTP URL', icon: <Link2 size={14} />, action: () => {
-          const url = `ftp://${connectionParams.username}@${connectionParams.server}${file.path}`;
+          const url = `ftp://${currentUsername}@${currentServer}${file.path}`;
           navigator.clipboard.writeText(url);
           notify.success('FTP URL copied');
         }
@@ -2392,9 +2462,9 @@ const App: React.FC = () => {
       });
     }
 
-    // Add native Share Link for OAuth providers (Google Drive, Dropbox, OneDrive)
-    const isOAuthProvider = connectionParams.protocol && ['googledrive', 'dropbox', 'onedrive'].includes(connectionParams.protocol);
-    if (isOAuthProvider && !file.is_dir) {
+    // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs)
+    const supportsNativeShareLink = currentProtocol && ['googledrive', 'dropbox', 'onedrive', 's3'].includes(currentProtocol);
+    if (supportsNativeShareLink && !file.is_dir) {
       items.push({
         label: 'Create Share Link',
         icon: <Share2 size={14} />,
@@ -2440,11 +2510,72 @@ const App: React.FC = () => {
       // Code files use DevTools source viewer
       { label: 'View Source', icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: 'Rename', icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1 },
+      {
+        label: 'Properties', icon: <Info size={14} />, action: () => setPropertiesDialog({
+          name: file.name,
+          path: file.path,
+          size: file.size,
+          is_dir: file.is_dir,
+          modified: file.modified,
+          isRemote: false,
+        }), disabled: count > 1
+      },
       { label: 'Delete', icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
       { label: 'Copy Path', icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success('Path copied'); } },
       { label: 'Copy Name', icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success('Name copied'); }, divider: true },
       { label: 'Open in File Manager', icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
     ];
+
+    // Compress option (for files and folders)
+    items.push({
+      label: count > 1 ? `Compress (${count})` : 'Compress',
+      icon: <Archive size={14} />,
+      divider: true,
+      action: async () => {
+        try {
+          const pathsToCompress = filesToUpload.map(name => {
+            const f = sortedLocalFiles.find(lf => lf.name === name);
+            return f ? f.path : `${currentLocalPath}/${name}`;
+          });
+
+          // Generate output filename
+          const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
+          const outputPath = `${currentLocalPath}/${baseName}.zip`;
+
+          notify.info('Compressing...', `Creating ${baseName}.zip`);
+          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
+          await invoke<string>('compress_files', { paths: pathsToCompress, outputPath });
+          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
+          notify.success('Compressed!', `Created ${baseName}.zip`);
+          await loadLocalFiles(currentLocalPath);
+        } catch (err) {
+          activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+          notify.error('Compression failed', String(err));
+        }
+      }
+    });
+
+    // Extract option (for ZIP files only)
+    const isArchive = !file.is_dir && /\.(zip|ZIP)$/.test(file.name);
+    if (isArchive && count === 1) {
+      items.push({
+        label: 'Extract Here',
+        icon: <FolderOpen size={14} />,
+        action: async () => {
+          try {
+            notify.info('Extracting...', file.name);
+            const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
+            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath });
+            activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
+            notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
+            await loadLocalFiles(currentLocalPath);
+          } catch (err) {
+            activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+            notify.error('Extraction failed', String(err));
+          }
+        }
+      });
+    }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud local folder
@@ -2467,11 +2598,158 @@ const App: React.FC = () => {
     contextMenu.show(e, items);
   };
 
+  // ==================== DRAG & DROP HANDLERS ====================
+
+  // Start dragging file(s)
+  const handleDragStart = (
+    e: React.DragEvent,
+    file: { name: string; path: string; is_dir: boolean },
+    isRemote: boolean,
+    allSelected: Set<string>,
+    allFiles: { name: string; path: string }[]
+  ) => {
+    // Don't allow dragging ".." (go up)
+    if (file.name === '..') {
+      e.preventDefault();
+      return;
+    }
+
+    // Get all selected files, or just the dragged file if not in selection
+    const filesToDrag = allSelected.has(file.name)
+      ? allFiles.filter(f => allSelected.has(f.name))
+      : [file];
+
+    const sourceDir = isRemote ? currentRemotePath : currentLocalPath;
+
+    setDragData({
+      files: filesToDrag.map(f => f.name),
+      sourcePaths: filesToDrag.map(f => f.path),
+      isRemote,
+      sourceDir,
+    });
+
+    // Set drag image/effect
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
+  };
+
+  // Allow dropping on folders
+  const handleDragOver = (
+    e: React.DragEvent,
+    targetPath: string,
+    isFolder: boolean,
+    isRemotePanel: boolean
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Only allow drop on folders in the same panel
+    if (!dragData || dragData.isRemote !== isRemotePanel || !isFolder) {
+      e.dataTransfer.dropEffect = 'none';
+      setDropTargetPath(null);
+      return;
+    }
+
+    // Don't allow dropping on source directory or parent (..)
+    const targetName = targetPath.split('/').pop();
+    if (targetPath === dragData.sourceDir || targetName === '..') {
+      e.dataTransfer.dropEffect = 'none';
+      setDropTargetPath(null);
+      return;
+    }
+
+    // Don't allow dropping a folder into itself
+    if (dragData.sourcePaths.includes(targetPath)) {
+      e.dataTransfer.dropEffect = 'none';
+      setDropTargetPath(null);
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    setDropTargetPath(targetPath);
+  };
+
+  // Handle drop - move files to target folder
+  const handleDrop = async (
+    e: React.DragEvent,
+    targetPath: string,
+    isRemotePanel: boolean
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!dragData || dragData.isRemote !== isRemotePanel) {
+      setDragData(null);
+      setDropTargetPath(null);
+      return;
+    }
+
+    const { files, sourcePaths, isRemote } = dragData;
+    setDragData(null);
+    setDropTargetPath(null);
+
+    // Move each file
+    // Get protocol from active session as fallback (outside loop for efficiency)
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+
+    for (let i = 0; i < files.length; i++) {
+      const fileName = files[i];
+      const sourcePath = sourcePaths[i];
+      const destPath = `${targetPath}/${fileName}`;
+
+      try {
+        if (isRemote) {
+          // Remote file move (rename)
+          if (isProvider) {
+            await invoke('provider_rename', { from: sourcePath, to: destPath });
+          } else {
+            await invoke('ftp_rename', { from: sourcePath, to: destPath });
+          }
+        } else {
+          // Local file move
+          await invoke('rename_local_file', { from: sourcePath, to: destPath });
+        }
+        notify.success(`Moved ${fileName}`, `→ ${targetPath}`);
+      } catch (err) {
+        notify.error(`Failed to move ${fileName}`, String(err));
+      }
+    }
+
+    // Refresh the file list
+    if (isRemote) {
+      await loadRemoteFiles();
+    } else {
+      await loadLocalFiles(currentLocalPath);
+    }
+  };
+
+  // Clean up drag state
+  const handleDragEnd = () => {
+    setDragData(null);
+    setDropTargetPath(null);
+  };
+
+  // Handle drag leave
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    // Only clear if leaving the drop target completely
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+      setDropTargetPath(null);
+    }
+  };
+
+  // ==================== END DRAG & DROP ====================
+
   const handleRemoteFileAction = async (file: RemoteFile) => {
     if (file.is_dir) {
       // Use file.path for providers (WebDAV/S3) that need absolute paths
       // file.name works for FTP which handles relative paths
-      const protocol = connectionParams.protocol;
+      // Get protocol from active session as fallback
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
@@ -2522,6 +2800,33 @@ const App: React.FC = () => {
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(null)} />}
       {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} />}
+      {propertiesDialog && (
+        <PropertiesDialog
+          file={propertiesDialog}
+          onClose={() => setPropertiesDialog(null)}
+          onCalculateChecksum={async (algorithm) => {
+            if (!propertiesDialog || propertiesDialog.isRemote) return;
+            setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
+            try {
+              const hash = await invoke<string>('calculate_checksum', { path: propertiesDialog.path, algorithm });
+              setPropertiesDialog(prev => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  checksum: {
+                    ...prev.checksum,
+                    calculating: false,
+                    [algorithm]: hash
+                  }
+                };
+              });
+            } catch (err) {
+              notify.error(`Checksum failed`, String(err));
+              setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
+            }
+          }}
+        />
+      )}
       {syncNavDialog && (
         <SyncNavDialog
           missingPath={syncNavDialog.missingPath}
@@ -2624,7 +2929,8 @@ const App: React.FC = () => {
             onConnect={connectToFtp}
             onOpenCloudPanel={() => setShowCloudPanel(true)}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-              setConnectionParams(params);
+              // NOTE: Do NOT set connectionParams here - that would show the form
+              // The form should only appear when clicking Edit, not when connecting
 
               // Check if this is an OAuth provider
               const isOAuth = params.protocol && ['googledrive', 'dropbox', 'onedrive'].includes(params.protocol);
@@ -2651,6 +2957,9 @@ const App: React.FC = () => {
                   initialPath || '/',
                   localInitialPath || currentLocalPath
                 );
+                // Reset form for next "Add New Server"
+                setConnectionParams({ server: '', username: '', password: '' });
+                setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 return;
               }
 
@@ -2662,11 +2971,12 @@ const App: React.FC = () => {
                 setLoading(true);
                 setIsSyncNavigation(false);
                 setSyncBasePaths(null);
+                // Use displayName if available - no protocol prefix, icon shows protocol
                 const providerName = params.displayName || (params.protocol === 's3'
-                  ? `S3: ${params.options?.bucket || 'bucket'}`
+                  ? params.options?.bucket || 'S3'
                   : params.protocol === 'mega'
-                    ? `MEGA: ${params.username}`
-                    : `WebDAV: ${params.server}`);
+                    ? params.username
+                    : params.server.split(':')[0]);
                 const protocolLabel = (params.protocol || 'FTP').toUpperCase();
                 const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -2689,6 +2999,10 @@ const App: React.FC = () => {
                     path_style: params.options?.pathStyle || false,
                     save_session: params.options?.save_session,
                     session_expires_at: params.options?.session_expires_at,
+                    // SFTP-specific options
+                    private_key_path: params.options?.private_key_path || null,
+                    key_passphrase: params.options?.key_passphrase || null,
+                    timeout: params.options?.timeout || 30,
                   };
 
                   console.log('[onSavedServerConnect] provider_connect params:', providerParams);
@@ -2724,6 +3038,9 @@ const App: React.FC = () => {
                     response.current_path,
                     localInitialPath || currentLocalPath
                   );
+                  // Reset form for next "Add New Server"
+                  setConnectionParams({ server: '', username: '', password: '' });
+                  setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 } catch (error) {
                   humanLog.logError('CONNECT', { server: providerName }, logId);
                   notify.error('Connection Failed', String(error));
@@ -2773,6 +3090,9 @@ const App: React.FC = () => {
                   initialPath || '/',  // Use '/' as default, not currentRemotePath from previous session
                   localInitialPath || currentLocalPath
                 );
+                // Reset form for next "Add New Server"
+                setConnectionParams({ server: '', username: '', password: '' });
+                setQuickConnectDirs({ remoteDir: '', localDir: '' });
               } catch (error) {
                 humanLog.logError('CONNECT', { server: params.server }, logId);
                 notify.error('Connection Failed', String(error));
@@ -2939,6 +3259,12 @@ const App: React.FC = () => {
                         {sortedRemoteFiles.map((file, i) => (
                           <tr
                             key={file.name}
+                            draggable={file.name !== '..'}
+                            onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
                             onClick={(e) => {
                               if (file.name === '..') return;
                               if (e.shiftKey && lastSelectedRemoteIndex !== null) {
@@ -2964,10 +3290,13 @@ const App: React.FC = () => {
                             }}
                             onDoubleClick={() => handleRemoteFileAction(file)}
                             onContextMenu={(e: React.MouseEvent) => showRemoteContextMenu(e, file)}
-                            className={`cursor-pointer transition-colors ${selectedRemoteFiles.has(file.name)
-                              ? 'bg-blue-100 dark:bg-blue-900/40'
-                              : 'hover:bg-blue-50 dark:hover:bg-gray-700'
-                              }`}
+                            className={`cursor-pointer transition-colors ${
+                              dropTargetPath === file.path && file.is_dir
+                                ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
+                                : selectedRemoteFiles.has(file.name)
+                                  ? 'bg-blue-100 dark:bg-blue-900/40'
+                                  : 'hover:bg-blue-50 dark:hover:bg-gray-700'
+                            } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
                               {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
@@ -2997,7 +3326,17 @@ const App: React.FC = () => {
                       {sortedRemoteFiles.map((file, i) => (
                         <div
                           key={file.name}
-                          className={`file-grid-item ${selectedRemoteFiles.has(file.name) ? 'selected' : ''}`}
+                          draggable={file.name !== '..'}
+                          onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
+                          className={`file-grid-item ${
+                            dropTargetPath === file.path && file.is_dir
+                              ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
+                              : selectedRemoteFiles.has(file.name) ? 'selected' : ''
+                          } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           onClick={(e) => {
                             if (file.name === '..') return;
                             if (e.shiftKey && lastSelectedRemoteIndex !== null) {
@@ -3093,6 +3432,12 @@ const App: React.FC = () => {
                         {sortedLocalFiles.map((file, i) => (
                           <tr
                             key={file.name}
+                            draggable={file.name !== '..'}
+                            onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, false)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => file.is_dir && handleDrop(e, file.path, false)}
                             onClick={(e) => {
                               if (file.name === '..') return;
                               if (e.shiftKey && lastSelectedLocalIndex !== null) {
@@ -3126,10 +3471,13 @@ const App: React.FC = () => {
                               }
                             }}
                             onContextMenu={(e: React.MouseEvent) => showLocalContextMenu(e, file)}
-                            className={`cursor-pointer transition-colors ${selectedLocalFiles.has(file.name)
-                              ? 'bg-blue-100 dark:bg-blue-900/40'
-                              : 'hover:bg-blue-50 dark:hover:bg-gray-700'
-                              }`}
+                            className={`cursor-pointer transition-colors ${
+                              dropTargetPath === file.path && file.is_dir
+                                ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
+                                : selectedLocalFiles.has(file.name)
+                                  ? 'bg-blue-100 dark:bg-blue-900/40'
+                                  : 'hover:bg-blue-50 dark:hover:bg-gray-700'
+                            } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
                               {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
@@ -3158,7 +3506,17 @@ const App: React.FC = () => {
                       {sortedLocalFiles.map((file, i) => (
                         <div
                           key={file.name}
-                          className={`file-grid-item ${selectedLocalFiles.has(file.name) ? 'selected' : ''}`}
+                          draggable={file.name !== '..'}
+                          onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, false)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => file.is_dir && handleDrop(e, file.path, false)}
+                          className={`file-grid-item ${
+                            dropTargetPath === file.path && file.is_dir
+                              ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
+                              : selectedLocalFiles.has(file.name) ? 'selected' : ''
+                          } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           onClick={(e) => {
                             if (file.name === '..') return;
                             if (e.shiftKey && lastSelectedLocalIndex !== null) {
@@ -3412,13 +3770,17 @@ const App: React.FC = () => {
       <StatusBar
         isConnected={isConnected}
         serverInfo={isConnected ? (() => {
-          const protocol = connectionParams.protocol;
+          // Get protocol from active session as fallback
+          const activeSession = sessions.find(s => s.id === activeSessionId);
+          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           if (protocol === 'googledrive') return 'Google Drive';
           if (protocol === 'dropbox') return 'Dropbox';
           if (protocol === 'onedrive') return 'OneDrive';
           if (protocol === 'mega') return 'MEGA';
-          // For FTP/FTPS/SFTP/etc, show username@server
-          return connectionParams.server ? `${connectionParams.username}@${connectionParams.server}` : undefined;
+          // For FTP/FTPS/SFTP/etc, show username@server or session name
+          const server = connectionParams.server || activeSession?.connectionParams?.server;
+          const username = connectionParams.username || activeSession?.connectionParams?.username;
+          return server ? `${username}@${server}` : activeSession?.serverName;
         })() : undefined}
         remotePath={currentRemotePath}
         localPath={currentLocalPath}

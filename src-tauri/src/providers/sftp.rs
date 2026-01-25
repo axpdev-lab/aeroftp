@@ -212,9 +212,11 @@ impl StorageProvider for SftpProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         tracing::info!("SFTP: Connecting to {}:{}", self.config.host, self.config.port);
 
-        // Create SSH config
+        // Create SSH config with keepalive to prevent server from closing connection
         let config = Config {
-            inactivity_timeout: Some(std::time::Duration::from_secs(self.config.timeout_secs)),
+            inactivity_timeout: Some(std::time::Duration::from_secs(self.config.timeout_secs * 2)),
+            keepalive_interval: Some(std::time::Duration::from_secs(15)), // Send keepalive every 15s
+            keepalive_max: 3, // Allow 3 missed keepalives before disconnect
             ..Default::default()
         };
 

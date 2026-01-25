@@ -88,6 +88,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         googledrive: 'from-red-500 to-red-400',
         dropbox: 'from-blue-600 to-blue-400',
         onedrive: 'from-sky-500 to-sky-400',
+        mega: 'from-red-600 to-red-500',  // MEGA brand red
     };
 
     useEffect(() => {
@@ -187,11 +188,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         setServers(updated);
         saveServers(updated);
 
-        // Build connection params - for S3/WebDAV, don't modify the host with port
-        const isProviderProtocol = server.protocol && ['s3', 'webdav'].includes(server.protocol);
+        // Build connection params - for providers, don't append port to host
+        // SFTP/MEGA use provider_connect which handles port separately
+        const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega'].includes(server.protocol);
+        const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
         const serverString = isProviderProtocol
-            ? server.host  // S3/WebDAV: use host as-is (includes scheme)
-            : (server.port !== 21 ? `${server.host}:${server.port}` : server.host);
+            ? server.host  // S3/WebDAV/SFTP/MEGA: use host only
+            : (server.port !== defaultPort ? `${server.host}:${server.port}` : server.host);
 
         onConnect({
             server: serverString,

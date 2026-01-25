@@ -52,9 +52,9 @@ const AwsS3Logo: React.FC<{ size?: number; className?: string }> = ({ size = 16,
 );
 
 const MegaLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-        <circle cx="12" cy="12" r="12" fill="#D9272E" />
-        <path fill="#ffffff" d="M6.5 16V8h1.8l2.2 4.5L12.7 8h1.8v8h-1.5v-5.2l-1.8 3.7h-1.4l-1.8-3.7V16H6.5z" />
+    <svg width={size} height={size} viewBox="0 0 512 512" className={className}>
+        <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
+        <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff"/>
     </svg>
 );
 
@@ -335,7 +335,9 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                                         : protocol.badge === 'Soon'
                                             ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                            : protocol.badge === 'Secure'
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
                                     {protocol.badge}
                                 </span>

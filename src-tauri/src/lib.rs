@@ -1688,12 +1688,176 @@ async fn create_local_folder(path: String) -> Result<(), String> {
 #[tauri::command]
 async fn read_file_base64(path: String) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    
+
     let data = tokio::fs::read(&path)
         .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
-    
+
     Ok(STANDARD.encode(data))
+}
+
+/// Calculate checksum (MD5 or SHA-256) for a local file
+#[tauri::command]
+async fn calculate_checksum(path: String, algorithm: String) -> Result<String, String> {
+    use md5::Md5;
+    use sha2::{Sha256, Digest};
+    use tokio::io::AsyncReadExt;
+
+    let mut file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    match algorithm.to_lowercase().as_str() {
+        "md5" => {
+            let mut hasher = Md5::new();
+            let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
+
+            loop {
+                let bytes_read = file.read(&mut buffer).await
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                if bytes_read == 0 { break; }
+                hasher.update(&buffer[..bytes_read]);
+            }
+
+            let result = hasher.finalize();
+            Ok(hex::encode(result))
+        }
+        "sha256" => {
+            let mut hasher = Sha256::new();
+            let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
+
+            loop {
+                let bytes_read = file.read(&mut buffer).await
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                if bytes_read == 0 { break; }
+                hasher.update(&buffer[..bytes_read]);
+            }
+
+            let result = hasher.finalize();
+            Ok(hex::encode(result))
+        }
+        _ => Err(format!("Unsupported algorithm: {}. Use 'md5' or 'sha256'", algorithm))
+    }
+}
+
+/// Compress files/folders into a ZIP archive
+#[tauri::command]
+async fn compress_files(paths: Vec<String>, output_path: String) -> Result<String, String> {
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+    use walkdir::WalkDir;
+
+    let file = File::create(&output_path)
+        .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .compression_level(Some(6));
+
+    for path in &paths {
+        let path = std::path::Path::new(path);
+
+        if path.is_file() {
+            // Add single file
+            let file_name = path.file_name()
+                .ok_or("Invalid file name")?
+                .to_string_lossy();
+
+            zip.start_file(file_name.to_string(), options)
+                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+
+            let mut f = File::open(path)
+                .map_err(|e| format!("Failed to open file: {}", e))?;
+            let mut buffer = Vec::new();
+            f.read_to_end(&mut buffer)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            zip.write_all(&buffer)
+                .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+
+        } else if path.is_dir() {
+            // Add directory recursively
+            let base_name = path.file_name()
+                .ok_or("Invalid directory name")?
+                .to_string_lossy();
+
+            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                let relative_path = entry_path.strip_prefix(path.parent().unwrap_or(path))
+                    .map_err(|e| format!("Path error: {}", e))?;
+
+                if entry_path.is_file() {
+                    zip.start_file(relative_path.to_string_lossy().to_string(), options)
+                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+
+                    let mut f = File::open(entry_path)
+                        .map_err(|e| format!("Failed to open file: {}", e))?;
+                    let mut buffer = Vec::new();
+                    f.read_to_end(&mut buffer)
+                        .map_err(|e| format!("Failed to read file: {}", e))?;
+                    zip.write_all(&buffer)
+                        .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+
+                } else if entry_path.is_dir() && entry_path != path {
+                    let dir_path = format!("{}/", relative_path.to_string_lossy());
+                    zip.add_directory(&dir_path, options)
+                        .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                }
+            }
+        }
+    }
+
+    zip.finish()
+        .map_err(|e| format!("Failed to finalize ZIP: {}", e))?;
+
+    Ok(output_path)
+}
+
+/// Extract a ZIP archive
+#[tauri::command]
+async fn extract_archive(archive_path: String, output_dir: String) -> Result<String, String> {
+    use std::fs::{self, File};
+    use std::io::Read;
+    use zip::ZipArchive;
+
+    let file = File::open(&archive_path)
+        .map_err(|e| format!("Failed to open archive: {}", e))?;
+
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("Failed to read archive: {}", e))?;
+
+    // Create output directory if needed
+    fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| format!("Failed to read file from archive: {}", e))?;
+
+        let outpath = std::path::Path::new(&output_dir).join(file.name());
+
+        if file.name().ends_with('/') {
+            // Directory
+            fs::create_dir_all(&outpath)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        } else {
+            // File
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+            }
+
+            let mut outfile = File::create(&outpath)
+                .map_err(|e| format!("Failed to create file: {}", e))?;
+
+            std::io::copy(&mut file, &mut outfile)
+                .map_err(|e| format!("Failed to extract file: {}", e))?;
+        }
+    }
+
+    Ok(output_dir)
 }
 
 #[tauri::command]
@@ -2966,6 +3130,9 @@ pub fn run() {
             rename_local_file,
             create_local_folder,
             read_file_base64,
+            calculate_checksum,
+            compress_files,
+            extract_archive,
             ftp_read_file_base64,
             read_local_file,
             read_local_file_base64,

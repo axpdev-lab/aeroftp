@@ -46,7 +46,19 @@ const PROVIDER_ICONS: Record<string, React.ReactNode> = {
     'Server': <Server size={24} />,
 };
 
-const getProviderIcon = (iconName?: string, color?: string): React.ReactNode => {
+// MEGA official logo SVG component
+const MegaLogo: React.FC<{ size?: number }> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 512 512">
+        <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
+        <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff"/>
+    </svg>
+);
+
+const getProviderIcon = (iconName?: string, color?: string, providerId?: string): React.ReactNode => {
+    // Special case for MEGA - use official logo
+    if (providerId === 'mega' || iconName === 'MEGA') {
+        return <MegaLogo size={24} />;
+    }
     const icon = PROVIDER_ICONS[iconName || 'Cloud'] || <Cloud size={24} />;
     return <span style={{ color: color || 'currentColor' }}>{icon}</span>;
 };
@@ -116,7 +128,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                     ${compact ? 'w-8 h-8' : 'w-12 h-12'}
                     rounded-lg bg-gray-800 group-hover:bg-gray-700 transition-colors
                 `}>
-                    {getProviderIcon(provider.icon, provider.color)}
+                    {getProviderIcon(provider.icon, provider.color, provider.id)}
                 </div>
 
                 {/* Name */}

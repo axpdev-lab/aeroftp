@@ -47,6 +47,9 @@ urlencoding = "2"
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
+md-5 = "0.10"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+walkdir = "2"
 quick-xml = "0.31"
 
 # OAuth2 Cloud Providers (Sprint 2)

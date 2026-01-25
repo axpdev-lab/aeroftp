@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
 > Last Updated: 25 January 2026
-> Version: v1.2.7
+> Version: v1.2.7 (MEGA Integration + UI Consistency)
 
 ---
 
@@ -135,15 +135,20 @@
 
 ## Prioritized Roadmap Based on Analysis
 
+### v1.2.7 - COMPLETED
+1. ✅ **MEGA.nz Integration** - 20GB free encrypted storage (UNIQUE - no competitor has this)
+2. ✅ **SFTP Support** - Password and SSH key authentication
+3. ✅ **UI Consistency** - Protocol icons standardized across app
+
 ### v1.3.0 - Critical Gap Closure
-1. **SFTP Support** - All competitors have it
-2. **Cryptomator Encryption** - Cyberduck's premium feature
-3. **Keyboard Shortcuts** - F2, Del, Ctrl+C/V
+1. **Cryptomator Encryption** - Cyberduck's premium feature
+2. **Keyboard Shortcuts** - F2, Del, Ctrl+C/V
+3. **Cross-panel Drag & Drop** - Already in Transmit/ForkLift
 
 ### v1.4.0 - Feature Parity
-4. **Drag & Drop Cross-Panel** - Already in Transmit/ForkLift
-5. **File Versioning** - Like Cyberduck/Mountain Duck
-6. **Bandwidth Throttling** - Like FileZilla
+4. **File Versioning** - Like Cyberduck/Mountain Duck
+5. **Bandwidth Throttling** - Like FileZilla
+6. **Keychain Integration** - Secure credential storage
 
 ### v1.5.0 - Advanced Features
 7. **CLI/Scripting** - Like WinSCP
