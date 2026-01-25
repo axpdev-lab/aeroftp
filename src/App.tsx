@@ -241,7 +241,7 @@ const App: React.FC = () => {
   const isCurrentOAuthProvider = React.useMemo(() => {
     const protocol = connectionParams.protocol;
     // Includes OAuth providers AND other providers like S3, WebDAV, MEGA
-    return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+    return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
   }, [connectionParams.protocol]);
 
   // Load image preview as base64 when file changes
@@ -460,7 +460,7 @@ const App: React.FC = () => {
     // Skip keep-alive for non-FTP providers (OAuth, S3, WebDAV)
     const protocol = connectionParams.protocol;
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
     if (isOAuth || isProvider) {
       console.log('[Keep-Alive] Skipping for non-FTP provider:', protocol);
       return;
@@ -755,7 +755,7 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided (for cases where state isn't updated yet)
       const protocol = overrideProtocol || connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
       console.log('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -969,7 +969,7 @@ const App: React.FC = () => {
     console.log('[connectToFtp] connectionParams:', connectionParams);
     console.log('[connectToFtp] protocol:', protocol);
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
     console.log('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
@@ -1247,7 +1247,7 @@ const App: React.FC = () => {
     const protocol = targetSession.connectionParams?.protocol;
     const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
     // Treat 'mega' as a general provider like S3/WebDAV, not legacy FTP
-    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
@@ -1639,7 +1639,7 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided (for cases where state isn't updated yet)
       const protocol = overrideProtocol || connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
       let response: FileListResponse;
       if (isProvider) {
@@ -1750,7 +1750,7 @@ const App: React.FC = () => {
 
     // Check if we're using a Provider
     const protocol = connectionParams.protocol;
-    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
     try {
       if (isDir) {
@@ -1805,7 +1805,7 @@ const App: React.FC = () => {
     try {
       // Check if we're using a Provider
       const protocol = connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
       if (isDir) {
         if (isProvider) {
@@ -2138,7 +2138,7 @@ const App: React.FC = () => {
               // Use provider commands for OAuth providers
               // Check provider status for this operation context
               const protocol = connectionParams.protocol;
-              const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+              const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
               if (isProvider) {
                 if (file.is_dir) {
@@ -2222,7 +2222,7 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('DELETE', { filename: fileName });
         try {
           const protocol = connectionParams.protocol;
-          const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+          const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
           if (isProvider) {
             if (isDir) {
@@ -2281,7 +2281,7 @@ const App: React.FC = () => {
 
           if (isRemote) {
             const protocol = connectionParams.protocol;
-            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
             if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
@@ -2314,7 +2314,7 @@ const App: React.FC = () => {
         try {
           if (isRemote) {
             const protocol = connectionParams.protocol;
-            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -2472,7 +2472,7 @@ const App: React.FC = () => {
       // Use file.path for providers (WebDAV/S3) that need absolute paths
       // file.name works for FTP which handles relative paths
       const protocol = connectionParams.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
     } else {
@@ -2655,7 +2655,7 @@ const App: React.FC = () => {
               }
 
               // Check if this is a provider protocol (S3, WebDAV, MEGA)
-              const isProvider = params.protocol && ['s3', 'webdav', 'mega'].includes(params.protocol);
+              const isProvider = params.protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(params.protocol);
 
               if (isProvider) {
                 // S3/WebDAV connection via provider_connect

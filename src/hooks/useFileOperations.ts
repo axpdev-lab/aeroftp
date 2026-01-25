@@ -66,7 +66,7 @@ export function useFileOperations({
     const loadRemoteFiles = useCallback(async () => {
         try {
             // Use provider_list_files for S3, WebDAV and MEGA, list_files for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
             let response: FileListResponse;
 
             if (isProviderProtocol) {
@@ -98,7 +98,7 @@ export function useFileOperations({
     const changeRemoteDirectory = useCallback(async (path: string) => {
         try {
             // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
             console.log('[DEBUG] changeRemoteDirectory', { path, protocol, isProviderProtocol });
 
             let response: FileListResponse;
@@ -153,7 +153,7 @@ export function useFileOperations({
             const newRemotePath = relativePath ? basePath + relPath : basePath;
             try {
                 // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
-                const isProviderProtocol = protocol && ['s3', 'webdav', 'mega'].includes(protocol);
+                const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
                 let response: FileListResponse;
 
                 if (isProviderProtocol) {

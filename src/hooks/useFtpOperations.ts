@@ -109,9 +109,10 @@ export function useFtpOperations({
     useEffect(() => {
         if (!isConnected) return;
 
-        // Skip keep-alive for non-FTP providers (stateless REST APIs don't need keep-alive)
+        // Skip keep-alive for non-FTP providers (they use provider_* commands, not ftp_noop)
+        // Note: SFTP is stateful but uses provider_* commands, so ftp_noop won't work for it
         const protocol = connectionParams.protocol;
-        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega'].includes(protocol);
+        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
         if (isProvider) return;
 
         const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds

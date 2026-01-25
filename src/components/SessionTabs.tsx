@@ -29,7 +29,7 @@ const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
