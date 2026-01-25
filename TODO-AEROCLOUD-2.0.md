@@ -290,6 +290,16 @@ All major competitors (FileZilla, Cyberduck, WinSCP) have these features:
   - ✅ UI: Key passphrase field (shows when key path set)
   - ⚠️ Host key verification: accepts all keys (TODO: known_hosts check)
 
+- [ ] **Advanced Archive Support** ⚡ HIGH PRIORITY
+  > See [docs/ARCHIVE-FEATURES-ROADMAP.md](docs/ARCHIVE-FEATURES-ROADMAP.md) for full plan
+  - [ ] Extract to subfolder (best practice)
+  - [ ] 7z format with AES-256 encryption
+  - [ ] Password-protected archives (create & extract)
+  - [ ] Multi-format: TAR, TAR.GZ, TAR.XZ, TAR.BZ2
+  - [ ] RAR extraction (read-only)
+  - [ ] Archive browser (list contents before extract)
+  - [ ] Progress tracking for large archives
+
 - [ ] **Cryptomator Encryption** (like Cyberduck)
   - Implement Cryptomator vault format v8
   - AES-256-GCM encryption layer

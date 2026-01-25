@@ -53,11 +53,21 @@
 
 ---
 
-## 📋 Sprint 3 - Encryption (Prossimo)
+## 📋 Sprint 3 - Archive & Encryption (Prossimo)
 
 ### Obiettivi v1.3.0
+
+#### Archive Features (HIGH PRIORITY)
+> See [docs/ARCHIVE-FEATURES-ROADMAP.md](docs/ARCHIVE-FEATURES-ROADMAP.md)
+- [ ] Extract to subfolder (best practice)
+- [ ] 7z format with AES-256 encryption
+- [ ] Password-protected archives
+- [ ] Multi-format: TAR.GZ, TAR.XZ, RAR (read)
+- [ ] Archive browser dialog
+- [ ] Progress tracking
+
+#### Other Features
 - [ ] Cryptomator vault support
-- [ ] Client-side encryption layer
 - [ ] Keyboard Shortcuts (F2, Del, Ctrl+C/V)
 - [ ] Cross-panel Drag & Drop
 - [ ] Host key verification per SFTP
