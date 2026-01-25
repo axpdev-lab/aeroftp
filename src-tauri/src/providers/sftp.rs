@@ -1,29 +1,76 @@
 //! SFTP Provider Implementation
 //!
-//! This module provides SFTP (SSH File Transfer Protocol) support.
-//! Supports both password and key-based authentication.
+//! This module provides SFTP (SSH File Transfer Protocol) support using the russh crate.
+//! Supports both password and SSH key-based authentication.
 //!
-//! Status: In Development (v1.3.0)
+//! Status: v1.3.0
 
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
 use async_trait::async_trait;
+use russh::client::{self, Config, Handle, Handler};
+use russh_sftp::client::SftpSession;
+use russh_keys::ssh_key::PublicKey;
 use std::path::Path;
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// SSH Client Handler for server key verification
+struct SshHandler {
+    /// Whether to accept any host key (for initial connection)
+    /// In production, this should verify against known_hosts
+    accept_any_key: bool,
+}
+
+impl SshHandler {
+    fn new() -> Self {
+        Self {
+            accept_any_key: true, // TODO: Implement proper host key verification
+        }
+    }
+}
+
+#[async_trait]
+impl Handler for SshHandler {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &PublicKey,
+    ) -> Result<bool, Self::Error> {
+        // TODO: Implement proper host key verification against ~/.ssh/known_hosts
+        // For now, accept all keys (like ssh -o StrictHostKeyChecking=no)
+        if self.accept_any_key {
+            tracing::warn!("SFTP: Accepting server key without verification (known_hosts check not yet implemented)");
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
 
 /// SFTP Provider
 ///
-/// Note: Full implementation will use russh crate. Currently a stub for compilation.
+/// Provides secure file transfer over SSH using the SFTP protocol.
 pub struct SftpProvider {
     config: SftpConfig,
-    connected: bool,
+    /// SSH connection handle
+    ssh_handle: Option<Handle<SshHandler>>,
+    /// SFTP session for file operations
+    sftp: Option<SftpSession>,
+    /// Current working directory
     current_dir: String,
+    /// Home directory (resolved on connect)
+    home_dir: String,
 }
 
 impl SftpProvider {
     pub fn new(config: SftpConfig) -> Self {
         Self {
             config,
-            connected: false,
+            ssh_handle: None,
+            sftp: None,
             current_dir: "/".to_string(),
+            home_dir: "/".to_string(),
         }
     }
 
@@ -39,10 +86,117 @@ impl SftpProvider {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "/".to_string());
             if parent.is_empty() { "/".to_string() } else { parent }
+        } else if path == "~" {
+            self.home_dir.clone()
+        } else if path.starts_with("~/") {
+            format!("{}/{}", self.home_dir.trim_end_matches('/'), &path[2..])
         } else {
             format!("{}/{}", self.current_dir.trim_end_matches('/'), path)
         }
     }
+
+    /// Get SFTP session or error if not connected
+    fn get_sftp(&self) -> Result<&SftpSession, ProviderError> {
+        self.sftp.as_ref().ok_or(ProviderError::NotConnected)
+    }
+
+    /// Get mutable SFTP session or error if not connected
+    fn get_sftp_mut(&mut self) -> Result<&mut SftpSession, ProviderError> {
+        self.sftp.as_mut().ok_or(ProviderError::NotConnected)
+    }
+
+    /// Convert russh-sftp metadata to RemoteEntry
+    fn metadata_to_entry(&self, name: String, path: String, metadata: &russh_sftp::protocol::FileAttributes) -> RemoteEntry {
+        let is_dir = metadata.permissions
+            .map(|p| (p & 0o40000) != 0)
+            .unwrap_or(false);
+
+        let permissions = metadata.permissions.map(|p| {
+            format_permissions(p, is_dir)
+        });
+
+        let modified = metadata.mtime.map(|t| {
+            chrono::DateTime::from_timestamp(t as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default()
+        });
+
+        RemoteEntry {
+            name,
+            path,
+            is_dir,
+            size: metadata.size.unwrap_or(0),
+            modified,
+            permissions,
+            owner: metadata.uid.map(|u| u.to_string()),
+            group: metadata.gid.map(|g| g.to_string()),
+            is_symlink: false, // Will be set separately for symlinks
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        }
+    }
+
+    /// Authenticate using SSH private key
+    async fn authenticate_with_key(&self, handle: &mut Handle<SshHandler>) -> Result<bool, ProviderError> {
+        let key_path = self.config.private_key_path.as_ref()
+            .ok_or_else(|| ProviderError::AuthenticationFailed("No private key path specified".to_string()))?;
+
+        // Expand ~ in path
+        let expanded_path = if key_path.starts_with("~/") {
+            if let Some(home) = dirs::home_dir() {
+                format!("{}/{}", home.display(), &key_path[2..])
+            } else {
+                key_path.clone()
+            }
+        } else {
+            key_path.clone()
+        };
+
+        tracing::info!("SFTP: Loading private key from {}", expanded_path);
+
+        // Read key file
+        let key_data = tokio::fs::read_to_string(&expanded_path).await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to read key file: {}", e)))?;
+
+        // Parse the key
+        let key_pair = if let Some(passphrase) = &self.config.key_passphrase {
+            russh_keys::decode_secret_key(&key_data, Some(passphrase))
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to decode encrypted key: {}", e)))?
+        } else {
+            russh_keys::decode_secret_key(&key_data, None)
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to decode key: {}", e)))?
+        };
+
+        // Authenticate
+        let auth_result = handle.authenticate_publickey(&self.config.username, Arc::new(key_pair)).await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("Key authentication failed: {}", e)))?;
+
+        Ok(auth_result)
+    }
+}
+
+/// Format Unix permissions as rwx string
+fn format_permissions(mode: u32, is_dir: bool) -> String {
+    let user = format!(
+        "{}{}{}",
+        if mode & 0o400 != 0 { 'r' } else { '-' },
+        if mode & 0o200 != 0 { 'w' } else { '-' },
+        if mode & 0o100 != 0 { 'x' } else { '-' }
+    );
+    let group = format!(
+        "{}{}{}",
+        if mode & 0o040 != 0 { 'r' } else { '-' },
+        if mode & 0o020 != 0 { 'w' } else { '-' },
+        if mode & 0o010 != 0 { 'x' } else { '-' }
+    );
+    let other = format!(
+        "{}{}{}",
+        if mode & 0o004 != 0 { 'r' } else { '-' },
+        if mode & 0o002 != 0 { 'w' } else { '-' },
+        if mode & 0o001 != 0 { 'x' } else { '-' }
+    );
+    format!("{}{}{}{}", if is_dir { 'd' } else { '-' }, user, group, other)
 }
 
 #[async_trait]
@@ -56,29 +210,152 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // TODO: Implement full SFTP connection using russh
-        // For now, return NotSupported to indicate work in progress
-        tracing::info!("SFTP connect requested for {}:{}", self.config.host, self.config.port);
+        tracing::info!("SFTP: Connecting to {}:{}", self.config.host, self.config.port);
 
-        Err(ProviderError::NotSupported(
-            "SFTP support is coming in v1.3.0. Stay tuned!".to_string()
-        ))
+        // Create SSH config
+        let config = Config {
+            inactivity_timeout: Some(std::time::Duration::from_secs(self.config.timeout_secs)),
+            ..Default::default()
+        };
+
+        // Connect to SSH server
+        let addr = format!("{}:{}", self.config.host, self.config.port);
+        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::new()).await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
+
+        tracing::info!("SFTP: SSH connection established, authenticating...");
+
+        // Authenticate
+        let authenticated = if self.config.private_key_path.is_some() {
+            // Try key-based authentication
+            self.authenticate_with_key(&mut handle).await?
+        } else if let Some(password) = &self.config.password {
+            // Password authentication
+            handle.authenticate_password(&self.config.username, password).await
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e)))?
+        } else {
+            return Err(ProviderError::AuthenticationFailed(
+                "No authentication method provided (need password or private key)".to_string()
+            ));
+        };
+
+        if !authenticated {
+            return Err(ProviderError::AuthenticationFailed(
+                "Authentication rejected by server".to_string()
+            ));
+        }
+
+        tracing::info!("SFTP: Authenticated successfully, opening SFTP channel...");
+
+        // Open SFTP subsystem channel
+        let channel = handle.channel_open_session().await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to open session channel: {}", e)))?;
+
+        channel.request_subsystem(true, "sftp").await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e)))?;
+
+        // Create SFTP session from channel
+        let sftp = SftpSession::new(channel.into_stream()).await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e)))?;
+
+        // Get home directory (canonicalize ".")
+        let home = sftp.canonicalize(".").await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e)))?;
+
+        self.home_dir = home;
+
+        // Set initial directory
+        if let Some(initial) = &self.config.initial_path {
+            self.current_dir = self.normalize_path(initial);
+        } else {
+            self.current_dir = self.home_dir.clone();
+        }
+
+        self.ssh_handle = Some(handle);
+        self.sftp = Some(sftp);
+
+        tracing::info!("SFTP: Connected successfully to {} (home: {})", self.config.host, self.home_dir);
+        Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
-        self.connected = false;
+        tracing::info!("SFTP: Disconnecting from {}", self.config.host);
+
+        // Close SFTP session
+        if let Some(sftp) = self.sftp.take() {
+            let _ = sftp.close().await;
+        }
+
+        // Close SSH handle
+        if let Some(handle) = self.ssh_handle.take() {
+            let _ = handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+        }
+
+        self.current_dir = "/".to_string();
+        self.home_dir = "/".to_string();
+
+        tracing::info!("SFTP: Disconnected");
         Ok(())
     }
 
     fn is_connected(&self) -> bool {
-        self.connected
+        self.sftp.is_some()
     }
 
-    async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
+    async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        tracing::debug!("SFTP: Listing directory: {}", full_path);
+
+        let entries = sftp.read_dir(&full_path).await
+            .map_err(|e| ProviderError::NotFound(format!("Failed to list directory: {}", e)))?;
+
+        let mut result = Vec::new();
+
+        for entry in entries {
+            let name = entry.file_name();
+
+            // Skip . and ..
+            if name == "." || name == ".." {
+                continue;
+            }
+
+            let entry_path = if full_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", full_path.trim_end_matches('/'), name)
+            };
+
+            let mut remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+
+            // Check if it's a symlink
+            if let Ok(link_meta) = sftp.symlink_metadata(&entry_path).await {
+                if let Some(perms) = link_meta.permissions {
+                    // S_IFLNK = 0o120000
+                    if (perms & 0o170000) == 0o120000 {
+                        remote_entry.is_symlink = true;
+                        if let Ok(target) = sftp.read_link(&entry_path).await {
+                            remote_entry.link_target = Some(target);
+                        }
+                    }
+                }
+            }
+
+            result.push(remote_entry);
         }
-        Ok(vec![])
+
+        // Sort: directories first, then alphabetically
+        result.sort_by(|a, b| {
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
+        });
+
+        tracing::debug!("SFTP: Listed {} entries", result.len());
+        Ok(result)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -86,10 +363,21 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        // Verify the directory exists
+        let metadata = sftp.metadata(&full_path).await
+            .map_err(|e| ProviderError::NotFound(format!("Directory not found: {}", e)))?;
+
+        if let Some(perms) = metadata.permissions {
+            if (perms & 0o40000) == 0 {
+                return Err(ProviderError::InvalidPath(format!("{} is not a directory", full_path)));
+            }
         }
-        self.current_dir = self.normalize_path(path);
+
+        self.current_dir = full_path;
+        tracing::debug!("SFTP: Changed directory to {}", self.current_dir);
         Ok(())
     }
 
@@ -99,88 +387,262 @@ impl StorageProvider for SftpProvider {
 
     async fn download(
         &mut self,
-        _remote_path: &str,
-        _local_path: &str,
-        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        remote_path: &str,
+        local_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(remote_path);
+
+        tracing::info!("SFTP: Downloading {} to {}", full_path, local_path);
+
+        // Get file size
+        let metadata = sftp.metadata(&full_path).await
+            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+        let total_size = metadata.size.unwrap_or(0);
+
+        // Open remote file
+        let mut remote_file = sftp.open(&full_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to open remote file: {}", e)))?;
+
+        // Create local file
+        let mut local_file = tokio::fs::File::create(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to create local file: {}", e)))?;
+
+        // Read and write in chunks
+        let mut buffer = vec![0u8; 32768]; // 32KB chunks
+        let mut transferred: u64 = 0;
+
+        loop {
+            let bytes_read = remote_file.read(&mut buffer).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Read error: {}", e)))?;
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            local_file.write_all(&buffer[..bytes_read]).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
+
+            transferred += bytes_read as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+        }
+
+        local_file.flush().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+
+        tracing::info!("SFTP: Download complete: {} bytes", transferred);
+        Ok(())
     }
 
-    async fn download_to_bytes(&mut self, _remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(remote_path);
+
+        tracing::debug!("SFTP: Reading file to bytes: {}", full_path);
+
+        let data = sftp.read(&full_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to read file: {}", e)))?;
+
+        Ok(data)
     }
 
     async fn upload(
         &mut self,
-        _local_path: &str,
-        _remote_path: &str,
-        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(remote_path);
+
+        tracing::info!("SFTP: Uploading {} to {}", local_path, full_path);
+
+        // Open local file
+        let mut local_file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to open local file: {}", e)))?;
+
+        let total_size = local_file.metadata().await
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        // Create remote file
+        let mut remote_file = sftp.create(&full_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to create remote file: {}", e)))?;
+
+        // Read and write in chunks
+        let mut buffer = vec![0u8; 32768]; // 32KB chunks
+        let mut transferred: u64 = 0;
+
+        loop {
+            let bytes_read = local_file.read(&mut buffer).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Read error: {}", e)))?;
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            remote_file.write_all(&buffer[..bytes_read]).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
+
+            transferred += bytes_read as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+        }
+
+        remote_file.shutdown().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Shutdown error: {}", e)))?;
+
+        tracing::info!("SFTP: Upload complete: {} bytes", transferred);
+        Ok(())
     }
 
-    async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        tracing::info!("SFTP: Creating directory: {}", full_path);
+
+        sftp.create_dir(&full_path).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to create directory: {}", e)))?;
+
+        Ok(())
     }
 
-    async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        tracing::info!("SFTP: Deleting file: {}", full_path);
+
+        sftp.remove_file(&full_path).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to delete file: {}", e)))?;
+
+        Ok(())
     }
 
-    async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        tracing::info!("SFTP: Removing directory: {}", full_path);
+
+        sftp.remove_dir(&full_path).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to remove directory: {}", e)))?;
+
+        Ok(())
     }
 
-    async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        let full_path = self.normalize_path(path);
+
+        tracing::info!("SFTP: Recursively removing directory: {}", full_path);
+
+        // List all entries
+        let entries = self.list(&full_path).await?;
+
+        // Delete all entries recursively
+        for entry in entries {
+            if entry.is_dir {
+                // Use Box::pin to avoid infinite recursion type issues
+                Box::pin(self.rmdir_recursive(&entry.path)).await?;
+            } else {
+                self.delete(&entry.path).await?;
+            }
+        }
+
+        // Now remove the empty directory
+        self.rmdir(&full_path).await
     }
 
-    async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let sftp = self.get_sftp()?;
+        let from_path = self.normalize_path(from);
+        let to_path = self.normalize_path(to);
+
+        tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
+
+        sftp.rename(&from_path, &to_path).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to rename: {}", e)))?;
+
+        Ok(())
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
+
+        let metadata = sftp.metadata(&full_path).await
+            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+
         let name = Path::new(&full_path)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| full_path.clone());
 
-        Ok(RemoteEntry {
-            name,
-            path: full_path,
-            is_dir: false,
-            size: 0,
-            modified: None,
-            permissions: None,
-            owner: None,
-            group: None,
-            is_symlink: false,
-            link_target: None,
-            mime_type: None,
-            metadata: Default::default(),
-        })
+        let mut entry = self.metadata_to_entry(name, full_path.clone(), &metadata);
+
+        // Check for symlink
+        if let Ok(link_meta) = sftp.symlink_metadata(&full_path).await {
+            if let Some(perms) = link_meta.permissions {
+                if (perms & 0o170000) == 0o120000 {
+                    entry.is_symlink = true;
+                    if let Ok(target) = sftp.read_link(&full_path).await {
+                        entry.link_target = Some(target);
+                    }
+                }
+            }
+        }
+
+        Ok(entry)
     }
 
-    async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        let metadata = sftp.metadata(&full_path).await
+            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+
+        Ok(metadata.size.unwrap_or(0))
     }
 
-    async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        match sftp.try_exists(&full_path).await {
+            Ok(exists) => Ok(exists),
+            Err(_) => Ok(false),
+        }
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        if !self.connected {
+        // SFTP over SSH is a persistent connection
+        // Just check if we're still connected
+        if self.sftp.is_none() {
             return Err(ProviderError::NotConnected);
         }
+
+        // Optionally do a simple operation to verify connection
+        // canonicalize(".") is lightweight
+        if let Some(sftp) = &self.sftp {
+            sftp.canonicalize(".").await
+                .map_err(|_| ProviderError::NotConnected)?;
+        }
+
         Ok(())
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
-            "SFTP Server: {}:{} (user: {})",
-            self.config.host, self.config.port, self.config.username
+            "SFTP Server: {}:{} (user: {}, home: {})",
+            self.config.host, self.config.port, self.config.username, self.home_dir
         ))
     }
 
@@ -188,8 +650,19 @@ impl StorageProvider for SftpProvider {
         true // SFTP supports chmod
     }
 
-    async fn chmod(&mut self, _path: &str, _mode: u32) -> Result<(), ProviderError> {
-        Err(ProviderError::NotConnected)
+    async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(path);
+
+        tracing::info!("SFTP: chmod {} to {:o}", full_path, mode);
+
+        let mut attrs = russh_sftp::protocol::FileAttributes::default();
+        attrs.permissions = Some(mode);
+
+        sftp.set_metadata(&full_path, attrs).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to chmod: {}", e)))?;
+
+        Ok(())
     }
 
     fn supports_symlinks(&self) -> bool {
@@ -234,10 +707,21 @@ mod tests {
 
         let mut provider = SftpProvider::new(config);
         provider.current_dir = "/home/user".to_string();
+        provider.home_dir = "/home/user".to_string();
 
         assert_eq!(provider.normalize_path("/absolute"), "/absolute");
         assert_eq!(provider.normalize_path("relative"), "/home/user/relative");
         assert_eq!(provider.normalize_path(".."), "/home");
         assert_eq!(provider.normalize_path("."), "/home/user");
+        assert_eq!(provider.normalize_path("~"), "/home/user");
+        assert_eq!(provider.normalize_path("~/documents"), "/home/user/documents");
+    }
+
+    #[test]
+    fn test_format_permissions() {
+        assert_eq!(format_permissions(0o755, true), "drwxr-xr-x");
+        assert_eq!(format_permissions(0o644, false), "-rw-r--r--");
+        assert_eq!(format_permissions(0o777, true), "drwxrwxrwx");
+        assert_eq!(format_permissions(0o600, false), "-rw-------");
     }
 }

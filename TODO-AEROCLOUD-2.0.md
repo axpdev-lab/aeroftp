@@ -260,16 +260,18 @@ aws-config = "1"
 ### HIGH PRIORITY - Gap Closure
 All major competitors (FileZilla, Cyberduck, WinSCP) have these features:
 
-- [ ] **SFTP Support** ⚡ CRITICAL - Foundation Complete
-  - ✅ Created `SftpProvider` stub implementing `StorageProvider` trait
-  - ✅ Added `SftpConfig` with password and key authentication fields
-  - ✅ Added SFTP to ProtocolSelector (port 22 default, "Secure" badge)
-  - ✅ Added SFTP options to TypeScript types (private_key_path, passphrase, timeout)
-  - ✅ Prepared Cargo.toml with `russh` dependencies (commented until full impl)
-  - [ ] Implement full SSH connection using `russh` crate
-  - [ ] Support key-based authentication (id_rsa, id_ed25519)
-  - [ ] Support password authentication
-  - [ ] Test with OpenSSH servers
+- [x] **SFTP Support** ⚡ CRITICAL - COMPLETE
+  - ✅ Full `SftpProvider` implementation using `russh` + `russh-sftp`
+  - ✅ Password authentication support
+  - ✅ SSH key authentication (id_rsa, id_ed25519, encrypted keys with passphrase)
+  - ✅ All file operations: list, upload, download, mkdir, delete, rename, stat
+  - ✅ Symlink detection and link_target resolution
+  - ✅ chmod support via SFTP set_metadata
+  - ✅ Home directory (~) path expansion
+  - ✅ Connection timeout configuration
+  - ✅ UI: Private key path selector with file browser
+  - ✅ UI: Key passphrase field (shows when key path set)
+  - ⚠️ Host key verification: accepts all keys (TODO: known_hosts check)
 
 - [ ] **Cryptomator Encryption** (like Cyberduck)
   - Implement Cryptomator vault format v8
@@ -399,7 +401,7 @@ src-tauri/src/
 | Provider     | Browse | Upload | Download | Sync | Share | Status |
 | ------------ | ------ | ------ | -------- | ---- | ----- | ------ |
 | FTP/FTPS     | ✅      | ✅      | ✅        | ✅    | ❌     | Stable |
-| SFTP         | 📋      | 📋      | 📋        | 📋    | ❌     | Foundation ✅ |
+| SFTP         | ✅      | ✅      | ✅        | 📋    | ❌     | **v1.3.0** |
 | WebDAV       | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
 | S3           | ✅      | ✅      | ✅        | ✅    | 📋     | Stable |
 | Google Drive | ✅      | ✅      | ✅        | 📋    | ✅     | Stable |

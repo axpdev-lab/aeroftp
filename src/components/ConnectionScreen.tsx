@@ -207,6 +207,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // Browse for SSH key file (SFTP)
+    const handleBrowseSshKey = async () => {
+        try {
+            const selected = await open({
+                multiple: false,
+                title: 'Select SSH Private Key',
+                filters: [
+                    { name: 'All Files', extensions: ['*'] },
+                    { name: 'SSH Keys', extensions: ['pem', 'key', 'ppk'] },
+                ]
+            });
+            if (selected && typeof selected === 'string') {
+                onConnectionParamsChange({
+                    ...connectionParams,
+                    options: { ...connectionParams.options, private_key_path: selected }
+                });
+            }
+        } catch (e) {
+            console.error('File picker error:', e);
+        }
+    };
+
     const handleProtocolChange = (newProtocol: ProviderType) => {
         // Reset provider selection when protocol changes
         setSelectedProviderId(null);
@@ -637,6 +659,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         options={connectionParams.options || {}}
                                         onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
                                         disabled={loading}
+                                        onBrowseKeyFile={protocol === 'sftp' ? handleBrowseSshKey : undefined}
                                     />
 
                                     <div>

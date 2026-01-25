@@ -370,9 +370,14 @@ interface ProtocolFieldsProps {
         region?: string;
         endpoint?: string;
         pathStyle?: boolean;
+        // SFTP-specific
+        private_key_path?: string;
+        key_passphrase?: string;
+        timeout?: number;
     };
     onChange: (options: ProtocolFieldsProps['options']) => void;
     disabled?: boolean;
+    onBrowseKeyFile?: () => void;  // Callback for key file selection
 }
 
 export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
@@ -380,7 +385,71 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     options,
     onChange,
     disabled = false,
+    onBrowseKeyFile,
 }) => {
+    if (protocol === 'sftp') {
+        return (
+            <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Lock size={14} />
+                    SSH Authentication (Optional)
+                </div>
+                <p className="text-xs text-gray-500">
+                    Leave empty to use password authentication. Provide a key file for key-based auth.
+                </p>
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">Private Key Path</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={options.private_key_path || ''}
+                            onChange={(e) => onChange({ ...options, private_key_path: e.target.value })}
+                            disabled={disabled}
+                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                            placeholder="~/.ssh/id_rsa or ~/.ssh/id_ed25519"
+                        />
+                        {onBrowseKeyFile && (
+                            <button
+                                type="button"
+                                onClick={onBrowseKeyFile}
+                                disabled={disabled}
+                                className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
+                                title="Browse for key file"
+                            >
+                                <HardDrive size={16} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+                {options.private_key_path && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">Key Passphrase</label>
+                        <input
+                            type="password"
+                            value={options.key_passphrase || ''}
+                            onChange={(e) => onChange({ ...options, key_passphrase: e.target.value })}
+                            disabled={disabled}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                            placeholder="Leave empty if key is not encrypted"
+                        />
+                    </div>
+                )}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">Connection Timeout (seconds)</label>
+                    <input
+                        type="number"
+                        value={options.timeout || 30}
+                        onChange={(e) => onChange({ ...options, timeout: parseInt(e.target.value) || 30 })}
+                        disabled={disabled}
+                        min={5}
+                        max={300}
+                        className="w-24 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                    />
+                </div>
+            </div>
+        );
+    }
+
     if (protocol === 's3') {
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
