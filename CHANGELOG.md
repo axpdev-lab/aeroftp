@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.9] - 2026-01-26
+
+### Privacy & Security + i18n Completion
+
+Minor release adding Privacy settings and completing internationalization.
+
+#### Added
+- **Privacy & Security Tab** in Settings:
+  - Analytics toggle (default: OFF) - opt-in anonymous usage statistics
+  - Security information panel showing data protection measures
+  - Clear explanation of what data is/isn't collected
+- **Analytics Implementation Plan**: Documentation for future Aptabase integration
+- **9 new i18n keys** for Privacy section across all 51 languages
+
+#### Fixed
+- **Back Button Navigation**: "Back" button now restores previous session instead of opening offline file manager
+- **Back Button Flash**: Fixed brief flash of connection form when clicking back
+
+#### Technical
+- New settings: `analytics_enabled` persisted in localStorage
+- New i18n keys: `settings.privacy`, `settings.privacyDesc`, `settings.sendAnalytics`, `settings.analyticsDesc`, `settings.securityTitle`, `settings.securityLocal`, `settings.securityOAuth`, `settings.securityNoSend`, `settings.securityTLS`
+- All 51 languages at 100% completion (434 keys each)
+
+---
+
 ## [1.2.8] - 2026-01-25
 
 ### Global Multilingual + File Management Pro Features

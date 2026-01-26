@@ -57,3 +57,13 @@ prime/
 overlay/
 flathub-fork/
 snapcraft.login
+
+# Internal development docs (not for public GitHub)
+docs/dev/
+
+# One-time translation scripts
+scripts/i18n/
+
+# Temporary output files
+check_output*.txt
+src-tauri/check_output*.txt

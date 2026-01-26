@@ -33,12 +33,34 @@ export const Logo: React.FC<LogoProps> = ({
     hasActivity = false,
     isReconnecting = false,
 }) => {
-    const [isDark, setIsDark] = useState(false);
+    // Initialize isDark based on stored theme or system preference (avoid flash)
+    const getInitialDarkMode = (): boolean => {
+        // Check stored theme first (most reliable)
+        const storedTheme = localStorage.getItem('theme');
+        if (storedTheme === 'dark' || storedTheme === 'tokyo') {
+            return true;
+        }
+        if (storedTheme === 'light') {
+            return false;
+        }
+        // For 'auto' or no stored theme, check document classes or system preference
+        if (document.documentElement.classList.contains('dark') ||
+            document.documentElement.classList.contains('tokyo')) {
+            return true;
+        }
+        // Fallback to system preference
+        return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+    };
+
+    const [isDark, setIsDark] = useState(getInitialDarkMode);
 
     // Detect theme changes
     useEffect(() => {
         const checkDarkMode = () => {
-            setIsDark(document.documentElement.classList.contains('dark'));
+            // Check both 'dark' and 'tokyo' classes
+            const hasDarkClass = document.documentElement.classList.contains('dark');
+            const hasTokyoClass = document.documentElement.classList.contains('tokyo');
+            setIsDark(hasDarkClass || hasTokyoClass);
         };
 
         checkDarkMode();

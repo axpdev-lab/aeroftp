@@ -1,47 +1,50 @@
 import * as React from 'react';
 import { X, Keyboard } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface ShortcutsDialogProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-const shortcuts = [
-    {
-        category: 'Navigation', items: [
-            { keys: ['Enter'], action: 'Open folder / Download file' },
-            { keys: ['Backspace'], action: 'Go up directory' },
-            { keys: ['Tab'], action: 'Switch panel focus' },
-            { keys: ['Ctrl', 'R'], action: 'Refresh current panel' },
-        ]
-    },
-    {
-        category: 'File Operations', items: [
-            { keys: ['Ctrl', 'U'], action: 'Upload selected' },
-            { keys: ['Ctrl', 'D'], action: 'Download selected' },
-            { keys: ['Delete'], action: 'Delete selected' },
-            { keys: ['F2'], action: 'Rename' },
-            { keys: ['Ctrl', 'N'], action: 'New folder' },
-        ]
-    },
-    {
-        category: 'Selection', items: [
-            { keys: ['Ctrl', 'A'], action: 'Select all' },
-            { keys: ['Ctrl', 'Click'], action: 'Toggle selection' },
-            { keys: ['Shift', 'Click'], action: 'Range selection' },
-        ]
-    },
-    {
-        category: 'General', items: [
-            { keys: ['Ctrl', 'F'], action: 'Focus search' },
-            { keys: ['Ctrl', ','], action: 'Open Settings' },
-            { keys: ['F1'], action: 'Show shortcuts' },
-            { keys: ['Escape'], action: 'Close dialog / Cancel' },
-        ]
-    },
-];
-
 export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClose }) => {
+    const t = useTranslation();
+
+    const shortcuts = [
+        {
+            category: t('shortcuts.navigation'), items: [
+                { keys: ['Enter'], action: t('shortcuts.openFolder') },
+                { keys: ['Backspace'], action: t('shortcuts.goUp') },
+                { keys: ['Tab'], action: t('shortcuts.switchPanel') },
+                { keys: ['Ctrl', 'R'], action: t('shortcuts.refreshPanel') },
+            ]
+        },
+        {
+            category: t('shortcuts.fileOperations'), items: [
+                { keys: ['Ctrl', 'U'], action: t('shortcuts.uploadSelected') },
+                { keys: ['Ctrl', 'D'], action: t('shortcuts.downloadSelected') },
+                { keys: ['Delete'], action: t('shortcuts.deleteSelected') },
+                { keys: ['F2'], action: t('shortcuts.rename') },
+                { keys: ['Ctrl', 'N'], action: t('shortcuts.newFolder') },
+            ]
+        },
+        {
+            category: t('shortcuts.selection'), items: [
+                { keys: ['Ctrl', 'A'], action: t('browser.selectAll') },
+                { keys: ['Ctrl', 'Click'], action: t('shortcuts.toggleSelection') },
+                { keys: ['Shift', 'Click'], action: t('shortcuts.rangeSelection') },
+            ]
+        },
+        {
+            category: t('shortcuts.general'), items: [
+                { keys: ['Ctrl', 'F'], action: t('shortcuts.focusSearch') },
+                { keys: ['Ctrl', ','], action: t('shortcuts.openSettings') },
+                { keys: ['F1'], action: t('shortcuts.showShortcuts') },
+                { keys: ['Escape'], action: t('shortcuts.closeDialog') },
+            ]
+        },
+    ];
+
     if (!isOpen) return null;
 
     return (
@@ -60,7 +63,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                         <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
                             <Keyboard size={20} className="text-blue-500" />
                         </div>
-                        <h2 className="text-lg font-semibold">Keyboard Shortcuts</h2>
+                        <h2 className="text-lg font-semibold">{t('shortcuts.title')}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -110,7 +113,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                 {/* Footer */}
                 <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                     <p className="text-xs text-center text-gray-500">
-                        Press <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">F1</kbd> anytime to show this dialog
+                        {t('shortcuts.helpText')}
                     </p>
                 </div>
             </div>

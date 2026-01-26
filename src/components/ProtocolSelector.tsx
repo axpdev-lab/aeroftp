@@ -14,6 +14,7 @@ import {
     ChevronDown
 } from 'lucide-react';
 import { ProviderType } from '../types';
+import { useTranslation } from '../i18n';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -53,8 +54,8 @@ const AwsS3Logo: React.FC<{ size?: number; className?: string }> = ({ size = 16,
 
 const MegaLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
     <svg width={size} height={size} viewBox="0 0 512 512" className={className}>
-        <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
-        <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff"/>
+        <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e" />
+        <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff" />
     </svg>
 );
 
@@ -211,6 +212,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     showLabel = true,
     onOpenChange,
 }) => {
+    const t = useTranslation();
     const selectedProtocol = value ? getProtocolInfo(value) : null;
     const [isOpen, setIsOpen] = React.useState(false);
 
@@ -223,7 +225,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     return (
         <div className={className}>
             {showLabel && (
-                <label className="block text-sm font-medium mb-1.5">Protocol</label>
+                <label className="block text-sm font-medium mb-1.5">{t('connection.protocol')}</label>
             )}
 
             {/* Custom dropdown button */}
@@ -236,8 +238,8 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                 >
                     <span className={selectedProtocol ? '' : 'text-gray-400'}>
                         {selectedProtocol
-                            ? `${selectedProtocol.name} - ${selectedProtocol.description}`
-                            : 'Select protocol...'}
+                            ? `${selectedProtocol.name} - ${t(`protocol.${selectedProtocol.type}Desc`)}`
+                            : t('protocol.selectProtocol')}
                     </span>
                     <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -251,7 +253,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                     {/* Traditional Server Protocols */}
                     <div className="col-span-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Servers</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('protocol.servers')}</p>
                     </div>
                     {PROTOCOLS.filter(p => !p.isCloudStorage).map((protocol) => (
                         <button
@@ -278,7 +280,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="font-medium text-sm">{protocol.name}</div>
-                                <div className="text-xs text-gray-500 truncate">{protocol.description}</div>
+                                <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Secure'
@@ -297,7 +299,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
 
                     {/* Cloud Storage Providers (AeroCloud first!) */}
                     <div className="col-span-2 mt-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Cloud Storage</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('protocol.cloudStorage')}</p>
                     </div>
                     {PROTOCOLS.filter(p => p.isCloudStorage).map((protocol) => (
                         <button
@@ -326,7 +328,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="font-medium text-sm">{protocol.name}</div>
-                                <div className="text-xs text-gray-500 truncate">{protocol.description}</div>
+                                <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Sync'
@@ -389,18 +391,20 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     disabled = false,
     onBrowseKeyFile,
 }) => {
+    const t = useTranslation();
+
     if (protocol === 'sftp') {
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Lock size={14} />
-                    SSH Authentication (Optional)
+                    {t('protocol.sshAuth')}
                 </div>
                 <p className="text-xs text-gray-500">
-                    Leave empty to use password authentication. Provide a key file for key-based auth.
+                    {t('protocol.sshAuthHelp')}
                 </p>
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">Private Key Path</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('protocol.privateKeyPath')}</label>
                     <div className="flex gap-2">
                         <input
                             type="text"
@@ -408,7 +412,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             onChange={(e) => onChange({ ...options, private_key_path: e.target.value })}
                             disabled={disabled}
                             className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder="~/.ssh/id_rsa or ~/.ssh/id_ed25519"
+                            placeholder={t('protocol.privateKeyPlaceholder')}
                         />
                         {onBrowseKeyFile && (
                             <button
@@ -425,19 +429,19 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                 </div>
                 {options.private_key_path && (
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">Key Passphrase</label>
+                        <label className="block text-sm font-medium mb-1.5">{t('protocol.keyPassphrase')}</label>
                         <input
                             type="password"
                             value={options.key_passphrase || ''}
                             onChange={(e) => onChange({ ...options, key_passphrase: e.target.value })}
                             disabled={disabled}
                             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder="Leave empty if key is not encrypted"
+                            placeholder={t('protocol.keyPassphraseHelp')}
                         />
                     </div>
                 )}
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">Connection Timeout (seconds)</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('protocol.connectionTimeout')}</label>
                     <input
                         type="number"
                         value={options.timeout || 30}
@@ -457,43 +461,43 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Database size={14} />
-                    S3 Configuration
+                    {t('protocol.s3Config')}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">Bucket Name *</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('protocol.bucketNameRequired')}</label>
                     <input
                         type="text"
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                        placeholder="my-bucket"
+                        placeholder={t('protocol.bucketPlaceholder')}
                         required
                     />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">Region</label>
+                        <label className="block text-sm font-medium mb-1.5">{t('protocol.region')}</label>
                         <input
                             type="text"
                             value={options.region || ''}
                             onChange={(e) => onChange({ ...options, region: e.target.value })}
                             disabled={disabled}
                             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder="us-east-1"
+                            placeholder={t('protocol.regionPlaceholder')}
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">Custom Endpoint</label>
+                        <label className="block text-sm font-medium mb-1.5">{t('protocol.customEndpoint')}</label>
                         <input
                             type="text"
                             value={options.endpoint || ''}
                             onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                             disabled={disabled}
                             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder="s3.example.com"
+                            placeholder={t('protocol.endpointPlaceholder')}
                         />
-                        <p className="text-xs text-gray-500 mt-1">For MinIO, Wasabi, R2, etc.</p>
+                        <p className="text-xs text-gray-500 mt-1">{t('protocol.endpointHelp')}</p>
                     </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -504,7 +508,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         disabled={disabled}
                         className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                     />
-                    Path-style URLs (for self-hosted S3)
+                    {t('protocol.pathStyle')}
                 </label>
             </div>
         );
@@ -516,12 +520,11 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                 <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
                     <Cloud size={14} />
                     <span>
-                        WebDAV works with Nextcloud, ownCloud, Synology, QNAP, and more.
-                        Enter the full WebDAV URL as the server address.
+                        {t('protocol.webdavNote')}
                     </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                    Example: <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">cloud.example.com/remote.php/dav/files/user/</code>
+                    Example: <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
                 </p>
             </div>
         );

@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 25 January 2026
-> Version: v1.2.8 (Global Multilingual + File Management Pro)
+> Last Updated: 26 January 2026
+> Version: v1.2.9 (Privacy & Security + i18n Complete)
 
 ---
 
@@ -140,7 +140,7 @@
 2. ✅ **SFTP Support** - Password and SSH key authentication
 3. ✅ **UI Consistency** - Protocol icons standardized across app
 
-### v1.2.8 - COMPLETED (In Testing)
+### v1.2.8 - RELEASED
 1. ✅ **Overwrite Confirmation** - Like FileZilla/Cyberduck/WinSCP
 2. ✅ **Properties/Checksum** - File metadata and MD5/SHA-256
 3. ✅ **Compress/Archive** - ZIP creation and extraction
@@ -148,20 +148,24 @@
 5. ✅ **Same-panel Drag & Drop** - Move files to folders
 6. ✅ **Activity Log Move Tracking** - File operations fully logged
 
-### v1.3.0 - Critical Gap Closure
-1. **Cryptomator Encryption** - Cyberduck's premium feature
-2. **Keyboard Shortcuts** - F2, Del, Ctrl+C/V
-3. **Cross-panel Drag & Drop** - Already in Transmit/ForkLift
+### v1.2.9 - RELEASED
+1. ✅ **Privacy & Security Settings** - Analytics opt-in, data protection info
+2. ✅ **51 Languages at 100%** - All 434 keys translated in all languages
+3. ✅ **Back Button Fix** - Proper session restoration
+
+### v1.3.0 - In Progress
+1. **Secure Credential Storage** - Keyring integration for passwords
+2. **Anonymous Analytics** - Aptabase integration (opt-in)
+3. **Cryptomator Encryption** - Cyberduck's premium feature
+4. **Advanced Archive** - 7z with AES-256, password-protected archives
+5. **Keyboard Shortcuts** - F2, Del, Ctrl+C/V
+6. **Cross-panel Drag & Drop** - Already in Transmit/ForkLift
 
 ### v1.4.0 - Feature Parity
-4. **File Versioning** - Like Cyberduck/Mountain Duck
-5. **Bandwidth Throttling** - Like FileZilla
-6. **Keychain Integration** - Secure credential storage
-
-### v1.5.0 - Advanced Features
-7. **CLI/Scripting** - Like WinSCP
-8. **More Languages** - FileZilla has 47
-9. **Azure Blob Storage** - Already in Cyberduck
+1. **File Versioning** - Like Cyberduck/Mountain Duck
+2. **Bandwidth Throttling** - Like FileZilla
+3. **CLI/Scripting** - Like WinSCP
+4. **Azure Blob Storage** - Already in Cyberduck
 
 ---
 

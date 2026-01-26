@@ -114,7 +114,7 @@ const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
             {/* Cyber Footer */}
             <div className="text-center pt-2">
                 <p className="text-[10px] text-gray-600 font-mono">
-                    // All donations support development
+                    // {t('support.footer')}
                 </p>
             </div>
         </div>
@@ -210,14 +210,14 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
                         >
                             <Github size={16} />
-                            GitHub
+                            {t('about.github')}
                         </button>
                         <button
                             onClick={() => openUrl('mailto:aeroftp@axpdev.it')}
                             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
                         >
                             <Mail size={16} />
-                            Contact
+                            {t('about.contact')}
                         </button>
                     </div>
 

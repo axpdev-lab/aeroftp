@@ -89,7 +89,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={`Download AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />
-                        <span>Update Available</span>
+                        <span>{t('statusbar.updateAvailable')}</span>
                     </a>
                 )}
 
@@ -137,13 +137,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <button
                         onClick={onToggleTransferQueue}
                         className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${transferQueueActive
-                                ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400'
-                                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400'
+                            : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                             }`}
-                        title="Transfer Queue"
+                        title={t('statusbar.transferQueue')}
                     >
                         <ArrowUpDown size={12} className={transferQueueActive ? 'animate-pulse' : ''} />
-                        <span>Queue</span>
+                        <span>{t('statusbar.queue')}</span>
                         {transferQueueCount > 0 && (
                             <span className="px-1.5 py-0.5 text-[10px] font-medium bg-orange-500 text-white rounded-full min-w-[18px] text-center">
                                 {transferQueueCount}
@@ -162,7 +162,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400'
                                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                             }`}
-                        title="AeroCloud - Personal Cloud Sync"
+                        title={t('statusbar.aerocloudTitle')}
                     >
                         <Cloud size={12} className={cloudSyncing ? 'animate-pulse' : ''} />
                         <span>{cloudSyncing ? t('statusBar.syncing') : t('cloud.title')}</span>
@@ -186,15 +186,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {onToggleActivityLog && (
                     <button
                         onClick={onToggleActivityLog}
-                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${
-                            showActivityLog
+                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${showActivityLog
                                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
                                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                        title="Activity Log"
+                            }`}
+                        title={t('statusbar.activityLog')}
                     >
                         <ScrollText size={12} />
-                        <span>Log</span>
+                        <span>{t('statusbar.log')}</span>
                         {activityLogCount > 0 && (
                             <span className="px-1.5 py-0.5 text-[10px] font-medium bg-emerald-500 text-white rounded-full min-w-[18px] text-center">
                                 {activityLogCount > 99 ? '99+' : activityLogCount}

@@ -1728,6 +1728,7 @@ const App: React.FC = () => {
       await invoke('connect_ftp', { params });
       setIsConnected(true);
       setConnectionParams(params);
+      setShowConnectionScreen(false);  // Hide connection screen to show file browser
 
       // Navigate to cloud folders
       // Remote: navigate to cloud remote folder
@@ -3262,6 +3263,7 @@ const App: React.FC = () => {
         isOpen={showSettingsPanel}
         onClose={() => setShowSettingsPanel(false)}
         onOpenCloudPanel={() => setShowCloudPanel(true)}
+        onActivityLog={{ logRaw: humanLog.logRaw }}
       />
 
       {/* Universal Preview Modal for Media Files */}
@@ -3348,6 +3350,7 @@ const App: React.FC = () => {
             onQuickConnectDirsChange={setQuickConnectDirs}
             onConnect={connectToFtp}
             onOpenCloudPanel={() => setShowCloudPanel(true)}
+            hasExistingSessions={sessions.length > 0}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
               // NOTE: Do NOT set connectionParams here - that would show the form
               // The form should only appear when clicking Edit, not when connecting
@@ -3521,9 +3524,20 @@ const App: React.FC = () => {
               }
             }}
             onSkipToFileManager={async () => {
-              setShowConnectionScreen(false);
-              setActivePanel('local');
-              await loadLocalFiles(currentLocalPath || '/');
+              // If there are existing sessions, switch back to the last active one
+              if (sessions.length > 0) {
+                const lastSession = sessions[sessions.length - 1];
+                // Hide connection screen FIRST to avoid flash
+                setShowConnectionScreen(false);
+                setIsConnected(true);
+                // Then switch session (async reconnect happens in background)
+                await switchSession(lastSession.id);
+              } else {
+                // No existing sessions - just show local file manager
+                setShowConnectionScreen(false);
+                setActivePanel('local');
+                await loadLocalFiles(currentLocalPath || '/');
+              }
             }}
           />
         ) : (
@@ -3549,17 +3563,17 @@ const App: React.FC = () => {
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
                 <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : loadLocalFiles(currentLocalPath.split('/').slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
-                  <FolderUp size={16} /> Up
+                  <FolderUp size={16} /> {t('common.up')}
                 </button>
                 <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
-                  <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> Refresh
+                  <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                 </button>
                 <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
-                  <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> New
+                  <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> {t('common.new')}
                 </button>
                 {activePanel === 'local' && (
                   <button onClick={() => openInFileManager(currentLocalPath)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
-                    <FolderOpen size={16} /> Open
+                    <FolderOpen size={16} /> {t('common.open')}
                   </button>
                 )}
                 {/* View Mode Toggle */}
@@ -3572,8 +3586,8 @@ const App: React.FC = () => {
                 </button>
                 {isConnected && (
                   <>
-                    <button onClick={() => uploadMultipleFiles()} className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all" title="Upload multiple files">
-                      <Upload size={16} /> Upload Files
+                    <button onClick={() => uploadMultipleFiles()} className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all" title={t('browser.uploadFiles')}>
+                      <Upload size={16} /> {t('browser.uploadFiles')}
                     </button>
                     <button
                       onClick={toggleSyncNavigation}
@@ -3581,20 +3595,20 @@ const App: React.FC = () => {
                         ? 'bg-purple-500 hover:bg-purple-600 text-white'
                         : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                         }`}
-                      title={isSyncNavigation ? 'Navigation Sync ON - Click to disable' : 'Enable Navigation Sync between panels'}
+                      title={isSyncNavigation ? t('common.synced') : t('common.sync')}
                     >
                       {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
-                      {isSyncNavigation ? 'Synced' : 'Sync'}
+                      {isSyncNavigation ? t('common.synced') : t('common.sync')}
                     </button>
                   </>
                 )}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                  <Globe size={16} /> Remote
+                  <Globe size={16} /> {t('browser.remote')}
                 </button>
                 <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                  <HardDrive size={16} /> Local
+                  <HardDrive size={16} /> {t('browser.local')}
                 </button>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
                 {/* Search Filter - hidden on small screens */}
@@ -3612,9 +3626,9 @@ const App: React.FC = () => {
                 <button
                   onClick={() => setShowLocalPreview(p => !p)}
                   className={`px-3 py-1.5 rounded-lg text-sm items-center gap-1.5 hidden md:flex ${showLocalPreview ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                  title="Toggle Preview Panel"
+                  title={t('common.preview')}
                 >
-                  <Eye size={16} /><span className="hidden lg:inline">Preview</span>
+                  <Eye size={16} /><span className="hidden lg:inline">{t('common.preview')}</span>
                 </button>
               </div>
             </div>

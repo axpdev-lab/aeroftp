@@ -25,6 +25,7 @@ export type OperationType =
     | 'MOVE'
     | 'MKDIR'
     | 'NAVIGATE'
+    | 'UPDATE'
     | 'ERROR'
     | 'INFO'
     | 'SUCCESS';
@@ -212,6 +213,7 @@ export function getOperationIcon(operation: OperationType): string {
         MOVE: 'move',
         MKDIR: 'folder-plus',
         NAVIGATE: 'folder-open',
+        UPDATE: 'refresh-cw',
         ERROR: 'alert-circle',
         INFO: 'info',
         SUCCESS: 'check-circle',

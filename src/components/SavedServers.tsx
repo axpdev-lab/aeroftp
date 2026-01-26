@@ -217,7 +217,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     {t('connection.savedServers')}
                 </h3>
                 <div className="text-xs text-gray-500 font-normal mt-1">
-                    Select a server to connect, or click Edit to load into the form.
+                    {t('connection.savedServersHelp')}
                 </div>
             </div>
 
@@ -239,7 +239,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 onClick={() => setOauthError(null)}
                                 className="ml-2 text-xs underline hover:no-underline"
                             >
-                                Dismiss
+                                {t('connection.dismiss')}
                             </button>
                         </div>
                     </div>
@@ -273,7 +273,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                         </span>
                                     )}
                                     {oauthConnecting === server.id && (
-                                        <span className="text-xs text-blue-500 animate-pulse">Authenticating...</span>
+                                        <span className="text-xs text-blue-500 animate-pulse">{t('connection.authenticating')}</span>
                                     )}
                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                         {server.protocol || 'ftp'}
@@ -281,7 +281,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {isOAuthProvider(server.protocol || 'ftp')
-                                        ? 'OAuth2 Connection'
+                                        ? t('connection.oauth2Connection')
                                         : `${server.username}@${server.host}:${server.port}`
                                     }
                                 </div>

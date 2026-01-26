@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock } from 'lucide-react';
+import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield } from 'lucide-react';
 import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 
@@ -52,10 +52,18 @@ interface UpdateInfo {
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 
+// Operation types for activity log - must match useActivityLog.ts
+type ActivityLogOperation = 'CONNECT' | 'DISCONNECT' | 'UPLOAD' | 'DOWNLOAD' | 'DELETE' | 'RENAME' | 'MOVE' | 'MKDIR' | 'NAVIGATE' | 'UPDATE' | 'ERROR' | 'INFO' | 'SUCCESS';
+
+interface ActivityLogCallback {
+    logRaw: (messageKey: string, operation: ActivityLogOperation, params: Record<string, string | number>, status: 'running' | 'success' | 'error') => void;
+}
+
 interface SettingsPanelProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenCloudPanel?: () => void;
+    onActivityLog?: ActivityLogCallback;
 }
 
 // Settings storage key
@@ -102,6 +110,8 @@ interface AppSettings {
     fontSize: 'small' | 'medium' | 'large';
     // Notifications
     showToastNotifications: boolean;
+    // Privacy
+    analyticsEnabled: boolean;
 }
 
 const defaultSettings: AppSettings = {
@@ -125,22 +135,38 @@ const defaultSettings: AppSettings = {
     showSystemMenu: false,
     fontSize: 'medium',
     showToastNotifications: false,  // Default off - use Activity Log instead
+    analyticsEnabled: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui';
+type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'privacy';
 
-// Check Update Button with loading animation
-const CheckUpdateButton: React.FC = () => {
+// Check Update Button with loading animation and Activity Log support
+interface CheckUpdateButtonProps {
+    onActivityLog?: ActivityLogCallback;
+}
+
+const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) => {
     const [isChecking, setIsChecking] = useState(false);
 
     const handleCheck = async () => {
         console.log('[CheckUpdateButton] handleCheck called');
         setIsChecking(true);
+
+        // Log start of update check to Activity Log
+        onActivityLog?.logRaw('activity.update_checking', 'UPDATE', { action: 'manual_check' }, 'running');
+
         try {
             console.log('[CheckUpdateButton] Invoking check_update...');
             const info = await invoke<UpdateInfo>('check_update');
             console.log('[CheckUpdateButton] Result:', info);
+
             if (info.has_update) {
+                // Log update available to Activity Log
+                onActivityLog?.logRaw('activity.update_available', 'UPDATE', {
+                    version: info.latest_version || 'unknown',
+                    format: info.install_format
+                }, 'success');
+
                 try {
                     await sendNotification({
                         title: 'Update Available!',
@@ -150,6 +176,11 @@ const CheckUpdateButton: React.FC = () => {
                     alert(`Update Available!\n\nAeroFTP v${info.latest_version} (.${info.install_format})\n\nDownload: ${info.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}`);
                 }
             } else {
+                // Log no update available to Activity Log
+                onActivityLog?.logRaw('activity.update_uptodate', 'UPDATE', {
+                    version: info.current_version
+                }, 'success');
+
                 try {
                     await sendNotification({
                         title: 'Up to Date',
@@ -161,6 +192,8 @@ const CheckUpdateButton: React.FC = () => {
             }
         } catch (err) {
             console.error('[CheckUpdateButton] Update check failed:', err);
+            // Log error to Activity Log
+            onActivityLog?.logRaw('activity.update_error', 'UPDATE', { error: String(err) }, 'error');
             alert(`Update check failed\n\n${String(err)}`);
         } finally {
             setIsChecking(false);
@@ -182,7 +215,7 @@ const CheckUpdateButton: React.FC = () => {
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog }) => {
     const [activeTab, setActiveTab] = useState<TabId>('general');
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
@@ -203,6 +236,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (savedServers) setServers(JSON.parse(savedServers));
                 const savedOAuth = localStorage.getItem(OAUTH_SETTINGS_KEY);
                 if (savedOAuth) setOauthSettings({ ...defaultOAuthSettings, ...JSON.parse(savedOAuth) });
+                const savedAnalytics = localStorage.getItem('analytics_enabled');
+                if (savedAnalytics !== null) {
+                    setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
+                }
             } catch { }
         }
     }, [isOpen]);
@@ -211,6 +248,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
         localStorage.setItem(OAUTH_SETTINGS_KEY, JSON.stringify(oauthSettings));
+        localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
         // Apply system menu setting immediately
         invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
         // Notify App.tsx of settings change (for compactMode etc)
@@ -232,13 +270,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     if (!isOpen) return null;
 
     const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-        { id: 'general', label: 'General', icon: <Settings size={16} /> },
-        { id: 'connection', label: 'Connection', icon: <Wifi size={16} /> },
-        { id: 'servers', label: 'Servers', icon: <Server size={16} /> },
-        { id: 'cloudproviders', label: 'Cloud Providers', icon: <Cloud size={16} /> },
-        { id: 'transfers', label: 'Transfers', icon: <Upload size={16} /> },
-        { id: 'filehandling', label: 'File Handling', icon: <FileCheck size={16} /> },
-        { id: 'ui', label: 'Appearance', icon: <Palette size={16} /> },
+        { id: 'general', label: t('settings.general'), icon: <Settings size={16} /> },
+        { id: 'connection', label: t('settings.connection'), icon: <Wifi size={16} /> },
+        { id: 'servers', label: t('settings.servers'), icon: <Server size={16} /> },
+        { id: 'cloudproviders', label: t('settings.cloudProviders'), icon: <Cloud size={16} /> },
+        { id: 'transfers', label: t('settings.transfers'), icon: <Upload size={16} /> },
+        { id: 'filehandling', label: t('settings.fileHandling'), icon: <FileCheck size={16} /> },
+        { id: 'ui', label: t('settings.appearance'), icon: <Palette size={16} /> },
+        { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
     ];
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
@@ -262,7 +301,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
                             <Settings size={20} className="text-white" />
                         </div>
-                        <h2 className="text-lg font-semibold">Settings</h2>
+                        <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                         <X size={18} />
@@ -384,7 +423,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <h4 className="text-sm font-medium mb-2">Software Updates</h4>
-                                        <CheckUpdateButton />
+                                        <CheckUpdateButton onActivityLog={onActivityLog} />
                                     </div>
                                 </div>
                             </div>
@@ -607,243 +646,243 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     };
 
                                     return (
-                                    <div className="fixed inset-0 z-60 flex items-center justify-center">
-                                        <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
-                                        <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} flex items-center justify-center text-white`}>
-                                                    {isOAuth ? <Cloud size={18} /> : <Server size={18} />}
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-lg font-semibold">{isNewServer ? 'Add Server' : 'Edit Server'}</h3>
-                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
-                                                        {protocol}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-3">
-                                                {/* Protocol Selector - only for new servers */}
-                                                {isNewServer && (
+                                        <div className="fixed inset-0 z-60 flex items-center justify-center">
+                                            <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
+                                            <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} flex items-center justify-center text-white`}>
+                                                        {isOAuth ? <Cloud size={18} /> : <Server size={18} />}
+                                                    </div>
                                                     <div>
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Protocol</label>
-                                                        <select
-                                                            value={protocol}
-                                                            onChange={e => handleProtocolChange(e.target.value)}
-                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        >
-                                                            {protocolOptions.map(opt => (
-                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                            ))}
-                                                        </select>
+                                                        <h3 className="text-lg font-semibold">{isNewServer ? 'Add Server' : 'Edit Server'}</h3>
+                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
+                                                            {protocol}
+                                                        </span>
                                                     </div>
-                                                )}
-
-                                                {/* Server Name */}
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Display Name</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="My Server"
-                                                        value={editingServer.name}
-                                                        onChange={e => setEditingServer({ ...editingServer, name: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                    />
                                                 </div>
 
-                                                {/* OAuth providers - read-only info */}
-                                                {isOAuth && (
-                                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
-                                                        <p className="text-sm text-blue-700 dark:text-blue-300">
-                                                            <strong>OAuth2 Connection</strong>
-                                                        </p>
-                                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                            Authentication is managed via browser. Configure credentials in Settings → Cloud Providers.
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                {/* MEGA - email only */}
-                                                {isMega && (
-                                                    <>
+                                                <div className="space-y-3">
+                                                    {/* Protocol Selector - only for new servers */}
+                                                    {isNewServer && (
                                                         <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">MEGA Email</label>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Protocol</label>
+                                                            <select
+                                                                value={protocol}
+                                                                onChange={e => handleProtocolChange(e.target.value)}
+                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                            >
+                                                                {protocolOptions.map(opt => (
+                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Server Name */}
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Display Name</label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="My Server"
+                                                            value={editingServer.name}
+                                                            onChange={e => setEditingServer({ ...editingServer, name: e.target.value })}
+                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        />
+                                                    </div>
+
+                                                    {/* OAuth providers - read-only info */}
+                                                    {isOAuth && (
+                                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+                                                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                                                                <strong>OAuth2 Connection</strong>
+                                                            </p>
+                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                                Authentication is managed via browser. Configure credentials in Settings → Cloud Providers.
+                                                            </p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* MEGA - email only */}
+                                                    {isMega && (
+                                                        <>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">MEGA Email</label>
+                                                                <input
+                                                                    type="email"
+                                                                    placeholder="email@example.com"
+                                                                    value={editingServer.username}
+                                                                    onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                            {editingServer.options?.session_expires_at && (
+                                                                <div className={`p-2 rounded-lg text-xs ${Date.now() > editingServer.options.session_expires_at
+                                                                    ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-700'
+                                                                    : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-300 border border-green-200 dark:border-green-700'
+                                                                    }`}>
+                                                                    <Clock size={12} className="inline mr-1" />
+                                                                    Session {Date.now() > editingServer.options.session_expires_at ? 'expired' : 'expires'}: {new Date(editingServer.options.session_expires_at).toLocaleString()}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+
+                                                    {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3 */}
+                                                    {needsHostPort && (
+                                                        <div className="flex gap-2">
+                                                            <div className="flex-1">
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">
+                                                                    {isS3 ? 'Endpoint URL' : 'Host'}
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={isS3 ? 's3.amazonaws.com' : 'ftp.example.com'}
+                                                                    value={editingServer.host}
+                                                                    onChange={e => setEditingServer({ ...editingServer, host: e.target.value })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                            <div className="w-24">
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Port</label>
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="21"
+                                                                    value={editingServer.port}
+                                                                    onChange={e => setEditingServer({ ...editingServer, port: parseInt(e.target.value) || 21 })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Username - for non-OAuth, non-MEGA */}
+                                                    {needsHostPort && (
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">
+                                                                {isS3 ? 'Access Key ID' : 'Username'}
+                                                            </label>
                                                             <input
-                                                                type="email"
-                                                                placeholder="email@example.com"
+                                                                type="text"
+                                                                placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : 'username'}
                                                                 value={editingServer.username}
                                                                 onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                             />
                                                         </div>
-                                                        {editingServer.options?.session_expires_at && (
-                                                            <div className={`p-2 rounded-lg text-xs ${Date.now() > editingServer.options.session_expires_at
-                                                                ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-700'
-                                                                : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-300 border border-green-200 dark:border-green-700'
-                                                            }`}>
-                                                                <Clock size={12} className="inline mr-1" />
-                                                                Session {Date.now() > editingServer.options.session_expires_at ? 'expired' : 'expires'}: {new Date(editingServer.options.session_expires_at).toLocaleString()}
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                )}
+                                                    )}
 
-                                                {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3 */}
-                                                {needsHostPort && (
-                                                    <div className="flex gap-2">
-                                                        <div className="flex-1">
+                                                    {/* Password - for non-OAuth */}
+                                                    {needsPassword && !isMega && (
+                                                        <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                {isS3 ? 'Endpoint URL' : 'Host'}
+                                                                {isS3 ? 'Secret Access Key' : 'Password'}
                                                             </label>
                                                             <input
-                                                                type="text"
-                                                                placeholder={isS3 ? 's3.amazonaws.com' : 'ftp.example.com'}
-                                                                value={editingServer.host}
-                                                                onChange={e => setEditingServer({ ...editingServer, host: e.target.value })}
+                                                                type="password"
+                                                                placeholder="••••••••"
+                                                                value={editingServer.password || ''}
+                                                                onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                             />
                                                         </div>
-                                                        <div className="w-24">
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Port</label>
-                                                            <input
-                                                                type="number"
-                                                                placeholder="21"
-                                                                value={editingServer.port}
-                                                                onChange={e => setEditingServer({ ...editingServer, port: parseInt(e.target.value) || 21 })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                    )}
 
-                                                {/* Username - for non-OAuth, non-MEGA */}
-                                                {needsHostPort && (
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                            {isS3 ? 'Access Key ID' : 'Username'}
-                                                        </label>
+                                                    {/* S3 Specific Fields */}
+                                                    {isS3 && (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Bucket</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="my-bucket"
+                                                                    value={editingServer.options?.bucket || ''}
+                                                                    onChange={e => setEditingServer({
+                                                                        ...editingServer,
+                                                                        options: { ...editingServer.options, bucket: e.target.value }
+                                                                    })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Region</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="us-east-1"
+                                                                    value={editingServer.options?.region || ''}
+                                                                    onChange={e => setEditingServer({
+                                                                        ...editingServer,
+                                                                        options: { ...editingServer.options, region: e.target.value }
+                                                                    })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Paths - common for all */}
+                                                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Remote Path (optional)</label>
                                                         <input
                                                             type="text"
-                                                            placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : 'username'}
-                                                            value={editingServer.username}
-                                                            onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
+                                                            placeholder="/home/user or /my-folder"
+                                                            value={editingServer.initialPath || ''}
+                                                            onChange={e => setEditingServer({ ...editingServer, initialPath: e.target.value })}
                                                             className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                         />
                                                     </div>
-                                                )}
-
-                                                {/* Password - for non-OAuth */}
-                                                {needsPassword && !isMega && (
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                            {isS3 ? 'Secret Access Key' : 'Password'}
-                                                        </label>
-                                                        <input
-                                                            type="password"
-                                                            placeholder="••••••••"
-                                                            value={editingServer.password || ''}
-                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
-                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {/* S3 Specific Fields */}
-                                                {isS3 && (
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Bucket</label>
+                                                    <div className="flex gap-2">
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Local Path (optional)</label>
                                                             <input
                                                                 type="text"
-                                                                placeholder="my-bucket"
-                                                                value={editingServer.options?.bucket || ''}
-                                                                onChange={e => setEditingServer({
-                                                                    ...editingServer,
-                                                                    options: { ...editingServer.options, bucket: e.target.value }
-                                                                })}
+                                                                placeholder="/home/user/downloads"
+                                                                value={editingServer.localInitialPath || ''}
+                                                                onChange={e => setEditingServer({ ...editingServer, localInitialPath: e.target.value })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                             />
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Region</label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="us-east-1"
-                                                                value={editingServer.options?.region || ''}
-                                                                onChange={e => setEditingServer({
-                                                                    ...editingServer,
-                                                                    options: { ...editingServer.options, region: e.target.value }
-                                                                })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
-                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
+                                                                    if (selected && typeof selected === 'string') {
+                                                                        setEditingServer({ ...editingServer, localInitialPath: selected });
+                                                                    }
+                                                                } catch (e) { console.error('Folder picker error:', e); }
+                                                            }}
+                                                            className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                            title="Browse"
+                                                        >
+                                                            <FolderOpen size={16} />
+                                                        </button>
                                                     </div>
-                                                )}
-
-                                                {/* Paths - common for all */}
-                                                <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Remote Path (optional)</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="/home/user or /my-folder"
-                                                        value={editingServer.initialPath || ''}
-                                                        onChange={e => setEditingServer({ ...editingServer, initialPath: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                    />
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <div className="flex-1">
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Local Path (optional)</label>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="/home/user/downloads"
-                                                            value={editingServer.localInitialPath || ''}
-                                                            onChange={e => setEditingServer({ ...editingServer, localInitialPath: e.target.value })}
-                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                        />
-                                                    </div>
+                                                <div className="flex gap-2 justify-end">
                                                     <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            try {
-                                                                const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
-                                                                if (selected && typeof selected === 'string') {
-                                                                    setEditingServer({ ...editingServer, localInitialPath: selected });
-                                                                }
-                                                            } catch (e) { console.error('Folder picker error:', e); }
-                                                        }}
-                                                        className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title="Browse"
+                                                        onClick={() => setEditingServer(null)}
+                                                        className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
                                                     >
-                                                        <FolderOpen size={16} />
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const exists = servers.some(s => s.id === editingServer.id);
+                                                            if (exists) {
+                                                                setServers(prev => prev.map(s => s.id === editingServer.id ? editingServer : s));
+                                                            } else {
+                                                                setServers(prev => [...prev, editingServer]);
+                                                            }
+                                                            setEditingServer(null);
+                                                            setHasChanges(true);
+                                                        }}
+                                                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+                                                    >
+                                                        Save
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2 justify-end">
-                                                <button
-                                                    onClick={() => setEditingServer(null)}
-                                                    className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        const exists = servers.some(s => s.id === editingServer.id);
-                                                        if (exists) {
-                                                            setServers(prev => prev.map(s => s.id === editingServer.id ? editingServer : s));
-                                                        } else {
-                                                            setServers(prev => [...prev, editingServer]);
-                                                        }
-                                                        setEditingServer(null);
-                                                        setHasChanges(true);
-                                                    }}
-                                                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
-                                                >
-                                                    Save
-                                                </button>
-                                            </div>
                                         </div>
-                                    </div>
                                     );
                                 })()}
                             </div>
@@ -1135,23 +1174,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     />
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-2">Font Size</label>
+                                        <label className="block text-sm font-medium mb-2">{t('settings.fontSize')}</label>
                                         <div className="flex gap-2">
                                             {(['small', 'medium', 'large'] as const).map(size => (
                                                 <button
                                                     key={size}
                                                     onClick={() => updateSetting('fontSize', size)}
-                                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                                        settings.fontSize === size
-                                                            ? 'bg-blue-500 text-white'
-                                                            : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                                    }`}
+                                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${settings.fontSize === size
+                                                        ? 'bg-blue-500 text-white'
+                                                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                        }`}
                                                 >
-                                                    {size === 'small' ? 'Small' : size === 'medium' ? 'Medium' : 'Large'}
+                                                    {size === 'small' ? t('settings.fontSizeSmall') : size === 'medium' ? t('settings.fontSizeMedium') : t('settings.fontSizeLarge')}
                                                 </button>
                                             ))}
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">Adjust the interface text size</p>
+                                        <p className="text-xs text-gray-500 mt-1">{t('settings.fontSizeDesc')}</p>
                                     </div>
 
                                     <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
@@ -1164,8 +1202,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="font-medium">Show Status Bar</p>
-                                            <p className="text-sm text-gray-500">Display connection info and statistics at the bottom</p>
+                                            <p className="font-medium">{t('settings.showStatusBar')}</p>
+                                            <p className="text-sm text-gray-500">{t('settings.showStatusBarDesc')}</p>
                                         </div>
                                     </label>
 
@@ -1177,8 +1215,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="font-medium">Show System Menu Bar</p>
-                                            <p className="text-sm text-gray-500">Show the native File/Edit/View menu at the top of the window</p>
+                                            <p className="font-medium">{t('settings.showSystemMenuBar')}</p>
+                                            <p className="text-sm text-gray-500">{t('settings.showSystemMenuBarDesc')}</p>
                                         </div>
                                     </label>
 
@@ -1190,8 +1228,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="font-medium">Compact Mode</p>
-                                            <p className="text-sm text-gray-500">Decrease spacing for higher density</p>
+                                            <p className="font-medium">{t('settings.compactMode')}</p>
+                                            <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
                                         </div>
                                     </label>
 
@@ -1203,15 +1241,95 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="font-medium">Show Toast Notifications</p>
-                                            <p className="text-sm text-gray-500">Display popup notifications for actions (errors always shown). Activity Log is always available.</p>
+                                            <p className="font-medium">{t('settings.toastNotifications')}</p>
+                                            <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
                                         </div>
                                     </label>
                                 </div>
                             </div>
                         )}
+
+                        {activeTab === 'privacy' && (
+                            <div className="space-y-6">
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.privacy')}</h3>
+
+                                <div className="space-y-6">
+                                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                                <Shield size={24} />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium text-base">{t('settings.privacyDesc')}</h4>
+                                                <p className="text-sm text-gray-500 mt-1">AeroFTP respects your privacy. We collect minimal data to improve the application.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.analyticsEnabled}
+                                                    onChange={e => updateSetting('analyticsEnabled', e.target.checked)}
+                                                    className="w-5 h-5 rounded"
+                                                />
+                                                <div>
+                                                    <p className="font-medium">{t('settings.sendAnalytics')}</p>
+                                                    <p className="text-sm text-gray-500">{t('settings.analyticsDesc')}</p>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                        <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                            <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                <Key size={14} className="text-gray-500" />
+                                                {t('settings.securityTitle')}
+                                            </h4>
+                                        </div>
+                                        <div className="p-4 space-y-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </div>
+                                                <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityLocal')}</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </div>
+                                                <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityOAuth')}</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </div>
+                                                <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityNoSend')}</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </div>
+                                                <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityTLS')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
+
+
 
                 {/* Footer */}
                 <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
@@ -1219,7 +1337,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         onClick={onClose}
                         className="px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         onClick={handleSave}
@@ -1229,7 +1347,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
                             }`}
                     >
-                        Save Changes
+                        {t('settings.saveChanges')}
                     </button>
                 </div>
             </div>
