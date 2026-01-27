@@ -8,36 +8,54 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 
 | Document                                             | Description                                                |
 | ---------------------------------------------------- | ---------------------------------------------------------- |
+| **[RELEASE.md](./RELEASE.md)**                       | Complete release process and CI/CD automation              |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)**             | Internationalization (i18n) guide for adding new languages |
+| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)**   | Protocol feature comparison matrix                         |
+| **[COMPETITOR-ANALYSIS.md](./COMPETITOR-ANALYSIS.md)**| Market and competitor analysis                             |
 | **[MACOS_RELEASE_PLAN.md](./MACOS_RELEASE_PLAN.md)** | Complete macOS release and distribution guide              |
 | **[MACOS_QUICKSTART.md](./MACOS_QUICKSTART.md)**     | Quick start guide for macOS builds                         |
 | **[FLATHUB_SUBMISSION.md](./FLATHUB_SUBMISSION.md)** | Linux Flatpak packaging and distribution                   |
-| **[entitlements.plist](./entitlements.plist)**       | macOS entitlements configuration                           |
-| **[logo.png](./logo.png)**                           | AeroFTP official logo                                      |
 
 ---
 
 ## 🚀 Quick Links
 
-### For Release Process
-1. Update version in `package.json`, `src-tauri/tauri.conf.json`, `snap/snapcraft.yaml`
-2. Update `CHANGELOG.md` in project root
-3. Follow platform-specific guides below
+### Release Process
+See **[RELEASE.md](./RELEASE.md)** for complete CI/CD documentation.
 
-### Platform Guides
-- **Linux**: [FLATHUB_SUBMISSION.md](./FLATHUB_SUBMISSION.md) | Snap: `snap/snapcraft.yaml`
+**Quick version:**
+```bash
+# Update version in 4 files, then:
+git commit -m "chore(release): vX.Y.Z Description"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main --tags
+# GitHub Actions handles the rest automatically!
+```
+
+### Automated Distribution
+| Platform | Artifacts | Auto-published to |
+|----------|-----------|-------------------|
+| Linux | `.deb`, `.rpm`, `.AppImage`, `.snap` | GitHub Releases + **Snap Store** |
+| Windows | `.msi`, `.exe` | GitHub Releases |
+| macOS | `.dmg` | GitHub Releases |
+
+### Platform-Specific Guides
+- **Linux**: [FLATHUB_SUBMISSION.md](./FLATHUB_SUBMISSION.md) (Flatpak)
 - **macOS**: [MACOS_RELEASE_PLAN.md](./MACOS_RELEASE_PLAN.md)
-- **Windows**: Automatic via GitHub Actions
+- **Snap Store**: Automatic via CI (see [RELEASE.md](./RELEASE.md))
 
 ---
 
 ## 📝 Version Files
 
-When releasing, update version in these 3 files:
+Update version in these 4 files before release:
 
-1. `package.json` → `"version": "x.x.x"`
-2. `src-tauri/tauri.conf.json` → `"version": "x.x.x"`
-3. `snap/snapcraft.yaml` → `version: 'x.x.x'`
+| File | Field |
+|------|-------|
+| `package.json` | `"version": "X.Y.Z"` |
+| `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
+| `src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
+| `snap/snapcraft.yaml` | `version: 'X.Y.Z'` |
 
 ---
 
@@ -52,35 +70,10 @@ Currently supported: **English** (base), **Italian**
 
 ---
 
-## 🆕 What's New in v0.9.6
-
-### Activity Log Panel
-FileZilla-style activity log with dual themes:
-- **Professional Theme**: Tokio Night-inspired elegant dark theme (default)
-- **Cyber Theme**: Neon glow effects with CRT scanlines
-- Typewriter animation for new entries
-- Humanized messages in 5 languages (EN, IT, FR, ES, ZH)
-- Badge counter in StatusBar
-
-### Operations Tracked
-| Operation | Icon | Description |
-|-----------|------|-------------|
-| CONNECT | 🔗 | Server connections with timestamp |
-| DISCONNECT | ⚡ | Session disconnections |
-| UPLOAD | ⬆️ | File uploads with size and duration |
-| DOWNLOAD | ⬇️ | File downloads with size and duration |
-| DELETE | 🗑️ | File and bulk deletions |
-| NAVIGATE | 📁 | Directory navigation (remote/local) |
-| MKDIR | 📂 | New folder creation |
-| RENAME | ✏️ | File/folder renaming |
-| SYNC | ☁️ | AeroCloud sync events |
-
----
-
 ## 📅 Last Updated
 
-- **Documentation Version**: 0.9.7
-- **Last Update**: 2026-01-17
+- **Documentation Version**: 1.3.0
+- **Last Update**: 2026-01-28
 
 ---
 

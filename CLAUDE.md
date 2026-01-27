@@ -82,12 +82,40 @@ Development-only files:
 
 ## Release Process
 
+### Steps
 1. Update version in: `package.json`, `tauri.conf.json`, `Cargo.toml`, `snapcraft.yaml`
 2. Update `CHANGELOG.md`
 3. Commit: `chore(release): bump version to vX.Y.Z`
-4. Tag: `git tag vX.Y.Z`
-5. Push: `git push && git push --tags`
+4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z - Description"`
+5. Push: `git push origin main --tags`
 6. GitHub Actions builds and publishes automatically
+
+### Automated CI/CD (.github/workflows/build.yml)
+When a tag is pushed, GitHub Actions automatically:
+
+| Platform | Artifacts | Destination |
+|----------|-----------|-------------|
+| Linux | `.deb`, `.rpm`, `.AppImage`, `.snap` | GitHub Releases |
+| Windows | `.msi`, `.exe` | GitHub Releases |
+| macOS | `.dmg` | GitHub Releases |
+| **Snap** | `.snap` | **Snap Store (stable)** |
+
+**Snap Store auto-publish**: The workflow uploads to Snap Store using `snapcraft upload --release=stable`. Requires `SNAPCRAFT_STORE_CREDENTIALS` secret configured in GitHub repo settings.
+
+### Verify Release
+```bash
+# Check workflow status
+gh run list --limit 5
+
+# Check specific run
+gh run view <run-id>
+```
+
+### Manual Snap Upload (fallback)
+Only if CI fails or secret is not configured:
+```bash
+snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
+```
 
 ---
 
