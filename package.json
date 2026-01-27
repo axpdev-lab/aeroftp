@@ -1,7 +1,7 @@
 {
   "name": "aeroftp",
   "private": true,
-  "version": "1.2.9",
+  "version": "1.3.0",
   "description": "AeroFTP - Fast, Beautiful, Reliable FTP Client",
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "i18n:stats": "npx tsx scripts/i18n-stats.ts"
   },
   "dependencies": {
+    "@aptabase/tauri": "github:aptabase/tauri-plugin-aptabase",
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",

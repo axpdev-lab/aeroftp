@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Barisan",
+            "log": "Log",
+            "transferQueue": "Barisan Pemindahan",
+            "activityLog": "Log Aktiviti",
+            "aerocloudTitle": "Status AeroCloud",
+            "updateAvailable": "Kemas Kini Tersedia"
         }
     }
 }

@@ -475,6 +475,14 @@
             "update_available": "Aggiornamento disponibile: v{version} (.{format})",
             "update_uptodate": "Aggiornato (v{version})",
             "update_error": "Controllo aggiornamenti fallito: {error}"
+        },
+        "statusbar": {
+            "queue": "Coda",
+            "log": "Log",
+            "transferQueue": "Coda Trasferimenti",
+            "activityLog": "Log Attività",
+            "aerocloudTitle": "Stato AeroCloud",
+            "updateAvailable": "Aggiornamento Disponibile"
         }
     }
 }

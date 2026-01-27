@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "صف",
+            "log": "گزارش",
+            "transferQueue": "صف انتقال",
+            "activityLog": "گزارش فعالیت",
+            "aerocloudTitle": "وضعیت AeroCloud",
+            "updateAvailable": "بروزرسانی موجود"
         }
     }
 }

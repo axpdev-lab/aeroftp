@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "대기열",
+            "log": "로그",
+            "transferQueue": "전송 대기열",
+            "activityLog": "활동 로그",
+            "aerocloudTitle": "AeroCloud 상태",
+            "updateAvailable": "업데이트 사용 가능"
         }
     }
 }

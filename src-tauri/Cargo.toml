@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.2.9"
+version = "1.3.0"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -61,6 +61,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2.9.0"
 tauri-plugin-notification = "2.3.3"
+tauri-plugin-aptabase = "1.0"  # Privacy-first analytics (v1.3.0)
 semver = "1.0.27"
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
@@ -72,9 +73,17 @@ ring = "0.17.14"
 zeroize = "1.8.2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
+# SECURITY: CVE-2025-54804 (Medium) - fix requires russh 0.54.1+
+# russh-keys is stuck at 0.50-beta, incompatible with 0.54+
+# Risk: DoS only (malicious server can crash client) - acceptable for now
+# TODO: Update when russh-keys releases 0.54+ compatible version
+# Tracking: https://github.com/axpnet/aeroftp/security/dependabot/3
 russh = "0.48"
 russh-sftp = "2.0"
 russh-keys = "0.48"
+
+# Archive Support with Encryption (v1.3.0)
+sevenz-rust = { version = "0.6", features = ["aes256", "compress"] }  # 7z with AES-256
 
 [dev-dependencies]
 tempfile = "3"

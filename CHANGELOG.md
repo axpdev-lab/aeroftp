@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-28
+
+### 7z AES-256 Encryption + Privacy-First Analytics
+
+Major release introducing encrypted archive support and opt-in analytics infrastructure.
+
+#### Added - 7z Archive Support (AES-256)
+- **7z Compression (LZMA2)**: Right-click → "Compress to 7z" for superior compression ratio
+  - Multi-file/folder selection support
+  - LZMA2 algorithm (better than Deflate)
+  - Future: password-protected archive creation
+
+- **7z Extraction with AES-256 Decryption**: Full support for encrypted 7z archives
+  - Automatic encryption detection
+  - Password prompt for encrypted archives
+  - Creates subfolder by archive name on extraction
+  - Secure: passwords cleared from memory after use
+
+- **Dual Archive Formats**: Choose between ZIP (compatibility) and 7z (compression/security)
+
+#### Added - Privacy-First Analytics
+- **Aptabase Integration** (opt-in, default OFF):
+  - EU data residency (GDPR compliant)
+  - No PII collected ever
+  - Tracks only: protocol types used, feature popularity, transfer size ranges
+  - Helps prioritize development based on real usage
+
+- **Analytics Hook** (`useAnalytics`):
+  - `trackAppStarted`: App version, language, OS
+  - `trackConnectionSuccess`: Protocol type only
+  - `trackTransferCompleted`: Direction and size range
+  - `trackFeatureUsed`: Which features are popular
+
+#### Added - i18n (51 Languages)
+- 15 new translation keys for 7z features:
+  - `contextMenu.compressToZip`, `contextMenu.compressTo7z`
+  - `contextMenu.extract7zHere`, `contextMenu.extractZipHere`
+  - `contextMenu.passwordRequired`, `contextMenu.enterArchivePassword`
+  - `contextMenu.wrongPassword`, `contextMenu.compressionFailed`
+  - And more for notifications and progress
+
+#### Technical
+- **Rust**: Added `sevenz-rust` crate with `aes256` and `compress` features
+- **Rust**: Added `tauri-plugin-aptabase` v1.0 for Tauri v2
+- **Commands**: `compress_7z`, `extract_7z`, `is_7z_encrypted`
+- **Hooks**: New `useAnalytics` hook exports for feature tracking
+- All 51 languages updated with archive-related translations
+
+#### Security Notes
+- CVE-2025-54804 (russh): Documented in Cargo.toml, awaiting upstream fix
+- 7z passwords handled securely, never logged or persisted
+
+---
+
 ## [1.2.9] - 2026-01-26
 
 ### Privacy & Security + i18n Completion

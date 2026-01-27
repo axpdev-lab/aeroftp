@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "キュー",
+            "log": "ログ",
+            "transferQueue": "転送キュー",
+            "activityLog": "アクティビティログ",
+            "aerocloudTitle": "AeroCloud ステータス",
+            "updateAvailable": "アップデート利用可能"
         }
     }
 }

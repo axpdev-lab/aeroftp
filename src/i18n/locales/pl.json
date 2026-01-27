@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Kolejka",
+            "log": "Dziennik",
+            "transferQueue": "Kolejka Transferów",
+            "activityLog": "Dziennik Aktywności",
+            "aerocloudTitle": "Status AeroCloud",
+            "updateAvailable": "Dostępna Aktualizacja"
         }
     }
 }

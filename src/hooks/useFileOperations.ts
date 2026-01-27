@@ -1,19 +1,39 @@
-import { useState, useCallback } from 'react';
+/**
+ * useFileOperations Hook
+ * Handles file loading, navigation, and mutation operations (delete, rename, create)
+ * Supports both FTP and Provider protocols (S3, WebDAV, MEGA, SFTP, OAuth)
+ */
+
+import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { RemoteFile, LocalFile, FileListResponse } from '../types';
-import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { useActivityLog } from './useActivityLog';
+import { useHumanizedLog } from './useHumanizedLog';
 import { useTranslation } from '../i18n';
 
+// List of provider protocols (non-FTP)
+const PROVIDER_PROTOCOLS = ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'];
+
 interface UseFileOperationsParams {
-    toast: any;
-    setConfirmDialog: (dialog: any) => void;
-    setInputDialog: (dialog: any) => void;
+    toast: {
+        success: (title: string, message?: string) => void;
+        error: (title: string, message?: string) => void;
+        info: (title: string, message?: string) => void;
+        warning: (title: string, message?: string) => void;
+    };
+    notify: {
+        success: (title: string, message?: string) => string | null;
+        error: (title: string, message?: string) => string;
+        info: (title: string, message?: string) => string | null;
+        warning: (title: string, message?: string) => string | null;
+    };
+    setConfirmDialog: (dialog: { message: string; onConfirm: () => void } | null) => void;
+    setInputDialog: (dialog: { title: string; defaultValue: string; onConfirm: (v: string) => void } | null) => void;
     setRemoteFiles: (files: RemoteFile[]) => void;
     setLocalFiles: (files: LocalFile[]) => void;
     setCurrentRemotePath: (path: string) => void;
     setCurrentLocalPath: (path: string) => void;
-    setSyncNavDialog: (dialog: any) => void;
+    setSyncNavDialog: (dialog: { missingPath: string; isRemote: boolean; targetPath: string } | null) => void;
     currentRemotePath: string;
     currentLocalPath: string;
     remoteFiles: RemoteFile[];
@@ -23,14 +43,20 @@ interface UseFileOperationsParams {
     setSelectedRemoteFiles: (files: Set<string>) => void;
     setSelectedLocalFiles: (files: Set<string>) => void;
     isSyncNavigation?: boolean;
-    syncBasePaths?: { remote: string; local: string };
+    syncBasePaths?: { remote: string; local: string } | null;
     showHiddenFiles?: boolean;
     isConnected?: boolean;
     protocol?: string;
+    confirmBeforeDelete?: boolean;
+    // Session info for provider detection
+    activeSessionId?: string | null;
+    sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
+    connectionParams?: { protocol?: string };
 }
 
 export function useFileOperations({
     toast,
+    notify,
     setConfirmDialog,
     setInputDialog,
     setRemoteFiles,
@@ -48,38 +74,65 @@ export function useFileOperations({
     setSelectedLocalFiles,
     isSyncNavigation,
     syncBasePaths,
-    showHiddenFiles,
-    isConnected,
-    protocol
+    showHiddenFiles = true,
+    isConnected = false,
+    protocol,
+    confirmBeforeDelete = true,
+    activeSessionId,
+    sessions,
+    connectionParams,
 }: UseFileOperationsParams) {
 
     const activityLog = useActivityLog();
+    const humanLog = useHumanizedLog();
     const t = useTranslation();
-    console.log('[DEBUG] useFileOperations hook init. Protocol:', protocol);
 
-    const getLoc = (isRemote: boolean) => isRemote ? t('browser.remote') : t('browser.local');
+    // Helper: Get effective protocol from various sources
+    const getEffectiveProtocol = useCallback(() => {
+        // Priority: explicit protocol > connectionParams > active session
+        if (protocol) return protocol;
+        if (connectionParams?.protocol) return connectionParams.protocol;
+        if (sessions && activeSessionId) {
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            return activeSession?.connectionParams?.protocol;
+        }
+        return undefined;
+    }, [protocol, connectionParams, sessions, activeSessionId]);
+
+    // Helper: Check if current connection is a Provider (non-FTP)
+    const isProvider = useCallback(() => {
+        const effectiveProtocol = getEffectiveProtocol();
+        return effectiveProtocol && PROVIDER_PROTOCOLS.includes(effectiveProtocol);
+    }, [getEffectiveProtocol]);
 
     // ===================================
     // LOADING FILES
     // ===================================
 
-    const loadRemoteFiles = useCallback(async () => {
+    const loadRemoteFiles = useCallback(async (overrideProtocol?: string) => {
         try {
-            // Use provider_list_files for S3, WebDAV and MEGA, list_files for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
+            const effectiveProtocol = overrideProtocol || getEffectiveProtocol();
+            const useProvider = effectiveProtocol && PROVIDER_PROTOCOLS.includes(effectiveProtocol);
+
             let response: FileListResponse;
 
-            if (isProviderProtocol) {
+            if (useProvider) {
                 response = await invoke('provider_list_files', { path: null });
+                if (response.files?.length > 0) {
+                    humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: effectiveProtocol }, 'success');
+                }
             } else {
                 response = await invoke('list_files');
             }
+
             setRemoteFiles(response.files);
             setCurrentRemotePath(response.current_path);
         } catch (error) {
-            toast.error('Error', `Failed to list files: ${error}`);
+            console.error('[loadRemoteFiles] Error:', error);
+            activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
+            notify.error('Error', `Failed to list files: ${error}`);
         }
-    }, [setRemoteFiles, setCurrentRemotePath, toast, protocol]);
+    }, [getEffectiveProtocol, setRemoteFiles, setCurrentRemotePath, activityLog, humanLog, notify]);
 
     const loadLocalFiles = useCallback(async (path: string) => {
         try {
@@ -87,43 +140,39 @@ export function useFileOperations({
             setLocalFiles(files);
             setCurrentLocalPath(path);
         } catch (error) {
-            toast.error('Local Error', `Failed to load local files: ${error}`);
+            notify.error('Error', `Failed to list local files: ${error}`);
         }
-    }, [setLocalFiles, setCurrentLocalPath, toast, showHiddenFiles]);
+    }, [setLocalFiles, setCurrentLocalPath, notify, showHiddenFiles]);
 
     // ===================================
     // NAVIGATION
     // ===================================
 
-    const changeRemoteDirectory = useCallback(async (path: string) => {
+    const changeRemoteDirectory = useCallback(async (path: string, overrideProtocol?: string) => {
         try {
-            // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
-            const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
-            console.log('[DEBUG] changeRemoteDirectory', { path, protocol, isProviderProtocol });
+            const effectiveProtocol = overrideProtocol || getEffectiveProtocol();
+            const useProvider = effectiveProtocol && PROVIDER_PROTOCOLS.includes(effectiveProtocol);
 
             let response: FileListResponse;
 
-            if (isProviderProtocol) {
-                console.log('[DEBUG] Invoking provider_change_dir');
+            if (useProvider) {
                 response = await invoke('provider_change_dir', { path });
             } else {
-                console.log('[DEBUG] Invoking change_directory (FTP fallback)');
                 response = await invoke('change_directory', { path });
             }
 
             setRemoteFiles(response.files);
             setCurrentRemotePath(response.current_path);
-            activityLog.log('NAVIGATE', t('activity.navigate_success', { path: response.current_path, location: getLoc(true) }), 'success');
 
             // Navigation Sync: mirror to local panel if enabled
             if (isSyncNavigation && syncBasePaths) {
                 const relativePath = response.current_path.startsWith(syncBasePaths.remote)
                     ? response.current_path.slice(syncBasePaths.remote.length)
                     : '';
-                // Join paths avoiding double slashes
                 const basePath = syncBasePaths.local.endsWith('/') ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local;
                 const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
                 const newLocalPath = relativePath ? basePath + relPath : basePath;
+
                 try {
                     const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
                     setLocalFiles(files);
@@ -134,43 +183,266 @@ export function useFileOperations({
             }
         } catch (error) {
             activityLog.log('ERROR', `Failed to navigate: ${path}`, 'error');
-            toast.error('Error', `Failed to change directory: ${error}`);
+            notify.error('Error', `Failed to change directory: ${error}`);
         }
-    }, [protocol, isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, toast, setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog, t]);
+    }, [getEffectiveProtocol, isSyncNavigation, syncBasePaths, showHiddenFiles, activityLog, notify,
+        setRemoteFiles, setCurrentRemotePath, setLocalFiles, setCurrentLocalPath, setSyncNavDialog]);
 
     const changeLocalDirectory = useCallback(async (path: string) => {
         await loadLocalFiles(path);
-        activityLog.log('NAVIGATE', t('activity.navigate_success', { path, location: getLoc(false) }), 'success');
 
         // Navigation Sync: mirror to remote panel if enabled
         if (isSyncNavigation && syncBasePaths && isConnected) {
             const relativePath = path.startsWith(syncBasePaths.local)
                 ? path.slice(syncBasePaths.local.length)
                 : '';
-            // Join paths avoiding double slashes
             const basePath = syncBasePaths.remote.endsWith('/') ? syncBasePaths.remote.slice(0, -1) : syncBasePaths.remote;
             const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
             const newRemotePath = relativePath ? basePath + relPath : basePath;
-            try {
-                // Use provider_change_dir for S3, WebDAV and MEGA, change_directory for FTP
-                const isProviderProtocol = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
-                let response: FileListResponse;
 
-                if (isProviderProtocol) {
+            try {
+                const effectiveProtocol = getEffectiveProtocol();
+                const useProvider = effectiveProtocol && PROVIDER_PROTOCOLS.includes(effectiveProtocol);
+
+                let response: FileListResponse;
+                if (useProvider) {
                     response = await invoke('provider_change_dir', { path: newRemotePath });
                 } else {
                     response = await invoke('change_directory', { path: newRemotePath });
                 }
+
                 setRemoteFiles(response.files);
                 setCurrentRemotePath(response.current_path);
             } catch {
                 setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
             }
         }
-    }, [loadLocalFiles, protocol, isSyncNavigation, syncBasePaths, isConnected, activityLog, setRemoteFiles, setCurrentRemotePath, setSyncNavDialog, t]);
+    }, [loadLocalFiles, getEffectiveProtocol, isSyncNavigation, syncBasePaths, isConnected,
+        setRemoteFiles, setCurrentRemotePath, setSyncNavDialog]);
 
     // ===================================
-    // MUTATION Operations (Delete, Rename, Create)
+    // DELETE Operations
+    // ===================================
+
+    const deleteRemoteFile = useCallback((path: string, isDir: boolean) => {
+        const fileName = path.split('/').pop() || path;
+
+        const performDelete = async () => {
+            const logId = humanLog.logStart('DELETE', { filename: fileName });
+            try {
+                const useProvider = isProvider();
+
+                if (useProvider) {
+                    if (isDir) {
+                        await invoke('provider_delete_dir', { path, recursive: true });
+                    } else {
+                        await invoke('provider_delete_file', { path });
+                    }
+                } else {
+                    await invoke('delete_remote_file', { path, isDir });
+                }
+
+                humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+                notify.success('Deleted', fileName);
+                await loadRemoteFiles();
+            } catch (error) {
+                humanLog.logError('DELETE', { filename: fileName }, logId);
+                notify.error('Delete Failed', String(error));
+            }
+        };
+
+        if (confirmBeforeDelete) {
+            setConfirmDialog({
+                message: `Delete "${fileName}"?`,
+                onConfirm: async () => {
+                    setConfirmDialog(null);
+                    await performDelete();
+                }
+            });
+        } else {
+            performDelete();
+        }
+    }, [isProvider, confirmBeforeDelete, humanLog, notify, loadRemoteFiles, setConfirmDialog]);
+
+    const deleteLocalFile = useCallback((path: string) => {
+        const fileName = path.split('/').pop() || path;
+
+        const performDelete = async () => {
+            const logId = humanLog.logStart('DELETE', { filename: fileName });
+            try {
+                await invoke('delete_local_file', { path });
+                humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+                notify.success('Deleted', fileName);
+                await loadLocalFiles(currentLocalPath);
+            } catch (error) {
+                humanLog.logError('DELETE', { filename: fileName }, logId);
+                notify.error('Delete Failed', String(error));
+            }
+        };
+
+        if (confirmBeforeDelete) {
+            setConfirmDialog({
+                message: `Delete "${fileName}"?`,
+                onConfirm: async () => {
+                    setConfirmDialog(null);
+                    await performDelete();
+                }
+            });
+        } else {
+            performDelete();
+        }
+    }, [confirmBeforeDelete, humanLog, notify, loadLocalFiles, currentLocalPath, setConfirmDialog]);
+
+    const deleteMultipleRemoteFiles = useCallback((filesOverride?: string[]) => {
+        const names = filesOverride || Array.from(selectedRemoteFiles);
+        if (names.length === 0) return;
+
+        const performDelete = async () => {
+            const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+            const deletedFiles: string[] = [];
+            const deletedFolders: string[] = [];
+            const useProvider = isProvider();
+
+            for (const name of names) {
+                const file = remoteFiles.find(f => f.name === name);
+                if (file) {
+                    try {
+                        if (useProvider) {
+                            if (file.is_dir) {
+                                await invoke('provider_delete_dir', { path: file.path, recursive: true });
+                            } else {
+                                await invoke('provider_delete_file', { path: file.path });
+                            }
+                        } else {
+                            await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
+                        }
+
+                        if (file.is_dir) {
+                            deletedFolders.push(name);
+                        } else {
+                            deletedFiles.push(name);
+                        }
+                    } catch { }
+                }
+            }
+
+            await loadRemoteFiles();
+            setSelectedRemoteFiles(new Set());
+
+            const parts = [];
+            if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
+            if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
+            const count = deletedFolders.length + deletedFiles.length;
+            const msg = t('activity.delete_multiple_success', { count });
+            humanLog.updateEntry(logId, { status: 'success', message: msg });
+            notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+        };
+
+        if (confirmBeforeDelete) {
+            setConfirmDialog({
+                message: `Delete ${names.length} selected items?`,
+                onConfirm: async () => {
+                    setConfirmDialog(null);
+                    await performDelete();
+                }
+            });
+        } else {
+            performDelete();
+        }
+    }, [selectedRemoteFiles, remoteFiles, isProvider, confirmBeforeDelete, humanLog, t, notify,
+        loadRemoteFiles, setSelectedRemoteFiles, setConfirmDialog]);
+
+    const deleteMultipleLocalFiles = useCallback((filesOverride?: string[]) => {
+        const names = filesOverride || Array.from(selectedLocalFiles);
+        if (names.length === 0) return;
+
+        const performDelete = async () => {
+            const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+            const deletedFiles: string[] = [];
+            const deletedFolders: string[] = [];
+
+            for (const name of names) {
+                const file = localFiles.find(f => f.name === name);
+                if (file) {
+                    try {
+                        await invoke('delete_local_file', { path: file.path });
+                        if (file.is_dir) {
+                            deletedFolders.push(name);
+                        } else {
+                            deletedFiles.push(name);
+                        }
+                    } catch { }
+                }
+            }
+
+            await loadLocalFiles(currentLocalPath);
+            setSelectedLocalFiles(new Set());
+
+            const parts = [];
+            if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
+            if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
+            const count = deletedFolders.length + deletedFiles.length;
+            const msg = t('activity.delete_multiple_success', { count });
+            humanLog.updateEntry(logId, { status: 'success', message: msg });
+            notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+        };
+
+        if (confirmBeforeDelete) {
+            setConfirmDialog({
+                message: `Delete ${names.length} selected items?`,
+                onConfirm: async () => {
+                    setConfirmDialog(null);
+                    await performDelete();
+                }
+            });
+        } else {
+            performDelete();
+        }
+    }, [selectedLocalFiles, localFiles, confirmBeforeDelete, humanLog, t, notify,
+        loadLocalFiles, currentLocalPath, setSelectedLocalFiles, setConfirmDialog]);
+
+    // ===================================
+    // RENAME Operation
+    // ===================================
+
+    const renameFile = useCallback((path: string, currentName: string, isRemote: boolean) => {
+        setInputDialog({
+            title: 'Rename',
+            defaultValue: currentName,
+            onConfirm: async (newName: string) => {
+                setInputDialog(null);
+                if (!newName || newName === currentName) return;
+
+                const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName });
+                try {
+                    const parentDir = path.substring(0, path.lastIndexOf('/'));
+                    const newPath = parentDir + '/' + newName;
+
+                    if (isRemote) {
+                        const useProvider = isProvider();
+                        if (useProvider) {
+                            await invoke('provider_rename', { from: path, to: newPath });
+                        } else {
+                            await invoke('rename_remote_file', { from: path, to: newPath });
+                        }
+                        await loadRemoteFiles();
+                    } else {
+                        await invoke('rename_local_file', { from: path, to: newPath });
+                        await loadLocalFiles(currentLocalPath);
+                    }
+
+                    humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName }, logId);
+                    notify.success('Renamed', newName);
+                } catch (error) {
+                    humanLog.logError('RENAME', { oldname: currentName, newname: newName }, logId);
+                    notify.error('Rename Failed', String(error));
+                }
+            }
+        });
+    }, [isProvider, humanLog, notify, loadRemoteFiles, loadLocalFiles, currentLocalPath, setInputDialog]);
+
+    // ===================================
+    // CREATE FOLDER Operation
     // ===================================
 
     const createFolder = useCallback((isRemote: boolean) => {
@@ -180,182 +452,53 @@ export function useFileOperations({
             onConfirm: async (name: string) => {
                 setInputDialog(null);
                 if (!name) return;
+
+                const logId = humanLog.logStart('MKDIR', { foldername: name });
                 try {
                     if (isRemote) {
                         const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
-                        await invoke('create_remote_folder', { path });
+                        const useProvider = isProvider();
+
+                        if (useProvider) {
+                            await invoke('provider_mkdir', { path });
+                        } else {
+                            await invoke('create_remote_folder', { path });
+                        }
                         await loadRemoteFiles();
-                        activityLog.log('MKDIR', t('activity.mkdir_success', { foldername: name, location: getLoc(true) }), 'success');
                     } else {
                         const path = currentLocalPath + '/' + name;
                         await invoke('create_local_folder', { path });
                         await loadLocalFiles(currentLocalPath);
-                        activityLog.log('MKDIR', t('activity.mkdir_success', { foldername: name, location: getLoc(false) }), 'success');
                     }
-                    toast.success('Created', name);
+
+                    humanLog.logSuccess('MKDIR', { foldername: name }, logId);
+                    notify.success('Created', name);
                 } catch (error) {
-                    activityLog.log('ERROR', t('activity.mkdir_error', { location: '' }), 'error');
-                    toast.error('Create Failed', String(error));
+                    humanLog.logError('MKDIR', { foldername: name }, logId);
+                    notify.error('Create Failed', String(error));
                 }
             }
         });
-    }, [currentRemotePath, currentLocalPath, loadRemoteFiles, loadLocalFiles, activityLog, toast, setInputDialog, t]);
-
-    const renameFile = useCallback((path: string, currentName: string, isRemote: boolean) => {
-        setInputDialog({
-            title: 'Rename',
-            defaultValue: currentName,
-            onConfirm: async (newName: string) => {
-                setInputDialog(null);
-                if (!newName || newName === currentName) return;
-                try {
-                    const parentDir = path.substring(0, path.lastIndexOf('/'));
-                    const newPath = parentDir + '/' + newName;
-
-                    if (isRemote) {
-                        await invoke('rename_remote_file', { from: path, to: newPath });
-                        await loadRemoteFiles();
-                        activityLog.log('RENAME', t('activity.rename_success', { oldname: currentName, newname: newName, location: getLoc(true) }), 'success');
-                    } else {
-                        await invoke('rename_local_file', { from: path, to: newPath });
-                        await loadLocalFiles(currentLocalPath);
-                        activityLog.log('RENAME', t('activity.rename_success', { oldname: currentName, newname: newName, location: getLoc(false) }), 'success');
-                    }
-                    toast.success('Renamed', newName);
-                } catch (error) {
-                    activityLog.log('ERROR', t('activity.rename_error', { location: '' }), 'error');
-                    toast.error('Rename Failed', String(error));
-                }
-            }
-        });
-    }, [loadRemoteFiles, loadLocalFiles, currentLocalPath, activityLog, toast, setInputDialog, t]);
-
-    const deleteRemoteFile = useCallback((path: string, isDir: boolean) => {
-        const fileName = path.split('/').pop() || path;
-        setConfirmDialog({
-            message: `Delete "${fileName}"?`,
-            onConfirm: async () => {
-                setConfirmDialog(null);
-                try {
-                    // Backend now emits detailed events for each file deleted
-                    const result = await invoke<string>('delete_remote_file', { path, isDir });
-                    toast.success('Deleted', result);
-                    // Refresh is handled by transfer_event listener in App.tsx
-                } catch (error) {
-                    toast.error('Delete Failed', String(error));
-                }
-            }
-        });
-    }, [toast, setConfirmDialog]);
-
-    const deleteLocalFile = useCallback((path: string) => {
-        const fileName = path.split('/').pop() || path;
-        setConfirmDialog({
-            message: `Delete "${fileName}"?`,
-            onConfirm: async () => {
-                setConfirmDialog(null);
-                try {
-                    // Backend now emits detailed events for each file deleted
-                    const result = await invoke<string>('delete_local_file', { path });
-                    toast.success('Deleted', result);
-                    // Refresh is handled by transfer_event listener in App.tsx
-                } catch (error) {
-                    toast.error('Delete Failed', String(error));
-                }
-            }
-        });
-    }, [toast, setConfirmDialog]);
-
-    const deleteMultipleRemoteFiles = useCallback((filesOverride?: string[]) => {
-        const names = filesOverride || Array.from(selectedRemoteFiles);
-        if (names.length === 0) return;
-
-        setConfirmDialog({
-            message: `Delete ${names.length} selected items?`,
-            onConfirm: async () => {
-                setConfirmDialog(null);
-                // Backend emits detailed events for each file deleted
-                let deleted = 0;
-                let errors = 0;
-                for (const name of names) {
-                    const file = remoteFiles.find(f => f.name === name);
-                    if (file) {
-                        try {
-                            await invoke<string>('delete_remote_file', { path: file.path, isDir: file.is_dir });
-                            deleted++;
-                        } catch {
-                            errors++;
-                        }
-                    }
-                }
-                setSelectedRemoteFiles(new Set());
-                // Refresh handled by transfer_event listener for each delete
-
-                const folderCount = names.filter(n => remoteFiles.find(f => f.name === n)?.is_dir).length;
-                const fileCount = names.length - folderCount;
-                const messages = [];
-                if (folderCount > 0) messages.push(`${folderCount} folder${folderCount > 1 ? 's' : ''}`);
-                if (fileCount > 0) messages.push(`${fileCount} file${fileCount > 1 ? 's' : ''}`);
-
-                if (errors > 0) {
-                    toast.warning('Delete Complete', `${deleted} deleted, ${errors} failed`);
-                } else {
-                    toast.success(messages.join(', '), `${messages.join(' and ')} deleted`);
-                }
-            }
-        });
-    }, [selectedRemoteFiles, remoteFiles, toast, setConfirmDialog, setSelectedRemoteFiles]);
-
-    const deleteMultipleLocalFiles = useCallback((filesOverride?: string[]) => {
-        const names = filesOverride || Array.from(selectedLocalFiles);
-        if (names.length === 0) return;
-
-        setConfirmDialog({
-            message: `Delete ${names.length} selected items?`,
-            onConfirm: async () => {
-                setConfirmDialog(null);
-                // Backend emits detailed events for each file deleted
-                let deleted = 0;
-                let errors = 0;
-                for (const name of names) {
-                    const file = localFiles.find(f => f.name === name);
-                    if (file) {
-                        try {
-                            await invoke<string>('delete_local_file', { path: file.path });
-                            deleted++;
-                        } catch {
-                            errors++;
-                        }
-                    }
-                }
-                setSelectedLocalFiles(new Set());
-                // Refresh handled by transfer_event listener for each delete
-
-                const folderCount = names.filter(n => localFiles.find(f => f.name === n)?.is_dir).length;
-                const fileCount = names.length - folderCount;
-                const messages = [];
-                if (folderCount > 0) messages.push(`${folderCount} folder${folderCount > 1 ? 's' : ''}`);
-                if (fileCount > 0) messages.push(`${fileCount} file${fileCount > 1 ? 's' : ''}`);
-
-                if (errors > 0) {
-                    toast.warning('Delete Complete', `${deleted} deleted, ${errors} failed`);
-                } else {
-                    toast.success(messages.join(', '), `${messages.join(' and ')} deleted`);
-                }
-            }
-        });
-    }, [selectedLocalFiles, localFiles, toast, setConfirmDialog, setSelectedLocalFiles]);
+    }, [currentRemotePath, currentLocalPath, isProvider, humanLog, notify, loadRemoteFiles, loadLocalFiles, setInputDialog]);
 
     return {
+        // Loading
         loadRemoteFiles,
         loadLocalFiles,
+        // Navigation
         changeRemoteDirectory,
         changeLocalDirectory,
+        // Mutations
         createFolder,
         renameFile,
         deleteRemoteFile,
         deleteLocalFile,
         deleteMultipleRemoteFiles,
-        deleteMultipleLocalFiles
+        deleteMultipleLocalFiles,
+        // Helpers
+        isProvider,
+        getEffectiveProtocol,
     };
 }
+
+export default useFileOperations;

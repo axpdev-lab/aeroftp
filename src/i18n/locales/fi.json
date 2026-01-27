@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Jono",
+            "log": "Loki",
+            "transferQueue": "Siirtojono",
+            "activityLog": "Toimintaloki",
+            "aerocloudTitle": "AeroCloud-tila",
+            "updateAvailable": "Päivitys saatavilla"
         }
     }
 }

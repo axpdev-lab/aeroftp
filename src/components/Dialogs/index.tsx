@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Link2, Copy, X, HardDrive, Calendar, Shield, Hash, FileType } from 'lucide-react';
+import { Folder, FileText, Link2, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff } from 'lucide-react';
 
 // ============ Helper Functions ============
 const formatBytes = (bytes: number | null): string => {
@@ -108,6 +108,7 @@ interface InputDialogProps {
     onConfirm: (value: string) => void;
     onCancel: () => void;
     placeholder?: string;
+    isPassword?: boolean;
 }
 
 export const InputDialog: React.FC<InputDialogProps> = ({
@@ -115,24 +116,38 @@ export const InputDialog: React.FC<InputDialogProps> = ({
     defaultValue,
     onConfirm,
     onCancel,
-    placeholder
+    placeholder,
+    isPassword = false
 }) => {
     const t = useTranslation();
     const [value, setValue] = useState(defaultValue);
+    const [showPassword, setShowPassword] = useState(false);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl w-96">
                 <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{title}</h3>
-                <input
-                    type="text"
-                    value={value}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
-                    placeholder={placeholder}
-                    className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 mb-4 text-gray-900 dark:text-gray-100"
-                    autoFocus
-                    onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && onConfirm(value)}
-                />
+                <div className="relative mb-4">
+                    <input
+                        type={isPassword && !showPassword ? 'password' : 'text'}
+                        value={value}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
+                        placeholder={placeholder}
+                        className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-gray-100 pr-10"
+                        autoFocus
+                        onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && onConfirm(value)}
+                    />
+                    {isPassword && (
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            tabIndex={-1}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    )}
+                </div>
                 <div className="flex justify-end gap-2">
                     <button
                         onClick={onCancel}

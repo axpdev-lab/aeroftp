@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Ουρά",
+            "log": "Ημερολόγιο",
+            "transferQueue": "Ουρά Μεταφοράς",
+            "activityLog": "Ημερολόγιο Δραστηριότητας",
+            "aerocloudTitle": "Κατάσταση AeroCloud",
+            "updateAvailable": "Διαθέσιμη Ενημέρωση"
         }
     }
 }

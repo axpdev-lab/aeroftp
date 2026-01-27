@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "قائمة الانتظار",
+            "log": "السجل",
+            "transferQueue": "قائمة النقل",
+            "activityLog": "سجل النشاط",
+            "aerocloudTitle": "حالة AeroCloud",
+            "updateAvailable": "تحديث متاح"
         }
     }
 }

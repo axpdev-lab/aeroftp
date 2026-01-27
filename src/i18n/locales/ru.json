@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Очередь",
+            "log": "Журнал",
+            "transferQueue": "Очередь передач",
+            "activityLog": "Журнал активности",
+            "aerocloudTitle": "Статус AeroCloud",
+            "updateAvailable": "Доступно обновление"
         }
     }
 }

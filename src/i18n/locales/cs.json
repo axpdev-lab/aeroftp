@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Fronta",
+            "log": "Protokol",
+            "transferQueue": "Fronta přenosů",
+            "activityLog": "Protokol aktivit",
+            "aerocloudTitle": "Stav AeroCloud",
+            "updateAvailable": "Dostupná aktualizace"
         }
     }
 }

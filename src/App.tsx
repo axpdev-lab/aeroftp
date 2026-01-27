@@ -93,7 +93,7 @@ const App: React.FC = () => {
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean } | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
@@ -2893,9 +2893,36 @@ const App: React.FC = () => {
       { label: 'Open in File Manager', icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
     ];
 
-    // Compress option (for files and folders)
+    // Compress options (ZIP and 7z)
     items.push({
-      label: count > 1 ? `Compress (${count})` : 'Compress',
+      label: count > 1 ? t('contextMenu.compressZipMultiple').replace('{count}', String(count)) : t('contextMenu.compressToZip'),
+      icon: <Archive size={14} />,
+      action: async () => {
+        try {
+          const pathsToCompress = filesToUpload.map(name => {
+            const f = sortedLocalFiles.find(lf => lf.name === name);
+            return f ? f.path : `${currentLocalPath}/${name}`;
+          });
+
+          const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
+          const outputPath = `${currentLocalPath}/${baseName}.zip`;
+
+          notify.info(t('contextMenu.compressing'), `Creating ${baseName}.zip`);
+          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
+          await invoke<string>('compress_files', { paths: pathsToCompress, outputPath });
+          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
+          notify.success('Compressed!', `Created ${baseName}.zip`);
+          await loadLocalFiles(currentLocalPath);
+        } catch (err) {
+          activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+          notify.error(t('contextMenu.compressionFailed'), String(err));
+        }
+      }
+    });
+
+    // 7z compression (better compression ratio)
+    items.push({
+      label: count > 1 ? t('contextMenu.compress7zMultiple').replace('{count}', String(count)) : t('contextMenu.compressTo7z'),
       icon: <Archive size={14} />,
       divider: true,
       action: async () => {
@@ -2905,43 +2932,108 @@ const App: React.FC = () => {
             return f ? f.path : `${currentLocalPath}/${name}`;
           });
 
-          // Generate output filename
           const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
-          const outputPath = `${currentLocalPath}/${baseName}.zip`;
+          const outputPath = `${currentLocalPath}/${baseName}.7z`;
 
-          notify.info('Compressing...', `Creating ${baseName}.zip`);
-          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
-          await invoke<string>('compress_files', { paths: pathsToCompress, outputPath });
-          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
-          notify.success('Compressed!', `Created ${baseName}.zip`);
+          notify.info(t('contextMenu.compressing'), t('contextMenu.creating7z').replace('{name}', `${baseName}.7z`));
+          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
+          await invoke<string>('compress_7z', { paths: pathsToCompress, outputPath, password: null });
+          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z (${count} item${count > 1 ? 's' : ''})` });
+          notify.success('Compressed!', `Created ${baseName}.7z`);
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
-          activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
-          notify.error('Compression failed', String(err));
+          activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
+          notify.error(t('contextMenu.compressionFailed'), String(err));
         }
       }
     });
 
-    // Extract option (for ZIP files only)
-    const isArchive = !file.is_dir && /\.(zip|ZIP)$/.test(file.name);
+    // Extract option (for ZIP and 7z files)
+    const isZipArchive = !file.is_dir && /\.(zip|ZIP)$/i.test(file.name);
+    const is7zArchive = !file.is_dir && /\.(7z)$/i.test(file.name);
+    const isArchive = isZipArchive || is7zArchive;
+
     if (isArchive && count === 1) {
-      items.push({
-        label: 'Extract Here',
-        icon: <FolderOpen size={14} />,
-        action: async () => {
-          try {
-            notify.info('Extracting...', file.name);
-            const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
-            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath });
-            activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
-            notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
-            await loadLocalFiles(currentLocalPath);
-          } catch (err) {
-            activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
-            notify.error('Extraction failed', String(err));
+      if (isZipArchive) {
+        // ZIP extraction (no password support yet)
+        items.push({
+          label: t('contextMenu.extractZipHere'),
+          icon: <FolderOpen size={14} />,
+          action: async () => {
+            try {
+              notify.info(t('contextMenu.extracting'), file.name);
+              const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
+              await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath });
+              activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
+              notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.extractionFailed'), String(err));
+            }
           }
-        }
-      });
+        });
+      } else if (is7zArchive) {
+        // 7z extraction - check if encrypted first
+        items.push({
+          label: t('contextMenu.extract7zHere'),
+          icon: <FolderOpen size={14} />,
+          action: async () => {
+            try {
+              // Check if encrypted
+              const isEncrypted = await invoke<boolean>('is_7z_encrypted', { archivePath: file.path });
+
+              if (isEncrypted) {
+                // Show password dialog
+                setInputDialog({
+                  title: t('contextMenu.passwordRequired'),
+                  defaultValue: '',
+                  isPassword: true,
+                  onConfirm: async (password: string) => {
+                    setInputDialog(null);
+                    if (!password) {
+                      notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
+                      return;
+                    }
+                    try {
+                      notify.info(t('contextMenu.extracting'), file.name);
+                      const logId = activityLog.log('INFO', `Extracting encrypted ${file.name}...`, 'running');
+                      await invoke<string>('extract_7z', {
+                        archivePath: file.path,
+                        outputDir: currentLocalPath,
+                        password,
+                        createSubfolder: true
+                      });
+                      activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
+                      notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
+                      await loadLocalFiles(currentLocalPath);
+                    } catch (err) {
+                      activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+                      notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
+                    }
+                  }
+                });
+              } else {
+                // Extract without password
+                notify.info(t('contextMenu.extracting'), file.name);
+                const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
+                await invoke<string>('extract_7z', {
+                  archivePath: file.path,
+                  outputDir: currentLocalPath,
+                  password: null,
+                  createSubfolder: true
+                });
+                activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
+                notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
+                await loadLocalFiles(currentLocalPath);
+              }
+            } catch (err) {
+              activityLog.log('ERROR', `7z extraction failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.extractionFailed'), String(err));
+            }
+          }
+        });
+      }
     }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
@@ -3185,7 +3277,7 @@ const App: React.FC = () => {
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(null)} />}
-      {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} />}
+      {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} />}
       {propertiesDialog && (
         <PropertiesDialog
           file={propertiesDialog}

@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "कतार",
+            "log": "लॉग",
+            "transferQueue": "स्थानांतरण कतार",
+            "activityLog": "गतिविधि लॉग",
+            "aerocloudTitle": "AeroCloud स्थिति",
+            "updateAvailable": "अपडेट उपलब्ध"
         }
     }
 }

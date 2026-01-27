@@ -187,7 +187,22 @@
             "properties": "Properties",
             "permissions": "Permissions",
             "compress": "Compress",
-            "extract": "Extract"
+            "compressToZip": "Compress to ZIP",
+            "compressTo7z": "Compress to 7z",
+            "compressZipMultiple": "Compress ZIP ({count})",
+            "compress7zMultiple": "Compress 7z ({count})",
+            "extract": "Extract",
+            "extractHere": "Extract Here",
+            "extractZipHere": "Extract ZIP Here",
+            "extract7zHere": "Extract 7z Here",
+            "compressing": "Compressing...",
+            "creating7z": "Creating {name} (LZMA2)",
+            "compressionFailed": "Compression failed",
+            "extracting": "Extracting...",
+            "extractionFailed": "Extraction failed",
+            "passwordRequired": "Password Required",
+            "enterArchivePassword": "This archive is encrypted. Enter password:",
+            "wrongPassword": "Wrong password or corrupted archive"
         },
         "transfer": {
             "transferring": "Transferring...",
@@ -475,6 +490,14 @@
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "Up to date (v{version})",
             "update_error": "Update check failed: {error}"
+        },
+        "statusbar": {
+            "queue": "Queue",
+            "log": "Log",
+            "transferQueue": "Transfer Queue",
+            "activityLog": "Activity Log",
+            "aerocloudTitle": "AeroCloud Status",
+            "updateAvailable": "Update Available"
         }
     }
 }

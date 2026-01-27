@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Antrian",
+            "log": "Log",
+            "transferQueue": "Antrian Transfer",
+            "activityLog": "Log Aktivitas",
+            "aerocloudTitle": "Status AeroCloud",
+            "updateAvailable": "Pembaruan Tersedia"
         }
     }
 }

@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "คิว",
+            "log": "บันทึก",
+            "transferQueue": "คิวการถ่ายโอน",
+            "activityLog": "บันทึกกิจกรรม",
+            "aerocloudTitle": "สถานะ AeroCloud",
+            "updateAvailable": "มีการอัปเดต"
         }
     }
 }

@@ -1859,6 +1859,155 @@ async fn extract_archive(archive_path: String, output_dir: String) -> Result<Str
     Ok(output_dir)
 }
 
+/// Compress files/folders into a 7z archive (LZMA2 compression)
+#[tauri::command]
+async fn compress_7z(
+    paths: Vec<String>,
+    output_path: String,
+    _password: Option<String>,  // Reserved for future encrypted write support
+) -> Result<String, String> {
+    use sevenz_rust::*;
+    use std::fs::File;
+    use std::path::Path;
+    use walkdir::WalkDir;
+
+    // Collect all files to compress
+    let mut entries: Vec<(String, String)> = Vec::new(); // (archive_name, full_path)
+
+    for path_str in &paths {
+        let path = Path::new(path_str);
+
+        if path.is_file() {
+            let file_name = path.file_name()
+                .ok_or("Invalid file name")?
+                .to_string_lossy()
+                .to_string();
+            entries.push((file_name, path_str.clone()));
+        } else if path.is_dir() {
+            // Add directory contents recursively
+            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                if entry_path.is_file() {
+                    let relative_path = entry_path
+                        .strip_prefix(path.parent().unwrap_or(path))
+                        .map_err(|e| format!("Path error: {}", e))?;
+                    entries.push((
+                        relative_path.to_string_lossy().to_string(),
+                        entry_path.to_string_lossy().to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("No files to compress".to_string());
+    }
+
+    // Create the 7z archive
+    let output_file = File::create(&output_path)
+        .map_err(|e| format!("Failed to create 7z file: {}", e))?;
+
+    let mut sz = SevenZWriter::new(output_file)
+        .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
+
+    // Set LZMA2 compression (best ratio)
+    sz.set_content_methods(vec![
+        SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
+    ]);
+
+    // Add files to archive
+    for (archive_name, full_path) in &entries {
+        let source_path = Path::new(full_path);
+        let entry = SevenZArchiveEntry::from_path(source_path, archive_name.clone());
+
+        // Open file and create reader
+        let file = File::open(source_path)
+            .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
+
+        sz.push_archive_entry(entry, Some(file))
+            .map_err(|e| format!("Failed to add file '{}': {}", archive_name, e))?;
+    }
+
+    sz.finish()
+        .map_err(|e| format!("Failed to finalize 7z archive: {}", e))?;
+
+    Ok(output_path)
+}
+
+/// Extract a 7z archive with optional password (AES-256 decryption)
+#[tauri::command]
+async fn extract_7z(
+    archive_path: String,
+    output_dir: String,
+    password: Option<String>,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    use sevenz_rust::*;
+    use std::fs;
+    use std::path::Path;
+
+    // Determine output directory
+    let final_output_dir = if create_subfolder {
+        let archive_name = Path::new(&archive_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "extracted".to_string());
+        Path::new(&output_dir).join(&archive_name).to_string_lossy().to_string()
+    } else {
+        output_dir.clone()
+    };
+
+    // Create output directory
+    fs::create_dir_all(&final_output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    // Extract archive
+    if let Some(pwd) = password {
+        decompress_file_with_password(
+            &archive_path,
+            &final_output_dir,
+            pwd.as_str().into(),
+        ).map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
+    } else {
+        decompress_file(&archive_path, &final_output_dir)
+            .map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
+    }
+
+    Ok(final_output_dir)
+}
+
+/// Check if a 7z archive is password protected
+#[tauri::command]
+async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
+    use sevenz_rust::*;
+    use std::fs::File;
+    use std::io::BufReader;
+
+    let file = File::open(&archive_path)
+        .map_err(|e| format!("Failed to open archive: {}", e))?;
+
+    let len = file.metadata()
+        .map_err(|e| format!("Failed to get file metadata: {}", e))?
+        .len();
+
+    let reader = BufReader::new(file);
+
+    // Try to read without password - if it fails with password error, it's encrypted
+    match SevenZReader::new(reader, len, Password::empty()) {
+        Ok(_) => Ok(false),
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("password") || err_str.contains("Password") || err_str.contains("encrypted") || err_str.contains("Encrypted") {
+                Ok(true)
+            } else {
+                // Some other error - might still be encrypted
+                Ok(false)
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn ftp_read_file_base64(state: State<'_, AppState>, path: String) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -2913,6 +3062,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        // TODO: Aptabase requires Tokio runtime - defer to v1.3.1
+        // .plugin(tauri_plugin_aptabase::Builder::new("A-EU-9382651799").build())
         .plugin(tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build())
@@ -3135,6 +3286,9 @@ pub fn run() {
             calculate_checksum,
             compress_files,
             extract_archive,
+            compress_7z,
+            extract_7z,
+            is_7z_encrypted,
             ftp_read_file_base64,
             read_local_file,
             read_local_file_base64,

@@ -27,7 +27,7 @@
 
 ---
 
-## Key Features (v1.2.8)
+## Key Features (v1.3.0)
 
 ### Global Multilingual Support - 51 Languages
 AeroFTP now supports more languages than any other FTP client on the market:
@@ -60,7 +60,7 @@ AeroFTP now supports more languages than any other FTP client on the market:
   - "Apply to all" for batch operations
   - Configurable default behavior in Settings
 - **Properties Dialog**: Detailed file/folder metadata with checksum calculation
-- **Compress/Extract**: Create and extract ZIP archives
+- **Compress/Extract**: Create and extract ZIP and 7z archives (AES-256 decryption)
 - **Drag and Drop**: Move files within panels
 - **List/Grid view** with image thumbnails (local and remote)
 - Built-in **media player** for audio/video

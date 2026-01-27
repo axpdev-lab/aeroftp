@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Hàng đợi",
+            "log": "Nhật ký",
+            "transferQueue": "Hàng đợi Truyền",
+            "activityLog": "Nhật ký Hoạt động",
+            "aerocloudTitle": "Trạng thái AeroCloud",
+            "updateAvailable": "Có bản cập nhật"
         }
     }
 }

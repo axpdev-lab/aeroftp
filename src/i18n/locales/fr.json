@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "File d'attente",
+            "log": "Journal",
+            "transferQueue": "File de Transfert",
+            "activityLog": "Journal d'Activité",
+            "aerocloudTitle": "État AeroCloud",
+            "updateAvailable": "Mise à jour Disponible"
         }
     }
 }

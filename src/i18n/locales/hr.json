@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Red",
+            "log": "Dnevnik",
+            "transferQueue": "Red za prijenos",
+            "activityLog": "Dnevnik aktivnosti",
+            "aerocloudTitle": "Status AeroCloud",
+            "updateAvailable": "Dostupno ažuriranje"
         }
     }
 }

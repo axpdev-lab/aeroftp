@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "תור",
+            "log": "יומן",
+            "transferQueue": "תור העברות",
+            "activityLog": "יומן פעילות",
+            "aerocloudTitle": "מצב AeroCloud",
+            "updateAvailable": "עדכון זמין"
         }
     }
 }

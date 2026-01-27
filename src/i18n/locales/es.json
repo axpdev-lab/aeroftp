@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Cola",
+            "log": "Registro",
+            "transferQueue": "Cola de Transferencias",
+            "activityLog": "Registro de Actividad",
+            "aerocloudTitle": "Estado de AeroCloud",
+            "updateAvailable": "Actualización Disponible"
         }
     }
 }

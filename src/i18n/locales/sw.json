@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Foleni",
+            "log": "Kumbukumbu",
+            "transferQueue": "Foleni ya Uhamisho",
+            "activityLog": "Kumbukumbu ya Shughuli",
+            "aerocloudTitle": "Hali ya AeroCloud",
+            "updateAvailable": "Sasisho Linapatikana"
         }
     }
 }

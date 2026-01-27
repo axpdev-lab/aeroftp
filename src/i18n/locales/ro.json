@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Coadă",
+            "log": "Jurnal",
+            "transferQueue": "Coadă de Transfer",
+            "activityLog": "Jurnal de Activitate",
+            "aerocloudTitle": "Stare AeroCloud",
+            "updateAvailable": "Actualizare Disponibilă"
         }
     }
 }

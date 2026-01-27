@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Опашка",
+            "log": "Дневник",
+            "transferQueue": "Опашка за прехвърляне",
+            "activityLog": "Дневник на дейността",
+            "aerocloudTitle": "Състояние на AeroCloud",
+            "updateAvailable": "Налична актуализация"
         }
     }
 }

@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Rinda",
+            "log": "Žurnāls",
+            "transferQueue": "Pārsūtīšanas rinda",
+            "activityLog": "Darbību žurnāls",
+            "aerocloudTitle": "AeroCloud statuss",
+            "updateAvailable": "Pieejams atjauninājums"
         }
     }
 }

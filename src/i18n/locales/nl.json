@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Wachtrij",
+            "log": "Logboek",
+            "transferQueue": "Overdrachtwachtrij",
+            "activityLog": "Activiteitenlogboek",
+            "aerocloudTitle": "AeroCloud Status",
+            "updateAvailable": "Update Beschikbaar"
         }
     }
 }

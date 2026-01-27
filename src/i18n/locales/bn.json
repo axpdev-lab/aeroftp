@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "সারি",
+            "log": "লগ",
+            "transferQueue": "স্থানান্তর সারি",
+            "activityLog": "কার্যকলাপ লগ",
+            "aerocloudTitle": "AeroCloud স্থিতি",
+            "updateAvailable": "আপডেট উপলব্ধ"
         }
     }
 }

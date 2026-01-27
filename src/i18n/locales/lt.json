@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Eilė",
+            "log": "Žurnalas",
+            "transferQueue": "Perkėlimo eilė",
+            "activityLog": "Veiklos žurnalas",
+            "aerocloudTitle": "AeroCloud būsena",
+            "updateAvailable": "Yra naujinimas"
         }
     }
 }

@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "قطار",
+            "log": "لاگ",
+            "transferQueue": "منتقلی کی قطار",
+            "activityLog": "سرگرمی لاگ",
+            "aerocloudTitle": "AeroCloud حیثیت",
+            "updateAvailable": "اپ ڈیٹ دستیاب"
         }
     }
 }

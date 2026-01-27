@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "Sor",
+            "log": "Napló",
+            "transferQueue": "Átviteli sor",
+            "activityLog": "Tevékenységnapló",
+            "aerocloudTitle": "AeroCloud Állapot",
+            "updateAvailable": "Frissítés Elérhető"
         }
     }
 }

@@ -475,6 +475,14 @@
             "skip": "Skip",
             "rename": "Rename",
             "cancel": "Cancel"
+        },
+        "statusbar": {
+            "queue": "队列",
+            "log": "日志",
+            "transferQueue": "传输队列",
+            "activityLog": "活动日志",
+            "aerocloudTitle": "AeroCloud 状态",
+            "updateAvailable": "有可用更新"
         }
     }
 }
