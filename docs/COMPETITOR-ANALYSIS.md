@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
 > Last Updated: 29 January 2026
-> Version: v1.3.3 (OS Keyring Integration + Critical Security Fixes)
+> Version: v1.3.4-dev (Security Hardening + SFTP Host Key Verification)
 
 ---
 
@@ -80,8 +80,15 @@
 | Cryptomator | 📋 v1.7 | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Share Links | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Keychain/Keyring | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Encrypted Vault Fallback | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Credential Migration | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Encrypted Vault (AES-256-GCM) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Argon2id Key Derivation | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| SFTP Host Key Verification | ✅ TOFU | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OAuth2 PKCE Flow | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Ephemeral OAuth Port | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| FTP Insecure Warning | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Memory Zeroization | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Config Permission Hardening | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| 7z AES-256 Archives | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Distribution
 
@@ -110,7 +117,12 @@
 | **AeroAgent AI** | AI assistant for commands and file analysis | Industry first |
 | **Modern Stack** | Rust backend + React frontend | Performance + Security |
 | **Tray Background Sync** | Continuous sync without main window | Not in any competitor |
-| **Dual-Mode Credential Store** | OS Keyring + Argon2id/AES-256-GCM vault fallback | Only client with vault fallback |
+| **OS Keyring Storage** | Native keyring on all platforms (gnome-keyring, macOS Keychain, Windows Credential Manager) | Zero plaintext credentials |
+| **AES-256-GCM Vault** | Argon2id + AES-256-GCM encrypted vault when keyring unavailable | No competitor has fallback encryption |
+| **SFTP TOFU + MITM Reject** | Host key verification with Trust On First Use, rejects on key change | Proactive MITM protection |
+| **Ephemeral OAuth Ports** | OS-assigned random port for OAuth2 callback, prevents token interception | No competitor does this |
+| **FTP Insecure Warning** | Visual badge + warning banner when selecting unencrypted FTP | Educates users on security |
+| **Memory Zeroization** | Passwords and keys cleared from memory via zeroize/secrecy crates | Rust-only advantage |
 | **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2 with context menu | Most complete in segment |
 
 ### Technology Advantages
@@ -129,9 +141,9 @@
 
 | Competitor | Strength | Priority for AeroFTP |
 |------------|----------|---------------------|
-| **FileZilla** | SFTP native, 47 languages, stability | ✅ CLOSED: SFTP done, 51 langs |
+| **FileZilla** | SFTP native, 47 languages, stability | ✅ CLOSED: SFTP done, 51 langs, host key verification |
 | **Cyberduck** | Cryptomator encryption, more clouds | MEDIUM: Cryptomator (v1.7.0) |
-| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.4.0) |
+| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.5.0) |
 | **Transmit** | Raw speed, macOS polish | LOW: Already fast |
 | **ForkLift** | Complete file manager | LOW: Different focus |
 
@@ -170,19 +182,33 @@
 ### v1.3.2 - RELEASED (Security Hotfix)
 1. ✅ **Secure Credential Storage** - OS Keyring (macOS/Windows/Linux) + AES-256-GCM vault fallback
 2. ✅ **Argon2id Key Derivation** - 64MB/3iter/4lanes for master password vault
-3. ✅ **Automatic Migration** - Plaintext credentials migrated to keyring on first launch
-4. ✅ **Permission Hardening** - 0o600 files, 0o700 directories
-5. ✅ **Secure Deletion** - Overwrite + random + unlink for old plaintext files
+3. ✅ **Permission Hardening** - 0o600 files, 0o700 directories
 
-### v1.4.0 - Next Release
+### v1.3.3 - RELEASED (Critical Security Fix)
+1. ✅ **OS Keyring Fix** - Added `linux-native` backend to keyring crate (was silently no-op)
+2. ✅ **Removed Migration System** - Broken migration deleted passwords before confirming keyring; removed entirely
+3. ✅ **Session Tabs Fix** - FTP/FTPS Quick Connect now creates session tabs correctly
+4. ✅ **Update Notification Fix** - Toast dismiss independent from status bar badge, removed pulse animation
+5. ✅ **AeroCloud Sync Notifications** - Sync results now logged in Activity Log
+6. ✅ **Credential Store Only** - No plaintext password fallback in localStorage
+
+### v1.3.4 - Security Hardening (In Development)
+1. ✅ **SFTP Host Key Verification** - TOFU with `~/.ssh/known_hosts`, rejects on key mismatch (MITM protection)
+2. ✅ **OAuth2 Ephemeral Port** - OS-assigned random port for callback server, prevents local token interception
+3. ✅ **FTP Insecure Warning** - Red "Insecure" badge + warning banner recommending FTPS/SFTP
+4. ✅ **SECURITY.md Overhaul** - Full security architecture documentation
+5. ✅ **CI Release Notes from CHANGELOG** - Automated extraction for GitHub Releases
+6. ✅ **i18n Sync** - 51 languages synchronized, Italian contextMenu translated
+
+### v1.4.0 - Next Major Release
 1. **7z AES-256 Write** - Password-protected 7z creation via p7zip sidecar
 2. **RAR Extraction** - Via p7zip CLI (GPL-safe, no libunrar)
 3. **Bandwidth Throttling** - Like FileZilla
-4. **CLI/Scripting** - Like WinSCP
 
-### v1.5.0 - AeroVault
+### v1.5.0 - AeroVault + Scripting
 1. **AeroVault** - Virtual encrypted location (Argon2id + AES-256-GCM per file)
-2. **Azure Blob Storage** - Already in Cyberduck
+2. **CLI/Scripting** - Like WinSCP
+3. **Azure Blob Storage** - Already in Cyberduck
 
 ### v1.7.0 - Cryptomator
 1. **Cryptomator Import/Export** - Cyberduck's premium feature

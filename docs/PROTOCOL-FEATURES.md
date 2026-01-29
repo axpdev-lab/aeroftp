@@ -1,7 +1,38 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 25 January 2026
-> Version: v1.2.8
+> Last Updated: 29 January 2026
+> Version: v1.3.4-dev (Security Hardening)
+
+---
+
+## Protocol Security Matrix
+
+### Connection Security by Protocol
+
+| Protocol | Encryption | Auth Method | Credential Storage | Host Verification |
+|----------|-----------|-------------|-------------------|-------------------|
+| **FTP** | None | Password | OS Keyring / Vault | N/A |
+| **FTPS** | TLS/SSL (Implicit) | Password | OS Keyring / Vault | TLS Certificate |
+| **SFTP** | SSH | Password / SSH Key | OS Keyring / Vault | TOFU + known_hosts |
+| **WebDAV** | HTTPS | Password | OS Keyring / Vault | TLS Certificate |
+| **S3** | HTTPS | Access Key + Secret | OS Keyring / Vault | TLS Certificate |
+| **Google Drive** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
+| **Dropbox** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
+| **OneDrive** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
+| **MEGA.nz** | Client-side AES | Password (MEGAcmd) | secrecy (zero-on-drop) | E2E Encrypted |
+
+### Security Features by Protocol
+
+| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA |
+|---------|-----|------|------|--------|-----|-----------------|------|
+| Insecure Warning | Yes | - | - | - | - | - | - |
+| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - |
+| SSH Tunnel | - | - | Yes | - | - | - | - |
+| Host Key Check | - | - | TOFU | - | - | - | - |
+| PKCE Flow | - | - | - | - | - | Yes | - |
+| Ephemeral Port | - | - | - | - | - | Yes | - |
+| E2E Encryption | - | - | - | - | - | - | Yes |
+| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -21,38 +52,6 @@
 | **OneDrive** | Native | `provider_create_share_link` | "view" permission link |
 | **MEGA.nz** | Not Available | N/A | API doesn't expose share links |
 
-### Context Menu Visibility
-
-**Current Logic (App.tsx lines 2395-2412):**
-```typescript
-// Native Share Link shown for OAuth providers only
-const isOAuthProvider = connectionParams.protocol &&
-    ['googledrive', 'dropbox', 'onedrive'].includes(connectionParams.protocol);
-if (isOAuthProvider && !file.is_dir) {
-    items.push({ label: 'Create Share Link', ... });
-}
-```
-
-**Issue Found:** S3 supports native share links (pre-signed URLs) but the context menu only shows "Create Share Link" for OAuth providers. S3 should be included.
-
-**AeroCloud Share Link (lines 2377-2392):**
-- Shows when AeroCloud is active with `public_url_base` configured
-- File must be within AeroCloud remote folder
-- Works for any protocol including FTP, SFTP, WebDAV
-
-### Recommended Fix
-
-Add S3 to the Share Link context menu:
-
-```typescript
-// Add native Share Link for providers that support it
-const supportsNativeShareLink = connectionParams.protocol &&
-    ['googledrive', 'dropbox', 'onedrive', 's3'].includes(connectionParams.protocol);
-if (supportsNativeShareLink && !file.is_dir) {
-    items.push({ label: 'Create Share Link', ... });
-}
-```
-
 ---
 
 ## File Operations Matrix
@@ -61,20 +60,47 @@ if (supportsNativeShareLink && !file.is_dir) {
 
 | Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA |
 |-----------|-----|------|------|--------|-----|--------------|---------|----------|------|
-| List | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Upload | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Download | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Delete | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Rename | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Move | ✅ | ✅ | ✅ | ✅ | ✅* | ✅ | ✅ | ✅ | ✅ |
-| Copy | ✅ | ✅ | ✅ | ✅* | ✅* | ✅ | ✅ | ✅ | ✅ |
-| Mkdir | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Chmod | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Stat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Sync | AeroCloud | AeroCloud | AeroCloud | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Rename | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Move | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes |
+| Copy | Yes | Yes | Yes | Yes* | Yes* | Yes | Yes | Yes | Yes |
+| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Chmod | Yes | Yes | Yes | No | No | No | No | No | No |
+| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | No |
+| Sync | AeroCloud | AeroCloud | AeroCloud | No | No | No | No | No | No |
 
 *Note: S3/WebDAV copy/move is implemented as copy+delete (no native server-side operation)*
+
+---
+
+## Archive Support Matrix
+
+### Compression Formats (v1.3.1+)
+
+| Format | Compress | Extract | Encryption | Backend |
+|--------|----------|---------|------------|---------|
+| **ZIP** | Yes | Yes | Planned (v1.4.0) | `zip` crate v7.2 (Deflate level 6) |
+| **7z** | Yes | Yes | AES-256 read (write v1.4.0) | `sevenz-rust` v0.6 (LZMA2) |
+| **TAR** | Yes | Yes | No | `tar` crate v0.4 |
+| **TAR.GZ** | Yes | Yes | No | `tar` + `flate2` v1.0 |
+| **TAR.XZ** | Yes | Yes | No | `tar` + `xz2` v0.1 |
+| **TAR.BZ2** | Yes | Yes | No | `tar` + `bzip2` v0.6 |
+| **RAR** | No | Planned | - | Planned via p7zip CLI |
+
+### Context Menu Integration
+
+| Action | Keyboard | Available When |
+|--------|----------|----------------|
+| Compress to ZIP | - | Single/multi file selection |
+| Compress to 7z | - | Single/multi file selection |
+| Compress to TAR family | - | Single/multi file selection |
+| Extract Here | - | Archive file selected |
+| Extract to Folder | - | Archive file selected |
+| Password prompt | - | Encrypted 7z detected |
 
 ---
 
@@ -84,103 +110,31 @@ if (supportsNativeShareLink && !file.is_dir) {
 
 | Operation | AeroFTP | FileZilla | Cyberduck | WinSCP | Transmit |
 |-----------|---------|-----------|-----------|--------|----------|
-| Download | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Upload | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Rename (F2) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Delete (Del) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| New Folder | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Copy Path | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Copy FTP URL | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Open With | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Preview | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Edit | ✅ Monaco | ✅ External | ✅ External | ✅ Internal | ✅ External |
-| Share Link | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Properties | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Compress | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Checksum | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Overwrite Dialog | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Download | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes |
+| Rename (F2) | Yes | Yes | Yes | Yes | Yes |
+| Delete (Del) | Yes | Yes | Yes | Yes | Yes |
+| New Folder | Yes | Yes | Yes | Yes | Yes |
+| Copy Path | Yes | No | Yes | Yes | Yes |
+| Copy FTP URL | Yes | No | Yes | Yes | No |
+| Open With | No | No | Yes | Yes | Yes |
+| Preview | Yes | No | Yes | No | Yes |
+| Edit | Yes (Monaco) | Yes (External) | Yes (External) | Yes (Internal) | Yes (External) |
+| Share Link | Yes | No | Yes | No | No |
+| Properties | Yes | Yes | Yes | Yes | Yes |
+| Compress | Yes (6 formats) | No | Yes | Yes | Yes |
+| Checksum | Yes | No | Yes | Yes | No |
+| Overwrite Dialog | Yes | Yes | Yes | Yes | Yes |
 
-### Unique AeroFTP Features
-- **Monaco Code Editor**: VS Code-quality editing directly in the client
-- **Universal Preview**: Media player, image viewer, PDF, code with syntax highlighting
-- **AeroCloud Sync**: Bidirectional sync any FTP/SFTP to personal cloud
-- **AI Assistant**: File analysis and command suggestions
-- **Multiple Cloud Providers**: Google Drive, Dropbox, OneDrive, S3, MEGA in one client
+### Keyboard Shortcuts (v1.3.1+)
 
-### Previously Missing - Now Implemented (v1.2.8) ✅
-1. ✅ **Properties Dialog**: Full file metadata with MIME type
-2. ✅ **Compress/Archive**: ZIP creation and extraction
-3. ✅ **Checksum Verification**: MD5/SHA-256 in Properties dialog
-4. ✅ **Overwrite Confirmation**: Smart conflict resolution dialog
-
-### Still Missing (vs Competitors)
-1. **Open With External App**: Launch files in associated apps
-2. **Keyboard Shortcuts**: F2, Del, Ctrl+C/V
-3. **Cross-panel Drag & Drop**: Panel-to-panel transfers
-
----
-
-## Drag & Drop Implementation
-
-### Current State
-
-**Status:** Not implemented for file transfers
-
-The `tauri.conf.json` mentions "drag & drop transfers" in the app description, but the actual implementation is limited to:
-- Image panning in the viewer component
-- No cross-panel drag & drop
-- No local-to-remote drag & drop
-- No external file drop support
-
-### Competitor Drag & Drop Features
-
-| Feature | FileZilla | Cyberduck | WinSCP | Transmit | ForkLift |
-|---------|-----------|-----------|--------|----------|----------|
-| Panel-to-Panel | ✅ | ❌ | ✅ | ❌ | ✅ |
-| External Drop | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Drag to Desktop | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Drop to Upload | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Visual Feedback | ✅ | ✅ | ✅ | ✅ | ✅ |
-
-### Planned Drag & Drop (v1.4.0)
-
-From `TODO-AEROCLOUD-2.0.md`:
-
-```
-Sprint 2.5: UX Enhancements (Drag & Drop, Move)
-
-- [ ] Advanced Drag & Drop:
-  - Cross-panel file transfers
-  - Visual drop zones
-  - Multi-select drag support
-  - Progress indicators during drag
-
-- [ ] Drag & Drop Cross-Panel (v1.4.0)
-```
-
-### Implementation Approach
-
-For multi-protocol support, drag & drop should:
-
-1. **Use HTML5 Drag API**: `onDragStart`, `onDragOver`, `onDrop`
-2. **Identify source/target panels**: Local vs Remote
-3. **Handle multi-protocol scenarios**:
-   - Local → Remote (any protocol): Upload operation
-   - Remote → Local: Download operation
-   - Remote Panel A → Remote Panel B: Download+Upload (future multi-session)
-4. **Visual feedback**: Highlight valid drop zones
-5. **External files**: Use Tauri file drop events
-
-**Required Events:**
-```typescript
-// On file row
-onDragStart={(e) => handleDragStart(e, file)}
-draggable={true}
-
-// On panel
-onDragOver={(e) => handleDragOver(e)}
-onDrop={(e) => handleDrop(e, targetPath)}
-```
+| Shortcut | Action |
+|----------|--------|
+| F2 | Rename selected file |
+| Delete | Delete selected file |
+| Ctrl+C | Copy file |
+| Ctrl+V | Paste file |
+| Ctrl+A | Select all |
 
 ---
 
@@ -190,11 +144,14 @@ onDrop={(e) => handleDrop(e, targetPath)}
 - No native move (uses rename)
 - Limited metadata (no creation time)
 - Connection keep-alive required
+- **FTP is unencrypted** - visual warning shown in UI (v1.3.4)
 
-### SFTP (v1.3.0)
-- SSH key authentication required for some servers
+### SFTP (v1.3.0+)
+- SSH key authentication (id_rsa, id_ed25519, encrypted keys)
 - Chmod support (unlike cloud providers)
 - Full Unix permissions
+- **Host key verification** via `~/.ssh/known_hosts` with TOFU (v1.3.4)
+- CVE-2025-54804 resolved (upgraded to russh v0.54.5)
 
 ### WebDAV
 - No chmod support
@@ -207,37 +164,73 @@ onDrop={(e) => handleDrop(e, targetPath)}
 - No real directories (prefix-based)
 
 ### OAuth Providers (Google/Dropbox/OneDrive)
-- Token refresh required
+- Token refresh via PKCE with SHA-256 code challenge (v1.2.8+)
+- OAuth2 callback on ephemeral port (v1.3.4)
 - Rate limits apply
 - No chmod support
 - Share link permissions vary
 
 ### MEGA
-- Client-side encryption
+- Client-side AES encryption (zero-knowledge)
 - No native share link API exposed
 - Large file upload chunking required
+- Password protected via `secrecy` crate (zero-on-drop)
+
+---
+
+## Credential Storage Architecture (v1.3.2+)
+
+### Storage Layers
+
+| Layer | Method | When Used |
+|-------|--------|-----------|
+| **Primary** | OS Keyring (gnome-keyring / macOS Keychain / Windows Credential Manager) | Always attempted first |
+| **Fallback** | AES-256-GCM encrypted vault (`~/.config/aeroftp/vault.db`) | When keyring unavailable |
+| **OAuth Tokens** | OS Keyring or vault | Stored after OAuth2 flow |
+| **MEGA** | secrecy crate (zero-on-drop) | In-memory only during session |
+
+### Key Derivation (Vault)
+
+| Parameter | Value |
+|-----------|-------|
+| Algorithm | Argon2id |
+| Memory | 64 MB |
+| Iterations | 3 |
+| Parallelism | 4 threads |
+| Output | 256-bit key |
+| Nonce | 12 bytes random per entry |
+
+### File Permissions
+
+| Path | Permission | Description |
+|------|-----------|-------------|
+| `~/.config/aeroftp/` | 0700 | Config directory |
+| `vault.db` | 0600 | Encrypted credentials vault |
+| OAuth token files | 0600 | Fallback token storage |
+| `~/.ssh/known_hosts` | 0600 | SFTP host keys (created by AeroFTP if needed) |
 
 ---
 
 ## Recommendations
 
-### Completed (v1.2.8) ✅
-1. ✅ **Fix S3 Share Link**: S3 added to context menu Share Link providers
-2. ✅ **Properties Dialog**: Full file metadata with checksum
-3. ✅ **Compress/Archive**: ZIP creation and extraction
-4. ✅ **Basic Drag & Drop**: Same-panel file moves to folders
-5. ✅ **Overwrite Confirmation**: Smart file conflict resolution
-6. ✅ **Activity Log Moves**: File moves now tracked
+### Completed
 
-### Short-term (v1.3.0)
-1. ✅ **SFTP Integration**: Complete (done)
-2. **Keyboard Shortcuts**: F2 (rename), Del (delete), Ctrl+C/V (copy)
-3. **Cryptomator Encryption**: Client-side encryption layer
+| Version | Feature | Status |
+|---------|---------|--------|
+| v1.2.8 | Properties Dialog, Compress/Archive, Checksum, Overwrite, Drag & Drop | Done |
+| v1.3.0 | SFTP Integration, 7z Archives, Analytics | Done |
+| v1.3.1 | Multi-format TAR, Keyboard Shortcuts, Context Submenus | Done |
+| v1.3.2 | Secure Credential Storage, Argon2id Vault, Permission Hardening | Done |
+| v1.3.3 | OS Keyring Fix (Linux), Migration Removal, Session Tabs Fix | Done |
+| v1.3.4 | SFTP Host Key Verification, Ephemeral OAuth Port, FTP Warning | Done |
 
-### Medium-term (v1.4.0)
-1. **Cross-panel Drag & Drop**: Local ↔ Remote transfers via drag
-2. **External File Drop**: Tauri file drop integration
-3. **File Versioning**: History for cloud providers
+### Planned
+
+| Version | Feature |
+|---------|---------|
+| v1.4.0 | 7z AES-256 Write, RAR Extraction, Bandwidth Throttling |
+| v1.5.0 | AeroVault (encrypted virtual location), CLI/Scripting, Azure Blob |
+| v1.7.0 | Cryptomator Import/Export |
 
 ---
 

@@ -295,7 +295,7 @@ impl SftpConfig {
 #[derive(Debug, Clone)]
 pub struct MegaConfig {
     pub email: String,
-    pub password: secrecy::Secret<String>,
+    pub password: secrecy::SecretString,
     /// Whether to save session for reconnection (used in future session persistence)
     #[allow(dead_code)]
     pub save_session: bool,
@@ -319,7 +319,7 @@ impl MegaConfig {
 
         Ok(Self {
             email,
-            password: secrecy::Secret::new(password),
+            password: password.into(),
             save_session,
             logout_on_disconnect,
         })

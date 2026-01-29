@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP/FTPS, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, and MEGA. Turn any FTP server into your personal cloud with AeroCloud.
+  Cross-platform desktop client for FTP/FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, and MEGA. Turn any FTP server into your personal cloud with AeroCloud.
 </p>
 
 <p align="center">
@@ -27,11 +27,11 @@
 
 ---
 
-> **Security Update (v1.3.3):** If you are using AeroFTP v1.3.2 or earlier, please update immediately. This release fixes critical issues with the credential storage system. Previous versions may store credentials insecurely or fail to connect to saved servers after migration. Delete your saved servers and re-add them after updating.
+> **Security Update (v1.3.4):** This release includes critical security fixes: SFTP host key verification (TOFU + known_hosts), ephemeral OAuth2 port binding, FTP insecure connection warnings, and dependency upgrades resolving CVE-2025-54804 (russh). If you are on v1.3.2 or earlier, update immediately — previous versions may store credentials insecurely.
 
 ---
 
-## Key Features (v1.3.0)
+## Key Features
 
 ### Global Multilingual Support - 51 Languages
 AeroFTP now supports more languages than any other FTP client on the market:
@@ -64,7 +64,8 @@ AeroFTP now supports more languages than any other FTP client on the market:
   - "Apply to all" for batch operations
   - Configurable default behavior in Settings
 - **Properties Dialog**: Detailed file/folder metadata with checksum calculation
-- **Compress/Extract**: Create and extract ZIP and 7z archives (AES-256 decryption)
+- **Compress/Extract**: ZIP, 7z (AES-256 decryption), TAR, TAR.GZ, TAR.XZ, TAR.BZ2
+- **Keyboard Shortcuts**: F2 rename, Delete, Ctrl+C/V copy-paste, Ctrl+A select all
 - **Drag and Drop**: Move files within panels
 - **List/Grid view** with image thumbnails (local and remote)
 - Built-in **media player** for audio/video
@@ -86,13 +87,26 @@ AeroFTP now supports more languages than any other FTP client on the market:
 - Desktop notification with download badge
 - Direct download link for your platform
 
+### Security & Credentials (v1.3.2+)
+- **OS Keyring integration**: gnome-keyring, macOS Keychain, Windows Credential Manager
+- **Encrypted vault fallback**: AES-256-GCM with Argon2id key derivation
+- **SFTP host key verification**: TOFU model with `~/.ssh/known_hosts` support
+- **Ephemeral OAuth2 port**: Random port for OAuth callbacks (no fixed port exposure)
+- **FTP insecure warning**: Visual indicator when using unencrypted FTP
+- **Memory zeroization**: Credentials cleared from memory via `secrecy` + `zeroize`
+
+### Debug & Developer Tools (v1.3.4+)
+- **Debug Mode**: Toggle via File menu (Ctrl+Shift+F12)
+- **Dependencies Panel**: Live crate version checking against crates.io
+- **Debug Panel**: Connection, network, system, logs, and frontend tabs
+
 ### Additional Features
 - Light and dark theme support
-- Keyboard shortcuts for common operations
 - Preserves saved connections and OAuth tokens across updates
+- Privacy-first analytics (Aptabase)
 - Cross-platform: Linux, Windows, macOS
 
-**Roadmap**: End-to-end encryption, advanced multi-device AeroCloud sync, Cryptomator vault support
+**Roadmap**: Archive encryption (ZIP AES-256 + 7z AES-256 write), bandwidth throttling, Cryptomator vault support
 
 ---
 

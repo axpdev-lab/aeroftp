@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.3.3"
+version = "1.3.4"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -24,9 +24,9 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["full"] }
-suppaftp = { version = "7", features = ["tokio"] }
+suppaftp = { version = "8", features = ["tokio"] }
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 dirs = "5"
@@ -48,7 +48,7 @@ hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
 md-5 = "0.10"
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
+zip = { version = "7.2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 quick-xml = "0.31"
 
@@ -69,7 +69,7 @@ argon2 = "0.5"
 aes-gcm = "0.10"
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
-secrecy = "0.8"
+secrecy = "0.10"
 aes = "0.8"
 cbc = "0.1"
 ctr = "0.9"
@@ -77,21 +77,16 @@ ring = "0.17.14"
 zeroize = "1.8.2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
-# SECURITY: CVE-2025-54804 (Medium) - fix requires russh 0.54.1+
-# russh-keys is stuck at 0.50-beta, incompatible with 0.54+
-# Risk: DoS only (malicious server can crash client) - acceptable for now
-# TODO: Update when russh-keys releases 0.54+ compatible version
-# Tracking: https://github.com/axpnet/aeroftp/security/dependabot/3
-russh = "0.48"
-russh-sftp = "2.0"
-russh-keys = "0.48"
+# CVE-2025-54804 resolved by upgrading to russh 0.54+
+russh = { version = "0.54", features = ["ring"] }
+russh-sftp = "2.1"
 
 # Archive Support with Encryption (v1.3.0+)
 sevenz-rust = { version = "0.6", features = ["aes256", "compress"] }  # 7z with AES-256
 tar = "0.4"                                                           # TAR archives
 flate2 = "1.0"                                                        # Gzip compression
 xz2 = "0.1"                                                           # XZ/LZMA compression
-bzip2 = "0.4"                                                         # Bzip2 compression
+bzip2 = "0.6"                                                         # Bzip2 compression
 
 [dev-dependencies]
 tempfile = "3"

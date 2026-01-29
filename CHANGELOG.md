@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-01-29
+
+### Security Hardening + Debug Mode + Dependency Upgrades
+
+Security release with SFTP host key verification, OAuth2 hardening, FTP warnings, debug/diagnostics tools, and 5 major dependency upgrades.
+
+#### Added - SFTP Host Key Verification
+- **Trust On First Use (TOFU)**: First connection to a new host accepts the key and saves it to `~/.ssh/known_hosts`
+- **MITM rejection**: Subsequent connections reject if the server key has changed, logging a clear error with the mismatched algorithm
+- **Automatic `~/.ssh/` setup**: Creates directory (0700) and `known_hosts` file (0600) if they don't exist
+- **Non-standard port support**: Stores keys as `[host]:port` format for ports other than 22
+
+#### Added - FTP Insecure Connection Warning
+- **"Insecure" badge**: Red badge on FTP protocol in the selector grid, replacing the previous unlabeled entry
+- **Warning banner**: Red alert box shown when FTP is selected, recommending FTPS or SFTP
+- **i18n support**: Warning text translated for English and Italian (`ftpWarningTitle`, `ftpWarningDesc`)
+
+#### Changed - OAuth2 Security
+- **Ephemeral callback port**: OAuth2 callback server now binds to port 0 (OS-assigned random port) instead of fixed port 17548
+- **Dynamic redirect URI**: `redirect_uri` is generated with the actual port after binding, passed to the auth flow
+- **Race condition eliminated**: Local processes can no longer predict the callback port to intercept tokens
+
+#### Changed - CI/CD
+- **Release notes from CHANGELOG**: GitHub Releases now extract the body from `CHANGELOG.md` instead of using hardcoded text
+- **Downloads section appended**: Platform download list is automatically added to each release
+
+#### Changed - Documentation
+- **SECURITY.md**: Complete rewrite with full security architecture (credential storage, protocols, OAuth2, encryption, memory safety, known issues)
+- **CLAUDE.md**: Added i18n sync/validate steps to the release workflow
+- **COMPETITOR-ANALYSIS.md**: Expanded security comparison table (12 features vs 6 competitors)
+
+#### Fixed - Security (CVE)
+- **CVE-2025-54804 resolved**: Upgraded from russh v0.48 to v0.54.5, eliminating the medium-severity DoS vulnerability
+- **Removed russh-keys dependency**: SFTP now uses russh's built-in key handling and known_hosts module, reducing attack surface
+- **SFTP host key verification**: Migrated from custom implementation to russh's native `known_hosts` module with hashed host support
+
+#### Added - Debug Mode
+- **Debug Mode toggle**: File menu item with Ctrl+Shift+F12 shortcut, persistent in settings
+- **Debug Panel**: 5-tab panel (Connection, Network, System, Logs, Frontend) with real-time diagnostics
+- **Dependencies Panel**: Live crate version checking against crates.io with category grouping, status badges, and copy-to-clipboard
+- **StatusBar badge**: Amber [DEBUG] indicator when debug mode is active
+
+#### Changed - Dependency Upgrades
+- **secrecy 0.8 -> 0.10**: Migrated to `SecretString` API (Rust Edition 2021)
+- **bzip2 0.4 -> 0.6**: Pure-Rust backend via `libbz2-rs-sys` (no C dependency)
+- **thiserror 1 -> 2**: no-std support, Edition 2021
+- **suppaftp 7 -> 8**: rustls backend selection (tokio API unchanged)
+- **zip 2 -> 7**: ZIP encryption support (AES-256), ZIP64 improvements
+
+#### Changed - Documentation
+- **README.md**: Updated to v1.3.4 with security section, debug tools, archive formats, roadmap
+- **PROTOCOL-FEATURES.md**: Updated archive matrix with new crate versions and encryption status
+
+#### Fixed - i18n
+- **51 languages synced**: All new keys propagated via `npm run i18n:sync`
+- **Italian contextMenu translated**: 16 archive-related keys (compress, extract, password) translated from English placeholders
+
 ## [1.3.3] - 2026-01-29
 
 ### OS Keyring Integration + Critical Security & Stability Fixes

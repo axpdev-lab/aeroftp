@@ -57,6 +57,8 @@ import { TransferProgressBar } from './components/Transfer';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import ActivityLogPanel from './components/ActivityLogPanel';
+import DebugPanel from './components/DebugPanel';
+import DependenciesPanel from './components/DependenciesPanel';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
@@ -102,7 +104,7 @@ const App: React.FC = () => {
     systemMenuVisible, showMenuBar, showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowMenuBar, setSystemMenuVisible, setShowActivityLog,
-    setShowHiddenFiles,
+    setShowHiddenFiles, debugMode, setDebugMode,
     SETTINGS_KEY,
   } = settings;
 
@@ -138,6 +140,8 @@ const App: React.FC = () => {
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
   // showSettingsPanel provided by useSettings
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showCloudPanel, setShowCloudPanel] = useState(false);
   const [cloudSyncing, setCloudSyncing] = useState(false);  // AeroCloud sync in progress
@@ -762,6 +766,13 @@ const App: React.FC = () => {
         case 'toggle_devtools':
           setDevToolsOpen(prev => !prev);
           break;
+        case 'toggle_debug_mode':
+          setDebugMode(!debugMode);
+          setShowDebugPanel(!debugMode);
+          break;
+        case 'show_dependencies':
+          setShowDependenciesPanel(true);
+          break;
         case 'toggle_editor':
         case 'toggle_terminal':
         case 'toggle_agent':
@@ -774,7 +785,7 @@ const App: React.FC = () => {
       }
     });
     return () => { unlisten.then(fn => fn()); };
-  }, [isConnected, currentLocalPath, theme]);
+  }, [isConnected, currentLocalPath, theme, debugMode]);
 
   // File loading
   const loadLocalFiles = useCallback(async (path: string) => {
@@ -1146,7 +1157,7 @@ const App: React.FC = () => {
         };
 
 
-        console.log('[connectToFtp] provider_connect params:', providerParams);
+        console.log('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         await invoke('provider_connect', { params: providerParams });
 
         setIsConnected(true);
@@ -1461,7 +1472,7 @@ const App: React.FC = () => {
           path_style: connectParams.options?.pathStyle || false,
         };
 
-        console.log('[switchSession] provider_connect params:', providerParams);
+        console.log('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
         await invoke('provider_connect', { params: providerParams });
         if (targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
@@ -3141,7 +3152,7 @@ const App: React.FC = () => {
 
               // Check if this is an OAuth provider
               const isOAuth = params.protocol && ['googledrive', 'dropbox', 'onedrive'].includes(params.protocol);
-              console.log('[onSavedServerConnect] params:', params);
+              console.log('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
               console.log('[onSavedServerConnect] isOAuth:', isOAuth);
 
               if (isOAuth) {
@@ -3212,7 +3223,7 @@ const App: React.FC = () => {
                     timeout: params.options?.timeout || 30,
                   };
 
-                  console.log('[onSavedServerConnect] provider_connect params:', providerParams);
+                  console.log('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
                   await invoke('provider_connect', { params: providerParams });
 
                   setIsConnected(true);
@@ -4188,8 +4199,31 @@ const App: React.FC = () => {
           activityLogCount={activityLog.entries.length}
           onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
           updateAvailable={updateAvailable}
+          debugMode={debugMode}
+          onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
         />
       )}
+
+      {/* Debug Panel */}
+      {debugMode && showDebugPanel && (
+        <DebugPanel
+          isVisible={true}
+          onClose={() => setShowDebugPanel(false)}
+          isConnected={isConnected}
+          connectionParams={{
+            server: connectionParams?.server || '',
+            username: connectionParams?.username || '',
+            protocol: connectionParams?.protocol || 'sftp',
+          }}
+          currentRemotePath={currentRemotePath}
+        />
+      )}
+
+      {/* Dependencies Panel */}
+      <DependenciesPanel
+        isVisible={showDependenciesPanel}
+        onClose={() => setShowDependenciesPanel(false)}
+      />
     </div>
   );
 };

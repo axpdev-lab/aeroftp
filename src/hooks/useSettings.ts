@@ -30,6 +30,7 @@ export interface AppSettings {
   showMenuBar: boolean;
   showActivityLog: boolean;
   showConnectionScreen: boolean;
+  debugMode: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -46,6 +47,7 @@ const DEFAULTS: AppSettings = {
   showMenuBar: true,
   showActivityLog: false,
   showConnectionScreen: true,
+  debugMode: false,
 };
 
 export const useSettings = () => {
@@ -62,6 +64,7 @@ export const useSettings = () => {
   const [showMenuBar, setShowMenuBar] = useState(DEFAULTS.showMenuBar);
   const [showActivityLog, setShowActivityLog] = useState(DEFAULTS.showActivityLog);
   const [showConnectionScreen, setShowConnectionScreen] = useState(DEFAULTS.showConnectionScreen);
+  const [debugMode, setDebugMode] = useState(DEFAULTS.debugMode);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -78,6 +81,7 @@ export const useSettings = () => {
       setDoubleClickAction(parsed.doubleClickAction as 'preview' | 'download');
     }
     if (typeof parsed.rememberLastFolder === 'boolean') setRememberLastFolder(parsed.rememberLastFolder);
+    if (typeof parsed.debugMode === 'boolean') setDebugMode(parsed.debugMode);
   }, []);
 
   // Load settings on mount + listen for changes
@@ -132,6 +136,7 @@ export const useSettings = () => {
     showMenuBar,
     showActivityLog,
     showConnectionScreen,
+    debugMode,
     showSettingsPanel,
 
     // Setters
@@ -148,6 +153,7 @@ export const useSettings = () => {
     setShowMenuBar,
     setShowActivityLog,
     setShowConnectionScreen,
+    setDebugMode,
     setShowSettingsPanel,
 
     // Constants

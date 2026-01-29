@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 interface UpdateInfo {
@@ -26,6 +26,8 @@ interface StatusBarProps {
     showActivityLog?: boolean;
     activityLogCount?: number;
     updateAvailable?: UpdateInfo | null;
+    debugMode?: boolean;
+    onToggleDebug?: () => void;
     onToggleDevTools?: () => void;
     onToggleSync?: () => void;
     onToggleCloud?: () => void;
@@ -49,6 +51,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     showActivityLog = true,
     activityLogCount = 0,
     updateAvailable,
+    debugMode = false,
+    onToggleDebug,
     onToggleDevTools,
     onToggleSync,
     onToggleCloud,
@@ -199,6 +203,18 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 {activityLogCount > 99 ? '99+' : activityLogCount}
                             </span>
                         )}
+                    </button>
+                )}
+
+                {/* Debug Mode Badge */}
+                {debugMode && onToggleDebug && (
+                    <button
+                        onClick={onToggleDebug}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-200 dark:hover:bg-amber-900/60"
+                        title="Debug Mode Active"
+                    >
+                        <Bug size={12} />
+                        <span className="font-mono font-bold text-[10px]">DEBUG</span>
                     </button>
                 )}
 

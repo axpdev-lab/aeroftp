@@ -1149,6 +1149,186 @@ fn is_running_as_snap() -> bool {
     std::env::var("SNAP").is_ok()
 }
 
+// ============ Debug & Dependencies Commands ============
+
+#[derive(Clone, serde::Serialize)]
+struct DependencyInfo {
+    name: String,
+    version: String,
+    category: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct CrateVersionResult {
+    name: String,
+    latest_version: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SystemInfo {
+    app_version: String,
+    os: String,
+    os_version: String,
+    arch: String,
+    tauri_version: String,
+    rust_version: String,
+    keyring_backend: String,
+    config_dir: String,
+    vault_exists: bool,
+    known_hosts_exists: bool,
+}
+
+#[tauri::command]
+fn get_dependencies() -> Vec<DependencyInfo> {
+    vec![
+        // Core Framework
+        DependencyInfo { name: "tauri".into(), version: "2.9.5".into(), category: "Core".into() },
+        DependencyInfo { name: "tokio".into(), version: "1.49.0".into(), category: "Core".into() },
+        DependencyInfo { name: "serde".into(), version: "1.0.228".into(), category: "Core".into() },
+        DependencyInfo { name: "serde_json".into(), version: "1.0.149".into(), category: "Core".into() },
+        DependencyInfo { name: "anyhow".into(), version: "1.0.100".into(), category: "Core".into() },
+        DependencyInfo { name: "thiserror".into(), version: "2.0.18".into(), category: "Core".into() },
+        DependencyInfo { name: "chrono".into(), version: "0.4.43".into(), category: "Core".into() },
+        DependencyInfo { name: "log".into(), version: "0.4.29".into(), category: "Core".into() },
+        DependencyInfo { name: "tracing".into(), version: "0.1.44".into(), category: "Core".into() },
+        // Protocols
+        DependencyInfo { name: "suppaftp".into(), version: "8.0.1".into(), category: "Protocols".into() },
+        DependencyInfo { name: "russh".into(), version: "0.54.5".into(), category: "Protocols".into() },
+        DependencyInfo { name: "russh-sftp".into(), version: "2.1.1".into(), category: "Protocols".into() },
+        DependencyInfo { name: "reqwest".into(), version: "0.12.28".into(), category: "Protocols".into() },
+        DependencyInfo { name: "quick-xml".into(), version: "0.31.0".into(), category: "Protocols".into() },
+        DependencyInfo { name: "oauth2".into(), version: "4.4.2".into(), category: "Protocols".into() },
+        // Security
+        DependencyInfo { name: "keyring".into(), version: "3.6.3".into(), category: "Security".into() },
+        DependencyInfo { name: "argon2".into(), version: "0.5.3".into(), category: "Security".into() },
+        DependencyInfo { name: "aes-gcm".into(), version: "0.10.3".into(), category: "Security".into() },
+        DependencyInfo { name: "ring".into(), version: "0.17.14".into(), category: "Security".into() },
+        DependencyInfo { name: "zeroize".into(), version: "1.8.2".into(), category: "Security".into() },
+        DependencyInfo { name: "secrecy".into(), version: "0.10.3".into(), category: "Security".into() },
+        DependencyInfo { name: "sha2".into(), version: "0.10.9".into(), category: "Security".into() },
+        DependencyInfo { name: "hmac".into(), version: "0.12.1".into(), category: "Security".into() },
+        // Archives
+        DependencyInfo { name: "sevenz-rust".into(), version: "0.6.1".into(), category: "Archives".into() },
+        DependencyInfo { name: "zip".into(), version: "7.2.0".into(), category: "Archives".into() },
+        DependencyInfo { name: "tar".into(), version: "0.4.44".into(), category: "Archives".into() },
+        DependencyInfo { name: "flate2".into(), version: "1.1.8".into(), category: "Archives".into() },
+        DependencyInfo { name: "xz2".into(), version: "0.1.7".into(), category: "Archives".into() },
+        DependencyInfo { name: "bzip2".into(), version: "0.6.1".into(), category: "Archives".into() },
+        // Tauri Plugins
+        DependencyInfo { name: "tauri-plugin-fs".into(), version: "2.4.5".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-dialog".into(), version: "2.6.0".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-shell".into(), version: "2.3.4".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-updater".into(), version: "2.9.0".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-notification".into(), version: "2.3.3".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-log".into(), version: "2.8.0".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-single-instance".into(), version: "2.3.7".into(), category: "Plugins".into() },
+    ]
+}
+
+#[tauri::command]
+async fn check_crate_versions(crate_names: Vec<String>) -> Vec<CrateVersionResult> {
+    let client = reqwest::Client::builder()
+        .user_agent("AeroFTP (https://github.com/axpnet/aeroftp)")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let mut results = Vec::new();
+    for chunk in crate_names.chunks(5) {
+        let mut handles = Vec::new();
+        for name in chunk {
+            let client = client.clone();
+            let name = name.clone();
+            handles.push(tokio::spawn(async move {
+                match client
+                    .get(format!("https://crates.io/api/v1/crates/{}", name))
+                    .send()
+                    .await
+                {
+                    Ok(res) if res.status().is_success() => {
+                        match res.json::<serde_json::Value>().await {
+                            Ok(data) => {
+                                // Prefer max_stable_version to skip pre-releases (beta, rc, alpha)
+                                let version = data["crate"]["max_stable_version"]
+                                    .as_str()
+                                    .or_else(|| data["crate"]["newest_version"].as_str())
+                                    .or_else(|| data["crate"]["max_version"].as_str())
+                                    .map(|s| s.to_string());
+                                CrateVersionResult {
+                                    name,
+                                    latest_version: version,
+                                    error: None,
+                                }
+                            }
+                            Err(e) => CrateVersionResult {
+                                name,
+                                latest_version: None,
+                                error: Some(format!("Parse error: {}", e)),
+                            },
+                        }
+                    }
+                    Ok(res) => CrateVersionResult {
+                        name,
+                        latest_version: None,
+                        error: Some(format!("HTTP {}", res.status())),
+                    },
+                    Err(e) => CrateVersionResult {
+                        name,
+                        latest_version: None,
+                        error: Some(format!("{}", e)),
+                    },
+                }
+            }));
+        }
+        for handle in handles {
+            if let Ok(result) = handle.await {
+                results.push(result);
+            }
+        }
+        // Small delay between batches
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    results
+}
+
+#[tauri::command]
+fn get_system_info() -> SystemInfo {
+    let config_dir = dirs::config_dir()
+        .map(|d| d.join("aeroftp").to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".into());
+
+    let vault_exists = dirs::config_dir()
+        .map(|d| d.join("aeroftp").join("vault.db").exists())
+        .unwrap_or(false);
+
+    let known_hosts_exists = dirs::home_dir()
+        .map(|d| d.join(".ssh").join("known_hosts").exists())
+        .unwrap_or(false);
+
+    let keyring_backend = if cfg!(target_os = "linux") {
+        "gnome-keyring / Secret Service"
+    } else if cfg!(target_os = "macos") {
+        "macOS Keychain"
+    } else if cfg!(target_os = "windows") {
+        "Windows Credential Manager"
+    } else {
+        "unknown"
+    };
+
+    SystemInfo {
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        os: std::env::consts::OS.into(),
+        os_version: std::env::consts::ARCH.into(),
+        arch: std::env::consts::ARCH.into(),
+        tauri_version: "2.9.5".into(),
+        rust_version: "1.77.2+".into(),
+        keyring_backend: keyring_backend.into(),
+        config_dir,
+        vault_exists,
+        known_hosts_exists,
+    }
+}
+
 // ============ Local File System Commands ============
 
 #[tauri::command]
@@ -2786,13 +2966,14 @@ fn generate_share_link(local_path: String) -> Result<String, String> {
     let local_path_str = local_path.clone();
     
     // Check if file is within AeroCloud folder
-    if !local_path_str.starts_with(local_folder.as_ref()) {
+    let local_folder_str: &str = local_folder.as_ref();
+    if !local_path_str.starts_with(local_folder_str) {
         return Err("File is not in AeroCloud folder".to_string());
     }
-    
+
     // Get relative path from AeroCloud folder
     let relative_path = local_path_str
-        .strip_prefix(local_folder.as_ref())
+        .strip_prefix(local_folder_str)
         .unwrap_or(&local_path_str)
         .trim_start_matches('/');
     
@@ -3324,6 +3505,9 @@ pub fn run() {
                     &PredefinedMenuItem::separator(app)?,
                     &settings,
                     &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "toggle_debug_mode", "Debug Mode", true, Some("CmdOrCtrl+Shift+F12"))?,
+                    &MenuItem::with_id(app, "show_dependencies", "Dependencies...", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
                     &quit,
                 ],
             )?;
@@ -3554,6 +3738,10 @@ pub fn run() {
             setup_master_password,
             unlock_vault,
             migrate_plaintext_credentials,
+            // Debug & dependencies commands
+            get_dependencies,
+            check_crate_versions,
+            get_system_info,
             // Updater command
             check_update,
             log_update_detection,
