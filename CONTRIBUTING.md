@@ -1,6 +1,6 @@
 # Contributing to AeroFTP
 
-First off, thank you for considering contributing to AeroFTP! 🎉
+First off, thank you for considering contributing to AeroFTP!
 
 ## Code of Conduct
 
@@ -66,4 +66,4 @@ npm run tauri build
 
 Open a discussion or reach out to the maintainers.
 
-Thank you for contributing! 🚀
+Thank you for contributing!
