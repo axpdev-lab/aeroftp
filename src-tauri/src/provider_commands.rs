@@ -765,37 +765,38 @@ pub async fn oauth2_connect(
 pub async fn oauth2_full_auth(
     params: OAuthConnectionParams,
 ) -> Result<String, String> {
-    use crate::providers::{OAuth2Manager, OAuthConfig, oauth2::start_callback_server};
-    
+    use crate::providers::{OAuth2Manager, OAuthConfig, oauth2::{bind_callback_listener, wait_for_callback}};
+
     info!("Starting full OAuth2 flow for {}", params.provider);
-    
+
+    // Bind callback listener first to get the ephemeral port
+    let (listener, port) = bind_callback_listener().await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
-            OAuthConfig::google(&params.client_id, &params.client_secret)
+            OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
         }
         "dropbox" => {
-            OAuthConfig::dropbox(&params.client_id, &params.client_secret)
+            OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port)
         }
         "onedrive" | "microsoft" => {
-            OAuthConfig::onedrive(&params.client_id, &params.client_secret)
+            OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     // Create manager ONCE and keep it for the entire flow
     let manager = OAuth2Manager::new();
-    
-    // Generate auth URL first
+
+    // Generate auth URL with the dynamic port in redirect_uri
     let (auth_url, expected_state) = manager.start_auth_flow(&config).await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
-    
-    // Start callback server in background BEFORE opening browser
+
+    // Start waiting for callback in background (listener already bound)
     let callback_handle = tokio::spawn(async move {
-        start_callback_server(17548).await
+        wait_for_callback(listener).await
     });
-    
-    // Give the server a moment to start
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {

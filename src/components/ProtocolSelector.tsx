@@ -90,8 +90,9 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <Server size={16} />,
         description: 'File Transfer Protocol',
         defaultPort: 21,
+        badge: 'Insecure',
         color: 'text-blue-500',
-        tooltip: 'Standard FTP connection - unencrypted, port 21',
+        tooltip: 'Standard FTP connection - unencrypted, port 21. Credentials are sent in plain text.',
     },
     {
         type: 'ftps',
@@ -285,11 +286,13 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Secure'
                                     ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                    : protocol.badge === 'Beta'
-                                        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
-                                        : protocol.badge === 'Soon'
-                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                    : protocol.badge === 'Insecure'
+                                        ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                        : protocol.badge === 'Beta'
+                                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
+                                            : protocol.badge === 'Soon'
+                                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
                                     {protocol.badge}
                                 </span>
@@ -530,7 +533,25 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         );
     }
 
-    // FTP/FTPS don't need extra fields
+    if (protocol === 'ftp') {
+        return (
+            <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                <div className="flex items-start gap-2">
+                    <ShieldCheck size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                            {t('protocol.ftpWarningTitle')}
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            {t('protocol.ftpWarningDesc')}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // FTPS doesn't need extra fields
     return null;
 };
 

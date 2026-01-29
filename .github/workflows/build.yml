@@ -72,27 +72,30 @@ jobs:
 
       # Upload directly to GitHub Release (only on tags)
       # Each platform uploads its own binaries - no intermediate artifacts needed
+      - name: Extract changelog for release
+        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section between this version header and the next version header
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | head -n -1)
+          # Append download instructions
+          NOTES="${NOTES}
+
+          **Downloads:**
+          - **Windows**: \`.msi\` installer or \`.exe\`
+          - **macOS**: \`.dmg\` disk image
+          - **Linux**: \`.deb\`, \`.rpm\`, \`.snap\`, or \`.AppImage\`"
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Upload Linux binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
         uses: softprops/action-gh-release@v1
         with:
           name: 'AeroFTP ${{ github.ref_name }}'
-          body: |
-            ## AeroFTP Release ${{ github.ref_name }}
-            
-            ✨ **Features:**
-            - 🌍 Multi-language support (English, Italian)
-            - Real AeroFTP logos with theme support
-            - Per-project local folders configuration
-            - Navigation sync between remote and local panels
-            - Integrated DevTools with code editor and terminal
-            - AeroCloud file synchronization
-            - Snap package with first-launch informational dialog
-            
-            📦 **Downloads:**
-            - **Windows**: `.msi` installer or `.exe`
-            - **macOS**: `.dmg` disk image
-            - **Linux**: `.deb`, `.rpm`, `.snap`, or `.AppImage`
+          body: ${{ steps.changelog.outputs.notes }}
           draft: false
           prerelease: false
           files: |

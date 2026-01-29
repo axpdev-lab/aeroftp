@@ -155,7 +155,24 @@
             "compressSubmenu": "সংকুচিত করুন",
             "extract": "এক্সট্র্যাক্ট",
             "extractSubmenu": "বের করুন",
-            "extractTarHere": "TAR এখানে বের করুন"
+            "extractTarHere": "TAR এখানে বের করুন",
+            "compressToZip": "[NEEDS TRANSLATION] Compress to ZIP",
+            "compressTo7z": "[NEEDS TRANSLATION] Compress to 7z",
+            "compressZipMultiple": "[NEEDS TRANSLATION] Compress ZIP ({count})",
+            "compress7zMultiple": "[NEEDS TRANSLATION] Compress 7z ({count})",
+            "extractHere": "[NEEDS TRANSLATION] Extract Here",
+            "extractToFolder": "[NEEDS TRANSLATION] Extract to Folder",
+            "extractZipHere": "[NEEDS TRANSLATION] Extract ZIP Here",
+            "extract7zHere": "[NEEDS TRANSLATION] Extract 7z Here",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "creating7z": "[NEEDS TRANSLATION] Creating {name} (LZMA2)",
+            "compressionFailed": "[NEEDS TRANSLATION] Compression failed",
+            "extracting": "[NEEDS TRANSLATION] Extracting...",
+            "extractionFailed": "[NEEDS TRANSLATION] Extraction failed",
+            "passwordRequired": "[NEEDS TRANSLATION] Password Required",
+            "enterArchivePassword": "[NEEDS TRANSLATION] This archive is encrypted. Enter password:",
+            "wrongPassword": "[NEEDS TRANSLATION] Wrong password or corrupted archive",
+            "delete": "[NEEDS TRANSLATION] Delete"
         },
         "transfer": {
             "transferring": "স্থানান্তর হচ্ছে...",
@@ -440,7 +457,9 @@
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "পাথ-স্টাইল URL",
             "webdavNote": "WebDAV পাথে সম্পূর্ণ পাথ থাকতে হবে।",
-            "webdavExample": "cloud.example.com/remote.php/dav/files/user/"
+            "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
+            "ftpWarningTitle": "[NEEDS TRANSLATION] Unencrypted connection",
+            "ftpWarningDesc": "[NEEDS TRANSLATION] FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection."
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

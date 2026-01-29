@@ -10,23 +10,161 @@ use async_trait::async_trait;
 use russh::client::{self, Config, Handle, Handler};
 use russh_sftp::client::SftpSession;
 use russh_keys::ssh_key::PublicKey;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// SSH Client Handler for server key verification
 struct SshHandler {
-    /// Whether to accept any host key (for initial connection)
-    /// In production, this should verify against known_hosts
-    accept_any_key: bool,
+    /// The host being connected to (for known_hosts lookup)
+    host: String,
+    /// The port being connected to
+    port: u16,
 }
 
 impl SshHandler {
-    fn new() -> Self {
+    fn new(host: &str, port: u16) -> Self {
         Self {
-            accept_any_key: true, // TODO: Implement proper host key verification
+            host: host.to_string(),
+            port,
         }
     }
+
+    /// Get the path to the user's known_hosts file
+    fn known_hosts_path() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(".ssh").join("known_hosts"))
+    }
+
+    /// Verify server key against ~/.ssh/known_hosts using base64 comparison
+    fn verify_host_key(&self, server_key: &PublicKey) -> HostKeyResult {
+        let known_hosts_path = match Self::known_hosts_path() {
+            Some(p) => p,
+            None => {
+                tracing::warn!("SFTP: Could not determine home directory for known_hosts lookup");
+                return HostKeyResult::NoKnownHostsFile;
+            }
+        };
+
+        let contents = match std::fs::read_to_string(&known_hosts_path) {
+            Ok(c) => c,
+            Err(_) => {
+                tracing::info!("SFTP: No known_hosts file found at {}", known_hosts_path.display());
+                return HostKeyResult::NoKnownHostsFile;
+            }
+        };
+
+        // Build the host pattern to match (handles non-standard ports)
+        let host_pattern = if self.port == 22 {
+            self.host.clone()
+        } else {
+            format!("[{}]:{}", self.host, self.port)
+        };
+
+        // Encode the server's public key to the OpenSSH wire format for comparison
+        let server_key_str = server_key.to_string();
+        // Format: "algorithm base64data"
+        let server_parts: Vec<&str> = server_key_str.splitn(2, ' ').collect();
+        let (server_algo, server_b64) = if server_parts.len() == 2 {
+            (server_parts[0], server_parts[1])
+        } else {
+            tracing::warn!("SFTP: Could not parse server key format");
+            return HostKeyResult::NotFound;
+        };
+
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            // known_hosts format: hostname algorithm base64key [comment]
+            let parts: Vec<&str> = line.splitn(4, ' ').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+
+            let hosts = parts[0];
+            let algo = parts[1];
+            let b64_key = parts[2];
+
+            // Check if this line matches our host
+            let host_matches = hosts.split(',').any(|h| h.trim() == host_pattern);
+            if !host_matches {
+                continue;
+            }
+
+            // Host found - check if algorithm and key match
+            if algo == server_algo && b64_key == server_b64 {
+                return HostKeyResult::Verified;
+            }
+
+            // Same host but different key = potential MITM
+            tracing::error!(
+                "SFTP: HOST KEY MISMATCH for {}! Expected {} key, got {}. Possible man-in-the-middle attack.",
+                self.host, algo, server_algo
+            );
+            return HostKeyResult::Mismatch;
+        }
+
+        HostKeyResult::NotFound
+    }
+
+    /// Append a new host key to ~/.ssh/known_hosts (Trust On First Use)
+    fn add_to_known_hosts(&self, server_key: &PublicKey) -> Result<(), std::io::Error> {
+        let known_hosts_path = match Self::known_hosts_path() {
+            Some(p) => p,
+            None => return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No home directory")),
+        };
+
+        // Ensure ~/.ssh directory exists with proper permissions
+        if let Some(ssh_dir) = known_hosts_path.parent() {
+            if !ssh_dir.exists() {
+                std::fs::create_dir_all(ssh_dir)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(ssh_dir, std::fs::Permissions::from_mode(0o700))?;
+                }
+            }
+        }
+
+        let host_entry = if self.port == 22 {
+            self.host.clone()
+        } else {
+            format!("[{}]:{}", self.host, self.port)
+        };
+
+        let key_str = server_key.to_string();
+        let line = format!("{} {}\n", host_entry, key_str);
+
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&known_hosts_path)?;
+        file.write_all(line.as_bytes())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&known_hosts_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        tracing::info!("SFTP: Added host key for {} to known_hosts", host_entry);
+        Ok(())
+    }
+}
+
+/// Result of host key verification
+enum HostKeyResult {
+    /// Key matches known_hosts entry
+    Verified,
+    /// Host found but key does not match (potential MITM)
+    Mismatch,
+    /// Host not found in known_hosts
+    NotFound,
+    /// No known_hosts file exists
+    NoKnownHostsFile,
 }
 
 #[async_trait]
@@ -35,15 +173,31 @@ impl Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &PublicKey,
+        server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
-        // TODO: Implement proper host key verification against ~/.ssh/known_hosts
-        // For now, accept all keys (like ssh -o StrictHostKeyChecking=no)
-        if self.accept_any_key {
-            tracing::warn!("SFTP: Accepting server key without verification (known_hosts check not yet implemented)");
-            Ok(true)
-        } else {
-            Ok(false)
+        match self.verify_host_key(server_public_key) {
+            HostKeyResult::Verified => {
+                tracing::info!("SFTP: Host key verified for {}", self.host);
+                Ok(true)
+            }
+            HostKeyResult::Mismatch => {
+                tracing::error!(
+                    "SFTP: REJECTING connection to {} - host key mismatch (possible MITM attack)",
+                    self.host
+                );
+                Ok(false)
+            }
+            HostKeyResult::NotFound | HostKeyResult::NoKnownHostsFile => {
+                // Trust On First Use (TOFU): accept and save the key
+                tracing::warn!(
+                    "SFTP: Host key for {} not found in known_hosts - accepting on first use (TOFU)",
+                    self.host
+                );
+                if let Err(e) = self.add_to_known_hosts(server_public_key) {
+                    tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
+                }
+                Ok(true)
+            }
         }
     }
 }
@@ -223,7 +377,7 @@ impl StorageProvider for SftpProvider {
 
         // Connect to SSH server
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::new()).await
+        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::new(&self.config.host, self.config.port)).await
             .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
 
         tracing::info!("SFTP: SSH connection established, authenticating...");

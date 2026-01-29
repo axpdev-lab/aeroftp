@@ -2,10 +2,84 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.9.x   | :white_check_mark: |
-| < 0.9   | :x:                |
+| Version | Supported |
+| ------- | --------- |
+| 1.3.x   | Yes |
+| < 1.3   | No  |
+
+## Security Architecture
+
+### Credential Storage
+
+AeroFTP uses a dual-mode credential storage system with the OS native keyring as primary backend and an encrypted vault as fallback.
+
+**OS Keyring (primary)**
+
+| Platform | Backend |
+| -------- | ------- |
+| Linux | gnome-keyring / Secret Service |
+| macOS | Keychain |
+| Windows | Credential Manager |
+
+**Encrypted Vault (fallback)**
+
+When the OS keyring is unavailable, credentials are stored in a local encrypted vault at `~/.config/aeroftp/vault.db`:
+
+- **Key derivation**: Argon2id (64 MB memory, 3 iterations, 4 threads) producing a 256-bit key
+- **Encryption**: AES-256-GCM with per-entry random 12-byte nonces
+- **File permissions**: `0600` (owner read/write only)
+
+### Connection Protocols
+
+| Protocol | Encryption | Details |
+| -------- | ---------- | ------- |
+| FTP | None | Plain-text, use only on trusted networks |
+| FTPS | TLS/SSL | Implicit TLS on port 990 |
+| SFTP | SSH | Native Rust implementation (russh) |
+| WebDAV | HTTPS | TLS encrypted |
+| S3 | HTTPS | AWS SDK with TLS |
+| Google Drive | HTTPS + OAuth2 | PKCE flow with token refresh |
+| Dropbox | HTTPS + OAuth2 | PKCE flow with token refresh |
+| OneDrive | HTTPS + OAuth2 | PKCE flow with token refresh |
+| MEGA.nz | Client-side AES | End-to-end encrypted, zero-knowledge |
+
+### OAuth2 Security
+
+- **PKCE** (Proof Key for Code Exchange) with SHA-256 code challenge
+- **CSRF** protection via state token validation
+- **Token storage** in OS keyring or encrypted vault
+- **Automatic refresh** with 5-minute buffer before expiry
+
+### Archive Encryption
+
+- **7z**: AES-256 encryption/decryption support
+- **ZIP**: Deflate compression (level 6)
+- **TAR**: .tar, .tar.gz, .tar.xz, .tar.bz2 support
+
+### Memory Safety
+
+- `zeroize` crate clears passwords and keys from memory after use
+- `secrecy` crate provides zero-on-drop containers for secrets
+- Passwords are never logged or written to disk in plain text
+
+### File System Hardening
+
+- Config directory (`~/.config/aeroftp/`): permissions `0700`
+- Vault and token files: permissions `0600`
+- Applied recursively on startup
+
+### Privacy and Analytics
+
+- **Aptabase** integration: opt-in only, disabled by default
+- No PII collected (only protocol types, feature usage, transfer size ranges)
+- EU data residency (GDPR compliant)
+
+## Known Issues
+
+| ID | Component | Severity | Status | Details |
+| -- | --------- | -------- | ------ | ------- |
+| [CVE-2025-54804](https://github.com/axpnet/aeroftp/security/dependabot/3) | russh v0.48 (SFTP) | Medium | Accepted | DoS only, no data breach. Fix requires russh v0.54.1+ (blocked by russh-keys compatibility) |
+| - | SFTP host key verification | Low | Resolved | Trust On First Use (TOFU) with `~/.ssh/known_hosts` verification. Rejects connections on key mismatch (MITM protection) |
 
 ## Reporting a Vulnerability
 
@@ -21,4 +95,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-Thank you for helping keep AeroFTP secure! 🔒
+*AeroFTP v1.3.3 - January 2026*

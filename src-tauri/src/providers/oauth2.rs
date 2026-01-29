@@ -50,8 +50,8 @@ pub struct OAuthConfig {
 }
 
 impl OAuthConfig {
-    /// Create Google Drive OAuth config
-    pub fn google(client_id: &str, client_secret: &str) -> Self {
+    /// Create Google Drive OAuth config with dynamic callback port
+    pub fn google_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
         Self {
             provider: OAuthProvider::Google,
             client_id: client_id.to_string(),
@@ -62,25 +62,35 @@ impl OAuthConfig {
                 "https://www.googleapis.com/auth/drive".to_string(),
                 "https://www.googleapis.com/auth/drive.file".to_string(),
             ],
-            redirect_uri: "http://127.0.0.1:17548/callback".to_string(),
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
         }
     }
 
-    /// Create Dropbox OAuth config
-    pub fn dropbox(client_id: &str, client_secret: &str) -> Self {
+    /// Create Google Drive OAuth config (default port for token refresh only)
+    pub fn google(client_id: &str, client_secret: &str) -> Self {
+        Self::google_with_port(client_id, client_secret, 0)
+    }
+
+    /// Create Dropbox OAuth config with dynamic callback port
+    pub fn dropbox_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
         Self {
             provider: OAuthProvider::Dropbox,
             client_id: client_id.to_string(),
             client_secret: Some(client_secret.to_string()),
             auth_url: "https://www.dropbox.com/oauth2/authorize".to_string(),
             token_url: "https://api.dropboxapi.com/oauth2/token".to_string(),
-            scopes: vec![], // Dropbox uses app permissions, not scopes
-            redirect_uri: "http://127.0.0.1:17548/callback".to_string(),
+            scopes: vec![],
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
         }
     }
 
-    /// Create OneDrive OAuth config (Microsoft Graph)
-    pub fn onedrive(client_id: &str, client_secret: &str) -> Self {
+    /// Create Dropbox OAuth config (default port for token refresh only)
+    pub fn dropbox(client_id: &str, client_secret: &str) -> Self {
+        Self::dropbox_with_port(client_id, client_secret, 0)
+    }
+
+    /// Create OneDrive OAuth config with dynamic callback port
+    pub fn onedrive_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
         Self {
             provider: OAuthProvider::OneDrive,
             client_id: client_id.to_string(),
@@ -92,8 +102,13 @@ impl OAuthConfig {
                 "Files.ReadWrite.All".to_string(),
                 "offline_access".to_string(),
             ],
-            redirect_uri: "http://127.0.0.1:17548/callback".to_string(),
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
         }
+    }
+
+    /// Create OneDrive OAuth config (default port for token refresh only)
+    pub fn onedrive(client_id: &str, client_secret: &str) -> Self {
+        Self::onedrive_with_port(client_id, client_secret, 0)
     }
 }
 
@@ -132,7 +147,7 @@ impl OAuth2Manager {
     pub fn new() -> Self {
         Self {
             pending_verifiers: Arc::new(RwLock::new(HashMap::new())),
-            callback_port: 17548,
+            callback_port: 0, // Will be assigned dynamically by OS
         }
     }
 
@@ -392,16 +407,27 @@ impl Default for OAuth2Manager {
     }
 }
 
-/// Simple HTTP server to receive OAuth2 callback
-pub async fn start_callback_server(port: u16) -> Result<(String, String), ProviderError> {
+/// Bind the OAuth2 callback listener on an ephemeral port.
+/// Returns the listener and the actual port assigned by the OS.
+pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), ProviderError> {
     use tokio::net::TcpListener;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    
-    let listener: TcpListener = TcpListener::bind(format!("127.0.0.1:{}", port))
+
+    let listener = TcpListener::bind("127.0.0.1:0")
         .await
-        .map_err(|e| ProviderError::Other(format!("Failed to start callback server: {}", e)))?;
-    
-    info!("OAuth callback server listening on port {}", port);
+        .map_err(|e| ProviderError::Other(format!("Failed to bind callback server: {}", e)))?;
+
+    let port = listener.local_addr()
+        .map(|a| a.port())
+        .map_err(|e| ProviderError::Other(format!("Failed to get local port: {}", e)))?;
+
+    info!("OAuth callback listener bound on port {}", port);
+    Ok((listener, port))
+}
+
+/// Wait for an OAuth2 callback on an already-bound listener.
+/// Returns (code, state) extracted from the callback request.
+pub async fn wait_for_callback(listener: tokio::net::TcpListener) -> Result<(String, String), ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     
     let (mut socket, _): (tokio::net::TcpStream, _) = listener.accept()
         .await

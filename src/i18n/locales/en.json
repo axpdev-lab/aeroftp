@@ -140,7 +140,9 @@
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URLs (for self-hosted S3)",
             "webdavNote": "WebDAV path should include the full path to your files. For Nextcloud use:",
-            "webdavExample": "cloud.example.com/remote.php/dav/files/user/"
+            "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
+            "ftpWarningTitle": "Unencrypted connection",
+            "ftpWarningDesc": "FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection."
         },
         "browser": {
             "remote": "Remote",

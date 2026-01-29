@@ -84,11 +84,19 @@ Development-only files:
 
 ### Steps
 1. Update version in: `package.json`, `tauri.conf.json`, `Cargo.toml`, `snapcraft.yaml`
-2. Update `CHANGELOG.md`
-3. Commit: `chore(release): bump version to vX.Y.Z`
-4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z - Description"`
-5. Push: `git push origin main --tags`
-6. GitHub Actions builds and publishes automatically
+2. **Update `CHANGELOG.md`** (critical - this becomes the GitHub Release body):
+   - Add a new `## [X.Y.Z] - YYYY-MM-DD` section at the top
+   - Write a short subtitle summarizing the release theme (e.g. `### Secure Credential Storage`)
+   - Optionally add a 1-2 sentence description paragraph
+   - Group changes under `#### Added`, `#### Fixed`, `#### Changed`, `#### Removed` as needed
+   - Each entry should be a concise, user-facing description with **bold lead** and explanation
+   - This text is extracted automatically by CI and published as the GitHub Release notes
+3. **Sync i18n translations**: Run `npm run i18n:sync` to propagate new keys to all 51 languages, then translate Italian (`it.json`) manually. Other languages get `[NEEDS TRANSLATION]` placeholders.
+4. **Validate i18n**: Run `npm run i18n:validate` to ensure no missing keys
+5. Commit: `chore(release): vX.Y.Z Short Release Title`
+6. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z - Short Release Title"`
+7. Push: `git push origin main --tags`
+8. GitHub Actions builds, extracts CHANGELOG section, and publishes the release automatically
 
 ### Automated CI/CD (.github/workflows/build.yml)
 When a tag is pushed, GitHub Actions automatically:
