@@ -27,6 +27,10 @@
 
 ---
 
+> **Security Update (v1.3.3):** If you are using AeroFTP v1.3.2 or earlier, please update immediately. This release fixes critical issues with the credential storage system. Previous versions may store credentials insecurely or fail to connect to saved servers after migration. Delete your saved servers and re-add them after updating.
+
+---
+
 ## Key Features (v1.3.0)
 
 ### Global Multilingual Support - 51 Languages

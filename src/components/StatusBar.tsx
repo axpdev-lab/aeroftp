@@ -85,7 +85,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         href={updateAvailable.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md animate-pulse"
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
                         title={`Download AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />

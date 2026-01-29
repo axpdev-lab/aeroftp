@@ -206,7 +206,8 @@
             "extractionFailed": "Extraction failed",
             "passwordRequired": "Password Required",
             "enterArchivePassword": "This archive is encrypted. Enter password:",
-            "wrongPassword": "Wrong password or corrupted archive"
+            "wrongPassword": "Wrong password or corrupted archive",
+            "delete": "Delete"
         },
         "transfer": {
             "transferring": "Transferring...",

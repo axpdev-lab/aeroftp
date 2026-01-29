@@ -74,11 +74,13 @@ export const MigrationDialog: React.FC<MigrationDialogProps> = ({ isOpen, onClos
                             }
                         }
                     }
-                    // Remove password fields from localStorage entries
-                    const cleaned = servers.map(s => {
-                        const { password, ...rest } = s;
-                        return { ...rest, hasStoredCredential: !!password };
-                    });
+                    // Mark servers as migrated but keep password as fallback
+                    // Passwords are retained in localStorage in case the credential store
+                    // becomes unavailable (keyring locked, vault inaccessible, etc.)
+                    const cleaned = servers.map(s => ({
+                        ...s,
+                        hasStoredCredential: !!s.password,
+                    }));
                     localStorage.setItem('aeroftp-saved-servers', JSON.stringify(cleaned));
                 } catch (e) {
                     console.error('Failed to parse saved servers:', e);

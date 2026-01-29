@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 26 January 2026
-> Version: v1.2.9 (Privacy & Security + i18n Complete)
+> Last Updated: 29 January 2026
+> Version: v1.3.3 (OS Keyring Integration + Critical Security Fixes)
 
 ---
 
@@ -77,9 +77,11 @@
 
 | Feature | AeroFTP | FileZilla | Cyberduck | WinSCP | Transmit | ForkLift |
 |---------|---------|-----------|-----------|--------|----------|----------|
-| Cryptomator | 📋 v1.3 | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Cryptomator | 📋 v1.7 | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Share Links | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Keychain/Keyring | 📋 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Keychain/Keyring | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Encrypted Vault Fallback | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Credential Migration | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Distribution
 
@@ -108,6 +110,8 @@
 | **AeroAgent AI** | AI assistant for commands and file analysis | Industry first |
 | **Modern Stack** | Rust backend + React frontend | Performance + Security |
 | **Tray Background Sync** | Continuous sync without main window | Not in any competitor |
+| **Dual-Mode Credential Store** | OS Keyring + Argon2id/AES-256-GCM vault fallback | Only client with vault fallback |
+| **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2 with context menu | Most complete in segment |
 
 ### Technology Advantages
 
@@ -125,9 +129,9 @@
 
 | Competitor | Strength | Priority for AeroFTP |
 |------------|----------|---------------------|
-| **FileZilla** | SFTP native, 47 languages, stability | HIGH: SFTP |
-| **Cyberduck** | Cryptomator encryption, more clouds | HIGH: Cryptomator |
-| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting |
+| **FileZilla** | SFTP native, 47 languages, stability | ✅ CLOSED: SFTP done, 51 langs |
+| **Cyberduck** | Cryptomator encryption, more clouds | MEDIUM: Cryptomator (v1.7.0) |
+| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.4.0) |
 | **Transmit** | Raw speed, macOS polish | LOW: Already fast |
 | **ForkLift** | Complete file manager | LOW: Different focus |
 
@@ -153,19 +157,35 @@
 2. ✅ **51 Languages at 100%** - All 434 keys translated in all languages
 3. ✅ **Back Button Fix** - Proper session restoration
 
-### v1.3.0 - In Progress
-1. **Secure Credential Storage** - Keyring integration for passwords
-2. **Anonymous Analytics** - Aptabase integration (opt-in)
-3. **Cryptomator Encryption** - Cyberduck's premium feature
-4. **Advanced Archive** - 7z with AES-256, password-protected archives
-5. **Keyboard Shortcuts** - F2, Del, Ctrl+C/V
-6. **Cross-panel Drag & Drop** - Already in Transmit/ForkLift
+### v1.3.0 - RELEASED
+1. ✅ **7z Archive Support** - LZMA2 compression + AES-256 encrypted extraction
+2. ✅ **Anonymous Analytics** - Aptabase integration (opt-in, privacy-first)
 
-### v1.4.0 - Feature Parity
-1. **File Versioning** - Like Cyberduck/Mountain Duck
-2. **Bandwidth Throttling** - Like FileZilla
-3. **CLI/Scripting** - Like WinSCP
-4. **Azure Blob Storage** - Already in Cyberduck
+### v1.3.1 - RELEASED
+1. ✅ **Multi-Format Archives** - TAR, GZ, XZ, BZ2 compress/extract
+2. ✅ **Keyboard Shortcuts** - F2 rename, Del delete, Ctrl+C/V copy-paste
+3. ✅ **Archive Context Submenu** - Compress As (ZIP/7z/TAR/GZ/XZ/BZ2), Extract Here/To Folder
+4. ✅ **UX Overhaul** - Context menus, drag & drop improvements
+
+### v1.3.2 - RELEASED (Security Hotfix)
+1. ✅ **Secure Credential Storage** - OS Keyring (macOS/Windows/Linux) + AES-256-GCM vault fallback
+2. ✅ **Argon2id Key Derivation** - 64MB/3iter/4lanes for master password vault
+3. ✅ **Automatic Migration** - Plaintext credentials migrated to keyring on first launch
+4. ✅ **Permission Hardening** - 0o600 files, 0o700 directories
+5. ✅ **Secure Deletion** - Overwrite + random + unlink for old plaintext files
+
+### v1.4.0 - Next Release
+1. **7z AES-256 Write** - Password-protected 7z creation via p7zip sidecar
+2. **RAR Extraction** - Via p7zip CLI (GPL-safe, no libunrar)
+3. **Bandwidth Throttling** - Like FileZilla
+4. **CLI/Scripting** - Like WinSCP
+
+### v1.5.0 - AeroVault
+1. **AeroVault** - Virtual encrypted location (Argon2id + AES-256-GCM per file)
+2. **Azure Blob Storage** - Already in Cyberduck
+
+### v1.7.0 - Cryptomator
+1. **Cryptomator Import/Export** - Cyberduck's premium feature
 
 ---
 

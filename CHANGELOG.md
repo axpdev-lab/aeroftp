@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-01-29
+
+### OS Keyring Integration + Critical Security & Stability Fixes
+
+Critical hotfix release that fixes the OS keyring credential storage, removes the broken migration system, and resolves multiple stability issues.
+
+#### Fixed - Credential Storage (Critical)
+- **OS Keyring now functional on Linux**: Added `linux-native` feature to `keyring` crate - previously the keyring compiled without a backend, silently failing all store/get operations
+- **Removed broken migration dialog**: The v1.3.2 migration system was deleting passwords from localStorage before confirming keyring availability, locking users out of all saved servers
+- **Passwords stored securely in OS keyring**: Credentials are now properly saved and retrieved via gnome-keyring/Secret Service on Linux, macOS Keychain, and Windows Credential Manager
+
+#### Fixed - Session Tabs
+- **Session tabs now appear for FTP/FTPS connections**: Quick Connect for standard protocols was missing `createSession()` call, so no tabs were created after connecting
+- **"+" button resets connection form**: Previously showed stale data from the last connection instead of a clean "Select protocol" screen
+
+#### Fixed - Update Notifications
+- **Toast dismiss independent from status bar**: Closing the update toast no longer hides the status bar update badge
+- **Removed pulse animation from status bar badge**: The gradient badge is visible enough without `animate-pulse`
+- **Fixed `{protocol}` literal in activity log**: AeroCloud connection logs now show the actual protocol instead of the template variable
+
+#### Fixed - AeroCloud
+- **Sync completion notifications in Activity Log**: Manual and background sync now log results (uploaded/downloaded file counts or errors) instead of only writing to console
+- **Cloud name description in setup wizard**: Step 1 now shows "Custom name displayed in the tab" instead of "Choose Folder" under the Cloud Name input
+- **Added `id` field to CloudPanel savedServers**: Fixes credential lookup during AeroCloud wizard setup
+- **AeroCloud tab shows connection log**: Switching to AeroCloud on an already-connected server now logs the connection event
+
+#### Added
+- **`contextMenu.delete` i18n key**: Added missing translation for delete button tooltip (EN + IT)
+
+#### Removed
+- **Migration dialog system**: Removed `MigrationDialog` component, startup migration check, and all related code - replaced by direct OS keyring storage on save
+
+## [1.3.2] - 2026-01-29
+
+### Secure Credential Storage
+
 ## [1.3.1] - 2026-01-29
 
 ### Multi-Format Archives + Keyboard Shortcuts + UX Overhaul

@@ -160,7 +160,7 @@ const SetupWizard: React.FC<{
                 {step === 1 && (
                     <div className="wizard-step">
                         <h3><Cloud size={20} /> {t('cloud.cloudName')}</h3>
-                        <p>{t('cloud.stepFolder')}</p>
+                        <p>{t('cloud.cloudNameDesc')}</p>
                         <div className="folder-input">
                             <input
                                 type="text"
@@ -508,6 +508,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
             if (stored) {
                 const servers = JSON.parse(stored);
                 return servers.map((s: {
+                    id?: string;
                     name?: string;
                     host: string;
                     port?: number;
@@ -515,6 +516,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     password?: string;
                     initialPath?: string;
                 }) => ({
+                    id: s.id || '',
                     name: s.name || s.host,
                     host: s.host,
                     port: s.port || 21,

@@ -27,7 +27,6 @@ import { ContextMenu, useContextMenu, ContextMenuItem } from './components/Conte
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { AboutDialog } from './components/AboutDialog';
-import { MigrationDialog } from './components/MigrationDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -136,7 +135,6 @@ const App: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
-  const [showMigrationDialog, setShowMigrationDialog] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
   // showSettingsPanel provided by useSettings
@@ -272,6 +270,7 @@ const App: React.FC = () => {
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
+  const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
 
   // showToastNotifications provided by useSettings
 
@@ -448,32 +447,6 @@ const App: React.FC = () => {
     universalPreviewOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
-  // Credential migration check on startup (v1.3.2 security hotfix)
-  useEffect(() => {
-    const checkMigration = async () => {
-      // Check if localStorage has legacy password fields
-      const serversJson = localStorage.getItem('aeroftp-saved-servers');
-      let hasLegacyPasswords = false;
-      if (serversJson) {
-        try {
-          const servers = JSON.parse(serversJson);
-          hasLegacyPasswords = servers.some((s: any) => s.password && !s.hasStoredCredential);
-        } catch { }
-      }
-      // Check for legacy OAuth secrets in localStorage
-      const hasLegacyOAuth = ['googledrive', 'dropbox', 'onedrive'].some(
-        p => localStorage.getItem(`oauth_${p}_client_id`) || localStorage.getItem(`oauth_${p}_client_secret`)
-      );
-      // Check for legacy OAuth settings
-      const hasLegacyOAuthSettings = !!localStorage.getItem('aeroftp_oauth_settings');
-
-      if (hasLegacyPasswords || hasLegacyOAuth || hasLegacyOAuthSettings) {
-        // Also check backend for server_credentials.json
-        setShowMigrationDialog(true);
-      }
-    };
-    checkMigration();
-  }, []);
 
   // FTP Keep-Alive: Send NOOP every 60 seconds to prevent connection timeout
   // Skip for OAuth providers as they don't need keep-alive
@@ -1035,10 +1008,10 @@ const App: React.FC = () => {
       if (action === 'cloud_sync_now') {
         // Trigger manual sync
         try {
+          activityLog.log('INFO', 'AeroCloud: sincronizzazione manuale avviata', 'running');
           await invoke('trigger_cloud_sync');
-          console.log('Cloud sync triggered from tray');
         } catch (e) {
-          console.error('Failed to trigger sync:', e);
+          activityLog.log('INFO', `AeroCloud: sincronizzazione fallita: ${e}`, 'error');
         }
       } else if (action === 'cloud_pause') {
         // Stop background sync
@@ -1064,9 +1037,20 @@ const App: React.FC = () => {
       }
     });
 
+    // Listen for cloud sync completion to show activity log / toast
+    const unlistenSyncComplete = listen<{ uploaded: number; downloaded: number; errors: string[] }>('cloud_sync_complete', (event) => {
+      const result = event.payload;
+      if (result.errors.length > 0) {
+        activityLog.log('INFO', `Errore sincronizzazione AeroCloud: ${result.errors.length} errori`, 'error');
+      } else {
+        activityLog.log('INFO', `AeroCloud sincronizzato: ↑${result.uploaded} ↓${result.downloaded} file`, 'success');
+      }
+    });
+
     return () => {
       unlistenStatus.then(fn => fn());
       unlistenMenu.then(fn => fn());
+      unlistenSyncComplete.then(fn => fn());
     };
   }, []);
 
@@ -1257,6 +1241,13 @@ const App: React.FC = () => {
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
+      // Create session tab for FTP/FTPS/SFTP connections
+      createSession(
+        connectionParams.displayName || connectionParams.server,
+        connectionParams,
+        quickConnectDirs.remoteDir || currentRemotePath,
+        quickConnectDirs.localDir || currentLocalPath
+      );
     } catch (error) {
       humanLog.logError('CONNECT', { server: connectionParams.server }, logId);
       notify.error('Connection Failed', String(error));
@@ -1579,6 +1570,9 @@ const App: React.FC = () => {
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
     setIsConnected(false);
+    // Reset connection form for a fresh "new server" experience
+    setConnectionParams({ server: '', username: '', password: '' });
+    setQuickConnectDirs({ remoteDir: '', localDir: '' });
     // Show the connection screen for selecting a new server
     setShowConnectionScreen(true);
   };
@@ -1679,7 +1673,7 @@ const App: React.FC = () => {
             setLoading(true);
             await invoke('connect_ftp', { params });
             setConnectionParams(params);
-            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})` }, 'success');
+            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: params.protocol?.toUpperCase() || 'FTP' }, 'success');
           } catch (connError) {
             console.log('Failed to connect to cloud server:', connError);
             notify.error('Connection Failed', `Failed to connect to cloud server: ${connError}`);
@@ -1710,6 +1704,8 @@ const App: React.FC = () => {
           // Update cloud folder state for badge display
           setCloudRemoteFolder(cloudConfig.remote_folder);
           setCloudLocalFolder(cloudConfig.local_folder);
+
+          humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: connectionParams.protocol || 'FTP' }, 'success');
         } catch (navError) {
           console.log('Navigation error:', navError);
         }
@@ -2941,7 +2937,7 @@ const App: React.FC = () => {
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
 
       {/* Update Available Badge */}
-      {updateAvailable?.has_update && (
+      {updateAvailable?.has_update && !updateToastDismissed && (
         <div className="fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-pulse border border-blue-400/30">
           <div className="flex flex-col">
             <span className="font-semibold">🚀 AeroFTP v{updateAvailable.latest_version} Available!</span>
@@ -2956,7 +2952,7 @@ const App: React.FC = () => {
             Download .{updateAvailable.install_format || 'deb'}
           </a>
           <button
-            onClick={() => setUpdateAvailable(null)}
+            onClick={() => setUpdateToastDismissed(true)}
             className="text-white/70 hover:text-white ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
             title="Dismiss"
           >
@@ -3026,7 +3022,6 @@ const App: React.FC = () => {
         fileName={permissionsDialog?.file.name || ''}
         currentPermissions={permissionsDialog?.file.permissions || undefined}
       />
-      <MigrationDialog isOpen={showMigrationDialog} onClose={() => setShowMigrationDialog(false)} />
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
       <OverwriteDialog

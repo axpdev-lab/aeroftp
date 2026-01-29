@@ -188,13 +188,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         setServers(updated);
         saveServers(updated);
 
-        // Load password from secure credential store (never from localStorage)
+        // Load password from secure credential store (OS keyring)
         let password = '';
         try {
             password = await invoke<string>('get_credential', { account: `server_${server.id}` });
-        } catch {
-            // Fallback: try legacy password field (pre-v1.3.2 migration)
-            password = server.password || '';
+        } catch (e) {
+            console.error(`Failed to load credential for ${server.name}:`, e);
         }
 
         // Build connection params - for providers, don't append port to host

@@ -190,7 +190,8 @@
             "compressSubmenu": "Comprimi",
             "extract": "Estrai",
             "extractSubmenu": "Estrai",
-            "extractTarHere": "Estrai TAR qui"
+            "extractTarHere": "Estrai TAR qui",
+            "delete": "Elimina"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
