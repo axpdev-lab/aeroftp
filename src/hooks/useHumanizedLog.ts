@@ -67,7 +67,7 @@ export function useHumanizedLog() {
     const getTranslationKey = (operation: HumanizedOperationType, phase: string): string => {
         const opKey = operation.toLowerCase();
         // Handle specific mappings if key name differs
-        if (opKey === 'delete_multiple') return `activity.delete_${phase}`; // Reuse delete or specific if exists
+        if (opKey === 'delete_multiple') return `activity.delete_multiple_${phase}`;
         if (opKey === 'upload_multiple') return `activity.upload_${phase}`;
         if (opKey === 'download_multiple') return `activity.download_${phase}`;
 

@@ -1,9 +1,8 @@
 import * as React from 'react';
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { sendNotification } from '@tauri-apps/plugin-notification';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
@@ -38,36 +37,74 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
 import { CloudPanel } from './components/CloudPanel';
-import { OverwriteDialog, OverwriteAction, FileCompareInfo } from './components/OverwriteDialog';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { OverwriteDialog } from './components/OverwriteDialog';
 import {
-  Sun, Moon, Monitor, FolderUp, RefreshCw, FolderPlus, FolderOpen,
-  Download, Upload, Pencil, Trash2, X, ArrowUp, ArrowDown,
+  FolderUp, RefreshCw, FolderPlus, FolderOpen,
+  Download, Upload, Pencil, Trash2, X,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
-  Archive, Image, Video, FileCode, Music, File, FileSpreadsheet, FileType, Code, Database, Clock,
-  Copy, Clipboard, ExternalLink, List, LayoutGrid, ChevronRight, Plus, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, Server
+  Archive, Image, Video, Music, FileType, Code, Database, Clock,
+  Copy, Clipboard, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
+  Lock, Server, XCircle
 } from 'lucide-react';
 
-// Extracted utilities and components (Phase 1 modularization)
+// Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
+import { useTranslation } from './i18n';
+
+// Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties } from './components/Dialogs';
 import { TransferProgressBar } from './components/Transfer';
-
-// Extracted components (Phase 2 modularization)
-import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import ActivityLogPanel from './components/ActivityLogPanel';
+
+// Hooks (modularized from App.tsx - see architecture comment below)
+import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
-import { useTranslation } from './i18n';
+import { useSettings } from './hooks/useSettings';
+import { useAutoUpdate } from './hooks/useAutoUpdate';
+import { usePreview } from './hooks/usePreview';
+import { useOverwriteCheck } from './hooks/useOverwriteCheck';
+import { useDragAndDrop } from './hooks/useDragAndDrop';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
-// ============ Main App ============
+// ============================================================================
+// Main App Component
+// ============================================================================
+// Architecture: App.tsx is the root component orchestrating all FTP client
+// functionality. Logic is progressively extracted into custom hooks:
+//
+// Extracted hooks (src/hooks/):
+//   useSettings        - App settings (localStorage persistence, live reload)
+//   useAutoUpdate      - Startup update check + manual update trigger
+//   usePreview         - Sidebar preview, DevTools editor, Universal media preview
+//   useOverwriteCheck  - File overwrite detection, dialog state, "apply to all"
+//   useDragAndDrop     - Drag & drop file moves within same panel
+//   useTheme           - Dark/light/system theme management
+//   useActivityLog     - Structured activity log with filtering
+//   useHumanizedLog    - Human-readable log messages with i18n
+//   useKeyboardShortcuts - Global keyboard shortcuts
+//
+// Remaining inline logic (candidates for future extraction):
+//   - Context menus (showRemoteContextMenu, showLocalContextMenu ~297 lines)
+//   - File transfer operations (upload/download/delete ~320 lines)
+//   - Transfer event listener (useEffect for backend progress events ~155 lines)
+//   - Connection logic (connectToFtp ~193 lines)
+//   - Cloud sync events (~98 lines)
+// ============================================================================
 const App: React.FC = () => {
-  const SETTINGS_KEY = 'aeroftp_settings';
-
-  // Using ConnectionParams from types.ts (includes protocol, port, options)
+  // === Settings (persisted in localStorage, live-reloaded) ===
+  const settings = useSettings();
+  const {
+    compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
+    showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder,
+    systemMenuVisible, showMenuBar, showActivityLog, showConnectionScreen,
+    showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
+    setShowMenuBar, setSystemMenuVisible, setShowActivityLog,
+    setShowHiddenFiles,
+    SETTINGS_KEY,
+  } = settings;
 
   const [isConnected, setIsConnected] = useState(false);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
@@ -98,16 +135,9 @@ const App: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
-  // Overwrite dialog state
-  const [overwriteDialog, setOverwriteDialog] = useState<{
-    isOpen: boolean;
-    source: FileCompareInfo | null;
-    destination: FileCompareInfo | null;
-    queueCount: number;
-    resolve: ((result: { action: OverwriteAction; applyToAll: boolean; newName?: string }) => void) | null;
-  }>({ isOpen: false, source: null, destination: null, queueCount: 0, resolve: null });
-  const [overwriteApplyToAll, setOverwriteApplyToAll] = useState<{ action: OverwriteAction; enabled: boolean }>({ action: 'overwrite', enabled: false });
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  // Overwrite dialog: handled by useOverwriteCheck hook
+  const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
+  // showSettingsPanel provided by useSettings
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showCloudPanel, setShowCloudPanel] = useState(false);
   const [cloudSyncing, setCloudSyncing] = useState(false);  // AeroCloud sync in progress
@@ -117,33 +147,9 @@ const App: React.FC = () => {
   const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');  // Cloud local folder path
   const [cloudRemoteFolder, setCloudRemoteFolder] = useState<string>('');  // Cloud remote folder path
   const [cloudPublicUrlBase, setCloudPublicUrlBase] = useState<string>('');  // Public URL base for share links
-  const [showConnectionScreen, setShowConnectionScreen] = useState(true);  // Initial connection screen, can be skipped
-  const [showMenuBar, setShowMenuBar] = useState(true);  // Internal header visibility (with logo and theme toggle)
-  const [systemMenuVisible, setSystemMenuVisible] = useState(false);  // Native system menu bar (File, Edit, View, Help) - hidden by default
-  const [compactMode, setCompactMode] = useState(false);  // Compact UI mode
-  const [showHiddenFiles, setShowHiddenFiles] = useState(true);  // Developer-first: show all files by default
-  const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(true);  // Show confirmation dialog before delete
-  const [showStatusBar, setShowStatusBar] = useState(true);  // Show/hide status bar
-  const [defaultLocalPath, setDefaultLocalPath] = useState('');  // Default local folder on startup
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');  // UI font size
-  const [doubleClickAction, setDoubleClickAction] = useState<'preview' | 'download'>('preview');  // What happens on double-click
-  const [rememberLastFolder, setRememberLastFolder] = useState(true);  // Remember last visited folders
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
-  const [showActivityLog, setShowActivityLog] = useState(false);  // Activity Log Panel visibility (collapsed by default)
-
-  // Auto-Update State
-  interface UpdateInfo {
-    has_update: boolean;
-    latest_version?: string;
-    download_url?: string;
-    current_version: string;
-    install_format: string;
-  }
-  const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
-  const updateCheckedRef = React.useRef(false); // useRef to avoid re-render loops
-
   // Multi-Session Tabs (Hybrid Cache Architecture)
   const [sessions, setSessions] = useState<FtpSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -158,38 +164,17 @@ const App: React.FC = () => {
   const transferIdToLogId = React.useRef<Map<string, string>>(new Map());
   // Maps filenames to manually started log IDs (to merge frontend and backend logs)
   const pendingFileLogIds = React.useRef<Map<string, string>>(new Map());
+  // Maps filenames to delete log IDs (to update "Removing..." -> "Removed" in-place)
+  const pendingDeleteLogIds = React.useRef<Map<string, string>>(new Map());
+  const localSearchRef = React.useRef<HTMLInputElement>(null);
 
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
 
   const [localSearchFilter, setLocalSearchFilter] = useState('');
-  const [showLocalPreview, setShowLocalPreview] = useState(false);
-  const [previewFile, setPreviewFile] = useState<LocalFile | null>(null);
-  const [previewImageBase64, setPreviewImageBase64] = useState<string | null>(null);
 
   const t = useTranslation();
-
-  // DevTools Panel
-  const [devToolsOpen, setDevToolsOpen] = useState(false);
-  const [devToolsPreviewFile, setDevToolsPreviewFile] = useState<PreviewFile | null>(null);
-
-  // Universal Preview Modal (for media files: images, audio, video, pdf)
-  const [universalPreviewOpen, setUniversalPreviewOpen] = useState(false);
-  const [universalPreviewFile, setUniversalPreviewFile] = useState<PreviewFileData | null>(null);
-
-  // View Mode (list/grid)
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
-
-  // Drag & Drop State
-  interface DragData {
-    files: string[];  // File names being dragged
-    sourcePaths: string[];  // Full paths of files being dragged
-    isRemote: boolean;  // Whether dragging from remote or local panel
-    sourceDir: string;  // Source directory path
-  }
-  const [dragData, setDragData] = useState<DragData | null>(null);
-  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);  // Folder being hovered over
 
   // Sync Badge Helper - returns badge element if file is in cloud folder
   const getSyncBadge = (filePath: string, fileModified: string | undefined, isLocal: boolean) => {
@@ -276,35 +261,45 @@ const App: React.FC = () => {
     return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
   }, [connectionParams.protocol, sessions, activeSessionId]);
 
-  // Load image preview as base64 when file changes
-  useEffect(() => {
-    const loadPreview = async () => {
-      if (!previewFile) {
-        setPreviewImageBase64(null);
-        return;
-      }
-      // Only load images
-      if (/\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name)) {
-        try {
-          const base64: string = await invoke('read_file_base64', { path: previewFile.path });
-          // Determine MIME type
-          const ext = previewFile.name.split('.').pop()?.toLowerCase() || '';
-          const mimeTypes: Record<string, string> = {
-            jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-            gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp', bmp: 'image/bmp'
-          };
-          const mime = mimeTypes[ext] || 'image/png';
-          setPreviewImageBase64(`data:${mime};base64,${base64}`);
-        } catch (error) {
-          console.error('Failed to load preview:', error);
-          setPreviewImageBase64(null);
-        }
-      } else {
-        setPreviewImageBase64(null);
-      }
-    };
-    loadPreview();
-  }, [previewFile]);
+  // === Core hooks (must be before keyboard shortcuts) ===
+  const { theme, setTheme, isDark } = useTheme();
+  const toast = useToast();
+  const contextMenu = useContextMenu();
+  const humanLog = useHumanizedLog();
+  const activityLog = useActivityLog();
+
+  // Auto-Update: handled by useAutoUpdate hook
+  const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
+
+  // showToastNotifications provided by useSettings
+
+  // Wrapper: Notify user with ActivityLog always, toast only if enabled
+  // Returns toast ID for compatibility with removeToast
+  const notify = React.useMemo(() => ({
+    success: (title: string, message?: string): string | null => {
+      return showToastNotifications ? toast.success(title, message) : null;
+    },
+    error: (title: string, message?: string): string => {
+      return toast.error(title, message);
+    },
+    info: (title: string, message?: string): string | null => {
+      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
+      return showToastNotifications ? toast.info(title, message) : null;
+    },
+    warning: (title: string, message?: string): string | null => {
+      activityLog.log('INFO', message ? `⚠️ ${title}: ${message}` : `⚠️ ${title}`, 'running');
+      return showToastNotifications ? toast.warning(title, message) : null;
+    }
+  }), [showToastNotifications, toast, activityLog]);
+
+  // Preview: handled by usePreview hook
+  const preview = usePreview({ notify, toast });
+  const {
+    showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64,
+    devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview,
+    universalPreviewOpen, universalPreviewFile, openUniversalPreview, closeUniversalPreview,
+    viewMode, setViewMode,
+  } = preview;
 
   // Filtered files (search filter applied)
   const filteredLocalFiles = localFiles.filter(f =>
@@ -316,9 +311,103 @@ const App: React.FC = () => {
     'F1': () => setShowShortcutsDialog(v => !v),
     'F10': () => setShowMenuBar(v => !v),
     'Ctrl+,': () => setShowSettingsPanel(true),
+
+    // Delete: delete selected files
+    'Delete': () => {
+      if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+        const names = Array.from(selectedRemoteFiles);
+        const files = remoteFiles.filter(f => names.includes(f.name));
+        if (files.length > 0) deleteMultipleRemoteFiles(names);
+      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+        const names = Array.from(selectedLocalFiles);
+        const files = localFiles.filter(f => names.includes(f.name));
+        if (files.length > 0) deleteMultipleLocalFiles(names);
+      }
+    },
+
+    // Enter: open selected folder (or preview file)
+    'Enter': () => {
+      if (activePanel === 'remote') {
+        const name = Array.from(selectedRemoteFiles)[0];
+        if (!name) return;
+        const file = remoteFiles.find(f => f.name === name);
+        if (file?.is_dir) changeRemoteDirectory(file.name);
+      } else {
+        const name = Array.from(selectedLocalFiles)[0];
+        if (!name) return;
+        const file = localFiles.find(f => f.name === name);
+        if (file?.is_dir) changeLocalDirectory(file.path);
+      }
+    },
+
+    // Backspace: go up directory
+    'Backspace': () => {
+      if (activePanel === 'remote') {
+        if (currentRemotePath !== '/') changeRemoteDirectory('..');
+      } else {
+        if (currentLocalPath !== '/') changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/');
+      }
+    },
+
+    // Tab: switch active panel
+    'Tab': () => {
+      setActivePanel(p => p === 'remote' ? 'local' : 'remote');
+    },
+
+    // F2: rename selected file
+    'F2': () => {
+      if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
+        const name = Array.from(selectedRemoteFiles)[0];
+        const file = remoteFiles.find(f => f.name === name);
+        if (file) renameFile(file.path, file.name, true);
+      } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
+        const name = Array.from(selectedLocalFiles)[0];
+        const file = localFiles.find(f => f.name === name);
+        if (file) renameFile(file.path, file.name, false);
+      }
+    },
+
+    // Ctrl+N: new folder
+    'Ctrl+N': () => {
+      createFolder(activePanel === 'remote');
+    },
+
+    // Ctrl+A: select all files
+    'Ctrl+A': () => {
+      if (activePanel === 'remote') {
+        setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
+      } else {
+        setSelectedLocalFiles(new Set(localFiles.map(f => f.name)));
+      }
+    },
+
+    // Ctrl+U: upload selected local files
+    'Ctrl+U': () => {
+      if (isConnected && selectedLocalFiles.size > 0) {
+        uploadMultipleFiles();
+      }
+    },
+
+    // Ctrl+D: download selected remote files
+    'Ctrl+D': () => {
+      if (isConnected && selectedRemoteFiles.size > 0) {
+        downloadMultipleFiles();
+      }
+    },
+
+    // Ctrl+R: refresh active panel
+    'Ctrl+R': () => {
+      if (activePanel === 'remote') loadRemoteFiles();
+      else loadLocalFiles(currentLocalPath);
+    },
+
+    // Ctrl+F: focus search filter
+    'Ctrl+F': () => {
+      localSearchRef.current?.focus();
+    },
+
     // Space key: Open preview for selected file
-    ' ': () => {
-      // Get the first selected file (prefer remote, fallback to local)
+    'Space': () => {
       const selectedRemoteName = Array.from(selectedRemoteFiles)[0];
       const selectedLocalName = Array.from(selectedLocalFiles)[0];
 
@@ -344,8 +433,8 @@ const App: React.FC = () => {
         }
       }
     },
+
     'Escape': () => {
-      // Close any open dialogs priority-wise
       if (universalPreviewOpen) closeUniversalPreview();
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
@@ -354,171 +443,8 @@ const App: React.FC = () => {
       else if (confirmDialog) setConfirmDialog(null);
     }
   }, [showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
-    universalPreviewOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles]);
-
-  // Init System Menu and Theme on Mount
-  useEffect(() => {
-    // Menu Visibility - Default hidden for cleaner UI
-    try {
-      const savedSettings = localStorage.getItem(SETTINGS_KEY);
-      let showMenu = false; // Default hidden for cleaner look
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        if (typeof parsed.showSystemMenu === 'boolean') {
-          showMenu = parsed.showSystemMenu;
-        }
-      }
-      setSystemMenuVisible(showMenu);
-      invoke('toggle_menu_bar', { visible: showMenu });
-
-      // Load all settings from localStorage
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        if (typeof parsed.compactMode === 'boolean') {
-          setCompactMode(parsed.compactMode);
-        }
-        if (typeof parsed.showHiddenFiles === 'boolean') {
-          setShowHiddenFiles(parsed.showHiddenFiles);
-        }
-        if (typeof parsed.showToastNotifications === 'boolean') {
-          setShowToastNotifications(parsed.showToastNotifications);
-        }
-        if (typeof parsed.confirmBeforeDelete === 'boolean') {
-          setConfirmBeforeDelete(parsed.confirmBeforeDelete);
-        }
-        if (typeof parsed.showStatusBar === 'boolean') {
-          setShowStatusBar(parsed.showStatusBar);
-        }
-        if (typeof parsed.defaultLocalPath === 'string') {
-          setDefaultLocalPath(parsed.defaultLocalPath);
-        }
-        if (parsed.fontSize && ['small', 'medium', 'large'].includes(parsed.fontSize)) {
-          setFontSize(parsed.fontSize);
-        }
-        if (parsed.doubleClickAction && ['preview', 'download'].includes(parsed.doubleClickAction)) {
-          setDoubleClickAction(parsed.doubleClickAction);
-        }
-        if (typeof parsed.rememberLastFolder === 'boolean') {
-          setRememberLastFolder(parsed.rememberLastFolder);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to init menu", e);
-    }
-
-    // Listen for settings changes from SettingsPanel
-    const handleSettingsChange = () => {
-      try {
-        const savedSettings = localStorage.getItem(SETTINGS_KEY);
-        if (savedSettings) {
-          const parsed = JSON.parse(savedSettings);
-          if (typeof parsed.compactMode === 'boolean') {
-            setCompactMode(parsed.compactMode);
-          }
-          if (typeof parsed.showHiddenFiles === 'boolean') {
-            setShowHiddenFiles(parsed.showHiddenFiles);
-          }
-          if (typeof parsed.showToastNotifications === 'boolean') {
-            setShowToastNotifications(parsed.showToastNotifications);
-          }
-          if (typeof parsed.confirmBeforeDelete === 'boolean') {
-            setConfirmBeforeDelete(parsed.confirmBeforeDelete);
-          }
-          if (typeof parsed.showStatusBar === 'boolean') {
-            setShowStatusBar(parsed.showStatusBar);
-          }
-          if (typeof parsed.defaultLocalPath === 'string') {
-            setDefaultLocalPath(parsed.defaultLocalPath);
-          }
-          if (parsed.fontSize && ['small', 'medium', 'large'].includes(parsed.fontSize)) {
-            setFontSize(parsed.fontSize);
-          }
-          if (parsed.doubleClickAction && ['preview', 'download'].includes(parsed.doubleClickAction)) {
-            setDoubleClickAction(parsed.doubleClickAction);
-          }
-          if (typeof parsed.rememberLastFolder === 'boolean') {
-            setRememberLastFolder(parsed.rememberLastFolder);
-          }
-        }
-      } catch (e) { }
-    };
-    window.addEventListener('storage', handleSettingsChange);
-    // Also listen for custom event when settings saved from same tab
-    window.addEventListener('aeroftp-settings-changed', handleSettingsChange);
-    return () => {
-      window.removeEventListener('storage', handleSettingsChange);
-      window.removeEventListener('aeroftp-settings-changed', handleSettingsChange);
-    };
-  }, []);
-
-  const { theme, setTheme, isDark } = useTheme();
-  const toast = useToast();
-  const contextMenu = useContextMenu();
-  const humanLog = useHumanizedLog();
-  const activityLog = useActivityLog();
-
-  // Auto-Update Check on startup
-  const checkForUpdate = useCallback(async (manual = false) => {
-    try {
-      const info: UpdateInfo = await invoke('check_update');
-      setUpdateAvailable(info);
-
-      if (info.has_update) {
-        sendNotification({
-          title: 'AeroFTP Update Available!',
-          body: `Version ${info.latest_version} is ready. Download for your OS.`,
-        });
-        const checkType = manual ? '[Manual]' : '[Auto]';
-        activityLog.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
-        await invoke('log_update_detection', { version: info.latest_version || '' });
-      } else if (manual) {
-        sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
-        activityLog.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
-      }
-    } catch (error) {
-      console.error('Update check failed:', error);
-      if (manual) {
-        activityLog.log('ERROR', `Update check failed: ${error}`, 'error');
-      }
-    }
-  }, [activityLog]);
-
-  // Check for updates on app startup (after a short delay)
-  useEffect(() => {
-    if (!updateCheckedRef.current) {
-      updateCheckedRef.current = true; // Set immediately to prevent double-call
-      const timer = setTimeout(() => {
-        checkForUpdate(false);
-      }, 5000); // Check 5 seconds after startup
-      return () => clearTimeout(timer);
-    }
-  }, []); // Empty deps - run only once on mount
-
-
-  // Show toast notifications setting (default: false - toasts disabled)
-  const [showToastNotifications, setShowToastNotifications] = useState(false);
-
-  // Wrapper: Notify user with ActivityLog always, toast only if enabled
-  // Returns toast ID for compatibility with removeToast
-  const notify = React.useMemo(() => ({
-    success: (title: string, message?: string): string | null => {
-      // activityLog.log('SUCCESS', message ? `${title}: ${message}` : title, 'success'); // Removed duplicate log
-      return showToastNotifications ? toast.success(title, message) : null;
-    },
-    error: (title: string, message?: string): string => {
-      // activityLog.log('ERROR', message ? `${title}: ${message}` : title, 'error'); // Removed duplicate log
-      // Errors always show as toast (critical)
-      return toast.error(title, message);
-    },
-    info: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
-      return showToastNotifications ? toast.info(title, message) : null;
-    },
-    warning: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `⚠️ ${title}: ${message}` : `⚠️ ${title}`, 'running');
-      return showToastNotifications ? toast.warning(title, message) : null;
-    }
-  }), [showToastNotifications, toast, activityLog]);
+    universalPreviewOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
+    activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
   // FTP Keep-Alive: Send NOOP every 60 seconds to prevent connection timeout
   // Skip for OAuth providers as they don't need keep-alive
@@ -644,13 +570,26 @@ const App: React.FC = () => {
           transferQueue.startTransfer(queueItem.id);
         }
       } else if (data.event_type === 'file_start') {
-        // Individual file transfer starting
+        // Individual file transfer starting - track log ID for in-place update on file_complete
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw(data.direction === 'download' ? 'activity.download_start' : 'activity.upload_start',
+        const fileLogId = humanLog.logRaw(data.direction === 'download' ? 'activity.download_start' : 'activity.upload_start',
           data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
           { filename: data.filename, location: loc }, 'running');
+        pendingFileLogIds.current.set(`${data.transfer_id}:${data.filename}`, fileLogId);
       } else if (data.event_type === 'file_complete') {
-        // Individual file transfer complete - Log suppressed to avoid duplicate with 'complete' event which has details
+        // Individual file transfer complete - update existing "Uploading/Downloading..." entry to success
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const key = `${data.transfer_id}:${data.filename}`;
+        const existingId = pendingFileLogIds.current.get(key);
+        const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
+        const msg = t(successKey, { filename: data.filename, location: loc, details: '' }).trim();
+        if (existingId) {
+          activityLog.updateEntry(existingId, { status: 'success', message: msg });
+          pendingFileLogIds.current.delete(key);
+        } else {
+          humanLog.logRaw(successKey, data.direction === 'upload' ? 'UPLOAD' : 'DOWNLOAD',
+            { filename: data.filename, location: loc, details: '' }, 'success');
+        }
       } else if (data.event_type === 'file_error') {
         // Individual file transfer error
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
@@ -746,29 +685,54 @@ const App: React.FC = () => {
       }
 
       // ========== DELETE EVENTS ==========
+      // For recursive folder deletes, the backend emits per-file events.
+      // We track each file's log ID so "Removing..." updates to "Removed" in-place.
       else if (data.event_type === 'delete_start') {
-        // Folder delete scan started
+        // Folder delete scan started - log once for the folder
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        pendingDeleteLogIds.current.set(data.filename, logId);
       } else if (data.event_type === 'delete_file_start') {
-        // Individual file delete starting
+        // Individual file delete starting - log and track for update
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        pendingDeleteLogIds.current.set(data.filename, logId);
       } else if (data.event_type === 'delete_file_complete') {
-        // Individual file deleted
+        // Individual file deleted - update existing "Removing..." entry
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        if (existingId) {
+          const msg = t('activity.delete_file_success', { location: loc, filename: data.filename });
+          activityLog.updateEntry(existingId, { status: 'success', message: msg });
+          pendingDeleteLogIds.current.delete(data.filename);
+        } else {
+          humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+        }
       } else if (data.event_type === 'delete_dir_complete') {
-        // Directory removed
+        // Directory removed - update existing entry or create new
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        if (existingId) {
+          const msg = t('activity.delete_dir_success', { location: loc, filename: data.filename });
+          activityLog.updateEntry(existingId, { status: 'success', message: msg });
+          pendingDeleteLogIds.current.delete(data.filename);
+        } else {
+          humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+        }
       } else if (data.event_type === 'delete_complete') {
-        // Folder delete complete (Task)
+        // Folder delete complete (Task) - refresh file list
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');
+        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        if (existingId) {
+          const msg = t('activity.delete_error', { location: loc, filename: data.filename });
+          activityLog.updateEntry(existingId, { status: 'error', message: msg });
+          pendingDeleteLogIds.current.delete(data.filename);
+        } else {
+          humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');
+        }
       }
     });
     return () => { unlisten.then(fn => fn()); };
@@ -816,6 +780,7 @@ const App: React.FC = () => {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
       setLocalFiles(files);
       setCurrentLocalPath(path);
+      setSelectedLocalFiles(new Set());
     } catch (error) {
       notify.error('Error', `Failed to list local files: ${error}`);
     }
@@ -853,6 +818,7 @@ const App: React.FC = () => {
       }
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
+      setSelectedRemoteFiles(new Set());
     } catch (error) {
       console.error('[loadRemoteFiles] Error:', error);
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
@@ -904,6 +870,22 @@ const App: React.FC = () => {
       loadLocalFiles(currentLocalPath);
     }
   }, [showHiddenFiles]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Drag & Drop
+  const {
+    dragData, dropTargetPath,
+    handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDragLeave,
+  } = useDragAndDrop({
+    notify,
+    humanLog,
+    currentRemotePath,
+    currentLocalPath,
+    loadRemoteFiles,
+    loadLocalFiles,
+    activeSessionId,
+    sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
+    connectionParams,
+  });
 
   // Check AeroCloud state on mount and listen for status changes
   useEffect(() => {
@@ -1881,112 +1863,7 @@ const App: React.FC = () => {
     setIsSyncNavigation(!isSyncNavigation);
   };
 
-  /**
-   * Check if a file exists and prompt for overwrite decision
-   * Uses local file list to check for download, remote file list for upload
-   * Respects fileExistsAction setting from Settings panel
-   */
-  const checkOverwrite = async (
-    sourceName: string,
-    sourceSize: number,
-    sourceModified: Date | undefined,
-    sourceIsRemote: boolean,
-    queueCount: number = 0
-  ): Promise<{ action: OverwriteAction; newName?: string }> => {
-    // If "apply to all" is already set (for current batch), use that decision
-    if (overwriteApplyToAll.enabled) {
-      return { action: overwriteApplyToAll.action };
-    }
-
-    // Check if destination file exists in the appropriate file list
-    let destFile: LocalFile | RemoteFile | undefined;
-
-    if (sourceIsRemote) {
-      // Download scenario: check if local file exists
-      destFile = localFiles.find(f => f.name === sourceName && !f.is_dir);
-    } else {
-      // Upload scenario: check if remote file exists
-      destFile = remoteFiles.find(f => f.name === sourceName && !f.is_dir);
-    }
-
-    // If file doesn't exist, proceed with transfer
-    if (!destFile) {
-      return { action: 'overwrite' };
-    }
-
-    // File exists - check settings for configured behavior
-    try {
-      const savedSettings = localStorage.getItem('aeroftp_settings');
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        const fileExistsAction = settings.fileExistsAction as 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume';
-
-        // If user has configured a default action (not 'ask'), apply it automatically
-        if (fileExistsAction && fileExistsAction !== 'ask') {
-          if (fileExistsAction === 'overwrite' || fileExistsAction === 'resume') {
-            // Resume not fully implemented yet, treat as overwrite
-            return { action: 'overwrite' };
-          }
-          if (fileExistsAction === 'skip') {
-            return { action: 'skip' };
-          }
-          if (fileExistsAction === 'rename') {
-            // Auto-generate unique name: file.txt → file (1).txt
-            const ext = sourceName.includes('.') ? '.' + sourceName.split('.').pop() : '';
-            const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
-            let counter = 1;
-            let newName = `${baseName} (${counter})${ext}`;
-
-            // Find a unique name
-            const existingNames = sourceIsRemote
-              ? localFiles.map(f => f.name)
-              : remoteFiles.map(f => f.name);
-
-            while (existingNames.includes(newName)) {
-              counter++;
-              newName = `${baseName} (${counter})${ext}`;
-            }
-            return { action: 'rename', newName };
-          }
-        }
-      }
-    } catch (e) {
-      // If settings can't be read, fall back to asking
-      console.warn('[checkOverwrite] Could not read settings:', e);
-    }
-
-    // Setting is 'ask' or not set - show dialog and wait for user decision
-    return new Promise((resolve) => {
-      setOverwriteDialog({
-        isOpen: true,
-        source: {
-          name: sourceName,
-          size: sourceSize,
-          modified: sourceModified,
-          isRemote: sourceIsRemote,
-        },
-        destination: {
-          name: destFile!.name,
-          size: destFile!.size || 0,
-          modified: destFile!.modified ? new Date(destFile!.modified) : undefined,
-          isRemote: !sourceIsRemote,
-        },
-        queueCount,
-        resolve: (result) => {
-          // If apply to all is selected, save the decision for current batch
-          if (result.applyToAll) {
-            setOverwriteApplyToAll({ action: result.action, enabled: true });
-          }
-          resolve({ action: result.action, newName: result.newName });
-        },
-      });
-    });
-  };
-
-  // Reset apply-to-all when transfer queue is empty
-  const resetOverwriteSettings = () => {
-    setOverwriteApplyToAll({ action: 'overwrite', enabled: false });
-  };
+  // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
   const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number) => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
@@ -2128,146 +2005,7 @@ const App: React.FC = () => {
     try { await invoke('cancel_transfer'); } catch { }
   };
 
-  // Open DevTools with file preview
-  const openDevToolsPreview = async (file: RemoteFile | LocalFile, isRemote: boolean) => {
-    try {
-      let content = '';
-
-      if (isRemote) {
-        // For remote files, download content to memory
-        const remotePath = (file as RemoteFile).path;
-        content = await invoke<string>('preview_remote_file', { path: remotePath });
-      } else {
-        // For local files, read content
-        const localPath = (file as LocalFile).path;
-        content = await invoke<string>('read_local_file', { path: localPath });
-      }
-
-      setDevToolsPreviewFile({
-        name: file.name,
-        path: isRemote ? (file as RemoteFile).path : (file as LocalFile).path,
-        content,
-        mimeType: 'text/plain',  // Could be improved
-        size: file.size || 0,
-        isRemote,
-      });
-      setDevToolsOpen(true);
-    } catch (error) {
-      notify.error('Preview Failed', String(error));
-    }
-  };
-
-  // Open Universal Preview Modal (for media files: images, audio, video, pdf)
-  const openUniversalPreview = async (file: RemoteFile | LocalFile, isRemote: boolean) => {
-    try {
-      const filePath = isRemote ? (file as RemoteFile).path : (file as LocalFile).path;
-      let blobUrl: string | undefined;
-      let content: string | undefined;
-
-      const category = getPreviewCategory(file.name);
-      const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-      // Show loading toast for large files
-      const fileSize = file.size || 0;
-      const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
-      const loadingToastId = fileSize > 1024 * 1024
-        ? notify.info(`Loading ${file.name}`, `${sizeMB} MB - Please wait...`)
-        : null;
-
-      // MIME type mapping for all media types
-      const mimeMap: Record<string, string> = {
-        // Images
-        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
-        bmp: 'image/bmp', ico: 'image/x-icon',
-        // Audio
-        mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
-        flac: 'audio/flac', aac: 'audio/aac', m4a: 'audio/mp4',
-        // Video
-        mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
-        avi: 'video/x-msvideo', mov: 'video/quicktime', ogv: 'video/ogg',
-      };
-
-      if (!isRemote) {
-        // LOCAL FILES: Load based on category
-        if (category === 'text' || category === 'markdown') {
-          // For text files, load as string
-          content = await invoke<string>('read_local_file', { path: filePath });
-        } else if (category === 'audio' || category === 'video') {
-          // For audio/video: Load as base64 and create blob URL
-          // Note: asset:// protocol doesn't work well on Linux WebKitGTK
-          console.log(`[Preview] Loading ${category} file as blob...`);
-          const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
-
-          const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mimeType });
-          blobUrl = URL.createObjectURL(blob);
-          console.log(`[Preview] Created blob URL for ${category}`);
-        } else {
-          // For images and other binary files, load as base64 and convert to Blob URL
-          const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
-
-          // Convert base64 to Blob for better performance
-          const mimeType = mimeMap[ext] || 'application/octet-stream';
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mimeType });
-          blobUrl = URL.createObjectURL(blob);
-        }
-      } else {
-        // REMOTE FILES: Download based on category
-        if (category === 'text' || category === 'markdown') {
-          // For text files, load as string
-          content = await invoke<string>('preview_remote_file', { path: filePath });
-        } else if (category === 'image') {
-          // For images, load as base64
-          const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath });
-          blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
-        }
-        // For remote audio/video, we'd need to implement streaming download
-        // For now, show a message that remote media preview requires download first
-      }
-
-      // Dismiss loading toast
-      if (loadingToastId) {
-        toast.removeToast(loadingToastId);
-      }
-
-      setUniversalPreviewFile({
-        name: file.name,
-        path: filePath,
-        size: file.size || 0,
-        isRemote,
-        content,
-        blobUrl,
-        mimeType: mimeMap[ext],
-        modified: file.modified || undefined,
-      });
-      setUniversalPreviewOpen(true);
-    } catch (error) {
-      notify.error('Preview Failed', String(error));
-    }
-  };
-
-  // Close Universal Preview
-  const closeUniversalPreview = () => {
-    // Cleanup blob URL if it exists to prevent memory leaks
-    if (universalPreviewFile?.blobUrl && universalPreviewFile.blobUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(universalPreviewFile.blobUrl);
-    }
-    setUniversalPreviewOpen(false);
-    setUniversalPreviewFile(null);
-  };
+  // openDevToolsPreview, openUniversalPreview, closeUniversalPreview provided by usePreview hook
 
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = async (filesOverride?: string[]) => {
@@ -2485,7 +2223,7 @@ const App: React.FC = () => {
     if (names.length === 0) return;
 
     const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: true });
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
       // Get protocol from active session as fallback (outside loop for efficiency)
@@ -2518,13 +2256,27 @@ const App: React.FC = () => {
       }
       await loadRemoteFiles();
       setSelectedRemoteFiles(new Set());
-      // Summary message
+      // Summary message with location and item details
+      // Note: For recursive folder deletes, the backend already logs individual files via
+      // delete_file_complete/delete_dir_complete events. The summary here only covers the
+      // top-level items selected by the user (not the files inside folders).
+      const loc = t('browser.remote');
+      const count = deletedFolders.length + deletedFiles.length;
+      if (count === 1 && deletedFolders.length === 1) {
+        // Single folder: backend already logged "Folder removed: X" via delete_dir_complete,
+        // so just silently mark our start entry as success without duplicating
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_dir_success', { location: loc, filename: deletedFolders[0] }) });
+      } else if (count === 1 && deletedFiles.length === 1) {
+        // Single file: no backend events, this is the only log entry
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_file_success', { location: loc, filename: deletedFiles[0] }) });
+      } else {
+        // Multiple items
+        const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
+        humanLog.updateEntry(logId, { status: 'success', message: `[${loc}] ${t('activity.delete_multiple_done', { count, items: allDeleted.join(', ') })}` });
+      }
       const parts = [];
       if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
       if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-      const count = deletedFolders.length + deletedFiles.length;
-      const msg = t('activity.delete_multiple_success', { count });
-      humanLog.updateEntry(logId, { status: 'success', message: msg });
       notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
     };
 
@@ -2547,7 +2299,7 @@ const App: React.FC = () => {
     if (names.length === 0) return;
 
     const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length });
+      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: false });
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
       for (const name of names) {
@@ -2566,13 +2318,20 @@ const App: React.FC = () => {
       }
       await loadLocalFiles(currentLocalPath);
       setSelectedLocalFiles(new Set());
-      // Summary message
+      // Summary: same logic as remote (see deleteMultipleRemoteFiles)
+      const loc = t('browser.local');
+      const count = deletedFolders.length + deletedFiles.length;
+      if (count === 1 && deletedFolders.length === 1) {
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_dir_success', { location: loc, filename: deletedFolders[0] }) });
+      } else if (count === 1 && deletedFiles.length === 1) {
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_file_success', { location: loc, filename: deletedFiles[0] }) });
+      } else {
+        const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
+        humanLog.updateEntry(logId, { status: 'success', message: `[${loc}] ${t('activity.delete_multiple_done', { count, items: allDeleted.join(', ') })}` });
+      }
       const parts = [];
       if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
       if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-      const count = deletedFolders.length + deletedFiles.length;
-      const msg = t('activity.delete_multiple_success', { count });
-      humanLog.updateEntry(logId, { status: 'success', message: msg });
       notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
     };
 
@@ -2727,7 +2486,7 @@ const App: React.FC = () => {
       onConfirm: async (name: string) => {
         setInputDialog(null);
         if (!name) return;
-        const logId = humanLog.logStart('MKDIR', { foldername: name });
+        const logId = humanLog.logStart('MKDIR', { foldername: name, isRemote });
         try {
           if (isRemote) {
             // Get protocol from active session as fallback
@@ -2749,10 +2508,10 @@ const App: React.FC = () => {
             await invoke('create_local_folder', { path });
             await loadLocalFiles(currentLocalPath);
           }
-          humanLog.logSuccess('MKDIR', { foldername: name }, logId);
+          humanLog.logSuccess('MKDIR', { foldername: name, isRemote }, logId);
           notify.success('Created', name);
         } catch (error) {
-          humanLog.logError('MKDIR', { foldername: name }, logId);
+          humanLog.logError('MKDIR', { foldername: name, isRemote }, logId);
           notify.error('Create Failed', String(error));
         }
       }
@@ -2893,147 +2652,207 @@ const App: React.FC = () => {
       { label: 'Open in File Manager', icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
     ];
 
-    // Compress options (ZIP and 7z)
-    items.push({
-      label: count > 1 ? t('contextMenu.compressZipMultiple').replace('{count}', String(count)) : t('contextMenu.compressToZip'),
-      icon: <Archive size={14} />,
-      action: async () => {
-        try {
-          const pathsToCompress = filesToUpload.map(name => {
-            const f = sortedLocalFiles.find(lf => lf.name === name);
-            return f ? f.path : `${currentLocalPath}/${name}`;
-          });
-
-          const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
-          const outputPath = `${currentLocalPath}/${baseName}.zip`;
-
-          notify.info(t('contextMenu.compressing'), `Creating ${baseName}.zip`);
-          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
-          await invoke<string>('compress_files', { paths: pathsToCompress, outputPath });
-          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
-          notify.success('Compressed!', `Created ${baseName}.zip`);
-          await loadLocalFiles(currentLocalPath);
-        } catch (err) {
-          activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
-          notify.error(t('contextMenu.compressionFailed'), String(err));
-        }
-      }
+    // Helper: get paths for compression
+    const getCompressPaths = () => filesToUpload.map(name => {
+      const f = sortedLocalFiles.find(lf => lf.name === name);
+      return f ? f.path : `${currentLocalPath}/${name}`;
     });
+    const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
 
-    // 7z compression (better compression ratio)
+    // Compress submenu with all supported formats
     items.push({
-      label: count > 1 ? t('contextMenu.compress7zMultiple').replace('{count}', String(count)) : t('contextMenu.compressTo7z'),
+      label: t('contextMenu.compressSubmenu'),
       icon: <Archive size={14} />,
-      divider: true,
-      action: async () => {
-        try {
-          const pathsToCompress = filesToUpload.map(name => {
-            const f = sortedLocalFiles.find(lf => lf.name === name);
-            return f ? f.path : `${currentLocalPath}/${name}`;
-          });
-
-          const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
-          const outputPath = `${currentLocalPath}/${baseName}.7z`;
-
-          notify.info(t('contextMenu.compressing'), t('contextMenu.creating7z').replace('{name}', `${baseName}.7z`));
-          const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
-          await invoke<string>('compress_7z', { paths: pathsToCompress, outputPath, password: null });
-          activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z (${count} item${count > 1 ? 's' : ''})` });
-          notify.success('Compressed!', `Created ${baseName}.7z`);
-          await loadLocalFiles(currentLocalPath);
-        } catch (err) {
-          activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
-          notify.error(t('contextMenu.compressionFailed'), String(err));
-        }
-      }
-    });
-
-    // Extract option (for ZIP and 7z files)
-    const isZipArchive = !file.is_dir && /\.(zip|ZIP)$/i.test(file.name);
-    const is7zArchive = !file.is_dir && /\.(7z)$/i.test(file.name);
-    const isArchive = isZipArchive || is7zArchive;
-
-    if (isArchive && count === 1) {
-      if (isZipArchive) {
-        // ZIP extraction (no password support yet)
-        items.push({
-          label: t('contextMenu.extractZipHere'),
-          icon: <FolderOpen size={14} />,
+      action: () => {},  // Parent item - no direct action
+      children: [
+        {
+          label: 'ZIP',
+          icon: <Archive size={14} />,
           action: async () => {
             try {
-              notify.info(t('contextMenu.extracting'), file.name);
-              const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
-              await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath });
-              activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
-              notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
+              const outputPath = `${currentLocalPath}/${baseName}.zip`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.zip`);
+              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
+              await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Compressed!', `Created ${baseName}.zip`);
               await loadLocalFiles(currentLocalPath);
             } catch (err) {
-              activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.extractionFailed'), String(err));
+              activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
             }
           }
-        });
-      } else if (is7zArchive) {
-        // 7z extraction - check if encrypted first
-        items.push({
-          label: t('contextMenu.extract7zHere'),
-          icon: <FolderOpen size={14} />,
+        },
+        {
+          label: '7z',
+          icon: <Archive size={14} />,
           action: async () => {
             try {
-              // Check if encrypted
-              const isEncrypted = await invoke<boolean>('is_7z_encrypted', { archivePath: file.path });
-
-              if (isEncrypted) {
-                // Show password dialog
-                setInputDialog({
-                  title: t('contextMenu.passwordRequired'),
-                  defaultValue: '',
-                  isPassword: true,
-                  onConfirm: async (password: string) => {
-                    setInputDialog(null);
-                    if (!password) {
-                      notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
-                      return;
-                    }
-                    try {
-                      notify.info(t('contextMenu.extracting'), file.name);
-                      const logId = activityLog.log('INFO', `Extracting encrypted ${file.name}...`, 'running');
-                      await invoke<string>('extract_7z', {
-                        archivePath: file.path,
-                        outputDir: currentLocalPath,
-                        password,
-                        createSubfolder: true
-                      });
-                      activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
-                      notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
-                      await loadLocalFiles(currentLocalPath);
-                    } catch (err) {
-                      activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
-                      notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
-                    }
-                  }
-                });
-              } else {
-                // Extract without password
-                notify.info(t('contextMenu.extracting'), file.name);
-                const logId = activityLog.log('INFO', `Extracting ${file.name}...`, 'running');
-                await invoke<string>('extract_7z', {
-                  archivePath: file.path,
-                  outputDir: currentLocalPath,
-                  password: null,
-                  createSubfolder: true
-                });
-                activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}` });
-                notify.success('Extracted!', `Files extracted to ${currentLocalPath}`);
-                await loadLocalFiles(currentLocalPath);
-              }
+              const outputPath = `${currentLocalPath}/${baseName}.7z`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.7z`);
+              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
+              await invoke<string>('compress_7z', { paths: getCompressPaths(), outputPath, password: null });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Compressed!', `Created ${baseName}.7z`);
+              await loadLocalFiles(currentLocalPath);
             } catch (err) {
-              activityLog.log('ERROR', `7z extraction failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.extractionFailed'), String(err));
+              activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
             }
           }
-        });
-      }
+        },
+        {
+          label: 'TAR',
+          icon: <Archive size={14} />,
+          divider: true,
+          action: async () => {
+            try {
+              const outputPath = `${currentLocalPath}/${baseName}.tar`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.tar`);
+              const logId = activityLog.log('INFO', `Archiving ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar...`, 'running');
+              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar' });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Archived!', `Created ${baseName}.tar`);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `TAR failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
+            }
+          }
+        },
+        {
+          label: 'TAR.GZ',
+          icon: <Archive size={14} />,
+          action: async () => {
+            try {
+              const outputPath = `${currentLocalPath}/${baseName}.tar.gz`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.tar.gz`);
+              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.gz...`, 'running');
+              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.gz' });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.gz (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Compressed!', `Created ${baseName}.tar.gz`);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `TAR.GZ failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
+            }
+          }
+        },
+        {
+          label: 'TAR.XZ',
+          icon: <Archive size={14} />,
+          action: async () => {
+            try {
+              const outputPath = `${currentLocalPath}/${baseName}.tar.xz`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.tar.xz`);
+              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.xz...`, 'running');
+              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.xz' });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.xz (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Compressed!', `Created ${baseName}.tar.xz`);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `TAR.XZ failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
+            }
+          }
+        },
+        {
+          label: 'TAR.BZ2',
+          icon: <Archive size={14} />,
+          action: async () => {
+            try {
+              const outputPath = `${currentLocalPath}/${baseName}.tar.bz2`;
+              notify.info(t('contextMenu.compressing'), `${baseName}.tar.bz2`);
+              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.bz2...`, 'running');
+              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.bz2' });
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.bz2 (${count} item${count > 1 ? 's' : ''})` });
+              notify.success('Compressed!', `Created ${baseName}.tar.bz2`);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `TAR.BZ2 failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
+            }
+          }
+        },
+      ]
+    });
+
+    // Extract option (for archive files - ZIP, 7z, TAR variants)
+    const isZipArchive = !file.is_dir && /\.(zip)$/i.test(file.name);
+    const is7zArchive = !file.is_dir && /\.(7z)$/i.test(file.name);
+    const isTarArchive = !file.is_dir && /\.(tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(file.name);
+    const isArchive = isZipArchive || is7zArchive || isTarArchive;
+
+    if (isArchive && count === 1) {
+      const doExtract = async (createSubfolder: boolean) => {
+        try {
+          if (is7zArchive) {
+            const isEncrypted = await invoke<boolean>('is_7z_encrypted', { archivePath: file.path });
+            if (isEncrypted) {
+              setInputDialog({
+                title: t('contextMenu.passwordRequired'),
+                defaultValue: '',
+                isPassword: true,
+                onConfirm: async (password: string) => {
+                  setInputDialog(null);
+                  if (!password) {
+                    notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
+                    return;
+                  }
+                  try {
+                    const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
+                    notify.info(t('contextMenu.extracting'), file.name);
+                    const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                    await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                    activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+                    notify.success('Extracted!', `Files extracted to ${dest}`);
+                    await loadLocalFiles(currentLocalPath);
+                  } catch (err) {
+                    activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+                    notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
+                  }
+                }
+              });
+              return;
+            }
+          }
+          const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
+          notify.info(t('contextMenu.extracting'), file.name);
+          const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+          if (isZipArchive) {
+            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
+          } else if (is7zArchive) {
+            await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+          } else if (isTarArchive) {
+            await invoke<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
+          }
+          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+          notify.success('Extracted!', `Files extracted to ${dest}`);
+          await loadLocalFiles(currentLocalPath);
+        } catch (err) {
+          activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+          notify.error(t('contextMenu.extractionFailed'), String(err));
+        }
+      };
+
+      items.push({
+        label: t('contextMenu.extractSubmenu'),
+        icon: <FolderOpen size={14} />,
+        divider: true,
+        action: () => {},
+        children: [
+          {
+            label: t('contextMenu.extractHere'),
+            icon: <FolderOpen size={14} />,
+            action: () => doExtract(false),
+          },
+          {
+            label: t('contextMenu.extractToFolder'),
+            icon: <FolderOpen size={14} />,
+            action: () => doExtract(true),
+          },
+        ],
+      });
     }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
@@ -3056,158 +2875,6 @@ const App: React.FC = () => {
 
     contextMenu.show(e, items);
   };
-
-  // ==================== DRAG & DROP HANDLERS ====================
-
-  // Start dragging file(s)
-  const handleDragStart = (
-    e: React.DragEvent,
-    file: { name: string; path: string; is_dir: boolean },
-    isRemote: boolean,
-    allSelected: Set<string>,
-    allFiles: { name: string; path: string }[]
-  ) => {
-    // Don't allow dragging ".." (go up)
-    if (file.name === '..') {
-      e.preventDefault();
-      return;
-    }
-
-    // Get all selected files, or just the dragged file if not in selection
-    const filesToDrag = allSelected.has(file.name)
-      ? allFiles.filter(f => allSelected.has(f.name))
-      : [file];
-
-    const sourceDir = isRemote ? currentRemotePath : currentLocalPath;
-
-    setDragData({
-      files: filesToDrag.map(f => f.name),
-      sourcePaths: filesToDrag.map(f => f.path),
-      isRemote,
-      sourceDir,
-    });
-
-    // Set drag image/effect
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
-  };
-
-  // Allow dropping on folders
-  const handleDragOver = (
-    e: React.DragEvent,
-    targetPath: string,
-    isFolder: boolean,
-    isRemotePanel: boolean
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Only allow drop on folders in the same panel
-    if (!dragData || dragData.isRemote !== isRemotePanel || !isFolder) {
-      e.dataTransfer.dropEffect = 'none';
-      setDropTargetPath(null);
-      return;
-    }
-
-    // Don't allow dropping on source directory or parent (..)
-    const targetName = targetPath.split('/').pop();
-    if (targetPath === dragData.sourceDir || targetName === '..') {
-      e.dataTransfer.dropEffect = 'none';
-      setDropTargetPath(null);
-      return;
-    }
-
-    // Don't allow dropping a folder into itself
-    if (dragData.sourcePaths.includes(targetPath)) {
-      e.dataTransfer.dropEffect = 'none';
-      setDropTargetPath(null);
-      return;
-    }
-
-    e.dataTransfer.dropEffect = 'move';
-    setDropTargetPath(targetPath);
-  };
-
-  // Handle drop - move files to target folder
-  const handleDrop = async (
-    e: React.DragEvent,
-    targetPath: string,
-    isRemotePanel: boolean
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!dragData || dragData.isRemote !== isRemotePanel) {
-      setDragData(null);
-      setDropTargetPath(null);
-      return;
-    }
-
-    const { files, sourcePaths, isRemote } = dragData;
-    setDragData(null);
-    setDropTargetPath(null);
-
-    // Move each file
-    // Get protocol from active session as fallback (outside loop for efficiency)
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
-
-    for (let i = 0; i < files.length; i++) {
-      const fileName = files[i];
-      const sourcePath = sourcePaths[i];
-      const destPath = `${targetPath}/${fileName}`;
-
-      // Log move start
-      const logId = humanLog.logStart('MOVE', { isRemote, filename: fileName });
-
-      try {
-        if (isRemote) {
-          // Remote file move (rename)
-          if (isProvider) {
-            await invoke('provider_rename', { from: sourcePath, to: destPath });
-          } else {
-            await invoke('ftp_rename', { from: sourcePath, to: destPath });
-          }
-        } else {
-          // Local file move
-          await invoke('rename_local_file', { from: sourcePath, to: destPath });
-        }
-        // Log move success
-        humanLog.logSuccess('MOVE', { isRemote, filename: fileName, destination: targetPath }, logId);
-        notify.success(`Moved ${fileName}`, `→ ${targetPath}`);
-      } catch (err) {
-        // Log move error
-        humanLog.logError('MOVE', { isRemote, filename: fileName }, logId);
-        notify.error(`Failed to move ${fileName}`, String(err));
-      }
-    }
-
-    // Refresh the file list
-    if (isRemote) {
-      await loadRemoteFiles();
-    } else {
-      await loadLocalFiles(currentLocalPath);
-    }
-  };
-
-  // Clean up drag state
-  const handleDragEnd = () => {
-    setDragData(null);
-    setDropTargetPath(null);
-  };
-
-  // Handle drag leave
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    // Only clear if leaving the drop target completely
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setDropTargetPath(null);
-    }
-  };
-
-  // ==================== END DRAG & DROP ====================
 
   const handleRemoteFileAction = async (file: RemoteFile) => {
     if (file.is_dir) {
@@ -3676,10 +3343,74 @@ const App: React.FC = () => {
                 >
                   {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
                 </button>
+                {/* Upload / Download dynamic button */}
+                {isConnected && (
+                  <button
+                    onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
+                    disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0}
+                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
+                      (activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0
+                        ? 'bg-green-500 hover:bg-green-600 text-white shadow-sm hover:shadow-md'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    }`}
+                    title={activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                  >
+                    {activePanel === 'local' ? <Upload size={16} /> : <Download size={16} />}
+                    {activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                    {(() => {
+                      const count = activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size;
+                      return count > 0 ? (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-green-600 text-[10px] font-bold shadow-sm border border-green-300">
+                          {count}
+                        </span>
+                      ) : null;
+                    })()}
+                  </button>
+                )}
+                {/* Delete button */}
+                <button
+                  onClick={() => {
+                    if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+                      deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
+                    } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+                      deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
+                    }
+                  }}
+                  disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0}
+                  className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
+                    (activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0
+                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md'
+                      : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                  }`}
+                  title={t('contextMenu.delete')}
+                >
+                  <Trash2 size={16} />
+                  {(() => {
+                    const count = activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size;
+                    return count > 0 ? (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-red-600 text-[10px] font-bold shadow-sm border border-red-300">
+                        {count}
+                      </span>
+                    ) : null;
+                  })()}
+                </button>
+                {/* Separator */}
+                {isConnected && (
+                  <div className="w-px h-7 bg-gray-300 dark:bg-gray-600 mx-1" />
+                )}
                 {isConnected && (
                   <>
-                    <button onClick={() => uploadMultipleFiles()} className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all" title={t('browser.uploadFiles')}>
-                      <Upload size={16} /> {t('browser.uploadFiles')}
+                    <button
+                      onClick={cancelTransfer}
+                      disabled={!activeTransfer && !hasQueueActivity}
+                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
+                        activeTransfer || hasQueueActivity
+                          ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                          : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                      }`}
+                      title={t('transfer.cancelAll')}
+                    >
+                      <XCircle size={16} />
                     </button>
                     <button
                       onClick={toggleSyncNavigation}
@@ -3707,6 +3438,7 @@ const App: React.FC = () => {
                 <div className="relative hidden lg:block">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
+                    ref={localSearchRef}
                     type="text"
                     placeholder="Filter local files..."
                     value={localSearchFilter}
@@ -3732,7 +3464,7 @@ const App: React.FC = () => {
                 <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                   <div className="flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden">
                     {/* Protocol icon inside address bar (like Chrome favicon) */}
-                    <div className="flex-shrink-0 px-2.5 flex items-center" title={(() => {
+                    <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
                         const protocol = connectionParams.protocol || 'ftp';
                         switch (protocol) {
                           case 's3': return 'Amazon S3';
@@ -3768,10 +3500,22 @@ const App: React.FC = () => {
                       onChange={(e) => setCurrentRemotePath(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
                       disabled={!isConnected}
-                      className="flex-1 px-2.5 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900"
+                      className="flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900"
                       title={isConnected ? "Click to edit path, Enter to navigate" : "Not connected to server"}
                       placeholder="/path/to/directory"
                     />
+                    <button
+                      onClick={(e) => {
+                        const btn = e.currentTarget;
+                        btn.querySelector('svg')?.classList.add('animate-spin');
+                        setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                        loadRemoteFiles();
+                      }}
+                      className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      title={t('common.refresh')}
+                    >
+                      <RefreshCw size={13} />
+                    </button>
                   </div>
                 </div>
                 <div className="flex-1 overflow-auto">
@@ -3822,6 +3566,7 @@ const App: React.FC = () => {
                             onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
                             onClick={(e) => {
                               if (file.name === '..') return;
+                              setActivePanel('remote');
                               if (e.shiftKey && lastSelectedRemoteIndex !== null) {
                                 // Shift+click: select range
                                 const start = Math.min(lastSelectedRemoteIndex, i);
@@ -3838,8 +3583,12 @@ const App: React.FC = () => {
                                 });
                                 setLastSelectedRemoteIndex(i);
                               } else {
-                                // Normal click: single selection
-                                setSelectedRemoteFiles(new Set([file.name]));
+                                // Normal click: toggle if already sole selection, otherwise select
+                                if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
+                                  setSelectedRemoteFiles(new Set());
+                                } else {
+                                  setSelectedRemoteFiles(new Set([file.name]));
+                                }
                                 setLastSelectedRemoteIndex(i);
                               }
                             }}
@@ -3894,6 +3643,7 @@ const App: React.FC = () => {
                           } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           onClick={(e) => {
                             if (file.name === '..') return;
+                            setActivePanel('remote');
                             if (e.shiftKey && lastSelectedRemoteIndex !== null) {
                               const start = Math.min(lastSelectedRemoteIndex, i);
                               const end = Math.max(lastSelectedRemoteIndex, i);
@@ -3908,7 +3658,11 @@ const App: React.FC = () => {
                               });
                               setLastSelectedRemoteIndex(i);
                             } else {
-                              setSelectedRemoteFiles(new Set([file.name]));
+                              if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
+                                setSelectedRemoteFiles(new Set());
+                              } else {
+                                setSelectedRemoteFiles(new Set([file.name]));
+                              }
                               setLastSelectedRemoteIndex(i);
                             }
                           }}
@@ -3948,7 +3702,7 @@ const App: React.FC = () => {
                   <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                     {/* Local icon inside address bar (like Chrome favicon) */}
                     <div
-                      className="flex-shrink-0 px-2.5 flex items-center"
+                      className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
                       title={isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
                     >
                       {isLocalPathCoherent ? (
@@ -3962,10 +3716,22 @@ const App: React.FC = () => {
                       value={currentLocalPath}
                       onChange={(e) => setCurrentLocalPath(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
-                      className={`flex-1 px-2.5 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                      className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
                       title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "⚠️ Local path doesn't match the connected server"}
                       placeholder="/path/to/local/directory"
                     />
+                    <button
+                      onClick={(e) => {
+                        const btn = e.currentTarget;
+                        btn.querySelector('svg')?.classList.add('animate-spin');
+                        setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                        loadLocalFiles(currentLocalPath);
+                      }}
+                      className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      title={t('common.refresh')}
+                    >
+                      <RefreshCw size={13} />
+                    </button>
                   </div>
                 </div>
                 <div className="flex-1 overflow-auto">
@@ -4002,6 +3768,7 @@ const App: React.FC = () => {
                             onDrop={(e) => file.is_dir && handleDrop(e, file.path, false)}
                             onClick={(e) => {
                               if (file.name === '..') return;
+                              setActivePanel('local');
                               if (e.shiftKey && lastSelectedLocalIndex !== null) {
                                 const start = Math.min(lastSelectedLocalIndex, i);
                                 const end = Math.max(lastSelectedLocalIndex, i);
@@ -4016,8 +3783,13 @@ const App: React.FC = () => {
                                 });
                                 setLastSelectedLocalIndex(i);
                               } else {
-                                setSelectedLocalFiles(new Set([file.name]));
-                                setPreviewFile(file);
+                                if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
+                                  setSelectedLocalFiles(new Set());
+                                  setPreviewFile(null);
+                                } else {
+                                  setSelectedLocalFiles(new Set([file.name]));
+                                  setPreviewFile(file);
+                                }
                                 setLastSelectedLocalIndex(i);
                               }
                             }}
@@ -4091,6 +3863,7 @@ const App: React.FC = () => {
                           } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           onClick={(e) => {
                             if (file.name === '..') return;
+                            setActivePanel('local');
                             if (e.shiftKey && lastSelectedLocalIndex !== null) {
                               const start = Math.min(lastSelectedLocalIndex, i);
                               const end = Math.max(lastSelectedLocalIndex, i);
@@ -4105,8 +3878,13 @@ const App: React.FC = () => {
                               });
                               setLastSelectedLocalIndex(i);
                             } else {
-                              setSelectedLocalFiles(new Set([file.name]));
-                              setPreviewFile(file);
+                              if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
+                                setSelectedLocalFiles(new Set());
+                                setPreviewFile(null);
+                              } else {
+                                setSelectedLocalFiles(new Set([file.name]));
+                                setPreviewFile(file);
+                              }
                               setLastSelectedLocalIndex(i);
                             }
                           }}

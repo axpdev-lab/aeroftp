@@ -152,7 +152,10 @@
             "properties": "Propriedades",
             "permissions": "Permissões",
             "compress": "Compactar",
-            "extract": "Extrair"
+            "compressSubmenu": "Comprimir",
+            "extract": "Extrair",
+            "extractSubmenu": "Extrair",
+            "extractTarHere": "Extrair TAR aqui"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Pasta removida: {filename}",
             "delete_task_success": "[{location}] Operação concluída: {filename}",
             "delete_error": "[{location}] Não foi possível remover {filename}",
-            "delete_multiple_start": "Excluindo {count} itens...",
+            "delete_multiple_start": "[{location}] Excluindo {count} itens...",
             "delete_multiple_success": "Limpeza concluída: {count} removidos",
+            "delete_multiple_done": "Eliminados {count} itens: {items}",
             "mkdir_start": "[{location}] Criando pasta {foldername}...",
             "mkdir_success": "[{location}] Pasta {foldername} criada",
             "mkdir_error": "[{location}] Não foi possível criar pasta",

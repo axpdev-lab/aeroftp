@@ -36,5 +36,12 @@ export {
   Features
 } from './useAnalytics';
 
+// Modularized hooks (extracted from App.tsx)
+export { useSettings } from './useSettings';
+export { useAutoUpdate } from './useAutoUpdate';
+export type { UpdateInfo } from './useAutoUpdate';
+export { usePreview } from './usePreview';
+export { useOverwriteCheck } from './useOverwriteCheck';
+
 // Re-export types for convenience
 export type { SortField, SortOrder } from './useFileBrowser';

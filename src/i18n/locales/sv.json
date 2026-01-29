@@ -152,7 +152,10 @@
             "properties": "Egenskaper",
             "permissions": "Behörigheter",
             "compress": "Komprimera",
-            "extract": "Extrahera"
+            "compressSubmenu": "Komprimera",
+            "extract": "Extrahera",
+            "extractSubmenu": "Extrahera",
+            "extractTarHere": "Extrahera TAR här"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mapp raderad: {filename}",
             "delete_task_success": "[{location}] Operation slutförd: {filename}",
             "delete_error": "[{location}] Kunde inte radera {filename}",
-            "delete_multiple_start": "Raderar {count} objekt...",
+            "delete_multiple_start": "[{location}] Raderar {count} objekt...",
             "delete_multiple_success": "Rensning slutförd: {count} raderade",
+            "delete_multiple_done": "Raderade {count} objekt: {items}",
             "mkdir_start": "[{location}] Skapar mapp {foldername}...",
             "mkdir_success": "[{location}] Mapp {foldername} skapad",
             "mkdir_error": "[{location}] Kunde inte skapa mapp",

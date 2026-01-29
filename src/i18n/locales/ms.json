@@ -152,7 +152,10 @@
             "properties": "Sifat",
             "permissions": "Kebenaran",
             "compress": "Mampatkan",
-            "extract": "Ekstrak"
+            "compressSubmenu": "Mampat",
+            "extract": "Ekstrak",
+            "extractSubmenu": "Ekstrak",
+            "extractTarHere": "Ekstrak TAR di sini"
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Folder dipadam: {filename}",
             "delete_task_success": "[{location}] Operasi selesai: {filename}",
             "delete_error": "[{location}] Tidak dapat memadam {filename}",
-            "delete_multiple_start": "Memadam {count} item...",
+            "delete_multiple_start": "[{location}] Memadam {count} item...",
             "delete_multiple_success": "Pembersihan selesai: {count} dipadam",
+            "delete_multiple_done": "Dipadam {count} item: {items}",
             "mkdir_start": "[{location}] Mencipta folder {foldername}...",
             "mkdir_success": "[{location}] Folder dicipta {foldername}",
             "mkdir_error": "[{location}] Tidak dapat mencipta folder",

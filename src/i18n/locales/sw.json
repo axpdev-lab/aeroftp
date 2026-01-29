@@ -152,7 +152,10 @@
             "properties": "Mali",
             "permissions": "Ruhusa",
             "compress": "Bana",
-            "extract": "Toa"
+            "compressSubmenu": "Finya",
+            "extract": "Toa",
+            "extractSubmenu": "Chapua",
+            "extractTarHere": "Chapua TAR hapa"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Folda imefutwa: {filename}",
             "delete_task_success": "[{location}] Operesheni imekamilika: {filename}",
             "delete_error": "[{location}] Haiwezekani kufuta {filename}",
-            "delete_multiple_start": "Inafuta vipengele {count}...",
+            "delete_multiple_start": "[{location}] Inafuta vipengele {count}...",
             "delete_multiple_success": "Usafishaji umekamilika: {count} vimefutwa",
+            "delete_multiple_done": "Imefuta vipengele {count}: {items}",
             "mkdir_start": "[{location}] Inaunda folda {foldername}...",
             "mkdir_success": "[{location}] Folda imeundwa {foldername}",
             "mkdir_error": "[{location}] Haiwezekani kuunda folda",

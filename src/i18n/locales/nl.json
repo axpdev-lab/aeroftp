@@ -152,7 +152,10 @@
             "properties": "Eigenschappen",
             "permissions": "Rechten",
             "compress": "Comprimeren",
-            "extract": "Uitpakken"
+            "compressSubmenu": "Comprimeren",
+            "extract": "Uitpakken",
+            "extractSubmenu": "Uitpakken",
+            "extractTarHere": "TAR hier uitpakken"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Map verwijderd: {filename}",
             "delete_task_success": "[{location}] Bewerking voltooid: {filename}",
             "delete_error": "[{location}] Kon {filename} niet verwijderen",
-            "delete_multiple_start": "{count} items verwijderen...",
+            "delete_multiple_start": "[{location}] {count} items verwijderen...",
             "delete_multiple_success": "Opruimen voltooid: {count} verwijderd",
+            "delete_multiple_done": "{count} items verwijderd: {items}",
             "mkdir_start": "[{location}] Map {foldername} aanmaken...",
             "mkdir_success": "[{location}] Map {foldername} aangemaakt",
             "mkdir_error": "[{location}] Kon map niet aanmaken",

@@ -1,12 +1,20 @@
 /**
  * useDragAndDrop Hook
- * Handles drag and drop functionality for moving files within the same panel
- * Supports both FTP and Provider protocols
+ * Wired into App.tsx during modularization (v1.3.1) - template existed since v1.2.x
+ *
+ * Handles intra-panel drag & drop file moves. Supports both FTP (ftp_rename)
+ * and Provider protocols (provider_rename) for remote moves, and rename_local_file
+ * for local moves. Validates drop targets to prevent self-drops and parent drops.
+ *
+ * Props: notify, humanLog, currentRemotePath, currentLocalPath, loadRemoteFiles,
+ *        loadLocalFiles, activeSessionId, sessions, connectionParams
+ * Returns: dragData, dropTargetPath, handleDragStart/Over/Drop/End/Leave,
+ *          isInDragSource, isDropTarget
  */
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useHumanizedLog } from './useHumanizedLog';
+import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
 
 // List of provider protocols (non-FTP)
 const PROVIDER_PROTOCOLS = ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'];
@@ -23,12 +31,16 @@ interface UseDragAndDropParams {
         success: (title: string, message?: string) => string | null;
         error: (title: string, message?: string) => string;
     };
+    humanLog: {
+        logStart: (operation: HumanizedOperationType, params?: HumanizedLogParams) => string;
+        logSuccess: (operation: HumanizedOperationType, params?: HumanizedLogParams, logId?: string) => string;
+        logError: (operation: HumanizedOperationType, params?: HumanizedLogParams, logId?: string) => string;
+    };
     currentRemotePath: string;
     currentLocalPath: string;
     loadRemoteFiles: () => Promise<void>;
     loadLocalFiles: (path: string) => Promise<void>;
     // Provider detection
-    protocol?: string;
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
@@ -36,17 +48,15 @@ interface UseDragAndDropParams {
 
 export function useDragAndDrop({
     notify,
+    humanLog,
     currentRemotePath,
     currentLocalPath,
     loadRemoteFiles,
     loadLocalFiles,
-    protocol,
     activeSessionId,
     sessions,
     connectionParams,
 }: UseDragAndDropParams) {
-
-    const humanLog = useHumanizedLog();
 
     // Drag state
     const [dragData, setDragData] = useState<DragData | null>(null);
@@ -54,14 +64,13 @@ export function useDragAndDrop({
 
     // Helper: Get effective protocol from various sources
     const getEffectiveProtocol = useCallback(() => {
-        if (protocol) return protocol;
         if (connectionParams?.protocol) return connectionParams.protocol;
         if (sessions && activeSessionId) {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             return activeSession?.connectionParams?.protocol;
         }
         return undefined;
-    }, [protocol, connectionParams, sessions, activeSessionId]);
+    }, [connectionParams, sessions, activeSessionId]);
 
     // Helper: Check if current connection is a Provider (non-FTP)
     const isProvider = useCallback(() => {

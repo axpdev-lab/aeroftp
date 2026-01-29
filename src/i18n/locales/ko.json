@@ -152,7 +152,10 @@
             "properties": "속성",
             "permissions": "권한",
             "compress": "압축",
-            "extract": "압축 풀기"
+            "compressSubmenu": "압축",
+            "extract": "압축 풀기",
+            "extractSubmenu": "추출",
+            "extractTarHere": "여기에 TAR 추출"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] 폴더 삭제됨: {filename}",
             "delete_task_success": "[{location}] 작업 완료: {filename}",
             "delete_error": "[{location}] {filename} 삭제 불가",
-            "delete_multiple_start": "{count}개 항목 삭제 중...",
+            "delete_multiple_start": "[{location}] {count}개 항목 삭제 중...",
             "delete_multiple_success": "정리 완료: {count}개 삭제됨",
+            "delete_multiple_done": "{count}개 항목 삭제됨: {items}",
             "mkdir_start": "[{location}] 폴더 {foldername} 생성 중...",
             "mkdir_success": "[{location}] 폴더 {foldername} 생성됨",
             "mkdir_error": "[{location}] 폴더 생성 불가",

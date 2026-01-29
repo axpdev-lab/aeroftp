@@ -152,7 +152,10 @@
             "properties": "Свойства",
             "permissions": "Права",
             "compress": "Компресирай",
-            "extract": "Извлечи"
+            "compressSubmenu": "Компресиране",
+            "extract": "Извлечи",
+            "extractSubmenu": "Извличане",
+            "extractTarHere": "Извличане на TAR тук"
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Папката премахната: {filename}",
             "delete_task_success": "[{location}] Операцията завърши: {filename}",
             "delete_error": "[{location}] Не може да се премахне {filename}",
-            "delete_multiple_start": "Изтриване на {count} елемента...",
+            "delete_multiple_start": "[{location}] Изтриване на {count} елемента...",
             "delete_multiple_success": "Почистването завърши: {count} премахнати",
+            "delete_multiple_done": "Изтрити {count} елемента: {items}",
             "mkdir_start": "[{location}] Създаване на папка {foldername}...",
             "mkdir_success": "[{location}] Папка създадена {foldername}",
             "mkdir_error": "[{location}] Не може да се създаде папка",

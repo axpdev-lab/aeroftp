@@ -152,7 +152,10 @@
             "properties": "លក្ខណៈសម្បត្តិ",
             "permissions": "សិទ្ធិ",
             "compress": "បង្ហាប់",
-            "extract": "ស្រង់ចេញ"
+            "compressSubmenu": "បង្ហាប់",
+            "extract": "ស្រង់ចេញ",
+            "extractSubmenu": "ស្រង់",
+            "extractTarHere": "ស្រង់ TAR នៅទីនេះ"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] ថតបានដកចេញ៖ {filename}",
             "delete_task_success": "[{location}] ប្រតិបត្តិការបានបញ្ចប់៖ {filename}",
             "delete_error": "[{location}] មិនអាចដកចេញ {filename}",
-            "delete_multiple_start": "កំពុងលុប {count} ធាតុ...",
+            "delete_multiple_start": "[{location}] កំពុងលុប {count} ធាតុ...",
             "delete_multiple_success": "ការសម្អាតបានបញ្ចប់៖ {count} បានដកចេញ",
+            "delete_multiple_done": "បានលុប {count} ធាតុ: {items}",
             "mkdir_start": "[{location}] កំពុងបង្កើតថត {foldername}...",
             "mkdir_success": "[{location}] បានបង្កើតថត {foldername}",
             "mkdir_error": "[{location}] មិនអាចបង្កើតថត",

@@ -152,7 +152,10 @@
             "properties": "Propietats",
             "permissions": "Permisos",
             "compress": "Comprimir",
-            "extract": "Extreure"
+            "compressSubmenu": "Comprimir",
+            "extract": "Extreure",
+            "extractSubmenu": "Extreure",
+            "extractTarHere": "Extreure TAR aquí"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Carpeta eliminada: {filename}",
             "delete_task_success": "[{location}] Operacio completada: {filename}",
             "delete_error": "[{location}] No s'ha pogut eliminar {filename}",
-            "delete_multiple_start": "Eliminant {count} elements...",
+            "delete_multiple_start": "[{location}] Eliminant {count} elements...",
             "delete_multiple_success": "Neteja completada: {count} eliminats",
+            "delete_multiple_done": "Eliminats {count} elements: {items}",
             "mkdir_start": "[{location}] Creant carpeta {foldername}...",
             "mkdir_success": "[{location}] Carpeta creada {foldername}",
             "mkdir_error": "[{location}] No s'ha pogut crear la carpeta",

@@ -152,7 +152,10 @@
             "properties": "Propriétés",
             "permissions": "Permissions",
             "compress": "Compresser",
-            "extract": "Extraire"
+            "compressSubmenu": "Compresser",
+            "extract": "Extraire",
+            "extractSubmenu": "Extraire",
+            "extractTarHere": "Extraire TAR ici"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -388,8 +391,9 @@
             "delete_file_success": "[{location}] Fichier supprimé: {filename}",
             "delete_dir_success": "[{location}] Dossier supprimé: {filename}",
             "delete_task_success": "[{location}] Opération terminée: {filename}",
-            "delete_multiple_start": "Suppression de {count} éléments...",
+            "delete_multiple_start": "[{location}] Suppression de {count} éléments...",
             "delete_multiple_success": "Nettoyage terminé: {count} supprimés",
+            "delete_multiple_done": "Supprimé {count} éléments : {items}",
             "loaded_items": "{count} éléments chargés depuis {provider}",
             "upload_skipped": "[Remote] Skipped (file exists): {filename}",
             "upload_overwrite": "[Remote] Overwriting: {filename}",

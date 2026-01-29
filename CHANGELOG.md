@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-01-29
+
+### Multi-Format Archives + Keyboard Shortcuts + UX Overhaul
+
+Feature-rich release adding TAR archive family support, full keyboard navigation, smart toolbar redesign, and extraction submenu.
+
+#### Added - TAR Archive Family (Backend)
+- **TAR Compression**: Create `.tar`, `.tar.gz`, `.tar.xz`, `.tar.bz2` archives
+  - Rust backend using `tar`, `flate2`, `xz2`, `bzip2` crates
+  - Single command `compress_tar` with format parameter
+  - Recursive folder support with relative paths
+- **TAR Extraction**: Auto-detect format from extension
+  - Supports `.tar`, `.tar.gz`, `.tgz`, `.tar.xz`, `.txz`, `.tar.bz2`, `.tbz2`
+  - `create_subfolder` option for organized extraction
+- **ZIP Extraction**: Added `create_subfolder` parameter (was missing)
+
+#### Added - Context Menu Submenus
+- **Compress Submenu**: Single "Compress" item expands to 6 formats (ZIP, 7z, TAR, TAR.GZ, TAR.XZ, TAR.BZ2)
+  - Hover-to-expand with `createPortal` rendering (avoids mouseLeave issues)
+  - 200ms delayed close for smooth mouse transitions
+  - Auto-repositioning to stay within viewport
+- **Extract Submenu**: "Extract" item expands to "Extract Here" and "Extract to Folder"
+  - Works for all archive types (ZIP, 7z, TAR variants)
+  - 7z password prompt preserved for encrypted archives
+  - Activity log now shows destination folder for "Extract to Folder"
+
+#### Added - Full Keyboard Shortcuts (11 new)
+- **Delete**: Delete selected files with confirmation dialog
+- **Enter**: Open selected folder
+- **Backspace**: Navigate up one directory
+- **Tab**: Switch between Remote/Local panels
+- **F2**: Rename selected file
+- **Ctrl+N**: Create new folder
+- **Ctrl+A**: Select all files in active panel
+- **Ctrl+U**: Upload selected local files
+- **Ctrl+D**: Download selected remote files
+- **Ctrl+R**: Refresh active panel
+- **Ctrl+F**: Focus search/filter input
+- All shortcuts respect input focus (disabled when typing in text fields)
+
+#### Changed - Smart Toolbar Redesign
+- **Dynamic Upload/Download button**: Shows "Upload Files" when Local panel active, "Download Files" when Remote panel active
+- **Selection count badges**: Upload/Download and Delete buttons show badge with count of selected items
+- **Delete button**: Added to dynamic toolbar (was only in context menu)
+- **Visual separator**: Clear division between dynamic buttons (Up, Refresh, New, Open, Grid, Upload/Download, Delete) and connection buttons (Cancel, Sync)
+- **Auto panel switching**: Clicking files in a panel automatically activates that panel's toolbar context
+
+#### Changed - Address Bar Improvements
+- **Refresh button**: Added inline refresh icon (RefreshCw) inside both address bars, with 600ms spin animation on click
+- **Reduced icon-to-URL spacing**: Tighter padding between protocol/disk icon and path text
+
+#### Fixed - File Selection
+- **Toggle deselection**: Clicking an already-selected file now deselects it
+- **Refresh clears selection**: Both `loadLocalFiles` and `loadRemoteFiles` reset selection state
+
+#### Added - i18n (51 Languages)
+- New keys: `compressSubmenu`, `extractSubmenu`, `extractToFolder`, `extractTarHere` translated in all 51 locales
+
+#### Technical
+- **Rust**: Added `tar 0.4`, `flate2 1.0`, `xz2 0.1`, `bzip2 0.4` dependencies
+- **React**: `ContextMenu` component rewritten with `createPortal` for submenu rendering
+- **TypeScript**: Zero type errors, all shortcuts properly typed
+
+---
+
 ## [1.3.0] - 2026-01-28
 
 ### 7z AES-256 Encryption + Privacy-First Analytics

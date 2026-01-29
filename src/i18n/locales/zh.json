@@ -152,7 +152,10 @@
             "properties": "属性",
             "permissions": "权限",
             "compress": "压缩",
-            "extract": "解压"
+            "compressSubmenu": "压缩",
+            "extract": "解压",
+            "extractSubmenu": "解压",
+            "extractTarHere": "在此解压 TAR"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -388,8 +391,9 @@
             "delete_file_success": "[{location}] 文件已删除: {filename}",
             "delete_dir_success": "[{location}] 文件夹已删除: {filename}",
             "delete_task_success": "[{location}] 操作完成: {filename}",
-            "delete_multiple_start": "正在删除 {count} 个项目...",
+            "delete_multiple_start": "[{location}] 正在删除 {count} 个项目...",
             "delete_multiple_success": "清理完成: 已删除 {count} 个",
+            "delete_multiple_done": "已删除 {count} 个项目: {items}",
             "loaded_items": "已从 {provider} 加载 {count} 个项目",
             "upload_skipped": "[Remote] Skipped (file exists): {filename}",
             "upload_overwrite": "[Remote] Overwriting: {filename}",

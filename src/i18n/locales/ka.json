@@ -152,7 +152,10 @@
             "properties": "თვისებები",
             "permissions": "უფლებები",
             "compress": "შეკუმშვა",
-            "extract": "ამოღება"
+            "compressSubmenu": "შეკუმშვა",
+            "extract": "ამოღება",
+            "extractSubmenu": "ამოღება",
+            "extractTarHere": "TAR-ის ამოღება აქ"
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] საქაღალდე წაიშალა: {filename}",
             "delete_task_success": "[{location}] ოპერაცია დასრულდა: {filename}",
             "delete_error": "[{location}] {filename}-ის წაშლა ვერ მოხერხდა",
-            "delete_multiple_start": "იშლება {count} ელემენტი...",
+            "delete_multiple_start": "[{location}] იშლება {count} ელემენტი...",
             "delete_multiple_success": "გასუფთავება დასრულდა: {count} წაიშალა",
+            "delete_multiple_done": "წაშლილია {count} ელემენტი: {items}",
             "mkdir_start": "[{location}] იქმნება საქაღალდე {foldername}...",
             "mkdir_success": "[{location}] საქაღალდე შეიქმნა {foldername}",
             "mkdir_error": "[{location}] საქაღალდის შექმნა ვერ მოხერხდა",

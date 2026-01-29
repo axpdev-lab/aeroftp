@@ -152,7 +152,10 @@
             "properties": "Propietateak",
             "permissions": "Baimenak",
             "compress": "Konprimitu",
-            "extract": "Atera"
+            "compressSubmenu": "Konprimitu",
+            "extract": "Atera",
+            "extractSubmenu": "Atera",
+            "extractTarHere": "Atera TAR hemen"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Karpeta ezabatuta: {filename}",
             "delete_task_success": "[{location}] Eragiketa osatuta: {filename}",
             "delete_error": "[{location}] Ezin izan da {filename} ezabatu",
-            "delete_multiple_start": "{count} elementu ezabatzen...",
+            "delete_multiple_start": "[{location}] {count} elementu ezabatzen...",
             "delete_multiple_success": "Garbiketa osatuta: {count} ezabatuta",
+            "delete_multiple_done": "{count} elementu ezabatu dira: {items}",
             "mkdir_start": "[{location}] {foldername} karpeta sortzen...",
             "mkdir_success": "[{location}] Karpeta sortuta {foldername}",
             "mkdir_error": "[{location}] Ezin izan da karpeta sortu",

@@ -152,7 +152,10 @@
             "properties": "Savybes",
             "permissions": "Teises",
             "compress": "Suspausti",
-            "extract": "Isarchyvuoti"
+            "compressSubmenu": "Suspausti",
+            "extract": "Isarchyvuoti",
+            "extractSubmenu": "Išskleisti",
+            "extractTarHere": "Išskleisti TAR čia"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Aplankas pasalintas: {filename}",
             "delete_task_success": "[{location}] Operacija baigta: {filename}",
             "delete_error": "[{location}] Nepavyko pasalinti {filename}",
-            "delete_multiple_start": "Istrinama {count} elementu...",
+            "delete_multiple_start": "[{location}] Istrinama {count} elementu...",
             "delete_multiple_success": "Valymas baigtas: {count} pasalinta",
+            "delete_multiple_done": "Ištrinta {count} elementų: {items}",
             "mkdir_start": "[{location}] Kuriamas aplankas {foldername}...",
             "mkdir_success": "[{location}] Aplankas sukurtas {foldername}",
             "mkdir_error": "[{location}] Nepavyko sukurti aplanko",

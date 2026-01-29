@@ -152,7 +152,10 @@
             "properties": "Tulajdonságok",
             "permissions": "Jogosultságok",
             "compress": "Tömörítés",
-            "extract": "Kibontás"
+            "compressSubmenu": "Tömörítés",
+            "extract": "Kibontás",
+            "extractSubmenu": "Kicsomagolás",
+            "extractTarHere": "TAR kicsomagolása ide"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mappa eltávolítva: {filename}",
             "delete_task_success": "[{location}] Művelet befejezve: {filename}",
             "delete_error": "[{location}] Nem sikerült eltávolítani: {filename}",
-            "delete_multiple_start": "{count} elem törlése...",
+            "delete_multiple_start": "[{location}] {count} elem törlése...",
             "delete_multiple_success": "Tisztítás kész: {count} eltávolítva",
+            "delete_multiple_done": "Törölve {count} elem: {items}",
             "mkdir_start": "[{location}] Mappa létrehozása {foldername}...",
             "mkdir_success": "[{location}] Mappa létrehozva {foldername}",
             "mkdir_error": "[{location}] Nem sikerült mappát létrehozni",

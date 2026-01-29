@@ -152,7 +152,10 @@
             "properties": "Egenskaber",
             "permissions": "Tilladelser",
             "compress": "Komprimer",
-            "extract": "Udpak"
+            "compressSubmenu": "Komprimer",
+            "extract": "Udpak",
+            "extractSubmenu": "Udpak",
+            "extractTarHere": "Udpak TAR her"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mappe fjernet: {filename}",
             "delete_task_success": "[{location}] Handling fuldført: {filename}",
             "delete_error": "[{location}] Kunne ikke fjerne {filename}",
-            "delete_multiple_start": "Sletter {count} elementer...",
+            "delete_multiple_start": "[{location}] Sletter {count} elementer...",
             "delete_multiple_success": "Oprydning fuldført: {count} fjernet",
+            "delete_multiple_done": "Slettet {count} elementer: {items}",
             "mkdir_start": "[{location}] Opretter mappe {foldername}...",
             "mkdir_success": "[{location}] Mappe oprettet {foldername}",
             "mkdir_error": "[{location}] Kunne ikke oprette mappe",

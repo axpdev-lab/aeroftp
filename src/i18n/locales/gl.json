@@ -152,7 +152,10 @@
             "properties": "Propiedades",
             "permissions": "Permisos",
             "compress": "Comprimir",
-            "extract": "Extraer"
+            "compressSubmenu": "Comprimir",
+            "extract": "Extraer",
+            "extractSubmenu": "Extraer",
+            "extractTarHere": "Extraer TAR aquí"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Cartafol eliminado: {filename}",
             "delete_task_success": "[{location}] Operacion completada: {filename}",
             "delete_error": "[{location}] Non se puido eliminar {filename}",
-            "delete_multiple_start": "Eliminando {count} elementos...",
+            "delete_multiple_start": "[{location}] Eliminando {count} elementos...",
             "delete_multiple_success": "Limpeza completada: {count} eliminados",
+            "delete_multiple_done": "Eliminados {count} elementos: {items}",
             "mkdir_start": "[{location}] Creando cartafol {foldername}...",
             "mkdir_success": "[{location}] Cartafol creado {foldername}",
             "mkdir_error": "[{location}] Non se puido crear o cartafol",

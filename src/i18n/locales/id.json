@@ -152,7 +152,10 @@
             "properties": "Properti",
             "permissions": "Izin",
             "compress": "Kompres",
-            "extract": "Ekstrak"
+            "compressSubmenu": "Kompres",
+            "extract": "Ekstrak",
+            "extractSubmenu": "Ekstrak",
+            "extractTarHere": "Ekstrak TAR di sini"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Folder dihapus: {filename}",
             "delete_task_success": "[{location}] Operasi selesai: {filename}",
             "delete_error": "[{location}] Tidak dapat menghapus {filename}",
-            "delete_multiple_start": "Menghapus {count} item...",
+            "delete_multiple_start": "[{location}] Menghapus {count} item...",
             "delete_multiple_success": "Pembersihan selesai: {count} dihapus",
+            "delete_multiple_done": "Dihapus {count} item: {items}",
             "mkdir_start": "[{location}] Membuat folder {foldername}...",
             "mkdir_success": "[{location}] Folder dibuat {foldername}",
             "mkdir_error": "[{location}] Tidak dapat membuat folder",

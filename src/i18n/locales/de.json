@@ -152,7 +152,10 @@
             "properties": "Eigenschaften",
             "permissions": "Berechtigungen",
             "compress": "Komprimieren",
-            "extract": "Extrahieren"
+            "compressSubmenu": "Komprimieren",
+            "extract": "Extrahieren",
+            "extractSubmenu": "Entpacken",
+            "extractTarHere": "TAR hier entpacken"
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Ordner entfernt: {filename}",
             "delete_task_success": "[{location}] Operation abgeschlossen: {filename}",
             "delete_error": "[{location}] Konnte {filename} nicht entfernen",
-            "delete_multiple_start": "Lösche {count} Elemente...",
+            "delete_multiple_start": "[{location}] Lösche {count} Elemente...",
             "delete_multiple_success": "Bereinigung abgeschlossen: {count} entfernt",
+            "delete_multiple_done": "{count} Elemente gelöscht: {items}",
             "mkdir_start": "[{location}] Erstelle Ordner {foldername}...",
             "mkdir_success": "[{location}] Ordner {foldername} erstellt",
             "mkdir_error": "[{location}] Konnte Ordner nicht erstellen",

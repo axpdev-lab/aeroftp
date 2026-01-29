@@ -152,7 +152,10 @@
             "properties": "Ιδιότητες",
             "permissions": "Δικαιώματα",
             "compress": "Συμπίεση",
-            "extract": "Εξαγωγή"
+            "compressSubmenu": "Συμπίεση",
+            "extract": "Εξαγωγή",
+            "extractSubmenu": "Εξαγωγή",
+            "extractTarHere": "Εξαγωγή TAR εδώ"
         },
         "transfer": {
             "transferring": "Μεταφορά...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Ο φάκελος αφαιρέθηκε: {filename}",
             "delete_task_success": "[{location}] Η λειτουργία ολοκληρώθηκε: {filename}",
             "delete_error": "[{location}] Δεν ήταν δυνατή η αφαίρεση του {filename}",
-            "delete_multiple_start": "Διαγραφή {count} στοιχείων...",
+            "delete_multiple_start": "[{location}] Διαγραφή {count} στοιχείων...",
             "delete_multiple_success": "Η εκκαθάριση ολοκληρώθηκε: {count} αφαιρέθηκαν",
+            "delete_multiple_done": "Διαγράφηκαν {count} στοιχεία: {items}",
             "mkdir_start": "[{location}] Δημιουργία φακέλου {foldername}...",
             "mkdir_success": "[{location}] Ο φάκελος δημιουργήθηκε {foldername}",
             "mkdir_error": "[{location}] Δεν ήταν δυνατή η δημιουργία φακέλου",

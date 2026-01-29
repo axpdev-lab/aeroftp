@@ -152,7 +152,10 @@
             "properties": "Proprietăți",
             "permissions": "Permisiuni",
             "compress": "Comprimă",
-            "extract": "Extrage"
+            "compressSubmenu": "Comprimă",
+            "extract": "Extrage",
+            "extractSubmenu": "Extrage",
+            "extractTarHere": "Extrage TAR aici"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Folder eliminat: {filename}",
             "delete_task_success": "[{location}] Operațiune finalizată: {filename}",
             "delete_error": "[{location}] Nu s-a putut elimina {filename}",
-            "delete_multiple_start": "Se șterg {count} elemente...",
+            "delete_multiple_start": "[{location}] Se șterg {count} elemente...",
             "delete_multiple_success": "Curățare finalizată: {count} eliminate",
+            "delete_multiple_done": "Șterse {count} elemente: {items}",
             "mkdir_start": "[{location}] Se creează folderul {foldername}...",
             "mkdir_success": "[{location}] Folder creat {foldername}",
             "mkdir_error": "[{location}] Nu s-a putut crea folderul",

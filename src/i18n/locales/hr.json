@@ -152,7 +152,10 @@
             "properties": "Svojstva",
             "permissions": "Dozvole",
             "compress": "Sažmi",
-            "extract": "Raspakiraj"
+            "compressSubmenu": "Komprimiraj",
+            "extract": "Raspakiraj",
+            "extractSubmenu": "Raspakiraj",
+            "extractTarHere": "Raspakiraj TAR ovdje"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mapa obrisana: {filename}",
             "delete_task_success": "[{location}] Operacija završena: {filename}",
             "delete_error": "[{location}] Nije moguće obrisati {filename}",
-            "delete_multiple_start": "Brisanje {count} stavki...",
+            "delete_multiple_start": "[{location}] Brisanje {count} stavki...",
             "delete_multiple_success": "Čišćenje završeno: {count} obrisano",
+            "delete_multiple_done": "Obrisano {count} stavki: {items}",
             "mkdir_start": "[{location}] Stvaranje mape {foldername}...",
             "mkdir_success": "[{location}] Mapa stvorena {foldername}",
             "mkdir_error": "[{location}] Nije moguće stvoriti mapu",

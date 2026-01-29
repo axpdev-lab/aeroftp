@@ -152,7 +152,10 @@
             "properties": "คุณสมบัติ",
             "permissions": "สิทธิ์",
             "compress": "บีบอัด",
-            "extract": "แตกไฟล์"
+            "compressSubmenu": "บีบอัด",
+            "extract": "แตกไฟล์",
+            "extractSubmenu": "แตกไฟล์",
+            "extractTarHere": "แตกไฟล์ TAR ที่นี่"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] ลบโฟลเดอร์แล้ว: {filename}",
             "delete_task_success": "[{location}] การดำเนินการเสร็จสิ้น: {filename}",
             "delete_error": "[{location}] ไม่สามารถลบ {filename}",
-            "delete_multiple_start": "กำลังลบ {count} รายการ...",
+            "delete_multiple_start": "[{location}] กำลังลบ {count} รายการ...",
             "delete_multiple_success": "ล้างข้อมูลเสร็จสิ้น: ลบ {count} รายการ",
+            "delete_multiple_done": "ลบ {count} รายการแล้ว: {items}",
             "mkdir_start": "[{location}] กำลังสร้างโฟลเดอร์ {foldername}...",
             "mkdir_success": "[{location}] สร้างโฟลเดอร์ {foldername} แล้ว",
             "mkdir_error": "[{location}] ไม่สามารถสร้างโฟลเดอร์",

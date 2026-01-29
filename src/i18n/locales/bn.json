@@ -152,7 +152,10 @@
             "properties": "বৈশিষ্ট্য",
             "permissions": "অনুমতি",
             "compress": "সংকুচিত",
-            "extract": "এক্সট্র্যাক্ট"
+            "compressSubmenu": "সংকুচিত করুন",
+            "extract": "এক্সট্র্যাক্ট",
+            "extractSubmenu": "বের করুন",
+            "extractTarHere": "TAR এখানে বের করুন"
         },
         "transfer": {
             "transferring": "স্থানান্তর হচ্ছে...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] ফোল্ডার সরানো হয়েছে: {filename}",
             "delete_task_success": "[{location}] অপারেশন সম্পন্ন: {filename}",
             "delete_error": "[{location}] {filename} সরানো যায়নি",
-            "delete_multiple_start": "{count}টি আইটেম মুছে ফেলা হচ্ছে...",
+            "delete_multiple_start": "[{location}] {count}টি আইটেম মুছে ফেলা হচ্ছে...",
             "delete_multiple_success": "পরিষ্কার সম্পন্ন: {count}টি সরানো হয়েছে",
+            "delete_multiple_done": "{count}টি আইটেম মুছে ফেলা হয়েছে: {items}",
             "mkdir_start": "[{location}] {foldername} ফোল্ডার তৈরি হচ্ছে...",
             "mkdir_success": "[{location}] ফোল্ডার তৈরি হয়েছে {foldername}",
             "mkdir_error": "[{location}] ফোল্ডার তৈরি করা যায়নি",

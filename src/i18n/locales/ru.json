@@ -152,7 +152,10 @@
             "properties": "Свойства",
             "permissions": "Права доступа",
             "compress": "Сжать",
-            "extract": "Извлечь"
+            "compressSubmenu": "Сжать",
+            "extract": "Извлечь",
+            "extractSubmenu": "Извлечь",
+            "extractTarHere": "Извлечь TAR сюда"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Папка удалена: {filename}",
             "delete_task_success": "[{location}] Операция завершена: {filename}",
             "delete_error": "[{location}] Не удалось удалить {filename}",
-            "delete_multiple_start": "Удаление {count} элементов...",
+            "delete_multiple_start": "[{location}] Удаление {count} элементов...",
             "delete_multiple_success": "Очистка завершена: {count} удалено",
+            "delete_multiple_done": "Удалено {count} элементов: {items}",
             "mkdir_start": "[{location}] Создание папки {foldername}...",
             "mkdir_success": "[{location}] Папка {foldername} создана",
             "mkdir_error": "[{location}] Не удалось создать папку",

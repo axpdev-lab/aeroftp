@@ -152,7 +152,10 @@
             "properties": "Mga Katangian",
             "permissions": "Mga Pahintulot",
             "compress": "I-compress",
-            "extract": "I-extract"
+            "compressSubmenu": "I-compress",
+            "extract": "I-extract",
+            "extractSubmenu": "I-extract",
+            "extractTarHere": "I-extract ang TAR dito"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Natanggal ang folder: {filename}",
             "delete_task_success": "[{location}] Tapos na ang operasyon: {filename}",
             "delete_error": "[{location}] Hindi matanggal ang {filename}",
-            "delete_multiple_start": "Tinatanggal ang {count} na item...",
+            "delete_multiple_start": "[{location}] Tinatanggal ang {count} na item...",
             "delete_multiple_success": "Tapos na ang paglilinis: {count} natanggal",
+            "delete_multiple_done": "Nabura ang {count} na item: {items}",
             "mkdir_start": "[{location}] Gumagawa ng folder na {foldername}...",
             "mkdir_success": "[{location}] Nagawa ang folder na {foldername}",
             "mkdir_error": "[{location}] Hindi makagawa ng folder",

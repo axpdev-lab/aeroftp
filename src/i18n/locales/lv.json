@@ -152,7 +152,10 @@
             "properties": "Īpašības",
             "permissions": "Atļaujas",
             "compress": "Saspiests",
-            "extract": "Izvilkt"
+            "compressSubmenu": "Saspiest",
+            "extract": "Izvilkt",
+            "extractSubmenu": "Izvilkt",
+            "extractTarHere": "Izvilkt TAR šeit"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mape dzēsta: {filename}",
             "delete_task_success": "[{location}] Operācija pabeigta: {filename}",
             "delete_error": "[{location}] Nevarēja dzēst {filename}",
-            "delete_multiple_start": "Dzēš {count} vienumus...",
+            "delete_multiple_start": "[{location}] Dzēš {count} vienumus...",
             "delete_multiple_success": "Tīrīšana pabeigta: {count} dzēsti",
+            "delete_multiple_done": "Dzēsti {count} vienumi: {items}",
             "mkdir_start": "[{location}] Izveido mapi {foldername}...",
             "mkdir_success": "[{location}] Mape izveidota {foldername}",
             "mkdir_error": "[{location}] Nevarēja izveidot mapi",

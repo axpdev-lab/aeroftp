@@ -187,7 +187,10 @@
             "properties": "Proprietà",
             "permissions": "Permessi",
             "compress": "Comprimi",
-            "extract": "Estrai"
+            "compressSubmenu": "Comprimi",
+            "extract": "Estrai",
+            "extractSubmenu": "Estrai",
+            "extractTarHere": "Estrai TAR qui"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -453,8 +456,9 @@
             "delete_dir_success": "[{location}] Cartella rimossa: {filename}",
             "delete_task_success": "[{location}] Operazione completata: {filename}",
             "delete_error": "[{location}] Impossibile eliminare: {filename}",
-            "delete_multiple_start": "Eliminazione di {count} elementi...",
+            "delete_multiple_start": "[{location}] Eliminazione di {count} elementi...",
             "delete_multiple_success": "Eliminazione completata: {count} rimossi",
+            "delete_multiple_done": "Eliminati {count} elementi: {items}",
             "mkdir_start": "[{location}] Creazione cartella: {foldername}...",
             "mkdir_success": "[{location}] Nuova cartella creata: {foldername}",
             "mkdir_error": "[{location}] Errore creazione cartella",

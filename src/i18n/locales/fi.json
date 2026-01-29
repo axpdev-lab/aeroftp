@@ -152,7 +152,10 @@
             "properties": "Ominaisuudet",
             "permissions": "Oikeudet",
             "compress": "Pakkaa",
-            "extract": "Pura"
+            "compressSubmenu": "Pakkaa",
+            "extract": "Pura",
+            "extractSubmenu": "Pura",
+            "extractTarHere": "Pura TAR tähän"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Kansio poistettu: {filename}",
             "delete_task_success": "[{location}] Toiminto valmis: {filename}",
             "delete_error": "[{location}] Kohdetta {filename} ei voitu poistaa",
-            "delete_multiple_start": "Poistetaan {count} kohdetta...",
+            "delete_multiple_start": "[{location}] Poistetaan {count} kohdetta...",
             "delete_multiple_success": "Siivous valmis: {count} poistettu",
+            "delete_multiple_done": "Poistettu {count} kohdetta: {items}",
             "mkdir_start": "[{location}] Luodaan kansiota {foldername}...",
             "mkdir_success": "[{location}] Kansio luotu {foldername}",
             "mkdir_error": "[{location}] Kansiota ei voitu luoda",

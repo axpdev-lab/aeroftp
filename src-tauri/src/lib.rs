@@ -1817,7 +1817,7 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
 
 /// Extract a ZIP archive
 #[tauri::command]
-async fn extract_archive(archive_path: String, output_dir: String) -> Result<String, String> {
+async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool) -> Result<String, String> {
     use std::fs::{self, File};
     use zip::ZipArchive;
 
@@ -1827,15 +1827,28 @@ async fn extract_archive(archive_path: String, output_dir: String) -> Result<Str
     let mut archive = ZipArchive::new(file)
         .map_err(|e| format!("Failed to read archive: {}", e))?;
 
+    // Determine actual output directory
+    let actual_output = if create_subfolder {
+        let archive_stem = std::path::Path::new(&archive_path)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let subfolder = std::path::Path::new(&output_dir).join(&archive_stem);
+        subfolder.to_string_lossy().to_string()
+    } else {
+        output_dir.clone()
+    };
+
     // Create output directory if needed
-    fs::create_dir_all(&output_dir)
+    fs::create_dir_all(&actual_output)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)
             .map_err(|e| format!("Failed to read file from archive: {}", e))?;
 
-        let outpath = std::path::Path::new(&output_dir).join(file.name());
+        let outpath = std::path::Path::new(&actual_output).join(file.name());
 
         if file.name().ends_with('/') {
             // Directory
@@ -1856,7 +1869,7 @@ async fn extract_archive(archive_path: String, output_dir: String) -> Result<Str
         }
     }
 
-    Ok(output_dir)
+    Ok(actual_output)
 }
 
 /// Compress files/folders into a 7z archive (LZMA2 compression)
@@ -2006,6 +2019,146 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
             }
         }
     }
+}
+
+/// Compress files/folders into a TAR-based archive.
+/// Supports formats: "tar", "tar.gz", "tar.xz", "tar.bz2"
+#[tauri::command]
+async fn compress_tar(
+    paths: Vec<String>,
+    output_path: String,
+    format: String,
+) -> Result<String, String> {
+    use std::fs::File;
+    use std::path::Path;
+    use walkdir::WalkDir;
+
+    let output = Path::new(&output_path);
+
+    // Collect all files (expanding directories recursively)
+    let mut entries: Vec<(std::path::PathBuf, String)> = Vec::new();
+    for p in &paths {
+        let path = Path::new(p);
+        if path.is_dir() {
+            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+                if entry.file_type().is_file() {
+                    let rel = entry.path().strip_prefix(path.parent().unwrap_or(path))
+                        .unwrap_or(entry.path());
+                    entries.push((entry.path().to_path_buf(), rel.to_string_lossy().to_string()));
+                }
+            }
+            // Directory entries are created automatically by tar when adding files
+        } else if path.is_file() {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            entries.push((path.to_path_buf(), name));
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("No files to compress".to_string());
+    }
+
+    // Create the archive based on format
+    let file = File::create(output).map_err(|e| format!("Failed to create archive: {}", e))?;
+
+    match format.as_str() {
+        "tar" => {
+            let mut archive = tar::Builder::new(file);
+            for (abs_path, rel_path) in &entries {
+                archive.append_path_with_name(abs_path, rel_path)
+                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+            }
+            archive.finish().map_err(|e| format!("Failed to finalize tar: {}", e))?;
+        }
+        "tar.gz" => {
+            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let mut archive = tar::Builder::new(gz);
+            for (abs_path, rel_path) in &entries {
+                archive.append_path_with_name(abs_path, rel_path)
+                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+            }
+            archive.into_inner().map_err(|e| format!("Failed to finalize gz: {}", e))?
+                .finish().map_err(|e| format!("Failed to finish gz: {}", e))?;
+        }
+        "tar.xz" => {
+            let xz = xz2::write::XzEncoder::new(file, 6);
+            let mut archive = tar::Builder::new(xz);
+            for (abs_path, rel_path) in &entries {
+                archive.append_path_with_name(abs_path, rel_path)
+                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+            }
+            archive.into_inner().map_err(|e| format!("Failed to finalize xz: {}", e))?
+                .finish().map_err(|e| format!("Failed to finish xz: {}", e))?;
+        }
+        "tar.bz2" => {
+            let bz = bzip2::write::BzEncoder::new(file, bzip2::Compression::default());
+            let mut archive = tar::Builder::new(bz);
+            for (abs_path, rel_path) in &entries {
+                archive.append_path_with_name(abs_path, rel_path)
+                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+            }
+            archive.into_inner().map_err(|e| format!("Failed to finalize bz2: {}", e))?
+                .finish().map_err(|e| format!("Failed to finish bz2: {}", e))?;
+        }
+        _ => return Err(format!("Unsupported format: {}", format)),
+    }
+
+    let file_count = entries.len();
+    Ok(format!("Compressed {} files into {}", file_count, output.display()))
+}
+
+/// Extract TAR-based archives (auto-detects tar, tar.gz, tar.xz, tar.bz2 from extension)
+#[tauri::command]
+async fn extract_tar(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    use std::fs::File;
+    use std::path::Path;
+
+    let archive = Path::new(&archive_path);
+    let out = Path::new(&output_dir);
+
+    // Determine subfolder name from archive filename
+    let final_output = if create_subfolder {
+        let stem = archive.file_stem().unwrap_or_default().to_string_lossy();
+        // Handle double extensions like .tar.gz -> strip both
+        let folder_name = if stem.ends_with(".tar") {
+            stem.trim_end_matches(".tar").to_string()
+        } else {
+            stem.to_string()
+        };
+        let subfolder = out.join(&folder_name);
+        std::fs::create_dir_all(&subfolder).map_err(|e| format!("Failed to create dir: {}", e))?;
+        subfolder
+    } else {
+        out.to_path_buf()
+    };
+
+    let file = File::open(archive).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let ext = archive.to_string_lossy().to_lowercase();
+
+    if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+        let gz = flate2::read::GzDecoder::new(file);
+        let mut ar = tar::Archive::new(gz);
+        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.gz: {}", e))?;
+    } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
+        let xz = xz2::read::XzDecoder::new(file);
+        let mut ar = tar::Archive::new(xz);
+        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.xz: {}", e))?;
+    } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
+        let bz = bzip2::read::BzDecoder::new(file);
+        let mut ar = tar::Archive::new(bz);
+        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.bz2: {}", e))?;
+    } else if ext.ends_with(".tar") {
+        let mut ar = tar::Archive::new(file);
+        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar: {}", e))?;
+    } else {
+        return Err(format!("Unrecognized archive format: {}", ext));
+    }
+
+    Ok(final_output.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -3289,6 +3442,8 @@ pub fn run() {
             compress_7z,
             extract_7z,
             is_7z_encrypted,
+            compress_tar,
+            extract_tar,
             ftp_read_file_base64,
             read_local_file,
             read_local_file_base64,

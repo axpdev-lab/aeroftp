@@ -152,7 +152,10 @@
             "properties": "Својства",
             "permissions": "Дозволи",
             "compress": "Компресирај",
-            "extract": "Извлечи"
+            "compressSubmenu": "Компресирај",
+            "extract": "Извлечи",
+            "extractSubmenu": "Извлечи",
+            "extractTarHere": "Извлечи TAR тука"
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Папка избришана: {filename}",
             "delete_task_success": "[{location}] Операцијата заврши: {filename}",
             "delete_error": "[{location}] Не може да се избрише {filename}",
-            "delete_multiple_start": "Бришење {count} ставки...",
+            "delete_multiple_start": "[{location}] Бришење {count} ставки...",
             "delete_multiple_success": "Чистењето заврши: {count} избришани",
+            "delete_multiple_done": "Избришани {count} ставки: {items}",
             "mkdir_start": "[{location}] Создавање папка {foldername}...",
             "mkdir_success": "[{location}] Папка создадена {foldername}",
             "mkdir_error": "[{location}] Не може да се создаде папка",

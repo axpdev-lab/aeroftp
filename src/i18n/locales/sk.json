@@ -152,7 +152,10 @@
             "properties": "Vlastnosti",
             "permissions": "Oprávnenia",
             "compress": "Komprimovať",
-            "extract": "Rozbaliť"
+            "compressSubmenu": "Komprimovať",
+            "extract": "Rozbaliť",
+            "extractSubmenu": "Rozbaliť",
+            "extractTarHere": "Rozbaliť TAR sem"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Priečinok odstránený: {filename}",
             "delete_task_success": "[{location}] Operácia dokončená: {filename}",
             "delete_error": "[{location}] Nedá sa odstrániť {filename}",
-            "delete_multiple_start": "Odstraňovanie {count} položiek...",
+            "delete_multiple_start": "[{location}] Odstraňovanie {count} položiek...",
             "delete_multiple_success": "Čistenie dokončené: {count} odstránených",
+            "delete_multiple_done": "Vymazaných {count} položiek: {items}",
             "mkdir_start": "[{location}] Vytváranie priečinka {foldername}...",
             "mkdir_success": "[{location}] Priečinok vytvorený {foldername}",
             "mkdir_error": "[{location}] Nedá sa vytvoriť priečinok",

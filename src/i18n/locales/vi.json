@@ -152,7 +152,10 @@
             "properties": "Thuộc tính",
             "permissions": "Quyền",
             "compress": "Nén",
-            "extract": "Giải nén"
+            "compressSubmenu": "Nén",
+            "extract": "Giải nén",
+            "extractSubmenu": "Giải nén",
+            "extractTarHere": "Giải nén TAR tại đây"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Đã xóa thư mục: {filename}",
             "delete_task_success": "[{location}] Hoàn tất thao tác: {filename}",
             "delete_error": "[{location}] Không thể xóa {filename}",
-            "delete_multiple_start": "Đang xóa {count} mục...",
+            "delete_multiple_start": "[{location}] Đang xóa {count} mục...",
             "delete_multiple_success": "Dọn dẹp hoàn tất: đã xóa {count}",
+            "delete_multiple_done": "Đã xóa {count} mục: {items}",
             "mkdir_start": "[{location}] Đang tạo thư mục {foldername}...",
             "mkdir_success": "[{location}] Đã tạo thư mục {foldername}",
             "mkdir_error": "[{location}] Không thể tạo thư mục",

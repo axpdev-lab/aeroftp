@@ -152,7 +152,10 @@
             "properties": "مشخصات",
             "permissions": "مجوزها",
             "compress": "فشرده‌سازی",
-            "extract": "استخراج"
+            "compressSubmenu": "فشرده‌سازی",
+            "extract": "استخراج",
+            "extractSubmenu": "استخراج",
+            "extractTarHere": "استخراج TAR در اینجا"
         },
         "transfer": {
             "transferring": "در حال انتقال...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] پوشه حذف شد: {filename}",
             "delete_task_success": "[{location}] عملیات تکمیل شد: {filename}",
             "delete_error": "[{location}] حذف {filename} ناموفق بود",
-            "delete_multiple_start": "در حال حذف {count} آیتم...",
+            "delete_multiple_start": "[{location}] در حال حذف {count} آیتم...",
             "delete_multiple_success": "پاکسازی تکمیل شد: {count} حذف شد",
+            "delete_multiple_done": "{count} مورد حذف شد: {items}",
             "mkdir_start": "[{location}] در حال ایجاد پوشه {foldername}...",
             "mkdir_success": "[{location}] پوشه ایجاد شد {foldername}",
             "mkdir_error": "[{location}] ایجاد پوشه ناموفق بود",

@@ -152,7 +152,10 @@
             "properties": "Hatkunner",
             "permissions": "Torutyunner",
             "compress": "Sghmel",
-            "extract": "Hanel"
+            "compressSubmenu": "Compress",
+            "extract": "Hanel",
+            "extractSubmenu": "Քամել",
+            "extractTarHere": "Extract TAR Here"
         },
         "transfer": {
             "transferring": "Pokhancum e...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Tughty jnvats e: {filename}",
             "delete_task_success": "[{location}] Gortsoghutiuny avartats e: {filename}",
             "delete_error": "[{location}] Chi kareli jnjel {filename}",
-            "delete_multiple_start": "Jnvum e {count} tarr...",
+            "delete_multiple_start": "[{location}] Jnvum e {count} tarr...",
             "delete_multiple_success": "Maqrumy avartats e: {count} jnvats",
+            "delete_multiple_done": "Deleted {count} items: {items}",
             "mkdir_start": "[{location}] Steghtsvel e tught {foldername}...",
             "mkdir_success": "[{location}] Steghtsvel e tught {foldername}",
             "mkdir_error": "[{location}] Chi karelya steghtsnel tught",

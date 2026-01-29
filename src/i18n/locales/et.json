@@ -152,7 +152,10 @@
             "properties": "Omadused",
             "permissions": "Õigused",
             "compress": "Paki kokku",
-            "extract": "Paki lahti"
+            "compressSubmenu": "Paki",
+            "extract": "Paki lahti",
+            "extractSubmenu": "Paki lahti",
+            "extractTarHere": "Paki TAR siia lahti"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Kaust kustutatud: {filename}",
             "delete_task_success": "[{location}] Toiming lõpetatud: {filename}",
             "delete_error": "[{location}] Ei saanud kustutada {filename}",
-            "delete_multiple_start": "Kustutamine {count} üksust...",
+            "delete_multiple_start": "[{location}] Kustutamine {count} üksust...",
             "delete_multiple_success": "Puhastamine lõpetatud: {count} kustutatud",
+            "delete_multiple_done": "Kustutatud {count} üksust: {items}",
             "mkdir_start": "[{location}] Kausta loomine {foldername}...",
             "mkdir_success": "[{location}] Kaust loodud {foldername}",
             "mkdir_error": "[{location}] Ei saanud kausta luua",

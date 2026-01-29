@@ -152,7 +152,10 @@
             "properties": "Vlastnosti",
             "permissions": "Oprávnění",
             "compress": "Komprimovat",
-            "extract": "Rozbalit"
+            "compressSubmenu": "Komprimovat",
+            "extract": "Rozbalit",
+            "extractSubmenu": "Rozbalit",
+            "extractTarHere": "Rozbalit TAR zde"
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Složka odstraněna: {filename}",
             "delete_task_success": "[{location}] Operace dokončena: {filename}",
             "delete_error": "[{location}] Nelze odstranit {filename}",
-            "delete_multiple_start": "Mazání {count} položek...",
+            "delete_multiple_start": "[{location}] Mazání {count} položek...",
             "delete_multiple_success": "Čištění dokončeno: {count} odstraněno",
+            "delete_multiple_done": "Smazáno {count} položek: {items}",
             "mkdir_start": "[{location}] Vytváření složky {foldername}...",
             "mkdir_success": "[{location}] Složka vytvořena {foldername}",
             "mkdir_error": "[{location}] Nelze vytvořit složku",

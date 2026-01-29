@@ -152,7 +152,10 @@
             "properties": "خصوصیات",
             "permissions": "اجازتیں",
             "compress": "کمپریس کریں",
-            "extract": "نکالیں"
+            "compressSubmenu": "کمپریس",
+            "extract": "نکالیں",
+            "extractSubmenu": "نکالیں",
+            "extractTarHere": "TAR یہاں نکالیں"
         },
         "transfer": {
             "transferring": "منتقل ہو رہا ہے...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] فولڈر ہٹایا گیا: {filename}",
             "delete_task_success": "[{location}] آپریشن مکمل: {filename}",
             "delete_error": "[{location}] {filename} نہیں ہٹ سکا",
-            "delete_multiple_start": "{count} آئٹمز حذف ہو رہے ہیں...",
+            "delete_multiple_start": "[{location}] {count} آئٹمز حذف ہو رہے ہیں...",
             "delete_multiple_success": "صفائی مکمل: {count} ہٹائے گئے",
+            "delete_multiple_done": "{count} آئٹمز حذف ہو گئے: {items}",
             "mkdir_start": "[{location}] فولڈر {foldername} بن رہا ہے...",
             "mkdir_success": "[{location}] فولڈر بنایا گیا {foldername}",
             "mkdir_error": "[{location}] فولڈر نہیں بن سکا",

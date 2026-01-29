@@ -152,7 +152,10 @@
             "properties": "プロパティ",
             "permissions": "権限",
             "compress": "圧縮",
-            "extract": "展開"
+            "compressSubmenu": "圧縮",
+            "extract": "展開",
+            "extractSubmenu": "展開",
+            "extractTarHere": "TARをここに展開"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] フォルダ削除: {filename}",
             "delete_task_success": "[{location}] 操作完了: {filename}",
             "delete_error": "[{location}] {filename}を削除できませんでした",
-            "delete_multiple_start": "{count}個のアイテムを削除中...",
+            "delete_multiple_start": "[{location}] {count}個のアイテムを削除中...",
             "delete_multiple_success": "クリーンアップ完了: {count}個削除",
+            "delete_multiple_done": "{count}件削除しました: {items}",
             "mkdir_start": "[{location}] フォルダ{foldername}を作成中...",
             "mkdir_success": "[{location}] フォルダ{foldername}を作成しました",
             "mkdir_error": "[{location}] フォルダを作成できませんでした",

@@ -152,7 +152,10 @@
             "properties": "מאפיינים",
             "permissions": "הרשאות",
             "compress": "דחוס",
-            "extract": "חלץ"
+            "compressSubmenu": "דחיסה",
+            "extract": "חלץ",
+            "extractSubmenu": "חלץ",
+            "extractTarHere": "חלץ TAR כאן"
         },
         "transfer": {
             "transferring": "מעביר...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] התיקייה נמחקה: {filename}",
             "delete_task_success": "[{location}] הפעולה הושלמה: {filename}",
             "delete_error": "[{location}] לא ניתן למחוק {filename}",
-            "delete_multiple_start": "מוחק {count} פריטים...",
+            "delete_multiple_start": "[{location}] מוחק {count} פריטים...",
             "delete_multiple_success": "הניקוי הושלם: {count} נמחקו",
+            "delete_multiple_done": "נמחקו {count} פריטים: {items}",
             "mkdir_start": "[{location}] יוצר תיקייה {foldername}...",
             "mkdir_success": "[{location}] התיקייה {foldername} נוצרה",
             "mkdir_error": "[{location}] לא ניתן ליצור תיקייה",

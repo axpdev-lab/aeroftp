@@ -152,7 +152,10 @@
             "properties": "Eiginleikar",
             "permissions": "Heimildir",
             "compress": "Þjappa",
-            "extract": "Afþjappa"
+            "compressSubmenu": "Þjappa",
+            "extract": "Afþjappa",
+            "extractSubmenu": "Afþjappa",
+            "extractTarHere": "Afþjappa TAR hér"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Mappa fjarlægð: {filename}",
             "delete_task_success": "[{location}] Aðgerð lokið: {filename}",
             "delete_error": "[{location}] Ekki tókst að fjarlægja {filename}",
-            "delete_multiple_start": "Eyðir {count} atriðum...",
+            "delete_multiple_start": "[{location}] Eyðir {count} atriðum...",
             "delete_multiple_success": "Hreinsun lokið: {count} fjarlægð",
+            "delete_multiple_done": "Eyddi {count} atriðum: {items}",
             "mkdir_start": "[{location}] Býr til möppu {foldername}...",
             "mkdir_success": "[{location}] Mappa búin til {foldername}",
             "mkdir_error": "[{location}] Ekki tókst að búa til möppu",

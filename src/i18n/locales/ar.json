@@ -152,7 +152,10 @@
             "properties": "الخصائص",
             "permissions": "الصلاحيات",
             "compress": "ضغط",
-            "extract": "استخراج"
+            "compressSubmenu": "ضغط",
+            "extract": "استخراج",
+            "extractSubmenu": "استخراج",
+            "extractTarHere": "استخراج TAR هنا"
         },
         "transfer": {
             "transferring": "جاري النقل...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] تم حذف المجلد: {filename}",
             "delete_task_success": "[{location}] اكتملت العملية: {filename}",
             "delete_error": "[{location}] تعذر حذف {filename}",
-            "delete_multiple_start": "جاري حذف {count} عناصر...",
+            "delete_multiple_start": "[{location}] جاري حذف {count} عناصر...",
             "delete_multiple_success": "اكتمل التنظيف: تم حذف {count}",
+            "delete_multiple_done": "تم حذف {count} عناصر: {items}",
             "mkdir_start": "[{location}] جاري إنشاء المجلد {foldername}...",
             "mkdir_success": "[{location}] تم إنشاء المجلد {foldername}",
             "mkdir_error": "[{location}] تعذر إنشاء المجلد",

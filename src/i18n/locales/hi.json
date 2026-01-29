@@ -152,7 +152,10 @@
             "properties": "गुण",
             "permissions": "अनुमतियां",
             "compress": "संपीड़ित करें",
-            "extract": "निकालें"
+            "compressSubmenu": "संपीड़ित करें",
+            "extract": "निकालें",
+            "extractSubmenu": "निकालें",
+            "extractTarHere": "TAR यहाँ निकालें"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] फोल्डर हटाया गया: {filename}",
             "delete_task_success": "[{location}] ऑपरेशन पूर्ण: {filename}",
             "delete_error": "[{location}] {filename} नहीं हटा सका",
-            "delete_multiple_start": "{count} आइटम हटाए जा रहे हैं...",
+            "delete_multiple_start": "[{location}] {count} आइटम हटाए जा रहे हैं...",
             "delete_multiple_success": "सफाई पूर्ण: {count} हटाए गए",
+            "delete_multiple_done": "{count} आइटम हटाए गए: {items}",
             "mkdir_start": "[{location}] फोल्डर {foldername} बनाया जा रहा है...",
             "mkdir_success": "[{location}] फोल्डर {foldername} बनाया गया",
             "mkdir_error": "[{location}] फोल्डर नहीं बना सका",

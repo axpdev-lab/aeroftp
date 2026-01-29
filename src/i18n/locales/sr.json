@@ -152,7 +152,10 @@
             "properties": "Својства",
             "permissions": "Дозволе",
             "compress": "Компримуј",
-            "extract": "Распакуј"
+            "compressSubmenu": "Компресуј",
+            "extract": "Распакуј",
+            "extractSubmenu": "Извуци",
+            "extractTarHere": "Извуци TAR овде"
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Фасцикла обрисана: {filename}",
             "delete_task_success": "[{location}] Операција завршена: {filename}",
             "delete_error": "[{location}] Није могуће обрисати {filename}",
-            "delete_multiple_start": "Брисање {count} ставки...",
+            "delete_multiple_start": "[{location}] Брисање {count} ставки...",
             "delete_multiple_success": "Чишћење завршено: {count} обрисано",
+            "delete_multiple_done": "Обрисано {count} ставки: {items}",
             "mkdir_start": "[{location}] Креирање фасцикле {foldername}...",
             "mkdir_success": "[{location}] Фасцикла креирана {foldername}",
             "mkdir_error": "[{location}] Није могуће креирати фасциклу",

@@ -152,7 +152,10 @@
             "properties": "Priodweddau",
             "permissions": "Caniatadau",
             "compress": "Cywasgu",
-            "extract": "Echdynnu"
+            "compressSubmenu": "Cywasgu",
+            "extract": "Echdynnu",
+            "extractSubmenu": "Echdynnu",
+            "extractTarHere": "Echdynnu TAR Yma"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Ffolder wedi'i dileu: {filename}",
             "delete_task_success": "[{location}] Gweithred wedi'i chwblhau: {filename}",
             "delete_error": "[{location}] Methu dileu {filename}",
-            "delete_multiple_start": "Yn dileu {count} eitem...",
+            "delete_multiple_start": "[{location}] Yn dileu {count} eitem...",
             "delete_multiple_success": "Clirio wedi'i gwblhau: {count} wedi'u dileu",
+            "delete_multiple_done": "Dilëwyd {count} eitem: {items}",
             "mkdir_start": "[{location}] Yn creu ffolder {foldername}...",
             "mkdir_success": "[{location}] Ffolder wedi'i chreu {foldername}",
             "mkdir_error": "[{location}] Methu creu ffolder",

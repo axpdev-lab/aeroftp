@@ -152,7 +152,10 @@
             "properties": "Властивості",
             "permissions": "Права доступу",
             "compress": "Стиснути",
-            "extract": "Витягти"
+            "compressSubmenu": "Стиснути",
+            "extract": "Витягти",
+            "extractSubmenu": "Видобути",
+            "extractTarHere": "Видобути TAR сюди"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Папку видалено: {filename}",
             "delete_task_success": "[{location}] Операцію завершено: {filename}",
             "delete_error": "[{location}] Не вдалося видалити {filename}",
-            "delete_multiple_start": "Видалення {count} елементів...",
+            "delete_multiple_start": "[{location}] Видалення {count} елементів...",
             "delete_multiple_success": "Очищення завершено: {count} видалено",
+            "delete_multiple_done": "Видалено {count} елементів: {items}",
             "mkdir_start": "[{location}] Створення папки {foldername}...",
             "mkdir_success": "[{location}] Папку {foldername} створено",
             "mkdir_error": "[{location}] Не вдалося створити папку",

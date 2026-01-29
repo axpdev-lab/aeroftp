@@ -152,7 +152,10 @@
             "properties": "Özellikler",
             "permissions": "İzinler",
             "compress": "Sıkıştır",
-            "extract": "Çıkart"
+            "compressSubmenu": "Sıkıştır",
+            "extract": "Çıkart",
+            "extractSubmenu": "Çıkar",
+            "extractTarHere": "TAR'ı buraya çıkar"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Klasör silindi: {filename}",
             "delete_task_success": "[{location}] İşlem tamamlandı: {filename}",
             "delete_error": "[{location}] {filename} silinemedi",
-            "delete_multiple_start": "{count} öğe siliniyor...",
+            "delete_multiple_start": "[{location}] {count} öğe siliniyor...",
             "delete_multiple_success": "Temizlik tamamlandı: {count} silindi",
+            "delete_multiple_done": "{count} öğe silindi: {items}",
             "mkdir_start": "[{location}] {foldername} klasörü oluşturuluyor...",
             "mkdir_success": "[{location}] {foldername} klasörü oluşturuldu",
             "mkdir_error": "[{location}] Klasör oluşturulamadı",

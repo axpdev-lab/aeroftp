@@ -152,7 +152,10 @@
             "properties": "Właściwości",
             "permissions": "Uprawnienia",
             "compress": "Kompresuj",
-            "extract": "Wypakuj"
+            "compressSubmenu": "Kompresuj",
+            "extract": "Wypakuj",
+            "extractSubmenu": "Wypakuj",
+            "extractTarHere": "Wypakuj TAR tutaj"
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -373,8 +376,9 @@
             "delete_dir_success": "[{location}] Folder usunięty: {filename}",
             "delete_task_success": "[{location}] Operacja ukończona: {filename}",
             "delete_error": "[{location}] Nie można usunąć {filename}",
-            "delete_multiple_start": "Usuwanie {count} elementów...",
+            "delete_multiple_start": "[{location}] Usuwanie {count} elementów...",
             "delete_multiple_success": "Czyszczenie ukończone: usunięto {count}",
+            "delete_multiple_done": "Usunięto {count} elementów: {items}",
             "mkdir_start": "[{location}] Tworzenie folderu {foldername}...",
             "mkdir_success": "[{location}] Utworzono folder {foldername}",
             "mkdir_error": "[{location}] Nie można utworzyć folderu",
