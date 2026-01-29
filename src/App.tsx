@@ -27,6 +27,7 @@ import { ContextMenu, useContextMenu, ContextMenuItem } from './components/Conte
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { AboutDialog } from './components/AboutDialog';
+import { MigrationDialog } from './components/MigrationDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -135,6 +136,7 @@ const App: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+  const [showMigrationDialog, setShowMigrationDialog] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
   // showSettingsPanel provided by useSettings
@@ -445,6 +447,33 @@ const App: React.FC = () => {
   }, [showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
+
+  // Credential migration check on startup (v1.3.2 security hotfix)
+  useEffect(() => {
+    const checkMigration = async () => {
+      // Check if localStorage has legacy password fields
+      const serversJson = localStorage.getItem('aeroftp-saved-servers');
+      let hasLegacyPasswords = false;
+      if (serversJson) {
+        try {
+          const servers = JSON.parse(serversJson);
+          hasLegacyPasswords = servers.some((s: any) => s.password && !s.hasStoredCredential);
+        } catch { }
+      }
+      // Check for legacy OAuth secrets in localStorage
+      const hasLegacyOAuth = ['googledrive', 'dropbox', 'onedrive'].some(
+        p => localStorage.getItem(`oauth_${p}_client_id`) || localStorage.getItem(`oauth_${p}_client_secret`)
+      );
+      // Check for legacy OAuth settings
+      const hasLegacyOAuthSettings = !!localStorage.getItem('aeroftp_oauth_settings');
+
+      if (hasLegacyPasswords || hasLegacyOAuth || hasLegacyOAuthSettings) {
+        // Also check backend for server_credentials.json
+        setShowMigrationDialog(true);
+      }
+    };
+    checkMigration();
+  }, []);
 
   // FTP Keep-Alive: Send NOOP every 60 seconds to prevent connection timeout
   // Skip for OAuth providers as they don't need keep-alive
@@ -2997,6 +3026,7 @@ const App: React.FC = () => {
         fileName={permissionsDialog?.file.name || ''}
         currentPermissions={permissionsDialog?.file.permissions || undefined}
       />
+      <MigrationDialog isOpen={showMigrationDialog} onClose={() => setShowMigrationDialog(false)} />
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
       <OverwriteDialog

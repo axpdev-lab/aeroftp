@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw } from 'lucide-react';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
@@ -140,12 +141,26 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     checkTokens();
   }, [oauthProvider, hasTokens]);
 
-  // Load saved credentials from localStorage
+  // Load saved credentials from secure credential store (fallback: localStorage for migration)
   useEffect(() => {
-    const savedId = localStorage.getItem(`oauth_${provider}_client_id`);
-    const savedSecret = localStorage.getItem(`oauth_${provider}_client_secret`);
-    if (savedId) setClientId(savedId);
-    if (savedSecret) setClientSecret(savedSecret);
+    const loadCredentials = async () => {
+      try {
+        const savedId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
+        if (savedId) setClientId(savedId);
+      } catch {
+        // Fallback: legacy localStorage (pre-v1.3.2)
+        const legacyId = localStorage.getItem(`oauth_${provider}_client_id`);
+        if (legacyId) setClientId(legacyId);
+      }
+      try {
+        const savedSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
+        if (savedSecret) setClientSecret(savedSecret);
+      } catch {
+        const legacySecret = localStorage.getItem(`oauth_${provider}_client_secret`);
+        if (legacySecret) setClientSecret(legacySecret);
+      }
+    };
+    loadCredentials();
   }, [provider]);
 
   const handleSignIn = async () => {
@@ -154,9 +169,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       return;
     }
 
-    // Save credentials
-    localStorage.setItem(`oauth_${provider}_client_id`, clientId);
-    localStorage.setItem(`oauth_${provider}_client_secret`, clientSecret);
+    // Save credentials to secure credential store
+    invoke('store_credential', { account: `oauth_${provider}_client_id`, password: clientId }).catch(console.error);
+    invoke('store_credential', { account: `oauth_${provider}_client_secret`, password: clientSecret }).catch(console.error);
+    // Remove legacy localStorage entries
+    localStorage.removeItem(`oauth_${provider}_client_id`);
+    localStorage.removeItem(`oauth_${provider}_client_secret`);
 
     try {
       const params = {

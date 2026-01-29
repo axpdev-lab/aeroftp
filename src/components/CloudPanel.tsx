@@ -60,7 +60,7 @@ interface CloudPanelProps {
 
 // Setup Wizard Component
 const SetupWizard: React.FC<{
-    savedServers: { name: string; host: string; port?: number; username?: string; password?: string; initialPath?: string }[];
+    savedServers: { id: string; name: string; host: string; port?: number; username?: string; password?: string; initialPath?: string }[];
     onComplete: (config: CloudConfig) => void;
     onCancel: () => void;
 }> = ({ savedServers, onComplete, onCancel }) => {
@@ -93,20 +93,31 @@ const SetupWizard: React.FC<{
     const handleComplete = async () => {
         setIsLoading(true);
         try {
-            // First, save server credentials for background sync
+            // Save server credentials for background sync (via secure credential store)
             const selectedServer = savedServers.find(s => s.name === serverProfile);
-            if (selectedServer && selectedServer.username && selectedServer.password) {
+            if (selectedServer && selectedServer.username) {
                 const serverString = selectedServer.port && selectedServer.port !== 21
                     ? `${selectedServer.host}:${selectedServer.port}`
                     : selectedServer.host;
 
-                await invoke('save_server_credentials', {
-                    profileName: serverProfile,
-                    server: serverString,
-                    username: selectedServer.username,
-                    password: selectedServer.password,
-                });
-                console.log('Server credentials saved for background sync');
+                // Load password from secure store using server ID
+                let password = '';
+                try {
+                    password = await invoke<string>('get_credential', { account: `server_${selectedServer.id}` });
+                } catch {
+                    // Fallback: legacy password field (pre-v1.3.2)
+                    password = selectedServer.password || '';
+                }
+
+                if (password) {
+                    await invoke('save_server_credentials', {
+                        profileName: serverProfile,
+                        server: serverString,
+                        username: selectedServer.username,
+                        password,
+                    });
+                    console.log('Server credentials saved for background sync');
+                }
             }
 
             // Then setup AeroCloud

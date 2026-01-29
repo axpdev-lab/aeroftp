@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::ProviderError;
 
@@ -284,48 +284,73 @@ impl OAuth2Manager {
         Ok(token_dir)
     }
 
-    /// Store tokens in local file (more reliable than keyring on Linux)
+    /// Store tokens in secure credential store (OS keyring or encrypted vault)
     pub fn store_tokens(&self, provider: OAuthProvider, tokens: &StoredTokens) -> Result<(), ProviderError> {
-        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        
         let json = serde_json::to_string_pretty(tokens)
             .map_err(|e| ProviderError::Other(format!("Failed to serialize tokens: {}", e)))?;
-        
+
+        let account = format!("oauth_{:?}", provider).to_lowercase();
+
+        // Try secure credential store first
+        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
+            store.store_and_track(&account, &json)
+                .map_err(|e| ProviderError::Other(format!("Failed to store tokens in keyring: {}", e)))?;
+            info!("Tokens stored in secure credential store for {:?}", provider);
+            return Ok(());
+        }
+
+        // Fallback: try vault
+        if crate::credential_store::CredentialStore::vault_exists() {
+            // Vault needs to be unlocked - store in file with secure permissions as last resort
+            warn!("Vault locked, falling back to file storage for {:?} tokens", provider);
+        }
+
+        // Last resort fallback: file with 0o600 permissions
+        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         std::fs::write(&token_path, &json)
             .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
-        
-        // Set restrictive permissions on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            let _ = std::fs::set_permissions(&token_path, perms);
-        }
-        
-        info!("Tokens stored in file for {:?}", provider);
+        let _ = crate::credential_store::ensure_secure_permissions(&token_path);
+
+        info!("Tokens stored in file for {:?} (keyring unavailable)", provider);
         Ok(())
     }
 
-    /// Load tokens from local file
+    /// Load tokens from secure credential store or legacy file
     pub fn load_tokens(&self, provider: OAuthProvider) -> Result<StoredTokens, ProviderError> {
+        let account = format!("oauth_{:?}", provider).to_lowercase();
+
+        // Try secure credential store first
+        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
+            if let Ok(json) = store.get(&account) {
+                return serde_json::from_str(&json)
+                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+            }
+        }
+
+        // Fallback: try legacy file
         let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        
         let json = std::fs::read_to_string(&token_path)
             .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
-        
+
         serde_json::from_str(&json)
             .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))
     }
 
-    /// Delete tokens from file
+    /// Delete tokens from credential store and legacy file
     pub fn delete_tokens(&self, provider: OAuthProvider) -> Result<(), ProviderError> {
-        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        
-        if token_path.exists() {
-            std::fs::remove_file(&token_path)
-                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+        let account = format!("oauth_{:?}", provider).to_lowercase();
+
+        // Delete from credential store
+        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
+            let _ = store.delete_and_track(&account);
         }
-        
+
+        // Also delete legacy file if exists
+        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        if token_path.exists() {
+            let _ = crate::credential_store::secure_delete(&token_path);
+        }
+
         info!("Tokens deleted for {:?}", provider);
         Ok(())
     }

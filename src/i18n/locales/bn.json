@@ -487,6 +487,39 @@
             "activityLog": "কার্যকলাপ লগ",
             "aerocloudTitle": "AeroCloud স্থিতি",
             "updateAvailable": "আপডেট উপলব্ধ"
+        },
+        "migration": {
+            "title": "Secure Credential Migration",
+            "checking": "Checking security status...",
+            "warning": "Your credentials are stored in plaintext",
+            "warningDetail": "Passwords and tokens will be migrated to your OS keychain for secure storage.",
+            "keyringDetected": "OS Keychain detected - credentials will be securely stored",
+            "vaultMode": "Using encrypted vault with master password",
+            "migrate": "Migrate Now",
+            "skip": "Skip",
+            "skipWarning": "Skipping will leave your credentials in plaintext files",
+            "inProgress": "Migrating credentials securely...",
+            "success": "Migration Complete",
+            "credentialsMigrated": "credentials securely migrated",
+            "oldFileDeleted": "Old plaintext file securely deleted",
+            "error": "Migration Failed",
+            "close": "Close",
+            "continue": "Continue"
+        },
+        "masterPassword": {
+            "setupTitle": "Set Master Password",
+            "unlockTitle": "Unlock Credential Vault",
+            "setupDesc": "Your OS keychain is not available. Set a master password to encrypt your credential vault locally.",
+            "unlockDesc": "Enter your master password to unlock the credential vault.",
+            "noRecovery": "There is no password recovery. If you forget this password, your stored credentials cannot be recovered.",
+            "password": "Master password",
+            "confirm": "Confirm password",
+            "tooShort": "Minimum 8 characters",
+            "mismatch": "Passwords do not match",
+            "processing": "Processing...",
+            "create": "Create Vault",
+            "unlock": "Unlock",
+            "cancel": "Cancel"
         }
     }
 }

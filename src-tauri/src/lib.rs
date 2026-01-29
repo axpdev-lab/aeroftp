@@ -20,6 +20,7 @@ mod providers;
 mod provider_commands;
 mod session_manager;
 mod session_commands;
+mod credential_store;
 #[cfg(unix)]
 mod pty;
 
@@ -3018,54 +3019,36 @@ async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<c
     // For MVP, background sync only works if the server is already connected in main UI
     // and we use the same credentials from config file
     
-    // Try to connect using saved credentials
-    let creds_path = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
-        .join("aeroftp")
-        .join("server_credentials.json");
-    
+    // Load credentials from secure store (keyring or vault)
+    info!("Background sync: loading credentials for profile '{}'", server_profile);
+
+    let store = get_credential_store()
+        .map_err(|e| format!("Background sync: no credential store available: {}", e))?;
+
+    let creds_json = store.get(&format!("server_{}", server_profile))
+        .map_err(|e| format!("No saved credentials for profile '{}': {}", server_profile, e))?;
+
     #[derive(serde::Deserialize)]
     struct SavedCredentials {
         server: String,
         username: String,
         password: String,
     }
-    
-    info!("Background sync: looking for credentials at {:?} for profile '{}'", creds_path, server_profile);
-    
-    // Try to load credentials for the profile
-    match tokio::fs::read_to_string(&creds_path).await {
-        Ok(content) => {
-            info!("Background sync: credentials file found, parsing...");
-            match serde_json::from_str::<std::collections::HashMap<String, SavedCredentials>>(&content) {
-                Ok(creds_map) => {
-                    info!("Background sync: found {} saved profiles", creds_map.len());
-                    if let Some(creds) = creds_map.get(server_profile) {
-                        // Connect to server
-                        ftp_manager.connect(&creds.server)
-                            .await
-                            .map_err(|e| format!("Failed to connect for background sync: {}", e))?;
-                        
-                        // Login with credentials
-                        ftp_manager.login(&creds.username, &creds.password)
-                            .await
-                            .map_err(|e| format!("Failed to login for background sync: {}", e))?;
-                            
-                        info!("Background sync: connected to {} as {}", creds.server, creds.username);
-                    } else {
-                        let available: Vec<_> = creds_map.keys().collect();
-                        return Err(format!("No saved credentials for profile '{}'. Available: {:?}", server_profile, available));
-                    }
-                }
-                Err(e) => {
-                    return Err(format!("Failed to parse saved credentials: {}", e));
-                }
-            }
-        }
-        Err(e) => {
-            return Err(format!("No saved credentials file at {:?}: {}. Please re-setup AeroCloud to save credentials.", creds_path, e));
-        }
-    }
+
+    let creds: SavedCredentials = serde_json::from_str(&creds_json)
+        .map_err(|e| format!("Failed to parse credentials for '{}': {}", server_profile, e))?;
+
+    // Connect to server
+    ftp_manager.connect(&creds.server)
+        .await
+        .map_err(|e| format!("Failed to connect for background sync: {}", e))?;
+
+    // Login with credentials
+    ftp_manager.login(&creds.username, &creds.password)
+        .await
+        .map_err(|e| format!("Failed to login for background sync: {}", e))?;
+
+    info!("Background sync: connected to {} as {}", creds.server, creds.username);
     
     // Navigate to remote folder
     if ftp_manager.change_dir(&config.remote_folder).await.is_err() {
@@ -3158,7 +3141,7 @@ async fn set_tray_status(app: AppHandle, status: String, tooltip: Option<String>
     Ok(())
 }
 
-/// Save server credentials for background sync use
+/// Save server credentials for background sync use (now uses secure credential store)
 #[tauri::command]
 async fn save_server_credentials(
     profile_name: String,
@@ -3166,41 +3149,133 @@ async fn save_server_credentials(
     username: String,
     password: String,
 ) -> Result<(), String> {
-    let creds_path = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
-        .join("aeroftp")
-        .join("server_credentials.json");
-    
-    // Load existing credentials
-    let mut creds_map: std::collections::HashMap<String, serde_json::Value> = 
-        if let Ok(content) = tokio::fs::read_to_string(&creds_path).await {
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            std::collections::HashMap::new()
-        };
-    
-    // Add/update credentials
-    creds_map.insert(profile_name.clone(), serde_json::json!({
+    let store = get_credential_store()?;
+
+    let value = serde_json::json!({
         "server": server,
         "username": username,
-        "password": password
-    }));
-    
-    // Ensure directory exists
-    if let Some(parent) = creds_path.parent() {
-        tokio::fs::create_dir_all(parent).await
-            .map_err(|e| format!("Failed to create config dir: {}", e))?;
-    }
-    
-    // Save
-    let content = serde_json::to_string_pretty(&creds_map)
-        .map_err(|e| format!("Failed to serialize credentials: {}", e))?;
-    
-    tokio::fs::write(&creds_path, content).await
-        .map_err(|e| format!("Failed to save credentials: {}", e))?;
-    
+        "password": password,
+    });
+
+    store.store_and_track(
+        &format!("server_{}", profile_name),
+        &value.to_string(),
+    ).map_err(|e| format!("Failed to save credentials: {}", e))?;
+
     info!("Saved credentials for profile: {}", profile_name);
     Ok(())
+}
+
+// ============ Secure Credential Store Commands ============
+
+#[derive(Serialize)]
+struct CredentialStatus {
+    backend: String,
+    accounts_count: u32,
+    keyring_available: bool,
+    vault_exists: bool,
+}
+
+#[tauri::command]
+async fn check_keyring_available() -> Result<bool, String> {
+    Ok(credential_store::CredentialStore::is_keyring_available())
+}
+
+#[tauri::command]
+async fn get_credential_status() -> Result<CredentialStatus, String> {
+    let keyring_available = credential_store::CredentialStore::is_keyring_available();
+    let vault_exists = credential_store::CredentialStore::vault_exists();
+
+    let (backend, accounts_count) = if keyring_available {
+        match credential_store::CredentialStore::with_keyring() {
+            Some(store) => {
+                let count = store.list_accounts().unwrap_or_default().len() as u32;
+                ("keyring".to_string(), count)
+            }
+            None => ("none".to_string(), 0),
+        }
+    } else if vault_exists {
+        ("vault_locked".to_string(), 0)
+    } else {
+        ("none".to_string(), 0)
+    };
+
+    Ok(CredentialStatus {
+        backend,
+        accounts_count,
+        keyring_available,
+        vault_exists,
+    })
+}
+
+#[tauri::command]
+async fn store_credential(account: String, password: String) -> Result<(), String> {
+    let store = get_credential_store()?;
+    store.store_and_track(&account, &password)
+        .map_err(|e| format!("Failed to store credential: {}", e))
+}
+
+#[tauri::command]
+async fn get_credential(account: String) -> Result<String, String> {
+    let store = get_credential_store()?;
+    store.get(&account)
+        .map_err(|e| format!("Failed to get credential: {}", e))
+}
+
+#[tauri::command]
+async fn delete_credential(account: String) -> Result<(), String> {
+    let store = get_credential_store()?;
+    store.delete_and_track(&account)
+        .map_err(|e| format!("Failed to delete credential: {}", e))
+}
+
+#[tauri::command]
+async fn setup_master_password(password: String) -> Result<(), String> {
+    credential_store::CredentialStore::setup_vault(&password)
+        .map_err(|e| format!("Failed to setup vault: {}", e))?;
+    info!("Master password vault initialized");
+    Ok(())
+}
+
+#[tauri::command]
+async fn unlock_vault(password: String) -> Result<(), String> {
+    // Verify the password works
+    credential_store::CredentialStore::with_vault(&password)
+        .map_err(|e| format!("Failed to unlock vault: {}", e))?;
+    info!("Vault unlocked successfully");
+    Ok(())
+}
+
+#[tauri::command]
+async fn migrate_plaintext_credentials() -> Result<credential_store::MigrationResult, String> {
+    let store = get_credential_store()?;
+
+    // Migrate server credentials
+    let mut result = credential_store::migrate_server_credentials(&store)
+        .map_err(|e| format!("Migration failed: {}", e))?;
+
+    // Migrate OAuth tokens
+    match credential_store::migrate_oauth_tokens(&store) {
+        Ok(count) => result.migrated_count += count,
+        Err(e) => result.errors.push(format!("OAuth migration: {}", e)),
+    }
+
+    // Harden all config directory permissions
+    let _ = credential_store::harden_config_directory();
+
+    info!("Migration complete: {} credentials migrated", result.migrated_count);
+    Ok(result)
+}
+
+/// Helper to get an active credential store (keyring preferred, vault fallback)
+fn get_credential_store() -> Result<credential_store::CredentialStore, String> {
+    // Try OS keyring first
+    if let Some(store) = credential_store::CredentialStore::with_keyring() {
+        return Ok(store);
+    }
+    // Vault fallback - it needs to be unlocked already
+    // For now, return error if neither is available
+    Err("No credential store available. OS keyring not found and vault not configured.".to_string())
 }
 
 // ============ App Entry Point ============
@@ -3470,6 +3545,15 @@ pub fn run() {
             is_background_sync_running,
             set_tray_status,
             save_server_credentials,
+            // Secure Credential Store commands
+            check_keyring_available,
+            get_credential_status,
+            store_credential,
+            get_credential,
+            delete_credential,
+            setup_master_password,
+            unlock_vault,
+            migrate_plaintext_credentials,
             // Updater command
             check_update,
             log_update_detection,

@@ -122,7 +122,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         host: connectionParams.server,
                         port: connectionParams.port || getDefaultPort(protocol),
                         username: connectionParams.username,
-                        password: connectionParams.password,
+                        hasStoredCredential: !!connectionParams.password,
                         protocol: protocol as ProviderType,
                         options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
@@ -131,22 +131,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 }
                 return s;
             });
+            // Store password in secure credential store (never in localStorage)
+            if (connectionParams.password) {
+                invoke('store_credential', {
+                    account: `server_${editingProfileId}`,
+                    password: connectionParams.password,
+                }).catch(err => console.error('Failed to store credential:', err));
+            }
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
             setSavedServersUpdate(Date.now());
         } else if (saveConnection) {
             // Create new profile
+            const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const newServer: ServerProfile = {
-                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: newId,
                 name: connectionName || connectionParams.server || protocol,
                 host: connectionParams.server,
                 port: connectionParams.port || getDefaultPort(protocol),
                 username: connectionParams.username,
-                password: connectionParams.password,
+                hasStoredCredential: !!connectionParams.password,
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
                 options: optionsToSave,
             };
+            // Store password in secure credential store (never in localStorage)
+            if (connectionParams.password) {
+                invoke('store_credential', {
+                    account: `server_${newId}`,
+                    password: connectionParams.password,
+                }).catch(err => console.error('Failed to store credential:', err));
+            }
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
             setSavedServersUpdate(Date.now()); // Trigger refresh
         }

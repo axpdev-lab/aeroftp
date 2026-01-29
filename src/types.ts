@@ -127,7 +127,8 @@ export interface ServerProfile {
   host: string;
   port: number;
   username: string;
-  password?: string;
+  password?: string;            // DEPRECATED: migrated to secure credential store
+  hasStoredCredential?: boolean; // true if password stored in OS keyring/vault
   protocol?: ProviderType;    // Default: 'ftp'
   initialPath?: string;       // Initial remote directory to navigate after connection
   localInitialPath?: string;  // Initial local directory for this project/server

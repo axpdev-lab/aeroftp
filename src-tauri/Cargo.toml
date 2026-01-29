@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.3.1"
+version = "1.3.2"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -63,6 +63,10 @@ tauri-plugin-updater = "2.9.0"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-aptabase = "1.0"  # Privacy-first analytics (v1.3.0)
 semver = "1.0.27"
+
+# Secure Credential Storage (v1.3.2 hotfix)
+argon2 = "0.5"
+aes-gcm = "0.10"
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.8"

@@ -234,8 +234,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (saved) setSettings({ ...defaultSettings, ...JSON.parse(saved) });
                 const savedServers = localStorage.getItem(SERVERS_KEY);
                 if (savedServers) setServers(JSON.parse(savedServers));
-                const savedOAuth = localStorage.getItem(OAUTH_SETTINGS_KEY);
-                if (savedOAuth) setOauthSettings({ ...defaultOAuthSettings, ...JSON.parse(savedOAuth) });
+                // Load OAuth settings from secure credential store (fallback: localStorage)
+                const loadOAuthFromStore = async () => {
+                    const providers = ['googledrive', 'dropbox', 'onedrive'] as const;
+                    const loaded = { ...defaultOAuthSettings };
+                    for (const p of providers) {
+                        try {
+                            const id = await invoke<string>('get_credential', { account: `oauth_${p}_client_id` });
+                            const secret = await invoke<string>('get_credential', { account: `oauth_${p}_client_secret` });
+                            loaded[p] = { clientId: id || '', clientSecret: secret || '' };
+                        } catch {
+                            // Fallback: legacy localStorage
+                            const legacyOAuth = localStorage.getItem(OAUTH_SETTINGS_KEY);
+                            if (legacyOAuth) {
+                                const parsed = JSON.parse(legacyOAuth);
+                                if (parsed[p]) loaded[p] = parsed[p];
+                            }
+                        }
+                    }
+                    setOauthSettings(loaded);
+                };
+                loadOAuthFromStore();
                 const savedAnalytics = localStorage.getItem('analytics_enabled');
                 if (savedAnalytics !== null) {
                     setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
@@ -247,7 +266,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const handleSave = () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
-        localStorage.setItem(OAUTH_SETTINGS_KEY, JSON.stringify(oauthSettings));
+        // Save OAuth secrets to secure credential store (not localStorage)
+        const providers = ['googledrive', 'dropbox', 'onedrive'] as const;
+        for (const p of providers) {
+            const creds = oauthSettings[p];
+            if (creds.clientId) {
+                invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
+            }
+            if (creds.clientSecret) {
+                invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
+            }
+        }
+        // Remove legacy OAuth settings from localStorage
+        localStorage.removeItem(OAUTH_SETTINGS_KEY);
         localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
         // Apply system menu setting immediately
         invoke('toggle_menu_bar', { visible: settings.showSystemMenu });

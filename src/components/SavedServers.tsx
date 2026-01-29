@@ -188,6 +188,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         setServers(updated);
         saveServers(updated);
 
+        // Load password from secure credential store (never from localStorage)
+        let password = '';
+        try {
+            password = await invoke<string>('get_credential', { account: `server_${server.id}` });
+        } catch {
+            // Fallback: try legacy password field (pre-v1.3.2 migration)
+            password = server.password || '';
+        }
+
         // Build connection params - for providers, don't append port to host
         // SFTP/MEGA use provider_connect which handles port separately
         const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega'].includes(server.protocol);
@@ -199,7 +208,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         onConnect({
             server: serverString,
             username: server.username,
-            password: server.password || '',
+            password,
             protocol: server.protocol || 'ftp',
             port: server.port,
             displayName: server.name,  // Pass custom name for tab display
