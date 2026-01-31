@@ -139,37 +139,20 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
             />
 
             {/* Dialog - Theme aware */}
-            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-[540px] overflow-hidden animate-scale-in max-h-[90vh] overflow-y-auto">
-                {/* Header - Blue theme */}
-                <div className="bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 p-5 text-white text-center relative overflow-hidden">
-                    {/* Grid overlay */}
-                    <div className="absolute inset-0 opacity-10" style={{
-                        backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-                        backgroundSize: '20px 20px'
-                    }} />
-
-                    {/* Close button */}
-                    <button
-                        onClick={onClose}
-                        className="absolute top-3 right-3 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-                        title={t('common.close')}
-                    >
+            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <Heart size={18} className="text-pink-500" />
+                        <h2 className="text-base font-semibold">{t('support.title') || 'Support AeroFTP'}</h2>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title={t('common.close')}>
                         <X size={16} />
                     </button>
-
-                    {/* Heart icon */}
-                    <div className="w-16 h-16 mx-auto mb-3 bg-white/20 backdrop-blur-sm rounded-2xl shadow-lg flex items-center justify-center border border-white/30">
-                        <Heart size={32} className="text-white fill-white" />
-                    </div>
-
-                    <h1 className="text-xl font-bold">{t('support.title') || 'Support AeroFTP'}</h1>
-                    <p className="text-blue-100 text-sm mt-1">
-                        {t('support.subtitle') || 'Your support helps keep AeroFTP free!'}
-                    </p>
                 </div>
 
                 {/* Content */}
-                <div className="p-5 space-y-5">
+                <div className="overflow-y-auto flex-1 p-5 space-y-5">
                     {/* Fiat Section - Clean transparent buttons */}
                     <div>
                         <div className="flex items-center gap-2 mb-3">
@@ -282,16 +265,12 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                         })()}
                     </div>
 
-                    {/* Footer */}
-                    <div className="text-center pt-3 border-t border-gray-200 dark:border-gray-800">
-                        <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                            <Heart size={12} className="text-blue-500" />
-                            {t('support.thanks') || 'Thank you for your support!'}
-                        </p>
-                        <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-1 font-mono">
-                            // {t('support.footer') || 'Every donation helps development'}
-                        </p>
-                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 flex items-center justify-center gap-1 shrink-0">
+                    <Heart size={12} className="text-pink-500" />
+                    {t('support.thanks') || 'Thank you for your support!'}
                 </div>
             </div>
 

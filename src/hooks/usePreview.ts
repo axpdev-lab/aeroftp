@@ -11,7 +11,7 @@
  * Returns: All preview state + openDevToolsPreview, openUniversalPreview, closeUniversalPreview
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { LocalFile, RemoteFile } from '../types';
 import { PreviewFile } from '../components/DevTools';
@@ -43,6 +43,9 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+  // Track current blob URL for cleanup on replacement
+  const currentBlobUrlRef = useRef<string | null>(null);
 
   // Load preview image as base64
   useEffect(() => {
@@ -165,6 +168,12 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         toast.removeToast(loadingToastId);
       }
 
+      // Revoke previous blob URL before replacing state (prevent memory leak)
+      if (currentBlobUrlRef.current) {
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+      }
+      currentBlobUrlRef.current = blobUrl?.startsWith('blob:') ? blobUrl : null;
+
       setUniversalPreviewFile({
         name: file.name,
         path: filePath,
@@ -183,12 +192,13 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
 
   // Close Universal Preview (cleanup blob URL)
   const closeUniversalPreview = useCallback(() => {
-    if (universalPreviewFile?.blobUrl && universalPreviewFile.blobUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(universalPreviewFile.blobUrl);
+    if (currentBlobUrlRef.current) {
+      URL.revokeObjectURL(currentBlobUrlRef.current);
+      currentBlobUrlRef.current = null;
     }
     setUniversalPreviewOpen(false);
     setUniversalPreviewFile(null);
-  }, [universalPreviewFile]);
+  }, []);
 
   return {
     // Sidebar preview

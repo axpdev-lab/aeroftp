@@ -14,6 +14,15 @@ use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
+/// Google Workspace MIME type → export format mapping
+const WORKSPACE_EXPORT_MAP: &[(&str, &str, &str)] = &[
+    ("application/vnd.google-apps.document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
+    ("application/vnd.google-apps.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
+    ("application/vnd.google-apps.presentation", "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx"),
+    ("application/vnd.google-apps.drawing", "application/pdf", ".pdf"),
+    ("application/vnd.google-apps.jam", "application/pdf", ".pdf"),
+];
+
 /// Google Drive API base URL
 const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
@@ -257,6 +266,49 @@ impl GoogleDriveProvider {
         Ok(current_id)
     }
 
+    /// Check if MIME type is a Google Workspace type and return export MIME + extension
+    fn workspace_export_info(mime_type: &str) -> Option<(&'static str, &'static str)> {
+        WORKSPACE_EXPORT_MAP.iter()
+            .find(|(ws_mime, _, _)| *ws_mime == mime_type)
+            .map(|(_, export_mime, ext)| (*export_mime, *ext))
+    }
+
+    /// Download a file, auto-detecting Workspace files and exporting them
+    async fn download_file_by_id(
+        &self,
+        file_id: &str,
+        mime_type: &str,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let url = if let Some((export_mime, _)) = Self::workspace_export_info(mime_type) {
+            // Workspace file: use export endpoint
+            format!(
+                "{}/files/{}/export?mimeType={}",
+                DRIVE_API_BASE, file_id, urlencoding::encode(export_mime)
+            )
+        } else {
+            // Regular file: use alt=media
+            format!("{}/files/{}?alt=media", DRIVE_API_BASE, file_id)
+        };
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Download failed {}: {}", status, text)));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
+
+        Ok(bytes.to_vec())
+    }
+
     /// Convert DriveFile to RemoteEntry
     fn to_remote_entry(&self, file: &DriveFile, path_prefix: &str) -> RemoteEntry {
         let is_dir = file.mime_type == "application/vnd.google-apps.folder";
@@ -273,6 +325,11 @@ impl GoogleDriveProvider {
         let mut metadata = HashMap::new();
         metadata.insert("id".to_string(), file.id.clone());
         metadata.insert("mimeType".to_string(), file.mime_type.clone());
+        if let Some((export_mime, ext)) = Self::workspace_export_info(&file.mime_type) {
+            metadata.insert("exportMimeType".to_string(), export_mime.to_string());
+            metadata.insert("exportExtension".to_string(), ext.to_string());
+            metadata.insert("isWorkspaceFile".to_string(), "true".to_string());
+        }
 
         RemoteEntry {
             name: file.name.clone(),
@@ -379,7 +436,6 @@ impl StorageProvider for GoogleDriveProvider {
         local_path: &str,
         _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // Get file ID from path
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -396,24 +452,9 @@ impl StorageProvider for GoogleDriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        // Download file content
-        let url = format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id);
-        
-        let response = self.client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        let bytes = self.download_file_by_id(&file.id, &file.mime_type).await?;
 
-        if !response.status().is_success() {
-            return Err(ProviderError::Other(format!("Download failed: {}", response.status())));
-        }
-
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        let _: () = tokio::fs::write(local_path, &bytes).await
+        tokio::fs::write(local_path, &bytes).await
             .map_err(|e| ProviderError::Other(format!("Write error: {}", e)))?;
 
         info!("Downloaded {} to {}", remote_path, local_path);
@@ -437,26 +478,14 @@ impl StorageProvider for GoogleDriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        let url = format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id);
-        
-        let response = self.client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        self.download_file_by_id(&file.id, &file.mime_type).await
     }
 
     async fn upload(
         &mut self,
         local_path: &str,
         remote_path: &str,
-        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let content = tokio::fs::read(local_path).await
             .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
@@ -474,41 +503,111 @@ impl StorageProvider for GoogleDriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        // Create multipart upload
-        let metadata = serde_json::json!({
-            "name": file_name,
-            "parents": [parent_id]
-        });
+        let total_size = content.len() as u64;
+        const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
-        let boundary = "aeroftp_boundary";
-        let mut body = Vec::new();
-        
-        // Metadata part
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
-        body.extend_from_slice(metadata.to_string().as_bytes());
-        body.extend_from_slice(b"\r\n");
-        
-        // File content part
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-        body.extend_from_slice(&content);
-        body.extend_from_slice(format!("\r\n--{}--", boundary).as_bytes());
+        if total_size > RESUMABLE_THRESHOLD {
+            // Resumable upload for large files
+            let metadata = serde_json::json!({
+                "name": file_name,
+                "parents": [parent_id]
+            });
 
-        let url = format!("{}/files?uploadType=multipart", UPLOAD_API_BASE);
-        
-        let response = self.client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, format!("multipart/related; boundary={}", boundary))
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            // Step 1: Initiate resumable upload session
+            let init_url = format!(
+                "{}/files?uploadType=resumable",
+                UPLOAD_API_BASE
+            );
 
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Upload failed: {}", text)));
+            let init_response = self.client
+                .post(&init_url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(CONTENT_TYPE, "application/json; charset=UTF-8")
+                .header("X-Upload-Content-Length", total_size.to_string())
+                .body(metadata.to_string())
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !init_response.status().is_success() {
+                let text = init_response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Resumable init failed: {}", text)));
+            }
+
+            let session_uri = init_response
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| ProviderError::Other("No upload session URI returned".to_string()))?
+                .to_string();
+
+            // Step 2: Upload in 10MB chunks
+            const CHUNK_SIZE: usize = 10 * 1024 * 1024;
+            let mut offset: usize = 0;
+
+            while offset < content.len() {
+                let end = std::cmp::min(offset + CHUNK_SIZE, content.len());
+                let chunk = &content[offset..end];
+
+                let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
+
+                let chunk_response = self.client
+                    .put(&session_uri)
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .header("Content-Range", &range)
+                    .body(chunk.to_vec())
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+                let status = chunk_response.status().as_u16();
+                if status != 200 && status != 201 && status != 308 {
+                    let text = chunk_response.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(format!("Chunk upload failed: {}", text)));
+                }
+
+                offset = end;
+                if let Some(ref cb) = on_progress {
+                    cb(offset as u64, total_size);
+                }
+            }
+        } else {
+            // Simple multipart upload for small files
+            let metadata = serde_json::json!({
+                "name": file_name,
+                "parents": [parent_id]
+            });
+
+            let boundary = "aeroftp_boundary";
+            let mut body = Vec::new();
+            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            body.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
+            body.extend_from_slice(metadata.to_string().as_bytes());
+            body.extend_from_slice(b"\r\n");
+            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+            body.extend_from_slice(&content);
+            body.extend_from_slice(format!("\r\n--{}--", boundary).as_bytes());
+
+            let url = format!("{}/files?uploadType=multipart", UPLOAD_API_BASE);
+
+            let response = self.client
+                .post(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(CONTENT_TYPE, format!("multipart/related; boundary={}", boundary))
+                .body(body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Upload failed: {}", text)));
+            }
+
+            if let Some(ref cb) = on_progress {
+                cb(total_size, total_size);
+            }
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -1195,6 +1294,110 @@ impl StorageProvider for GoogleDriveProvider {
         }
 
         Ok(())
+    }
+
+    fn supports_change_tracking(&self) -> bool {
+        true
+    }
+
+    async fn get_change_token(&mut self) -> Result<String, ProviderError> {
+        let url = format!("{}/changes/startPageToken", DRIVE_API_BASE);
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Get start page token failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct StartPageToken {
+            start_page_token: String,
+        }
+
+        let result: StartPageToken = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(result.start_page_token)
+    }
+
+    async fn list_changes(&mut self, page_token: &str) -> Result<(Vec<super::ChangeEntry>, String), ProviderError> {
+        let mut all_changes = Vec::new();
+        let mut current_token = page_token.to_string();
+
+        loop {
+            let url = format!(
+                "{}/changes?pageToken={}&fields=changes(fileId,file(name,mimeType,trashed),removed,time),newStartPageToken,nextPageToken&pageSize=1000",
+                DRIVE_API_BASE, urlencoding::encode(&current_token)
+            );
+
+            let response = self.client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("List changes failed: {}", text)));
+            }
+
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct ChangeFile {
+                name: Option<String>,
+                mime_type: Option<String>,
+                trashed: Option<bool>,
+            }
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Change {
+                file_id: Option<String>,
+                file: Option<ChangeFile>,
+                removed: Option<bool>,
+                time: Option<String>,
+            }
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct ChangeList {
+                changes: Vec<Change>,
+                new_start_page_token: Option<String>,
+                next_page_token: Option<String>,
+            }
+
+            let list: ChangeList = response.json().await
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+            for change in &list.changes {
+                let removed = change.removed.unwrap_or(false)
+                    || change.file.as_ref().and_then(|f| f.trashed).unwrap_or(false);
+                let change_type = if removed { "deleted" } else { "modified" };
+
+                all_changes.push(super::ChangeEntry {
+                    file_id: change.file_id.clone().unwrap_or_default(),
+                    name: change.file.as_ref().and_then(|f| f.name.clone()).unwrap_or_default(),
+                    change_type: change_type.to_string(),
+                    mime_type: change.file.as_ref().and_then(|f| f.mime_type.clone()),
+                    timestamp: change.time.clone(),
+                    removed,
+                });
+            }
+
+            if let Some(new_token) = list.new_start_page_token {
+                return Ok((all_changes, new_token));
+            } else if let Some(next) = list.next_page_token {
+                current_token = next;
+            } else {
+                return Ok((all_changes, current_token));
+            }
+        }
     }
 
     async fn remove_permission(&mut self, path: &str, target: &str) -> Result<(), ProviderError> {

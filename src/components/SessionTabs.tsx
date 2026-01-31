@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider } from '../types';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo } from './ProviderLogos';
 
 interface CloudTabState {
     enabled: boolean;
@@ -29,7 +30,7 @@ const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -81,13 +82,15 @@ const ProviderIcon: React.FC<{
             // S3 bucket icon - orange/amber database style
             return <Database size={size} className={`${combinedClass} text-amber-600`} />;
         case 'mega':
-            // MEGA.nz official logo
-            return (
-                <svg className={combinedClass} width={size} height={size} viewBox="0 0 512 512">
-                    <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
-                    <path d="M385.808 344.461a7.693 7.693 0 01-7.693 7.693h-32.692a7.692 7.692 0 01-7.692-7.693V243.9c0-.858-1.036-1.287-1.642-.68l-69.21 69.21c-6.009 6.008-15.749 6.008-21.757 0l-69.21-69.21c-.607-.607-1.643-.178-1.643.68v100.562a7.692 7.692 0 01-7.691 7.693h-32.694a7.693 7.693 0 01-7.693-7.693V167.54a7.693 7.693 0 017.693-7.693h22.475a15.39 15.39 0 0110.878 4.506l86.044 86.043a3.844 3.844 0 005.438 0l86.044-86.043a15.39 15.39 0 0110.879-4.506h22.473a7.693 7.693 0 017.693 7.693v176.922z" fill="#fff"/>
-                </svg>
-            );
+            return <MegaLogo size={size} />;
+        case 'box':
+            return <BoxLogo size={size} />;
+        case 'pcloud':
+            return <PCloudLogo size={size} />;
+        case 'azure':
+            return <AzureLogo size={size} />;
+        case 'filen':
+            return <FilenLogo size={size} />;
         case 'sftp':
             // SFTP - Lock icon green (secure SSH file transfer)
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
@@ -109,6 +112,10 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 's3': return 'text-amber-600';      // S3 - amber
         case 'webdav': return 'text-orange-500'; // WebDAV - orange
         case 'mega': return 'text-red-600';
+        case 'box': return 'text-blue-600';
+        case 'pcloud': return 'text-cyan-500';
+        case 'azure': return 'text-blue-500';
+        case 'filen': return 'text-emerald-600';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green

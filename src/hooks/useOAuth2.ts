@@ -6,7 +6,7 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive';
+export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud';
 
 interface OAuthFlowStarted {
   auth_url: string;
@@ -147,5 +147,17 @@ export const OAUTH_APPS = {
     client_id: '',
     client_secret: '',
     help_url: 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps',
+  },
+  box: {
+    // Placeholder - users need to set up their own Box Developer app
+    client_id: '',
+    client_secret: '',
+    help_url: 'https://app.box.com/developers/console',
+  },
+  pcloud: {
+    // Placeholder - users need to set up their own pCloud app
+    client_id: '',
+    client_secret: '',
+    help_url: 'https://docs.pcloud.com/methods/oauth_2.0/authorize.html',
   },
 };

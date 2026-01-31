@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
     X, Plus, Trash2, Edit2, Check, AlertCircle,
     Zap, Server, Key, Globe, Cpu, Settings2, ChevronDown, ChevronRight, Sliders
@@ -195,10 +196,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         isNew: boolean;
     } | null>(null);
 
-    // Load settings from localStorage
+    // Load settings from localStorage + API keys from OS Keyring
     useEffect(() => {
-        const saved = localStorage.getItem(AI_SETTINGS_KEY);
-        if (saved) {
+        const loadSettings = async () => {
+            const saved = localStorage.getItem(AI_SETTINGS_KEY);
+            if (!saved) return;
             try {
                 const parsed = JSON.parse(saved);
                 // Convert date strings back to Date objects
@@ -207,17 +209,65 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     createdAt: new Date(p.createdAt),
                     updatedAt: new Date(p.updatedAt),
                 }));
+
+                // Fetch API keys from OS Keyring for each provider
+                let migrated = false;
+                for (const provider of parsed.providers) {
+                    // Migration: if apiKey exists in localStorage, move it to keyring
+                    if (provider.apiKey) {
+                        try {
+                            await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
+                            migrated = true;
+                        } catch (e) {
+                            console.warn(`Failed to migrate API key for ${provider.name} to keyring:`, e);
+                        }
+                    } else {
+                        // Load from keyring
+                        try {
+                            const key = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+                            provider.apiKey = key;
+                        } catch {
+                            // Key not in keyring yet — leave empty
+                        }
+                    }
+                }
+
                 setSettings(parsed);
+
+                // After migration, strip API keys from localStorage
+                if (migrated) {
+                    const stripped = {
+                        ...parsed,
+                        providers: parsed.providers.map((p: AIProvider) => ({ ...p, apiKey: undefined })),
+                    };
+                    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
+                    console.log('[AI Settings] Migrated API keys from localStorage to OS Keyring');
+                }
             } catch (e) {
                 console.error('Failed to parse AI settings:', e);
             }
-        }
+        };
+        loadSettings();
     }, []);
 
-    // Save settings to localStorage
+    // Save settings: API keys go to OS Keyring, rest to localStorage
     const saveSettings = (newSettings: AISettings) => {
         setSettings(newSettings);
-        localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(newSettings));
+
+        // Store API keys in OS Keyring
+        for (const provider of newSettings.providers) {
+            if (provider.apiKey) {
+                invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey })
+                    .catch(e => console.warn(`Failed to store API key for ${provider.name}:`, e));
+            }
+        }
+
+        // Strip API keys from localStorage copy
+        const stripped = {
+            ...newSettings,
+            providers: newSettings.providers.map(p => ({ ...p, apiKey: undefined })),
+        };
+        localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
     };
 
     // Add provider from preset
@@ -261,6 +311,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
     // Delete provider
     const deleteProvider = (providerId: string) => {
+        // Remove API key from OS Keyring
+        invoke('delete_credential', { account: `ai_apikey_${providerId}` }).catch(() => {});
         saveSettings({
             ...settings,
             providers: settings.providers.filter(p => p.id !== providerId),

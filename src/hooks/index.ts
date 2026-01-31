@@ -10,15 +10,7 @@ export type { Theme } from './useTheme';
 // Keyboard
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
 
-// FTP Operations (Legacy)
-export { useFtpConnection } from './useFtpConnection';
-export { useFileTransfer } from './useFileTransfer';
-export { useFileBrowser } from './useFileBrowser';
-export { useSessionManager } from './useSessionManager';
-
-// File Operations (v1.3.0 - Unified with Provider support)
-export { useFileOperations } from './useFileOperations';
-export { useTransferOperations } from './useTransferOperations';
+// Drag & Drop
 export { useDragAndDrop } from './useDragAndDrop';
 
 // Activity Log
@@ -42,6 +34,9 @@ export { useAutoUpdate } from './useAutoUpdate';
 export type { UpdateInfo } from './useAutoUpdate';
 export { usePreview } from './usePreview';
 export { useOverwriteCheck } from './useOverwriteCheck';
+export { useTransferEvents } from './useTransferEvents';
+export { useCloudSync } from './useCloudSync';
 
-// Re-export types for convenience
-export type { SortField, SortOrder } from './useFileBrowser';
+// Component-specific hooks (used by individual components, not App.tsx)
+export { useOAuth2 } from './useOAuth2';
+export { useTraySync } from './useTraySync';

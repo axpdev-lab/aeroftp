@@ -14,6 +14,7 @@ interface OAuthSettings {
     googledrive: { clientId: string; clientSecret: string };
     dropbox: { clientId: string; clientSecret: string };
     onedrive: { clientId: string; clientSecret: string };
+    [key: string]: { clientId: string; clientSecret: string };
 }
 
 // Get OAuth settings from localStorage
@@ -26,7 +27,7 @@ const getOAuthSettings = (): OAuthSettings | null => {
     }
 };
 
-// Map protocol to OAuth provider key
+// Map protocol to OAuth provider key for localStorage settings
 const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null => {
     switch (protocol) {
         case 'googledrive': return 'googledrive';
@@ -34,6 +35,20 @@ const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null
         case 'onedrive': return 'onedrive';
         default: return null;
     }
+};
+
+// Load OAuth credentials from OS keyring (for Box, pCloud, and as fallback)
+const loadOAuthCredentialsFromKeyring = async (provider: string): Promise<{ clientId: string; clientSecret: string } | null> => {
+    try {
+        const clientId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
+        const clientSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
+        if (clientId && clientSecret) {
+            return { clientId, clientSecret };
+        }
+    } catch {
+        // Not found in keyring
+    }
+    return null;
 };
 
 interface SavedServersProps {
@@ -89,6 +104,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         dropbox: 'from-blue-600 to-blue-400',
         onedrive: 'from-sky-500 to-sky-400',
         mega: 'from-red-600 to-red-500',  // MEGA brand red
+        box: 'from-blue-500 to-blue-600',
+        pcloud: 'from-green-500 to-teal-400',
+        azure: 'from-blue-600 to-indigo-500',
+        filen: 'from-emerald-500 to-green-400',
     };
 
     useEffect(() => {
@@ -120,17 +139,26 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
         // Check if this is an OAuth provider
         if (server.protocol && isOAuthProvider(server.protocol)) {
+            // Try localStorage settings first (Google Drive, Dropbox, OneDrive)
             const providerKey = getOAuthProviderKey(server.protocol);
             const oauthSettings = getOAuthSettings();
+            let credentials: { clientId: string; clientSecret: string } | null = null;
 
-            if (!providerKey || !oauthSettings) {
-                setOauthError('OAuth credentials not configured. Please go to Settings > Cloud Storage to configure your credentials.');
-                return;
+            if (providerKey && oauthSettings) {
+                const stored = oauthSettings[providerKey];
+                if (stored?.clientId && stored?.clientSecret) {
+                    credentials = stored;
+                }
             }
 
-            const credentials = oauthSettings[providerKey];
-            if (!credentials?.clientId || !credentials?.clientSecret) {
-                setOauthError(`Please configure ${server.protocol === 'googledrive' ? 'Google Drive' : server.protocol === 'dropbox' ? 'Dropbox' : 'OneDrive'} credentials in Settings > Cloud Storage.`);
+            // Fallback: load from OS keyring (Box, pCloud, or migrated credentials)
+            if (!credentials) {
+                credentials = await loadOAuthCredentialsFromKeyring(server.protocol);
+            }
+
+            if (!credentials) {
+                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+                setOauthError(`Please configure ${providerNames[server.protocol] || server.protocol} credentials in Settings > Cloud Providers.`);
                 return;
             }
 
@@ -290,7 +318,11 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {isOAuthProvider(server.protocol || 'ftp')
                                         ? t('connection.oauth2Connection')
-                                        : `${server.username}@${server.host}:${server.port}`
+                                        : server.protocol === 'filen'
+                                            ? server.username
+                                            : server.protocol === 'mega'
+                                                ? server.username
+                                                : `${server.username}@${server.host}:${server.port}`
                                     }
                                 </div>
                             </div>

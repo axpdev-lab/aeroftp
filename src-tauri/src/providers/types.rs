@@ -31,6 +31,14 @@ pub enum ProviderType {
     OneDrive,
     /// MEGA.nz Cloud Storage
     Mega,
+    /// Box Cloud Storage (OAuth2)
+    Box,
+    /// pCloud (OAuth2)
+    PCloud,
+    /// Azure Blob Storage
+    Azure,
+    /// Filen.io (E2E Encrypted)
+    Filen,
 }
 
 impl fmt::Display for ProviderType {
@@ -46,6 +54,10 @@ impl fmt::Display for ProviderType {
             ProviderType::Dropbox => write!(f, "Dropbox"),
             ProviderType::OneDrive => write!(f, "OneDrive"),
             ProviderType::Mega => write!(f, "MEGA"),
+            ProviderType::Box => write!(f, "Box"),
+            ProviderType::PCloud => write!(f, "pCloud"),
+            ProviderType::Azure => write!(f, "Azure Blob"),
+            ProviderType::Filen => write!(f, "Filen"),
         }
     }
 }
@@ -64,6 +76,10 @@ impl ProviderType {
             ProviderType::Dropbox => 443,
             ProviderType::OneDrive => 443,
             ProviderType::Mega => 443,
+            ProviderType::Box => 443,
+            ProviderType::PCloud => 443,
+            ProviderType::Azure => 443,
+            ProviderType::Filen => 443,
         }
     }
     
@@ -79,7 +95,11 @@ impl ProviderType {
             ProviderType::GoogleDrive |
             ProviderType::Dropbox |
             ProviderType::OneDrive |
-            ProviderType::Mega
+            ProviderType::Mega |
+            ProviderType::Box |
+            ProviderType::PCloud |
+            ProviderType::Azure |
+            ProviderType::Filen
         )
     }
 
@@ -89,7 +109,9 @@ impl ProviderType {
         matches!(self,
             ProviderType::GoogleDrive |
             ProviderType::Dropbox |
-            ProviderType::OneDrive
+            ProviderType::OneDrive |
+            ProviderType::Box |
+            ProviderType::PCloud
         )
     }
 
@@ -367,6 +389,135 @@ impl MegaConfig {
     }
 }
 
+/// Box configuration
+#[derive(Debug, Clone)]
+pub struct BoxConfig {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+impl BoxConfig {
+    pub fn new(client_id: &str, client_secret: &str) -> Self {
+        Self {
+            client_id: client_id.to_string(),
+            client_secret: client_secret.to_string(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let client_id = config.extra.get("client_id")
+            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_id for Box".to_string()))?;
+        let client_secret = config.extra.get("client_secret")
+            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for Box".to_string()))?;
+        Ok(Self::new(client_id, client_secret))
+    }
+}
+
+/// pCloud configuration
+#[derive(Debug, Clone)]
+pub struct PCloudConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    /// API region: "us" or "eu"
+    pub region: String,
+}
+
+impl PCloudConfig {
+    pub fn new(client_id: &str, client_secret: &str, region: &str) -> Self {
+        Self {
+            client_id: client_id.to_string(),
+            client_secret: client_secret.to_string(),
+            region: region.to_string(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let client_id = config.extra.get("client_id")
+            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_id for pCloud".to_string()))?;
+        let client_secret = config.extra.get("client_secret")
+            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string()))?;
+        let region = config.extra.get("region")
+            .cloned()
+            .unwrap_or_else(|| "us".to_string());
+        Ok(Self::new(client_id, client_secret, &region))
+    }
+
+    /// Get the API base URL for this region
+    pub fn api_base(&self) -> &str {
+        if self.region == "eu" {
+            "https://eapi.pcloud.com"
+        } else {
+            "https://api.pcloud.com"
+        }
+    }
+}
+
+/// Azure Blob Storage configuration
+#[derive(Debug, Clone)]
+pub struct AzureConfig {
+    /// Storage account name
+    pub account_name: String,
+    /// Shared Key for HMAC signing
+    pub access_key: String,
+    /// Container name
+    pub container: String,
+    /// Optional SAS token (alternative to access_key)
+    pub sas_token: Option<String>,
+    /// Custom endpoint (for Azure Stack, Azurite emulator, etc.)
+    pub endpoint: Option<String>,
+}
+
+impl AzureConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let account_name = config.extra.get("account_name")
+            .or_else(|| config.username.as_ref())
+            .ok_or_else(|| ProviderError::InvalidConfig("Account name required for Azure".to_string()))?
+            .clone();
+        let access_key = config.extra.get("access_key")
+            .or_else(|| config.password.as_ref())
+            .ok_or_else(|| ProviderError::InvalidConfig("Access key required for Azure".to_string()))?
+            .clone();
+        let container = config.extra.get("container")
+            .ok_or_else(|| ProviderError::InvalidConfig("Container name required for Azure".to_string()))?
+            .clone();
+        let sas_token = config.extra.get("sas_token").cloned();
+        let endpoint = if config.host.is_empty() || config.host == "blob.core.windows.net" {
+            None
+        } else {
+            Some(config.host.clone())
+        };
+        Ok(Self { account_name, access_key, container, sas_token, endpoint })
+    }
+
+    /// Get the blob service endpoint URL
+    pub fn blob_endpoint(&self) -> String {
+        if let Some(ref ep) = self.endpoint {
+            ep.clone()
+        } else {
+            format!("https://{}.blob.core.windows.net", self.account_name)
+        }
+    }
+}
+
+/// Filen configuration
+#[derive(Debug, Clone)]
+pub struct FilenConfig {
+    pub email: String,
+    pub password: secrecy::SecretString,
+}
+
+impl FilenConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let email = config.username.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Email required for Filen".to_string()))?;
+        let password = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Password required for Filen".to_string()))?;
+        Ok(Self { email, password: password.into() })
+    }
+}
+
 /// Remote file/directory entry
 /// 
 /// Unified representation of a file or directory across all providers.
@@ -568,6 +719,23 @@ pub struct SharePermission {
     pub target_type: String,
     /// Target email or identifier (empty for "anyone")
     pub target: String,
+}
+
+/// Change tracking entry (for delta sync)
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeEntry {
+    /// File/folder path or ID
+    pub file_id: String,
+    /// File name
+    pub name: String,
+    /// Change type: "created", "modified", "deleted", "renamed"
+    pub change_type: String,
+    /// MIME type of the changed file
+    pub mime_type: Option<String>,
+    /// Timestamp of the change
+    pub timestamp: Option<String>,
+    /// Whether the file was trashed/deleted
+    pub removed: bool,
 }
 
 /// Transfer progress information (for future progress events)

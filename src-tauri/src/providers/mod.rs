@@ -29,6 +29,10 @@ pub mod google_drive;
 pub mod dropbox;
 pub mod onedrive;
 pub mod mega;
+pub mod box_provider;
+pub mod pcloud;
+pub mod azure;
+pub mod filen;
 
 pub use types::*;
 pub use ftp::FtpProvider;
@@ -39,9 +43,14 @@ pub use google_drive::GoogleDriveProvider;
 pub use dropbox::DropboxProvider;
 pub use onedrive::OneDriveProvider;
 pub use mega::MegaProvider;
+pub use box_provider::BoxProvider;
+pub use pcloud::PCloudProvider;
+pub use azure::AzureProvider;
+pub use filen::FilenProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 /// Unified storage provider trait
 ///
@@ -320,6 +329,41 @@ pub trait StorageProvider: Send + Sync {
     ) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("remove_permission".to_string()))
     }
+
+    /// Whether this provider supports file checksums
+    fn supports_checksum(&self) -> bool {
+        false
+    }
+
+    /// Get checksum(s) for a file. Returns HashMap with algorithm → hex digest.
+    async fn checksum(&mut self, _path: &str) -> Result<HashMap<String, String>, ProviderError> {
+        Err(ProviderError::NotSupported("checksum".to_string()))
+    }
+
+    /// Whether this provider supports remote/URL upload (server fetches a URL)
+    fn supports_remote_upload(&self) -> bool {
+        false
+    }
+
+    /// Tell the server to download a file from a URL into the given path
+    async fn remote_upload(&mut self, _url: &str, _dest_path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("remote_upload".to_string()))
+    }
+
+    /// Whether this provider supports change tracking (delta sync)
+    fn supports_change_tracking(&self) -> bool {
+        false
+    }
+
+    /// Get a start page token for change tracking
+    async fn get_change_token(&mut self) -> Result<String, ProviderError> {
+        Err(ProviderError::NotSupported("get_change_token".to_string()))
+    }
+
+    /// List changes since the given page token, returns (changes, new_token)
+    async fn list_changes(&mut self, _page_token: &str) -> Result<(Vec<ChangeEntry>, String), ProviderError> {
+        Err(ProviderError::NotSupported("list_changes".to_string()))
+    }
 }
 
 /// Provider factory for creating provider instances
@@ -351,7 +395,8 @@ impl ProviderFactory {
                     "AeroCloud must be configured via the AeroCloud panel (click AeroCloud in status bar)".to_string()
                 ))
             }
-            ProviderType::GoogleDrive | ProviderType::Dropbox | ProviderType::OneDrive => {
+            ProviderType::GoogleDrive | ProviderType::Dropbox | ProviderType::OneDrive
+            | ProviderType::Box | ProviderType::PCloud => {
                 // OAuth2 providers require a different initialization flow
                 // Use oauth2_connect command instead
                 Err(ProviderError::NotSupported(
@@ -361,6 +406,14 @@ impl ProviderFactory {
             ProviderType::Mega => {
                 let mega_config = MegaConfig::from_provider_config(config)?;
                 Ok(Box::new(MegaProvider::new(mega_config)))
+            }
+            ProviderType::Azure => {
+                let azure_config = AzureConfig::from_provider_config(config)?;
+                Ok(Box::new(AzureProvider::new(azure_config)))
+            }
+            ProviderType::Filen => {
+                let filen_config = FilenConfig::from_provider_config(config)?;
+                Ok(Box::new(FilenProvider::new(filen_config)))
             }
         }
     }
@@ -379,6 +432,10 @@ impl ProviderFactory {
             ProviderType::Dropbox,
             ProviderType::OneDrive,
             ProviderType::Mega,
+            ProviderType::Box,
+            ProviderType::PCloud,
+            ProviderType::Azure,
+            ProviderType::Filen,
         ]
     }
 }

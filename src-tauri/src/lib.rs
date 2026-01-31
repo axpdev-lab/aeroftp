@@ -1237,52 +1237,52 @@ struct SystemInfo {
     config_dir: String,
     vault_exists: bool,
     known_hosts_exists: bool,
+    dep_versions: std::collections::HashMap<String, String>,
 }
 
 #[tauri::command]
 fn get_dependencies() -> Vec<DependencyInfo> {
     vec![
-        // Core Framework
-        DependencyInfo { name: "tauri".into(), version: "2.9.5".into(), category: "Core".into() },
-        DependencyInfo { name: "tokio".into(), version: "1.49.0".into(), category: "Core".into() },
-        DependencyInfo { name: "serde".into(), version: "1.0.228".into(), category: "Core".into() },
-        DependencyInfo { name: "serde_json".into(), version: "1.0.149".into(), category: "Core".into() },
-        DependencyInfo { name: "anyhow".into(), version: "1.0.100".into(), category: "Core".into() },
-        DependencyInfo { name: "thiserror".into(), version: "2.0.18".into(), category: "Core".into() },
-        DependencyInfo { name: "chrono".into(), version: "0.4.43".into(), category: "Core".into() },
-        DependencyInfo { name: "log".into(), version: "0.4.29".into(), category: "Core".into() },
-        DependencyInfo { name: "tracing".into(), version: "0.1.44".into(), category: "Core".into() },
+        // Core Framework (versions from Cargo.lock via build.rs)
+        DependencyInfo { name: "tauri".into(), version: env!("DEP_VERSION_TAURI").into(), category: "Core".into() },
+        DependencyInfo { name: "tokio".into(), version: env!("DEP_VERSION_TOKIO").into(), category: "Core".into() },
+        DependencyInfo { name: "serde".into(), version: env!("DEP_VERSION_SERDE").into(), category: "Core".into() },
+        DependencyInfo { name: "serde_json".into(), version: env!("DEP_VERSION_SERDE_JSON").into(), category: "Core".into() },
+        DependencyInfo { name: "anyhow".into(), version: env!("DEP_VERSION_ANYHOW").into(), category: "Core".into() },
+        DependencyInfo { name: "thiserror".into(), version: env!("DEP_VERSION_THISERROR").into(), category: "Core".into() },
+        DependencyInfo { name: "chrono".into(), version: env!("DEP_VERSION_CHRONO").into(), category: "Core".into() },
+        DependencyInfo { name: "log".into(), version: env!("DEP_VERSION_LOG").into(), category: "Core".into() },
+        DependencyInfo { name: "tracing".into(), version: env!("DEP_VERSION_TRACING").into(), category: "Core".into() },
         // Protocols
-        DependencyInfo { name: "suppaftp".into(), version: "8.0.1".into(), category: "Protocols".into() },
-        DependencyInfo { name: "russh".into(), version: "0.57.0".into(), category: "Protocols".into() },
-        DependencyInfo { name: "russh-sftp".into(), version: "2.1.1".into(), category: "Protocols".into() },
-        DependencyInfo { name: "reqwest".into(), version: "0.13.1".into(), category: "Protocols".into() },
-        DependencyInfo { name: "quick-xml".into(), version: "0.39.0".into(), category: "Protocols".into() },
-        DependencyInfo { name: "oauth2".into(), version: "4.4.2".into(), category: "Protocols".into() },
+        DependencyInfo { name: "suppaftp".into(), version: env!("DEP_VERSION_SUPPAFTP").into(), category: "Protocols".into() },
+        DependencyInfo { name: "russh".into(), version: env!("DEP_VERSION_RUSSH").into(), category: "Protocols".into() },
+        DependencyInfo { name: "russh-sftp".into(), version: env!("DEP_VERSION_RUSSH_SFTP").into(), category: "Protocols".into() },
+        DependencyInfo { name: "reqwest".into(), version: env!("DEP_VERSION_REQWEST").into(), category: "Protocols".into() },
+        DependencyInfo { name: "quick-xml".into(), version: env!("DEP_VERSION_QUICK_XML").into(), category: "Protocols".into() },
+        DependencyInfo { name: "oauth2".into(), version: env!("DEP_VERSION_OAUTH2").into(), category: "Protocols".into() },
         // Security
-        DependencyInfo { name: "keyring".into(), version: "3.6.3".into(), category: "Security".into() },
-        DependencyInfo { name: "argon2".into(), version: "0.5.3".into(), category: "Security".into() },
-        DependencyInfo { name: "aes-gcm".into(), version: "0.10.3".into(), category: "Security".into() },
-        DependencyInfo { name: "ring".into(), version: "0.17.14".into(), category: "Security".into() },
-        DependencyInfo { name: "zeroize".into(), version: "1.8.2".into(), category: "Security".into() },
-        DependencyInfo { name: "secrecy".into(), version: "0.10.3".into(), category: "Security".into() },
-        DependencyInfo { name: "sha2".into(), version: "0.10.9".into(), category: "Security".into() },
-        DependencyInfo { name: "hmac".into(), version: "0.12.1".into(), category: "Security".into() },
+        DependencyInfo { name: "keyring".into(), version: env!("DEP_VERSION_KEYRING").into(), category: "Security".into() },
+        DependencyInfo { name: "argon2".into(), version: env!("DEP_VERSION_ARGON2").into(), category: "Security".into() },
+        DependencyInfo { name: "aes-gcm".into(), version: env!("DEP_VERSION_AES_GCM").into(), category: "Security".into() },
+        DependencyInfo { name: "ring".into(), version: env!("DEP_VERSION_RING").into(), category: "Security".into() },
+        DependencyInfo { name: "zeroize".into(), version: env!("DEP_VERSION_ZEROIZE").into(), category: "Security".into() },
+        DependencyInfo { name: "secrecy".into(), version: env!("DEP_VERSION_SECRECY").into(), category: "Security".into() },
+        DependencyInfo { name: "sha2".into(), version: env!("DEP_VERSION_SHA2").into(), category: "Security".into() },
+        DependencyInfo { name: "hmac".into(), version: env!("DEP_VERSION_HMAC").into(), category: "Security".into() },
         // Archives
-        DependencyInfo { name: "sevenz-rust".into(), version: "0.6.1".into(), category: "Archives".into() },
-        DependencyInfo { name: "zip".into(), version: "7.2.0".into(), category: "Archives".into() },
-        DependencyInfo { name: "tar".into(), version: "0.4.44".into(), category: "Archives".into() },
-        DependencyInfo { name: "flate2".into(), version: "1.1.8".into(), category: "Archives".into() },
-        DependencyInfo { name: "xz2".into(), version: "0.1.7".into(), category: "Archives".into() },
-        DependencyInfo { name: "bzip2".into(), version: "0.6.1".into(), category: "Archives".into() },
+        DependencyInfo { name: "sevenz-rust".into(), version: env!("DEP_VERSION_SEVENZ_RUST").into(), category: "Archives".into() },
+        DependencyInfo { name: "zip".into(), version: env!("DEP_VERSION_ZIP").into(), category: "Archives".into() },
+        DependencyInfo { name: "tar".into(), version: env!("DEP_VERSION_TAR").into(), category: "Archives".into() },
+        DependencyInfo { name: "flate2".into(), version: env!("DEP_VERSION_FLATE2").into(), category: "Archives".into() },
+        DependencyInfo { name: "xz2".into(), version: env!("DEP_VERSION_XZ2").into(), category: "Archives".into() },
+        DependencyInfo { name: "bzip2".into(), version: env!("DEP_VERSION_BZIP2").into(), category: "Archives".into() },
         // Tauri Plugins
-        DependencyInfo { name: "tauri-plugin-fs".into(), version: "2.4.5".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-dialog".into(), version: "2.6.0".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-shell".into(), version: "2.3.4".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-updater".into(), version: "2.9.0".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-notification".into(), version: "2.3.3".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-log".into(), version: "2.8.0".into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-single-instance".into(), version: "2.3.7".into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-fs".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_FS").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-dialog".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_DIALOG").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-shell".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_SHELL").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-notification".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_NOTIFICATION").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-log".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_LOG").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-single-instance".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_SINGLE_INSTANCE").into(), category: "Plugins".into() },
     ]
 }
 
@@ -1375,17 +1375,31 @@ fn get_system_info() -> SystemInfo {
         "unknown"
     };
 
+    let mut dep_versions = std::collections::HashMap::new();
+    dep_versions.insert("russh".into(), env!("DEP_VERSION_RUSSH").into());
+    dep_versions.insert("russh-sftp".into(), env!("DEP_VERSION_RUSSH_SFTP").into());
+    dep_versions.insert("suppaftp".into(), env!("DEP_VERSION_SUPPAFTP").into());
+    dep_versions.insert("reqwest".into(), env!("DEP_VERSION_REQWEST").into());
+    dep_versions.insert("keyring".into(), env!("DEP_VERSION_KEYRING").into());
+    dep_versions.insert("aes-gcm".into(), env!("DEP_VERSION_AES_GCM").into());
+    dep_versions.insert("argon2".into(), env!("DEP_VERSION_ARGON2").into());
+    dep_versions.insert("zip".into(), env!("DEP_VERSION_ZIP").into());
+    dep_versions.insert("sevenz-rust".into(), env!("DEP_VERSION_SEVENZ_RUST").into());
+    dep_versions.insert("quick-xml".into(), env!("DEP_VERSION_QUICK_XML").into());
+    dep_versions.insert("oauth2".into(), env!("DEP_VERSION_OAUTH2").into());
+
     SystemInfo {
         app_version: env!("CARGO_PKG_VERSION").into(),
         os: std::env::consts::OS.into(),
         os_version: std::env::consts::ARCH.into(),
         arch: std::env::consts::ARCH.into(),
-        tauri_version: "2.9.5".into(),
+        tauri_version: env!("DEP_VERSION_TAURI").into(),
         rust_version: "1.77.2+".into(),
         keyring_backend: keyring_backend.into(),
         config_dir,
         vault_exists,
         known_hosts_exists,
+        dep_versions,
     }
 }
 
@@ -2891,6 +2905,47 @@ struct ToolRequest {
     args: serde_json::Value,
 }
 
+// Allowed AI tool names (whitelist)
+const ALLOWED_AI_TOOLS: &[&str] = &[
+    "list_files", "read_file", "create_folder", "delete_file",
+    "rename_file", "download_file", "upload_file", "chmod",
+];
+
+/// Validate and sanitize a path argument from AI tool calls.
+/// Rejects null bytes, path traversal sequences, and excessively long paths.
+fn validate_tool_path(path: &str, param_name: &str) -> Result<(), String> {
+    if path.len() > 4096 {
+        return Err(format!("{}: path exceeds 4096 characters", param_name));
+    }
+    if path.contains('\0') {
+        return Err(format!("{}: path contains null bytes", param_name));
+    }
+    // Reject path traversal: literal ".." components
+    for component in path.split('/') {
+        if component == ".." {
+            return Err(format!("{}: path traversal ('..') is not allowed", param_name));
+        }
+    }
+    // Also check backslash-separated (Windows paths)
+    for component in path.split('\\') {
+        if component == ".." {
+            return Err(format!("{}: path traversal ('..') is not allowed", param_name));
+        }
+    }
+    Ok(())
+}
+
+/// Validate a chmod mode string (must be octal digits, 3-4 chars).
+fn validate_chmod_mode(mode: &str) -> Result<(), String> {
+    if mode.len() < 3 || mode.len() > 4 {
+        return Err("mode must be 3-4 octal digits (e.g. '755')".to_string());
+    }
+    if !mode.chars().all(|c| c.is_ascii_digit() && c <= '7') {
+        return Err("mode must contain only octal digits (0-7)".to_string());
+    }
+    Ok(())
+}
+
 // Execute AI tool - routes to existing FTP commands
 #[tauri::command]
 async fn ai_execute_tool(
@@ -2898,12 +2953,18 @@ async fn ai_execute_tool(
     app: AppHandle,
     request: ToolRequest,
 ) -> Result<serde_json::Value, String> {
+    // Validate tool name against whitelist
+    if !ALLOWED_AI_TOOLS.contains(&request.tool_name.as_str()) {
+        return Err(format!("Unknown or disallowed tool: {}", request.tool_name));
+    }
+
     let args = request.args;
     
     match request.tool_name.as_str() {
         "list_files" => {
             let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
             let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
+            validate_tool_path(path, "path")?;
             
             if location == "local" {
                 let files = get_local_files(path.to_string(), Some(true))
@@ -2940,7 +3001,8 @@ async fn ai_execute_tool(
         "read_file" => {
             let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
             let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
-            
+            validate_tool_path(path, "path")?;
+
             if location == "local" {
                 let content = read_local_file(path.to_string())
                     .await
@@ -2965,7 +3027,8 @@ async fn ai_execute_tool(
         "create_folder" => {
             let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
             let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
-            
+            validate_tool_path(path, "path")?;
+
             if location == "local" {
                 create_local_folder(path.to_string())
                     .await
@@ -2981,7 +3044,8 @@ async fn ai_execute_tool(
         "delete_file" => {
             let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
             let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
-            
+            validate_tool_path(path, "path")?;
+
             if location == "local" {
                 delete_local_file(app.clone(), path.to_string())
                     .await
@@ -2999,7 +3063,9 @@ async fn ai_execute_tool(
             let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
             let old_path = args.get("old_path").and_then(|v| v.as_str()).ok_or("old_path required")?;
             let new_path = args.get("new_path").and_then(|v| v.as_str()).ok_or("new_path required")?;
-            
+            validate_tool_path(old_path, "old_path")?;
+            validate_tool_path(new_path, "new_path")?;
+
             if location == "local" {
                 rename_local_file(old_path.to_string(), new_path.to_string())
                     .await
@@ -3015,7 +3081,9 @@ async fn ai_execute_tool(
         "download_file" => {
             let remote_path = args.get("remote_path").and_then(|v| v.as_str()).ok_or("remote_path required")?;
             let local_path = args.get("local_path").and_then(|v| v.as_str()).ok_or("local_path required")?;
-            
+            validate_tool_path(remote_path, "remote_path")?;
+            validate_tool_path(local_path, "local_path")?;
+
             download_file(app, state.clone(), DownloadParams {
                 remote_path: remote_path.to_string(),
                 local_path: local_path.to_string(),
@@ -3027,7 +3095,9 @@ async fn ai_execute_tool(
         "upload_file" => {
             let local_path = args.get("local_path").and_then(|v| v.as_str()).ok_or("local_path required")?;
             let remote_path = args.get("remote_path").and_then(|v| v.as_str()).ok_or("remote_path required")?;
-            
+            validate_tool_path(local_path, "local_path")?;
+            validate_tool_path(remote_path, "remote_path")?;
+
             upload_file(app, state.clone(), UploadParams {
                 local_path: local_path.to_string(),
                 remote_path: remote_path.to_string(),
@@ -3039,7 +3109,9 @@ async fn ai_execute_tool(
         "chmod" => {
             let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
             let mode = args.get("mode").and_then(|v| v.as_str()).ok_or("mode required")?;
-            
+            validate_tool_path(path, "path")?;
+            validate_chmod_mode(mode)?;
+
             chmod_remote_file(state.clone(), path.to_string(), mode.to_string())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -3047,7 +3119,7 @@ async fn ai_execute_tool(
             Ok(serde_json::json!({ "success": true, "message": format!("Changed permissions of {} to {}", path, mode) }))
         },
         
-        _ => Err(format!("Unknown tool: {}", request.tool_name))
+        _ => unreachable!() // tool_name already validated against ALLOWED_AI_TOOLS
     }
 }
 
@@ -3647,7 +3719,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         // TODO: Aptabase requires Tokio runtime - defer to v1.3.1
         // .plugin(tauri_plugin_aptabase::Builder::new("A-EU-9382651799").build())

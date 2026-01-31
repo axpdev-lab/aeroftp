@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
 > Last Updated: 31 January 2026
-> Version: v1.4.0
+> Version: v1.5.0
 
 ---
 
@@ -38,8 +38,13 @@
 | Dropbox | Yes | No | Yes | No | Yes | Yes |
 | OneDrive | Yes | No | Yes | No | Yes | Yes |
 | **MEGA.nz** | **Yes** | No | No | No | No | No |
-| Backblaze B2 | Yes | No | Yes | No | Yes | No |
-| Azure Blob | Planned | No | Yes | No | Yes | No |
+| Backblaze B2 | Yes (S3 preset) | No | Yes | No | Yes | No |
+| Cloudflare R2 | Yes (S3 preset) | No | No | No | No | No |
+| Storj | Yes (S3 preset) | No | No | No | No | No |
+| **Box** | **Yes (Beta)** | No | Yes | No | No | No |
+| **pCloud** | **Yes (Beta)** | No | No | No | No | No |
+| **Filen** | **Yes (Beta)** | No | No | No | No | No |
+| Azure Blob | **Yes (Beta)** | No | Yes | No | Yes | No |
 
 ### User Interface
 
@@ -61,8 +66,8 @@
 | AI Assistant | Yes | No | No | No | No | No |
 | Media Player | Yes | No | No | No | No | Quick Look |
 | Activity Log | Yes | Yes | Yes | Yes | No | No |
-| Remote Search | Yes (all 9) | No | Yes | No | No | No |
-| File Versions | Yes (3 providers) | No | Yes | No | No | No |
+| Remote Search | Yes (all 13) | No | Yes | No | No | No |
+| File Versions | Yes (5 providers) | No | Yes | No | No | No |
 | File Locking | Yes (WebDAV) | No | Yes | No | No | No |
 
 ### Sync & Automation
@@ -79,7 +84,7 @@
 
 | Feature | AeroFTP | FileZilla | Cyberduck | WinSCP | Transmit | ForkLift |
 |---------|---------|-----------|-----------|--------|----------|----------|
-| Cryptomator | Planned (v1.7) | No | Yes | No | No | No |
+| Cryptomator | Planned (v1.8.0) | No | Yes | No | No | No |
 | Share Links | Yes | No | Yes | No | No | No |
 | Keychain/Keyring | Yes | Yes | Yes | Yes | Yes | Yes |
 | Encrypted Vault (AES-256-GCM) | Yes | No | No | No | No | No |
@@ -89,6 +94,7 @@
 | Ephemeral OAuth Port | Yes | No | No | No | No | No |
 | FTP Insecure Warning | Yes | No | No | No | No | No |
 | Memory Zeroization | Yes | No | No | No | No | No |
+| AI Keys in OS Keyring | Yes | N/A | N/A | N/A | N/A | N/A |
 | 7z AES-256 Archives | Yes | No | No | No | No | No |
 | ZIP AES-256 Archives | Yes | No | No | No | No | No |
 | RAR Extraction | Yes | No | No | No | No | No |
@@ -123,7 +129,8 @@
 | Feature | Description |
 |---------|-------------|
 | **AeroCloud** | Transform any FTP into personal cloud with bidirectional sync |
-| **MEGA.nz Support** | Only client with native MEGA integration (20GB free E2E storage) |
+| **13 Native Protocols** | FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Filen |
+| **Filen E2E Support** | Only client besides Filen web app with native Filen E2E encryption support |
 | **Monaco Editor** | VS Code engine for remote file editing |
 | **AeroAgent AI** | AI assistant for commands and file analysis |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
@@ -132,8 +139,10 @@
 | **Ephemeral OAuth Ports** | OS-assigned random port for callback |
 | **Memory Zeroization** | Passwords cleared from memory via zeroize/secrecy |
 | **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) |
-| **Cross-Provider Search** | Remote search on all 9 providers |
-| **File Versions** | Version history on Google Drive, Dropbox, OneDrive |
+| **Workspace Export** | Auto-export Google Docs/Sheets/Slides to DOCX/XLSX/PPTX |
+| **Change Tracking** | Delta sync foundation via Google Drive changes API |
+| **Cross-Provider Search** | Remote search on all 13 providers |
+| **File Versions** | Version history on Google Drive, Dropbox, OneDrive, Box, pCloud |
 
 ---
 
@@ -142,8 +151,8 @@
 | Competitor | Strength | Priority for AeroFTP |
 |------------|----------|---------------------|
 | **FileZilla** | SFTP native, 47 languages, stability | CLOSED (51 langs, SFTP done, MLSD done) |
-| **Cyberduck** | Cryptomator encryption, more clouds | MEDIUM: Cryptomator (v1.7.0) |
-| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.5.0) |
+| **Cyberduck** | Cryptomator encryption | MEDIUM: Cryptomator (v1.8.0). Cloud providers now matched (13 native). |
+| **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.6.0) |
 | **Transmit** | Raw speed, macOS polish | LOW: Already fast |
 | **ForkLift** | Complete file manager | LOW: Different focus |
 
@@ -151,24 +160,32 @@
 
 ## Prioritized Roadmap
 
-### Completed (v1.0.0 - v1.4.0)
+### Completed (v1.0.0 - v1.4.1)
 - FTP/FTPS/SFTP/WebDAV/S3 protocols
 - Google Drive/Dropbox/OneDrive/MEGA integration
 - 51 languages, AeroCloud sync, Monaco editor, Terminal, AI
-- Archive support (ZIP/7z/TAR/RAR with encryption)
-- Security: OS Keyring, AES-256-GCM vault, SFTP TOFU, OAuth2 PKCE
+- Archive support (ZIP/7z/TAR/RAR with AES-256 password encryption dialog)
+- Security: OS Keyring, AES-256-GCM vault, SFTP TOFU, OAuth2 PKCE, AI API keys in Keyring
 - Cross-provider: search, quota, versions, thumbnails, permissions, locking
 - FTPS: Full TLS support (explicit, implicit, cert verification options)
 - FTP: MLSD/MLST (RFC 3659), resume transfers
 - S3: multipart upload (>5MB), OneDrive: resumable upload
-- Dependencies: russh 0.57, reqwest 0.13, quick-xml 0.39
+- ErrorBoundary, modularized hooks architecture
+- 4 new native providers: Box, pCloud, Azure Blob, Filen (v1.5.0)
+- FTP default changed to opportunistic TLS (v1.5.0)
 
-### v1.5.0 - Planned
+### v1.6.0 - Planned
+- AeroAgent Pro (remote tools, streaming, context awareness)
+- CLI/Scripting foundation
 - AeroVault (encrypted virtual location)
-- CLI/Scripting
-- Azure Blob Storage
+- S3 presets: Cloudflare R2, Backblaze B2, Storj, Wasabi, Oracle Cloud
+- WebDAV presets: Nextcloud, Koofr
 
 ### v1.7.0 - Planned
+- AeroAgent streaming + native function calling
+- Terminal Pro (themes, SSH remote, Windows PTY)
+
+### v1.8.0 - Planned
 - Cryptomator Import/Export
 
 ---
@@ -179,7 +196,7 @@
                     CLOUD INTEGRATION
                           |
          Cyberduck        |        AeroFTP
-                          |        (v1.4.0)
+                          |        (v1.5.0)
     ----------------------+----------------------> PRO FEATURES
          FileZilla        |
                           |

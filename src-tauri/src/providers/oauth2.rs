@@ -6,12 +6,74 @@
 
 use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret,
-    CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
-    TokenResponse, TokenUrl, RefreshToken, 
-    reqwest::async_http_client,
+    CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, Scope, TokenResponse, TokenUrl, RefreshToken,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
+type ConfiguredClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+
+/// Simple error wrapper for the oauth2 HTTP client adapter.
+#[derive(Debug)]
+struct OAuth2TransportError(String);
+
+impl std::fmt::Display for OAuth2TransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for OAuth2TransportError {}
+
+/// Async HTTP client adapter for oauth2 v5.
+/// Bridges the project's reqwest (0.13) with oauth2's `AsyncHttpClient` trait.
+/// Required because oauth2 v5's built-in reqwest support targets reqwest 0.12.
+struct OAuth2HttpClient;
+
+impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
+    type Error = oauth2::HttpClientError<OAuth2TransportError>;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<oauth2::HttpResponse, Self::Error>> + Send + Sync + 'c>,
+    >;
+
+    fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
+        Box::pin(async move {
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
+
+            let method = reqwest::Method::from_bytes(request.method().as_str().as_bytes())
+                .unwrap_or(reqwest::Method::POST);
+            let url = request.uri().to_string();
+
+            let mut builder = client.request(method, &url);
+            for (name, value) in request.headers() {
+                builder = builder.header(name.as_str(), value.as_bytes());
+            }
+            builder = builder.body(request.into_body());
+
+            let response = builder.send().await
+                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
+
+            let status_code = response.status().as_u16();
+            let headers = response.headers().clone();
+            let body = response.bytes().await
+                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
+
+            let mut http_response = http::Response::builder()
+                .status(http::StatusCode::from_u16(status_code).unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR));
+            for (name, value) in headers.iter() {
+                http_response = http_response.header(name.as_str(), value.as_bytes());
+            }
+            http_response
+                .body(body.to_vec())
+                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))
+        })
+    }
+}
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -25,6 +87,8 @@ pub enum OAuthProvider {
     Google,
     Dropbox,
     OneDrive,
+    Box,
+    PCloud,
 }
 
 impl std::fmt::Display for OAuthProvider {
@@ -33,6 +97,8 @@ impl std::fmt::Display for OAuthProvider {
             OAuthProvider::Google => write!(f, "Google Drive"),
             OAuthProvider::Dropbox => write!(f, "Dropbox"),
             OAuthProvider::OneDrive => write!(f, "OneDrive"),
+            OAuthProvider::Box => write!(f, "Box"),
+            OAuthProvider::PCloud => write!(f, "pCloud"),
         }
     }
 }
@@ -109,6 +175,42 @@ impl OAuthConfig {
     /// Create OneDrive OAuth config (default port for token refresh only)
     pub fn onedrive(client_id: &str, client_secret: &str) -> Self {
         Self::onedrive_with_port(client_id, client_secret, 0)
+    }
+
+    /// Create Box OAuth config with dynamic callback port
+    pub fn box_cloud_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
+        Self {
+            provider: OAuthProvider::Box,
+            client_id: client_id.to_string(),
+            client_secret: Some(client_secret.to_string()),
+            auth_url: "https://account.box.com/api/oauth2/authorize".to_string(),
+            token_url: "https://api.box.com/oauth2/token".to_string(),
+            scopes: vec![],
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+        }
+    }
+
+    /// Create Box OAuth config (default port for token refresh only)
+    pub fn box_cloud(client_id: &str, client_secret: &str) -> Self {
+        Self::box_cloud_with_port(client_id, client_secret, 0)
+    }
+
+    /// Create pCloud OAuth config with dynamic callback port
+    pub fn pcloud_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
+        Self {
+            provider: OAuthProvider::PCloud,
+            client_id: client_id.to_string(),
+            client_secret: Some(client_secret.to_string()),
+            auth_url: "https://my.pcloud.com/oauth2/authorize".to_string(),
+            token_url: "https://api.pcloud.com/oauth2_token".to_string(),
+            scopes: vec![],
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+        }
+    }
+
+    /// Create pCloud OAuth config (default port for token refresh only)
+    pub fn pcloud(client_id: &str, client_secret: &str) -> Self {
+        Self::pcloud_with_port(client_id, client_secret, 0)
     }
 }
 
@@ -207,7 +309,7 @@ impl OAuth2Manager {
         let token_result = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
             .set_pkce_verifier(verifier)
-            .request_async(async_http_client)
+            .request_async(&OAuth2HttpClient)
             .await
             .map_err(|e| ProviderError::AuthenticationFailed(format!("Token exchange failed: {}", e)))?;
         
@@ -241,7 +343,7 @@ impl OAuth2Manager {
         
         let token_result = client
             .exchange_refresh_token(&RefreshToken::new(refresh_token.to_string()))
-            .request_async(async_http_client)
+            .request_async(&OAuth2HttpClient)
             .await
             .map_err(|e| ProviderError::AuthenticationFailed(format!("Token refresh failed: {}", e)))?;
         
@@ -380,23 +482,28 @@ impl OAuth2Manager {
         self.load_tokens(provider).is_ok()
     }
 
-    /// Create OAuth2 client from config
-    fn create_client(&self, config: &OAuthConfig) -> Result<BasicClient, ProviderError> {
+    /// Create OAuth2 client from config (v5 builder API)
+    fn create_client(&self, config: &OAuthConfig) -> Result<ConfiguredClient, ProviderError> {
         let client_id = ClientId::new(config.client_id.clone());
-        let client_secret = config.client_secret.as_ref().map(|s| ClientSecret::new(s.clone()));
-        
+
         let auth_url = AuthUrl::new(config.auth_url.clone())
             .map_err(|e| ProviderError::Other(format!("Invalid auth URL: {}", e)))?;
-        
+
         let token_url = TokenUrl::new(config.token_url.clone())
             .map_err(|e| ProviderError::Other(format!("Invalid token URL: {}", e)))?;
-        
+
         let redirect_url = RedirectUrl::new(config.redirect_uri.clone())
             .map_err(|e| ProviderError::Other(format!("Invalid redirect URL: {}", e)))?;
-        
-        let mut client = BasicClient::new(client_id, client_secret, auth_url, Some(token_url));
-        client = client.set_redirect_uri(redirect_url);
-        
+
+        let mut client = BasicClient::new(client_id)
+            .set_auth_uri(auth_url)
+            .set_token_uri(token_url)
+            .set_redirect_uri(redirect_url);
+
+        if let Some(ref secret) = config.client_secret {
+            client = client.set_client_secret(ClientSecret::new(secret.clone()));
+        }
+
         Ok(client)
     }
 }
@@ -407,21 +514,27 @@ impl Default for OAuth2Manager {
     }
 }
 
-/// Bind the OAuth2 callback listener on an ephemeral port.
+/// Bind the OAuth2 callback listener on a specific port (0 = ephemeral).
 /// Returns the listener and the actual port assigned by the OS.
-pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), ProviderError> {
+pub async fn bind_callback_listener_on_port(port: u16) -> Result<(tokio::net::TcpListener, u16), ProviderError> {
     use tokio::net::TcpListener;
 
-    let listener = TcpListener::bind("127.0.0.1:0")
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .await
-        .map_err(|e| ProviderError::Other(format!("Failed to bind callback server: {}", e)))?;
+        .map_err(|e| ProviderError::Other(format!("Failed to bind callback server on port {}: {}", port, e)))?;
 
-    let port = listener.local_addr()
+    let actual_port = listener.local_addr()
         .map(|a| a.port())
         .map_err(|e| ProviderError::Other(format!("Failed to get local port: {}", e)))?;
 
-    info!("OAuth callback listener bound on port {}", port);
-    Ok((listener, port))
+    info!("OAuth callback listener bound on port {}", actual_port);
+    Ok((listener, actual_port))
+}
+
+/// Bind the OAuth2 callback listener on an ephemeral port.
+/// Returns the listener and the actual port assigned by the OS.
+pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), ProviderError> {
+    bind_callback_listener_on_port(0).await
 }
 
 /// Wait for an OAuth2 callback on an already-bound listener.

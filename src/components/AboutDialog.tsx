@@ -22,6 +22,7 @@ interface SystemInfo {
     config_dir: string;
     vault_exists: boolean;
     known_hosts_exists: boolean;
+    dep_versions: Record<string, string>;
 }
 
 type TabId = 'info' | 'technical' | 'support';
@@ -58,19 +59,19 @@ const CRYPTO_ADDRESSES = {
     },
 };
 
-// Key dependencies to display in technical tab
-const KEY_DEPENDENCIES = [
-    { name: 'russh', version: '0.54', description: 'SSH/SFTP' },
-    { name: 'russh-sftp', version: '2.1', description: 'SFTP ops' },
-    { name: 'suppaftp', version: '8', description: 'FTP/FTPS' },
-    { name: 'reqwest', version: '0.12', description: 'HTTP' },
-    { name: 'keyring', version: '3', description: 'OS Keyring' },
-    { name: 'aes-gcm', version: '0.10', description: 'AES-256-GCM' },
-    { name: 'argon2', version: '0.5', description: 'KDF' },
-    { name: 'zip', version: '7', description: 'ZIP archives' },
-    { name: 'sevenz-rust', version: '0.6', description: '7z AES-256' },
-    { name: 'quick-xml', version: '0.31', description: 'WebDAV' },
-    { name: 'oauth2', version: '4', description: 'OAuth2' },
+// Key dependencies to display in technical tab (versions come from backend)
+const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
+    { name: 'russh', description: 'SSH/SFTP' },
+    { name: 'russh-sftp', description: 'SFTP ops' },
+    { name: 'suppaftp', description: 'FTP/FTPS' },
+    { name: 'reqwest', description: 'HTTP' },
+    { name: 'keyring', description: 'OS Keyring' },
+    { name: 'aes-gcm', description: 'AES-256-GCM' },
+    { name: 'argon2', description: 'KDF' },
+    { name: 'zip', description: 'ZIP archives' },
+    { name: 'sevenz-rust', description: '7z AES-256' },
+    { name: 'quick-xml', description: 'WebDAV' },
+    { name: 'oauth2', description: 'OAuth2' },
 ];
 
 const FRONTEND_DEPS = [
@@ -97,7 +98,7 @@ const CryptoDonatePanel: React.FC = () => {
             {Object.entries(CRYPTO_ADDRESSES).map(([key, chain]) => (
                 <div
                     key={key}
-                    className={`rounded-lg border border-gray-700 overflow-hidden transition-all duration-200 ${expandedChain === key ? 'bg-gray-800/80' : 'bg-gray-800/40 hover:bg-gray-800/60'}`}
+                    className={`rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-200 ${expandedChain === key ? 'bg-gray-100 dark:bg-gray-800/80' : 'bg-gray-50 dark:bg-gray-800/40 hover:bg-gray-100 dark:hover:bg-gray-800/60'}`}
                 >
                     <button
                         onClick={() => setExpandedChain(expandedChain === key ? null : key)}
@@ -108,7 +109,7 @@ const CryptoDonatePanel: React.FC = () => {
                                 {chain.icon}
                             </span>
                             <div>
-                                <div className="text-sm font-medium text-gray-200">{chain.name}</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{chain.name}</div>
                                 <div className="text-xs text-gray-500">{chain.symbol}</div>
                             </div>
                         </div>
@@ -117,15 +118,15 @@ const CryptoDonatePanel: React.FC = () => {
 
                     {expandedChain === key && (
                         <div className="px-3 pb-3 space-y-2">
-                            <div className="flex items-center gap-2 p-2 bg-gray-900 rounded-lg border border-gray-700">
-                                <code className="flex-1 text-xs text-green-400 font-mono break-all select-all">
+                            <div className="flex items-center gap-2 p-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <code className="flex-1 text-xs text-green-600 dark:text-green-400 font-mono break-all select-all">
                                     {chain.address}
                                 </code>
                                 <button
                                     onClick={() => copyAddress(key, chain.address)}
                                     className={`p-1.5 rounded transition-colors ${copiedChain === key
-                                        ? 'bg-green-500/20 text-green-400'
-                                        : 'bg-gray-700 hover:bg-gray-600 text-gray-400'
+                                        ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400'
+                                        : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400'
                                         }`}
                                     title={t('common.copy')}
                                 >
@@ -143,7 +144,7 @@ const CryptoDonatePanel: React.FC = () => {
             ))}
 
             <div className="text-center pt-2">
-                <p className="text-[10px] text-gray-600 font-mono">
+                <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">
                     {t('support.footer')}
                 </p>
             </div>
@@ -153,9 +154,9 @@ const CryptoDonatePanel: React.FC = () => {
 
 // Info row helper
 const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?: boolean }> = ({ label, value, mono = true }) => (
-    <div className="flex justify-between items-start py-1.5 border-b border-gray-800/50 last:border-0">
+    <div className="flex justify-between items-start py-1.5 border-b border-gray-200/50 dark:border-gray-800/50 last:border-0">
         <span className="text-xs text-gray-500 shrink-0">{label}</span>
-        <span className={`text-xs text-gray-300 text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
+        <span className={`text-xs text-gray-700 dark:text-gray-300 text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
 );
 
@@ -203,7 +204,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
             `${t('about.knownHosts')}: ${systemInfo.known_hosts_exists ? t('about.found') : t('about.notFound')}`,
             '',
             `--- ${t('about.linkedLibraries')} ---`,
-            ...KEY_DEPENDENCIES.map(d => `${d.name}: ${d.version} (${d.description})`),
+            ...KEY_DEPENDENCY_LABELS.map(d => `${d.name}: ${systemInfo.dep_versions?.[d.name] ?? '?'} (${d.description})`),
         ];
         return lines.join('\n');
     }, [systemInfo, appVersion, t]);
@@ -218,51 +219,39 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-            <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in flex flex-col" style={{ maxHeight: '85vh' }}>
+            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" style={{ maxHeight: '85vh' }}>
                 {/* Header */}
-                <div className="bg-gradient-to-br from-cyan-600 via-blue-600 to-purple-700 p-5 text-white text-center relative overflow-hidden shrink-0">
-                    <div className="absolute inset-0 opacity-10" style={{
-                        backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-                        backgroundSize: '20px 20px'
-                    }} />
-
-                    <button
-                        onClick={onClose}
-                        className="absolute top-3 right-3 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-                        title={t('common.close')}
-                    >
-                        <X size={16} />
-                    </button>
-
-                    <div className="w-16 h-16 mx-auto mb-3 bg-white/10 backdrop-blur-sm rounded-2xl shadow-lg flex items-center justify-center p-1.5 border border-white/20">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                    <div className="flex items-center gap-2.5">
                         <img
                             src="/icons/AeroFTP_simbol_color_512x512.png"
                             alt="AeroFTP"
-                            className="w-full h-full object-contain"
+                            className="w-6 h-6 object-contain"
                         />
+                        <h2 className="text-base font-semibold font-mono">AeroFTP</h2>
                     </div>
-
-                    <h1 className="text-xl font-bold font-mono">AeroFTP</h1>
-                    <p className="text-cyan-200 text-sm mt-0.5 font-mono">{t('common.version')} {appVersion}</p>
+                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title={t('common.close')}>
+                        <X size={16} />
+                    </button>
                 </div>
 
                 {/* Tab bar */}
-                <div className="flex border-b border-gray-700 shrink-0">
+                <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative ${
                                 activeTab === tab.id
-                                    ? 'text-cyan-400'
-                                    : 'text-gray-500 hover:text-gray-300'
+                                    ? 'text-blue-500 dark:text-cyan-400'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                             }`}
                         >
                             {tab.label}
                             {activeTab === tab.id && (
-                                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-cyan-400" />
+                                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-500 dark:bg-cyan-400" />
                             )}
                         </button>
                     ))}
@@ -273,12 +262,23 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                     {/* Info Tab */}
                     {activeTab === 'info' && (
                         <div className="p-5 space-y-4">
-                            <p className="text-center text-gray-400 text-sm">
-                                {t('about.tagline')}
-                            </p>
+                            {/* Logo + version + tagline */}
+                            <div className="text-center">
+                                <div className="w-16 h-16 mx-auto mb-2 bg-gray-100 dark:bg-gray-800 rounded-2xl shadow-sm flex items-center justify-center p-1.5 border border-gray-200 dark:border-gray-700">
+                                    <img
+                                        src="/icons/AeroFTP_simbol_color_512x512.png"
+                                        alt="AeroFTP"
+                                        className="w-full h-full object-contain"
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500 font-mono mb-1">v{appVersion}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    {t('about.tagline')}
+                                </p>
+                            </div>
 
                             {/* Features list */}
-                            <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs text-gray-400 py-2">
+                            <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 py-2">
                                 <div className="font-mono">{t('about.features.rustEngine')}</div>
                                 <div className="font-mono">{t('about.features.monacoEditor')}</div>
                                 <div className="font-mono">{t('about.features.ptyTerminal')}</div>
@@ -290,33 +290,39 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 <div className="font-mono">{t('about.features.imagePreview')}</div>
                             </div>
 
-                            {/* Protocols */}
-                            <div className="text-center py-2 border-t border-gray-800">
+                            {/* Protocols & Providers */}
+                            <div className="text-center py-2 border-t border-gray-200 dark:border-gray-800">
                                 <p className="text-[11px] text-gray-500 font-mono">
-                                    FTP / FTPS / SFTP / WebDAV / S3 / Google Drive / Dropbox / OneDrive / MEGA.nz
+                                    FTP / FTPS / SFTP / WebDAV / S3
+                                </p>
+                                <p className="text-[11px] text-gray-500 font-mono">
+                                    Google Drive / Dropbox / OneDrive / MEGA / Box / Filen
+                                </p>
+                                <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono mt-1">
+                                    13 protocols &middot; 51 languages &middot; AES-256 archives
                                 </p>
                             </div>
 
                             {/* License */}
-                            <div className="text-center py-2 border-t border-gray-800">
-                                <p className="text-xs text-gray-400 font-mono">{t('about.license')}</p>
+                            <div className="text-center py-2 border-t border-gray-200 dark:border-gray-800">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{t('about.license')}</p>
                                 <button
                                     onClick={() => openUrl('https://www.gnu.org/licenses/gpl-3.0.html')}
-                                    className="text-[11px] text-cyan-500 hover:text-cyan-400 transition-colors font-mono mt-0.5 inline-block"
+                                    className="text-[11px] text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono mt-0.5 inline-block"
                                 >
                                     GNU General Public License v3.0
                                 </button>
                             </div>
 
                             {/* Credits */}
-                            <div className="text-center pt-2 border-t border-gray-800 space-y-1">
+                            <div className="text-center pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1">
                                 <p className="text-xs text-gray-500 flex items-center justify-center gap-1 font-mono">
                                     {t('about.madeWith')} <Heart size={12} className="text-red-500" /> by AxpDev
                                 </p>
-                                <p className="text-[10px] text-gray-600 font-mono">
+                                <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">
                                     {t('about.aiCredits')}
                                 </p>
-                                <p className="text-[10px] text-gray-700 font-mono">
+                                <p className="text-[10px] text-gray-400 dark:text-gray-700 font-mono">
                                     {t('about.copyright')}
                                 </p>
                             </div>
@@ -328,8 +334,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                         <div className="p-5 space-y-4">
                             {/* Build info */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.buildInfo')}</h3>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.buildInfo')}</h3>
+                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
                                     <InfoRow label="Tauri" value={systemInfo?.tauri_version ?? '...'} />
                                     <InfoRow label="Rust" value={systemInfo?.rust_version ?? '...'} />
                                     <InfoRow label="React" value="18" />
@@ -339,8 +345,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
                             {/* System Details */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.systemDetails')}</h3>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.systemDetails')}</h3>
+                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
                                     <InfoRow label={t('about.operatingSystem')} value={systemInfo?.os ?? '...'} />
                                     <InfoRow label={t('about.architecture')} value={systemInfo?.arch ?? '...'} />
                                     <InfoRow label={t('about.keyringBackend')} value={systemInfo?.keyring_backend ?? '...'} />
@@ -356,11 +362,11 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
                             {/* Linked Libraries */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.linkedLibraries')}</h3>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
-                                    {KEY_DEPENDENCIES.map(dep => (
+                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.linkedLibraries')}</h3>
+                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
+                                    {KEY_DEPENDENCY_LABELS.map(dep => (
                                         <InfoRow key={dep.name} label={dep.name} value={
-                                            <span>{dep.version} <span className="text-gray-600">({dep.description})</span></span>
+                                            <span>{systemInfo?.dep_versions?.[dep.name] ?? '...'} <span className="text-gray-400 dark:text-gray-600">({dep.description})</span></span>
                                         } />
                                     ))}
                                 </div>
@@ -368,8 +374,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
                             {/* Frontend Dependencies */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.frontendDeps')}</h3>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.frontendDeps')}</h3>
+                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
                                     {FRONTEND_DEPS.map(dep => (
                                         <InfoRow key={dep.name} label={dep.name} value={dep.version} />
                                     ))}
@@ -385,14 +391,14 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             <div className="flex justify-center gap-3">
                                 <button
                                     onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
-                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition-colors text-sm text-gray-600 dark:text-gray-300"
                                 >
                                     <Github size={16} />
                                     {t('about.github')}
                                 </button>
                                 <button
                                     onClick={() => openUrl('mailto:aeroftp@axpdev.it')}
-                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition-colors text-sm text-gray-600 dark:text-gray-300"
                                 >
                                     <Mail size={16} />
                                     {t('about.contact')}
@@ -403,7 +409,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             <div className="text-center">
                                 <button
                                     onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
-                                    className="inline-flex items-center gap-1.5 text-xs text-cyan-500 hover:text-cyan-400 transition-colors font-mono"
+                                    className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono"
                                 >
                                     <ExternalLink size={12} />
                                     github.com/axpnet/aeroftp
@@ -411,12 +417,12 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             </div>
 
                             {/* Crypto Donations */}
-                            <div className="border-t border-gray-800 pt-4">
+                            <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
                                 <button
                                     onClick={() => setShowDonatePanel(!showDonatePanel)}
                                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-300 ${showDonatePanel
-                                        ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white'
-                                        : 'bg-gradient-to-r from-gray-800 to-gray-700 hover:from-cyan-900 hover:to-purple-900 text-gray-300 border border-gray-700'
+                                        ? 'bg-blue-500 dark:bg-gradient-to-r dark:from-cyan-600 dark:to-purple-600 text-white'
+                                        : 'bg-gray-100 dark:bg-gradient-to-r dark:from-gray-800 dark:to-gray-700 hover:bg-gray-200 dark:hover:from-cyan-900 dark:hover:to-purple-900 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-700'
                                         }`}
                                 >
                                     <Wallet size={18} />
@@ -438,13 +444,13 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
                 {/* Bottom bar with copy button (visible on technical tab) */}
                 {activeTab === 'technical' && (
-                    <div className="shrink-0 border-t border-gray-700 px-4 py-3 flex justify-between items-center bg-gray-900">
+                    <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 px-4 py-3 flex justify-between items-center">
                         <button
                             onClick={copyTechnicalInfo}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors ${
                                 copied
-                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                    : 'bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700'
+                                    ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400 border border-green-300 dark:border-green-500/30'
+                                    : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-300 dark:border-gray-700'
                             }`}
                         >
                             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -452,7 +458,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                         </button>
                         <button
                             onClick={onClose}
-                            className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+                            className="px-4 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-300 transition-colors"
                         >
                             {t('common.ok')}
                         </button>
@@ -460,15 +466,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                 )}
             </div>
 
-            <style>{`
-                @keyframes slide-down {
-                    from { opacity: 0; transform: translateY(-10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                .animate-slide-down {
-                    animation: slide-down 0.3s ease-out;
-                }
-            `}</style>
         </div>
     );
 };

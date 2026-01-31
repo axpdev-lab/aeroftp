@@ -12,7 +12,7 @@ import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 
 interface OAuthConnectProps {
-  provider: 'googledrive' | 'dropbox' | 'onedrive';
+  provider: 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud';
   onConnected: (displayName: string) => void;
   disabled?: boolean;
   initialLocalPath?: string;
@@ -28,18 +28,24 @@ const providerMap: Record<string, OAuthProvider> = {
   googledrive: 'google_drive',
   dropbox: 'dropbox',
   onedrive: 'onedrive',
+  box: 'box',
+  pcloud: 'pcloud',
 };
 
 const providerNames: Record<string, string> = {
   googledrive: 'Google Drive',
   dropbox: 'Dropbox',
   onedrive: 'OneDrive',
+  box: 'Box',
+  pcloud: 'pCloud',
 };
 
 const providerColors: Record<string, string> = {
   googledrive: 'bg-red-500 hover:bg-red-600',
   dropbox: 'bg-blue-500 hover:bg-blue-600',
   onedrive: 'bg-sky-500 hover:bg-sky-600',
+  box: 'bg-blue-600 hover:bg-blue-700',
+  pcloud: 'bg-green-500 hover:bg-green-600',
 };
 
 // Provider icons as SVG components (white fill for buttons)

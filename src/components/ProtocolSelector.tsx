@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -90,9 +91,9 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <Server size={16} />,
         description: 'File Transfer Protocol',
         defaultPort: 21,
-        badge: 'Insecure',
+        badge: 'TLS',
         color: 'text-blue-500',
-        tooltip: 'Standard FTP connection - unencrypted, port 21. Credentials are sent in plain text.',
+        tooltip: 'FTP with opportunistic TLS encryption (port 21). Upgrades to TLS when available.',
     },
     {
         type: 'ftps',
@@ -100,7 +101,7 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <ShieldCheck size={16} />,
         description: 'FTP over TLS/SSL',
         defaultPort: 990,
-        badge: 'Secure',
+        badge: 'TLS',
         color: 'text-green-500',
         tooltip: 'FTP with TLS/SSL encryption - secure connection',
     },
@@ -110,7 +111,7 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <Lock size={16} />,
         description: 'SSH File Transfer',
         defaultPort: 22,
-        badge: 'Secure',
+        badge: 'SSH',
         color: 'text-emerald-500',
         tooltip: 'SFTP over SSH - secure shell file transfer, supports key authentication',
     },
@@ -120,7 +121,7 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <Cloud size={16} />,
         description: 'Nextcloud, ownCloud, Synology',
         defaultPort: 443,
-        badge: 'Beta',
+        badge: 'TLS',
         color: 'text-orange-500',
         tooltip: 'WebDAV protocol - compatible with Nextcloud, ownCloud, Synology NAS',
     },
@@ -130,7 +131,7 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <AwsS3Logo size={18} />,
         description: 'AWS S3, MinIO, R2, B2',
         defaultPort: 443,
-        badge: 'Beta',
+        badge: 'HMAC',
         color: 'text-amber-600',
         tooltip: 'S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2',
     },
@@ -185,10 +186,56 @@ const PROTOCOLS: ProtocolInfo[] = [
         icon: <MegaLogo size={18} />,
         description: 'Secure Cloud Storage',
         defaultPort: 443,
-        badge: 'Secure',
+        badge: 'E2E',
         color: 'text-red-600',
         isCloudStorage: true,
         tooltip: 'MEGA.nz - Client-side encryption, 20GB free',
+    },
+    {
+        type: 'box',
+        name: 'Box',
+        icon: <BoxLogo size={18} />,
+        description: 'Connect with Box Account',
+        defaultPort: 443,
+        badge: 'OAuth',
+        isOAuth: true,
+        isCloudStorage: true,
+        tooltip: 'Box - 10GB free storage, OAuth2 authentication',
+    },
+    {
+        type: 'filen',
+        name: 'Filen',
+        icon: <FilenLogo size={18} />,
+        description: 'E2E Encrypted Cloud',
+        defaultPort: 443,
+        badge: 'E2E',
+        color: 'text-emerald-600',
+        isCloudStorage: true,
+        tooltip: 'Filen - Zero-knowledge E2E encryption, 10GB free',
+    },
+    {
+        type: 'pcloud',
+        name: 'pCloud',
+        icon: <PCloudLogo size={18} />,
+        description: 'Connect with pCloud Account',
+        defaultPort: 443,
+        badge: 'OAuth',
+        isOAuth: true,
+        isCloudStorage: true,
+        tooltip: 'pCloud - 10GB free storage, US/EU regions',
+        disabled: !import.meta.env.DEV,
+    },
+    {
+        type: 'azure',
+        name: 'Azure Blob',
+        icon: <AzureLogo size={18} />,
+        description: 'Microsoft Azure Storage',
+        defaultPort: 443,
+        badge: 'HMAC',
+        color: 'text-blue-500',
+        isCloudStorage: true,
+        tooltip: 'Azure Blob Storage - Shared Key or SAS token authentication',
+        disabled: !import.meta.env.DEV,
     },
 ];
 
@@ -280,20 +327,19 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 {protocol.icon}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <div className="font-medium text-sm">{protocol.name}</div>
+                                <div className="font-medium text-sm whitespace-nowrap">{protocol.name}</div>
                                 <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Secure'
-                                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                    : protocol.badge === 'Insecure'
-                                        ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                                        : protocol.badge === 'Beta'
-                                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
-                                            : protocol.badge === 'Soon'
-                                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${
+                                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                        : protocol.badge === 'Soon'
+                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
+                                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
+                                    {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
                                 </span>
                             )}
@@ -330,20 +376,23 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 {protocol.icon}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <div className="font-medium text-sm">{protocol.name}</div>
+                                <div className="font-medium text-sm whitespace-nowrap">{protocol.name}</div>
                                 <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${protocol.badge === 'Sync'
-                                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
-                                    : protocol.badge === 'OAuth'
-                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                                        : protocol.badge === 'Soon'
-                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                                            : protocol.badge === 'Secure'
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${
+                                    protocol.badge === 'Sync'
+                                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
+                                        : protocol.badge === 'OAuth'
+                                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                                            : ['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
                                                 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                                : protocol.badge === 'Soon'
+                                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`}>
+                                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
+                                    {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
                                 </span>
                             )}
@@ -354,14 +403,17 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
 
             {/* Badge for selected protocol */}
             {value && selectedProtocol?.badge && !isOpen && (
-                <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full ${selectedProtocol.badge === 'New'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                    : selectedProtocol.badge === 'Secure'
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${
+                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(selectedProtocol.badge)
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                         : selectedProtocol.badge === 'OAuth'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                            : selectedProtocol.badge === 'Sync'
+                                ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
+                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                     }`}>
+                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(selectedProtocol.badge) && <ShieldCheck size={12} />}
+                    {selectedProtocol.badge === 'OAuth' && <Lock size={12} />}
                     {selectedProtocol.badge}
                 </span>
             )}
@@ -536,8 +588,72 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         );
     }
 
+    if (protocol === 'azure') {
+        return (
+            <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Database size={14} />
+                    Azure Blob Storage
+                </div>
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">Container Name *</label>
+                    <input
+                        type="text"
+                        value={options.bucket || ''}
+                        onChange={(e) => onChange({ ...options, bucket: e.target.value })}
+                        disabled={disabled}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        placeholder="my-container"
+                        required
+                    />
+                </div>
+                <p className="text-xs text-gray-500">
+                    Use <strong>Account Name</strong> as username and <strong>Access Key</strong> as password. Alternatively, leave password empty and provide a SAS token in the endpoint field.
+                </p>
+            </div>
+        );
+    }
+
+    if (protocol === 'pcloud') {
+        return (
+            <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Cloud size={14} />
+                    pCloud Region
+                </div>
+                <div className="flex gap-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                            type="radio"
+                            name="pcloud-region"
+                            checked={(options.region || 'us') === 'us'}
+                            onChange={() => onChange({ ...options, region: 'us' })}
+                            disabled={disabled}
+                            className="text-blue-500 focus:ring-blue-500"
+                        />
+                        US (api.pcloud.com)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                            type="radio"
+                            name="pcloud-region"
+                            checked={options.region === 'eu'}
+                            onChange={() => onChange({ ...options, region: 'eu' })}
+                            disabled={disabled}
+                            className="text-blue-500 focus:ring-blue-500"
+                        />
+                        EU (eapi.pcloud.com)
+                    </label>
+                </div>
+                <p className="text-xs text-gray-500">
+                    Select the region matching your pCloud account registration.
+                </p>
+            </div>
+        );
+    }
+
     if (protocol === 'ftp' || protocol === 'ftps') {
-        const defaultTlsMode = protocol === 'ftps' ? 'implicit' : 'none';
+        const defaultTlsMode = protocol === 'ftps' ? 'implicit' : 'explicit_if_available';
         const currentTlsMode = options.tlsMode || defaultTlsMode;
         const showInsecureWarning = currentTlsMode === 'none';
 
@@ -553,12 +669,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                     >
                         {protocol === 'ftp' && (
-                            <option value="none">{t('protocol.encryptionNone')}</option>
+                            <option value="explicit_if_available">{t('protocol.encryptionExplicitIfAvailable')}</option>
                         )}
                         <option value="explicit">{t('protocol.encryptionExplicit')}</option>
                         <option value="implicit">{t('protocol.encryptionImplicit')}</option>
                         {protocol === 'ftp' && (
-                            <option value="explicit_if_available">{t('protocol.encryptionExplicitIfAvailable')}</option>
+                            <option value="none">{t('protocol.encryptionNone')}</option>
                         )}
                     </select>
                 </div>
@@ -577,16 +693,16 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     </label>
                 )}
 
-                {/* Insecure warning */}
+                {/* Insecure warning — only when user explicitly chooses plain FTP */}
                 {showInsecureWarning && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
                         <div className="flex items-start gap-2">
-                            <ShieldCheck size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                            <ShieldCheck size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
                             <div>
-                                <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                                     {t('protocol.ftpWarningTitle')}
                                 </p>
-                                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                                     {t('protocol.ftpWarningDesc')}
                                 </p>
                             </div>
@@ -634,6 +750,10 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         dropbox: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         onedrive: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         mega: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        box: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        pcloud: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
+        azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        filen: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
     };
 
     return (

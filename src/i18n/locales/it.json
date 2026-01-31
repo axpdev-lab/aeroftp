@@ -121,6 +121,10 @@
             "dropboxDesc": "Connetti con Account Dropbox",
             "onedriveDesc": "Connetti con Account Microsoft",
             "megaDesc": "Cloud Storage Sicuro",
+            "boxDesc": "Connetti con Account Box",
+            "pcloudDesc": "Connetti con Account pCloud",
+            "azureDesc": "Microsoft Azure Storage",
+            "filenDesc": "Cloud Crittografato E2E",
             "sshAuth": "Autenticazione SSH (Opzionale)",
             "sshAuthHelp": "Lascia vuoto per usare l'autenticazione con password. Per auth con chiave, fornisci il percorso della chiave privata.",
             "privateKeyPath": "Percorso Chiave Privata",
@@ -215,7 +219,9 @@
             "extractionFailed": "Estrazione fallita",
             "passwordRequired": "Password richiesta",
             "enterArchivePassword": "Questo archivio e' crittografato. Inserisci la password:",
-            "wrongPassword": "Password errata o archivio corrotto"
+            "wrongPassword": "Password errata o archivio corrotto",
+            "encryptionOptional": "Imposta Password (AES-256)",
+            "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -569,7 +575,10 @@
         },
         "search": {
             "remote_placeholder": "Cerca file remoti...",
-            "results": "risultati"
+            "results": "risultati",
+            "local_placeholder": "Filtra file locali...",
+            "search_files": "Cerca file",
+            "clear": "Cancella ricerca"
         },
         "versions": {
             "title": "Versioni File",

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
+    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo, LockInfo,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -884,5 +884,113 @@ impl StorageProvider for DropboxProvider {
 
         // Return as base64 data URI
         Ok(format!("data:image/jpeg;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)))
+    }
+
+    fn supports_locking(&self) -> bool {
+        true
+    }
+
+    async fn lock_file(&mut self, path: &str, _timeout: u64) -> Result<LockInfo, ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let body = serde_json::json!({
+            "entries": [{
+                ".tag": "path_lookup",
+                "path": full_path
+            }]
+        });
+
+        let url = format!("{}/files/lock_file_batch", API_BASE);
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Lock failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct LockContent {
+            #[serde(default)]
+            lock_holder_account_id: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct LockEntry {
+            #[serde(default)]
+            lock: Option<LockContent>,
+        }
+        #[derive(Deserialize)]
+        struct LockResult {
+            #[serde(rename = ".tag")]
+            tag: String,
+            #[serde(flatten)]
+            entry: Option<LockEntry>,
+        }
+        #[derive(Deserialize)]
+        struct LockBatchResponse {
+            entries: Vec<LockResult>,
+        }
+
+        let result: LockBatchResponse = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        if let Some(entry) = result.entries.first() {
+            if entry.tag == "success" {
+                let owner = entry.entry.as_ref()
+                    .and_then(|e| e.lock.as_ref())
+                    .and_then(|l| l.lock_holder_account_id.clone());
+                return Ok(LockInfo {
+                    token: full_path.clone(),
+                    owner,
+                    timeout: 0,
+                    exclusive: true,
+                });
+            }
+        }
+
+        Err(ProviderError::Other("Lock failed: no success entry".to_string()))
+    }
+
+    async fn unlock_file(&mut self, path: &str, _lock_token: &str) -> Result<(), ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let body = serde_json::json!({
+            "entries": [{
+                ".tag": "path_lookup",
+                "path": full_path
+            }]
+        });
+
+        let url = format!("{}/files/unlock_file_batch", API_BASE);
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Unlock failed: {}", text)));
+        }
+
+        info!("Unlocked file: {}", path);
+        Ok(())
     }
 }

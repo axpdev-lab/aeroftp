@@ -183,17 +183,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    const handleEdit = (profile: ServerProfile) => {
+    const handleEdit = async (profile: ServerProfile) => {
         setEditingProfileId(profile.id);
         setConnectionName(profile.name);
         setSaveConnection(true); // Implied for editing
+
+        // Load password from OS keyring if stored
+        let password = profile.password || '';
+        if (!password && profile.hasStoredCredential) {
+            try {
+                password = await invoke<string>('get_credential', { account: `server_${profile.id}` });
+            } catch {
+                // Credential not found, leave empty
+            }
+        }
 
         // Update form params
         onConnectionParamsChange({
             server: profile.host,
             port: profile.port,
             username: profile.username,
-            password: profile.password || '',
+            password,
             protocol: profile.protocol || 'ftp',
             options: profile.options || {}
         });
@@ -301,7 +311,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     return (
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
             {/* Back button - shown when user has existing sessions and wants to go back */}
             {hasExistingSessions && (
                 <button
@@ -416,7 +426,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
-                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive'}
+                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 saveConnection={saveConnection}
@@ -426,26 +436,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onConnected={(displayName) => {
                                     // Save OAuth connection if requested
                                     if (saveConnection) {
-                                        const existingServers = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
-                                        const newServer: ServerProfile = {
-                                            id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                            name: connectionName || displayName,
-                                            host: displayName,  // Use display name as identifier
-                                            port: 443,
-                                            username: '',  // OAuth doesn't use username/password
-                                            password: '',
-                                            protocol: protocol as ProviderType,
-                                            initialPath: '/',
-                                            localInitialPath: quickConnectDirs.localDir,
-                                        };
-                                        localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+                                        const existingServers: ServerProfile[] = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
+                                        const saveName = connectionName || displayName;
+                                        // Check for duplicate: same name and protocol
+                                        const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
+                                        if (!duplicate) {
+                                            const newServer: ServerProfile = {
+                                                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                                                name: saveName,
+                                                host: displayName,
+                                                port: 443,
+                                                username: '',
+                                                password: '',
+                                                protocol: protocol as ProviderType,
+                                                initialPath: '/',
+                                                localInitialPath: quickConnectDirs.localDir,
+                                            };
+                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+                                        } else {
+                                            // Update existing entry
+                                            const updated = existingServers.map(s =>
+                                                s.id === duplicate.id ? { ...s, localInitialPath: quickConnectDirs.localDir, lastConnected: new Date().toISOString() } : s
+                                            );
+                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
+                                        }
                                     }
                                     // After OAuth completes, trigger connection
                                     onConnect();
                                 }}
                             />
-                        ) : (protocol === 's3' || protocol === 'webdav' || protocol === 'mega') && !selectedProviderId && !editingProfileId ? (
-                            /* Show provider selector for S3/WebDAV/MEGA (skip when editing) */
+                        ) : (protocol === 's3' || protocol === 'webdav') && !selectedProviderId && !editingProfileId ? (
+                            /* Show provider selector for S3/WebDAV (skip when editing) */
                             <div className="py-2">
                                 <ProviderSelector
                                     selectedProvider={selectedProviderId || undefined}
@@ -484,7 +505,124 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
 
                                 {/* Connection Fields Area */}
-                                {protocol === 'mega' ? (
+                                {protocol === 'filen' ? (
+                                    /* Filen Specific Form */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            <input
+                                                type="email"
+                                                value={connectionParams.username}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    username: e.target.value,
+                                                    server: 'filen.io',
+                                                    port: 443
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder="your@email.com"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">Password</label>
+                                            <input
+                                                type="password"
+                                                value={connectionParams.password}
+                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder="Filen account password"
+                                            />
+                                        </div>
+
+                                        <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
+                                            <p className="font-medium mb-1">Zero-Knowledge Encryption</p>
+                                            <p className="opacity-80">
+                                                All files are encrypted client-side with AES-256-GCM before upload.
+                                                Filen cannot access your data. Your password never leaves this device.
+                                            </p>
+                                        </div>
+
+                                        {/* Optional Remote Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                Optional Settings
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder="Initial remote folder (e.g. /Documents)"
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder="Initial local folder"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title="Browse"
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saveConnection}
+                                                    onChange={(e) => setSaveConnection(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                    <Save size={14} />
+                                                    Save to Saved Servers
+                                                </span>
+                                            </label>
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder="Connection Name (e.g. My Filen Cloud)"
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Connecting...</>
+                                                ) : (
+                                                    <><Cloud size={20} /> Secure Login</>
+                                                )}
+                                            </button>
+                                            <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
+                                                <Lock size={12} /> End-to-end encrypted with AES-256-GCM
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : protocol === 'mega' ? (
                                     /* MEGA Specific Form (Beta v0.5.0) */
                                     <div className="space-y-4 pt-2">
                                         <div>

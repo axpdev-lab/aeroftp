@@ -40,6 +40,59 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
     }
 };
 
+// Rate limiter: tracks request timestamps per provider
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_RPM = 20; // max requests per minute per provider
+
+function checkRateLimit(providerId: string): { allowed: boolean; waitSeconds: number } {
+    const now = Date.now();
+    const windowMs = 60_000;
+    const timestamps = (rateLimitMap.get(providerId) || []).filter(t => now - t < windowMs);
+    rateLimitMap.set(providerId, timestamps);
+    if (timestamps.length >= RATE_LIMIT_RPM) {
+        const oldest = timestamps[0];
+        const waitMs = windowMs - (now - oldest);
+        return { allowed: false, waitSeconds: Math.ceil(waitMs / 1000) };
+    }
+    return { allowed: true, waitSeconds: 0 };
+}
+
+function recordRequest(providerId: string) {
+    const timestamps = rateLimitMap.get(providerId) || [];
+    timestamps.push(Date.now());
+    rateLimitMap.set(providerId, timestamps);
+}
+
+// Retry with exponential backoff
+async function withRetry<T>(
+    fn: () => Promise<T>,
+    maxAttempts: number = 3,
+    baseDelayMs: number = 1000,
+): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            return await fn();
+        } catch (error: unknown) {
+            lastError = error;
+            const errStr = String(error).toLowerCase();
+            // Only retry on transient errors (network, rate limit, server errors)
+            const isRetryable = errStr.includes('rate limit') ||
+                errStr.includes('timeout') ||
+                errStr.includes('429') ||
+                errStr.includes('500') ||
+                errStr.includes('502') ||
+                errStr.includes('503') ||
+                errStr.includes('network') ||
+                errStr.includes('fetch');
+            if (!isRetryable || attempt === maxAttempts - 1) throw error;
+            const delay = baseDelayMs * Math.pow(2, attempt);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    throw lastError;
+}
+
 // Selected model state
 interface SelectedModel {
     providerId: string;
@@ -87,16 +140,33 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         scrollToBottom();
     }, [messages]);
 
-    // Load available models from settings
-    const loadModels = () => {
+    // Load available models from settings (API keys fetched from OS Keyring)
+    const loadModels = async () => {
         const settingsJson = localStorage.getItem('aeroftp_ai_settings');
         if (settingsJson) {
             try {
                 const settings: AISettings = JSON.parse(settingsJson);
                 const models: SelectedModel[] = [];
 
+                // Check which providers have API keys in keyring
+                const enabledProviders: string[] = [];
+                for (const p of settings.providers) {
+                    if (!p.isEnabled) continue;
+                    // Check if API key exists (either in-memory from migration or in keyring)
+                    if (p.apiKey) {
+                        enabledProviders.push(p.id);
+                    } else {
+                        try {
+                            await invoke<string>('get_credential', { account: `ai_apikey_${p.id}` });
+                            enabledProviders.push(p.id);
+                        } catch {
+                            // No API key configured
+                        }
+                    }
+                }
+
                 settings.providers
-                    .filter(p => p.isEnabled && p.apiKey)
+                    .filter(p => enabledProviders.includes(p.id))
                     .forEach(provider => {
                         const providerModels = settings.models.filter(
                             m => m.providerId === provider.id && m.isEnabled
@@ -342,7 +412,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error('No model selected. Click ⚙️ to configure a provider.');
             }
 
-            // Load settings to get API key
+            // Load settings to get provider config
             const settingsJson = localStorage.getItem('aeroftp_ai_settings');
             if (!settingsJson) {
                 throw new Error('No AI providers configured. Click ⚙️ to add one.');
@@ -359,7 +429,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     const routedModel = settings.models.find(m => m.id === rule.preferredModelId);
                     if (routedModel) {
                         const routedProvider = settings.providers.find(p => p.id === routedModel.providerId);
-                        if (routedProvider && routedProvider.apiKey) {
+                        if (routedProvider) {
                             activeModel = {
                                 providerId: routedProvider.id,
                                 providerName: routedProvider.name,
@@ -374,9 +444,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
 
             const provider = settings.providers.find(p => p.id === activeModel.providerId);
+            if (!provider) {
+                throw new Error(`Provider not configured for ${activeModel.providerName}`);
+            }
 
-            if (!provider || !provider.apiKey) {
-                throw new Error(`API key not configured for ${activeModel.providerName}`);
+            // Fetch API key from OS Keyring
+            let apiKey: string;
+            try {
+                apiKey = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+            } catch {
+                throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
             }
 
             // Add system prompt with tools
@@ -400,18 +477,27 @@ Always explain what you're doing before executing tools.`;
                 { role: 'user', content: input }
             ];
 
-            // Call the AI
-            const response = await invoke<{ content: string; model: string }>('ai_chat', {
-                request: {
-                    provider_type: activeModel.providerType,
-                    model: activeModel.modelName,
-                    api_key: provider.apiKey,
-                    base_url: provider.baseUrl,
-                    messages: messageHistory,
-                    max_tokens: settings.advancedSettings?.maxTokens || 4096,
-                    temperature: settings.advancedSettings?.temperature || 0.7,
-                }
-            });
+            // Rate limit check
+            const rateCheck = checkRateLimit(provider.id);
+            if (!rateCheck.allowed) {
+                throw new Error(`Rate limit reached for ${activeModel.providerName}. Try again in ${rateCheck.waitSeconds}s.`);
+            }
+            recordRequest(provider.id);
+
+            // Call the AI with retry on transient errors
+            const response = await withRetry(() =>
+                invoke<{ content: string; model: string }>('ai_chat', {
+                    request: {
+                        provider_type: activeModel.providerType,
+                        model: activeModel.modelName,
+                        api_key: apiKey,
+                        base_url: provider.baseUrl,
+                        messages: messageHistory,
+                        max_tokens: settings.advancedSettings?.maxTokens || 4096,
+                        temperature: settings.advancedSettings?.temperature || 0.7,
+                    }
+                })
+            );
 
             // Prepare model info for message signature
             const modelInfo = {
@@ -459,11 +545,23 @@ Always explain what you're doing before executing tools.`;
                 setMessages(prev => [...prev, assistantMessage]);
             }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errStr = String(error);
+            let hint = 'Make sure you have configured an AI provider in settings.';
+            const errLower = errStr.toLowerCase();
+            if (errLower.includes('401') || errLower.includes('unauthorized') || errLower.includes('auth')) {
+                hint = 'Authentication failed. Check your API key in AI Settings.';
+            } else if (errLower.includes('rate limit') || errLower.includes('429')) {
+                hint = 'Rate limited by the provider. Wait a moment and try again.';
+            } else if (errLower.includes('model') || errLower.includes('not found') || errLower.includes('404')) {
+                hint = 'Model not found. Check your model name in AI Settings.';
+            } else if (errLower.includes('network') || errLower.includes('fetch') || errLower.includes('timeout')) {
+                hint = 'Network error. Check your internet connection and provider URL.';
+            }
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: `⚠️ **Error**: ${error.toString()}\n\nMake sure you have configured an AI provider in settings.`,
+                content: `**Error**: ${errStr}\n\n${hint}`,
                 timestamp: new Date(),
             };
             setMessages(prev => [...prev, errorMessage]);

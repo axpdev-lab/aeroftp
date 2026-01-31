@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, and MEGA. Turn any FTP server into your personal cloud with AeroCloud.
+  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols in one app. Turn any FTP server into your personal cloud with AeroCloud.
 </p>
 
 <p align="center">
@@ -41,6 +41,10 @@
 | **Dropbox** | OAuth2 PKCE | File versions, thumbnails, native sharing |
 | **OneDrive** | OAuth2 PKCE | Resumable upload, file versions, share permissions |
 | **MEGA.nz** | Client-side AES | 20GB free, end-to-end encrypted, zero-knowledge |
+| **Box** | OAuth2 PKCE | 10GB free, enterprise-grade, file versions, share links |
+| **pCloud** | OAuth2 | 10GB free, US/EU regions, path-based API |
+| **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
+| **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, PBKDF2 |
 
 ---
 
@@ -56,12 +60,12 @@ Turn **any FTP server** into a private personal cloud with bidirectional sync, t
 More languages than any other FTP client. RTL support for Arabic, Hebrew, Persian, and Urdu. Automatic browser language detection.
 
 ### Cloud Storage Integration
-9 protocols in one client. Native support for Google Drive, Dropbox, OneDrive, and MEGA alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota, file versions, thumbnails, share permissions, and WebDAV locking.
+13 protocols in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota, file versions, thumbnails, share permissions, and WebDAV locking. Filen provides zero-knowledge end-to-end AES-256-GCM encryption.
 
 ### Advanced File Management
 - **Smart Overwrite Dialog**: File conflict resolution with comparison view
 - **Properties Dialog**: Detailed metadata with checksum calculation
-- **Archives**: ZIP, 7z (AES-256), TAR, TAR.GZ, TAR.XZ, TAR.BZ2, RAR extraction
+- **Archives**: ZIP, 7z with optional AES-256 encryption, TAR, TAR.GZ, TAR.XZ, TAR.BZ2, RAR extraction
 - **Keyboard Shortcuts**: F2 rename, Delete, Ctrl+C/V, Ctrl+A
 - **Drag and Drop**, **List/Grid view** with thumbnails, **media player**
 
@@ -72,6 +76,7 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 
 ### Security
 - **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager
+- **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
 - **Encrypted vault fallback**: AES-256-GCM with Argon2id key derivation
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random port for callbacks (no fixed port exposure)
@@ -89,8 +94,8 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 
 | Feature | AeroFTP | FileZilla | Cyberduck | WinSCP |
 |---------|---------|-----------|-----------|--------|
-| Protocols | 9 | 3 | 6 | 4 |
-| Cloud Providers | 4 (GDrive, Dropbox, OneDrive, MEGA) | 0 | 3 | 0 |
+| Protocols | **13** | 3 | 6 | 4 |
+| Cloud Providers | **8** (GDrive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Filen) | 0 | 3 | 0 |
 | Languages | **51** | 47 | ~10 | ~15 |
 | FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
 | Code Editor | Monaco (VS Code) | No | No | Basic |

@@ -172,7 +172,9 @@
             "passwordRequired": "[NEEDS TRANSLATION] Password Required",
             "enterArchivePassword": "[NEEDS TRANSLATION] This archive is encrypted. Enter password:",
             "wrongPassword": "[NEEDS TRANSLATION] Wrong password or corrupted archive",
-            "delete": "[NEEDS TRANSLATION] Delete"
+            "delete": "[NEEDS TRANSLATION] Delete",
+            "encryptionOptional": "[NEEDS TRANSLATION] Set Password (AES-256)",
+            "encryptionOptionalHint": "[NEEDS TRANSLATION] Leave empty for no encryption"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -486,7 +488,11 @@
             "encryptionExplicit": "[NEEDS TRANSLATION] Require explicit FTP over TLS",
             "encryptionImplicit": "[NEEDS TRANSLATION] Require implicit FTP over TLS",
             "encryptionExplicitIfAvailable": "[NEEDS TRANSLATION] Use explicit FTP over TLS if available",
-            "acceptInvalidCerts": "[NEEDS TRANSLATION] Accept invalid or self-signed certificates"
+            "acceptInvalidCerts": "[NEEDS TRANSLATION] Accept invalid or self-signed certificates",
+            "boxDesc": "[NEEDS TRANSLATION] Connect with Box Account",
+            "pcloudDesc": "[NEEDS TRANSLATION] Connect with pCloud Account",
+            "azureDesc": "[NEEDS TRANSLATION] Microsoft Azure Storage",
+            "filenDesc": "[NEEDS TRANSLATION] E2E Encrypted Cloud"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -569,7 +575,10 @@
         },
         "search": {
             "remote_placeholder": "[NEEDS TRANSLATION] Search remote files...",
-            "results": "[NEEDS TRANSLATION] results"
+            "results": "[NEEDS TRANSLATION] results",
+            "local_placeholder": "[NEEDS TRANSLATION] Filter local files...",
+            "search_files": "[NEEDS TRANSLATION] Search files",
+            "clear": "[NEEDS TRANSLATION] Clear search"
         },
         "versions": {
             "title": "[NEEDS TRANSLATION] File Versions",

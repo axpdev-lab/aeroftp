@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-31
+
+### 4 New Cloud Providers + FTP Security Defaults + UI Refresh
+
+Major release adding four new native cloud storage providers (Box, pCloud, Azure Blob Storage, Filen), bringing AeroFTP to 13 native protocols. FTP now defaults to opportunistic TLS encryption for safer connections out of the box. Modal dialogs redesigned with flat headers, unified search bar, and full light/dark theme support.
+
+#### Added - New Cloud Storage Providers
+- **Box** (Beta): OAuth2 PKCE authentication, ID-based file API, share links, storage quota, folder operations
+- **pCloud** (Beta): OAuth2 authentication with US/EU region selection, path-based REST API, share links, storage quota
+- **Azure Blob Storage** (Beta): Shared Key HMAC-SHA256 and SAS token authentication, container-based storage, XML response parsing
+- **Filen** (Beta): Zero-knowledge E2E encryption with PBKDF2 + AES-256-GCM, encrypted metadata and content, chunk-based transfers
+
+#### Added - Backend Infrastructure
+- **4 new Rust provider modules**: `box_provider.rs`, `pcloud.rs`, `azure.rs`, `filen.rs` implementing full `StorageProvider` trait
+- **OAuth2 extensions**: Box and pCloud added to `OAuth2Manager` with PKCE support
+- **New dependencies**: `pbkdf2 0.12`, `uuid 1` (v4), `mime_guess 2`, `reqwest` multipart feature
+
+#### Added - Frontend Integration
+- **Provider logos**: Official SVG icons for Box, pCloud, Azure, and Filen in `ProviderLogos.tsx`
+- **Protocol selector**: 4 new entries in cloud storage section with Beta badges
+- **Session tabs**: Provider icons and colors for all 4 new providers
+- **Azure fields**: Container name input in connection form
+- **pCloud fields**: US/EU region selector radio buttons
+
+#### Changed - FTP Security Defaults
+- **Default encryption**: FTP now defaults to "Use explicit FTP over TLS if available" instead of plain FTP
+- **Badge**: FTP badge changed from red "Insecure" to orange "TLS" — communicates encryption without alarming users
+- **Warning banner**: Changed from red to amber, only shown when user explicitly selects plain FTP (no TLS)
+- **Dropdown order**: "TLS if available" is now first option, "plain FTP (none)" moved to last
+
+#### Changed - Protocol Badges
+- **S3**: Badge upgraded from "Beta" to "Secure" (stable, tested)
+- **WebDAV**: Badge upgraded from "Beta" to "Secure" (stable, tested)
+- **Box, pCloud, Azure, Filen**: "Beta" badge until fully tested
+
+#### Changed - UI Refinements
+- **Unified local/remote search**: Single search bar with scope toggle (local/remote) replacing dual search inputs
+- **Modal redesign**: About and Support dialogs refactored to flat header style matching Dependencies panel (no gradients)
+- **About dialog**: Updated protocol list (13 protocols on two lines), version moved under logo, full light/dark theme support
+- **Provider reordering**: Disabled providers (pCloud, Azure) moved to end of cloud provider list
+- **pCloud disabled in production**: Hidden behind `import.meta.env.DEV` flag until fully tested
+- **Azure disabled in production**: Hidden behind `import.meta.env.DEV` flag until fully tested
+- **MEGA stable**: Removed intermediate provider selection step, marked as stable
+- **Column width**: Main content area expanded from `max-w-4xl` to `max-w-5xl`
+- **OAuth badges**: Lock icon added to OAuth provider badges in protocol selector
+
+#### Changed - Security Hardening (from v1.4.1)
+- **AI API keys migrated to OS Keyring**: API keys stored securely in OS Keyring instead of localStorage
+- **Archive encryption dialog**: ZIP and 7z compression now offer optional AES-256 password encryption
+- **ErrorBoundary**: Global error recovery UI wrapping the entire application
+- **Dead code cleanup**: Removed 10 unused hook files totaling 3,543 lines
+- **Memory leak fix**: Blob URLs from `URL.createObjectURL` now properly revoked in usePreview
+
+#### Fixed
+- **Filen saved server display**: Fixed provider name not showing in saved servers list
+- **Missing i18n keys**: Added `searchLocal`, `searchRemote`, `searchScope` keys across 51 languages
+
+## [1.4.1] - 2026-01-31
+
+### Security Hardening + Code Quality
+
+Focused release on security, code quality, and developer experience. AI API keys migrated to OS Keyring, archive compression now supports password-protected encryption, and significant dead code cleanup.
+
+#### Added
+- **Archive encryption dialog**: ZIP and 7z compression now offer optional AES-256 password encryption via interactive dialog
+- **ErrorBoundary**: Global error recovery UI wrapping the entire application
+- **Provider utility functions**: `isNonFtpProvider()`, `isFtpProtocol()`, `supportsStorageQuota()`, `supportsNativeShareLink()` in types.ts
+
+#### Changed
+- **AI API keys migrated to OS Keyring**: API keys for AI providers (OpenAI, Anthropic, Google, etc.) stored securely in OS Keyring instead of localStorage, with automatic migration on first load
+- **Extracted useCloudSync hook**: AeroCloud state and event listeners moved from App.tsx (-140 lines)
+- **Extracted useTransferEvents hook**: Transfer/delete event handling moved from App.tsx (-207 lines)
+- **App.tsx reduced**: 4,484 to 4,137 lines (-347 lines total)
+
+#### Fixed
+- **Memory leak in usePreview**: Blob URLs from `URL.createObjectURL` now properly revoked when preview is replaced without closing
+- **Dead code cleanup**: Removed 10 unused hook files totaling 3,543 lines
+
+#### Security
+- **AI API keys**: No longer stored in plain text in localStorage; uses OS Keyring (gnome-keyring / macOS Keychain / Windows Credential Manager) with encrypted vault fallback
+
 ## [1.4.0] - 2026-01-31
 
 ### Cross-Provider Enhancements + FTPS TLS + Performance

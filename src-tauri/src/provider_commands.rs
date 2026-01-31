@@ -87,6 +87,10 @@ impl ProviderConnectionParams {
             "webdav" => ProviderType::WebDav,
             "s3" => ProviderType::S3,
             "mega" => ProviderType::Mega,
+            "box" => ProviderType::Box,
+            "pcloud" => ProviderType::PCloud,
+            "azure" => ProviderType::Azure,
+            "filen" => ProviderType::Filen,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -129,6 +133,26 @@ impl ProviderConnectionParams {
             }
             if let Some(ts) = self.session_expires_at {
                 extra.insert("session_expires_at".to_string(), ts.to_string());
+            }
+        }
+
+        // Add Azure-specific options
+        if provider_type == ProviderType::Azure {
+            if let Some(ref bucket) = self.bucket {
+                extra.insert("container".to_string(), bucket.clone());
+            }
+            if let Some(ref endpoint) = self.endpoint {
+                extra.insert("endpoint".to_string(), endpoint.clone());
+            }
+            // account_name comes from username field
+        }
+
+        // Add pCloud-specific options
+        if provider_type == ProviderType::PCloud {
+            if let Some(ref region) = self.region {
+                extra.insert("region".to_string(), region.clone());
+            } else {
+                extra.insert("region".to_string(), "us".to_string());
             }
         }
 
@@ -682,9 +706,15 @@ pub async fn oauth2_start_auth(
         "onedrive" | "microsoft" => {
             OAuthConfig::onedrive(&params.client_id, &params.client_secret)
         }
+        "box" => {
+            OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
+        }
+        "pcloud" => {
+            OAuthConfig::pcloud(&params.client_id, &params.client_secret)
+        }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     let manager = OAuth2Manager::new();
     let (auth_url, state) = manager.start_auth_flow(&config).await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
@@ -718,9 +748,15 @@ pub async fn oauth2_complete_auth(
         "onedrive" | "microsoft" => {
             OAuthConfig::onedrive(&params.client_id, &params.client_secret)
         }
+        "box" => {
+            OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
+        }
+        "pcloud" => {
+            OAuthConfig::pcloud(&params.client_id, &params.client_secret)
+        }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     let manager = OAuth2Manager::new();
     manager.complete_auth_flow(&config, &code, &state).await
         .map_err(|e| format!("Failed to complete OAuth flow: {}", e))?;
@@ -734,12 +770,12 @@ pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
     params: OAuthConnectionParams,
 ) -> Result<String, String> {
-    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, 
-                          google_drive::GoogleDriveConfig, dropbox::DropboxConfig, 
-                          onedrive::OneDriveConfig};
-    
+    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
+                          google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
+                          onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig};
+
     info!("Connecting to OAuth2 provider: {}", params.provider);
-    
+
     let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
@@ -762,6 +798,27 @@ pub async fn oauth2_connect(
                 .map_err(|e| format!("OneDrive connection failed: {}", e))?;
             Box::new(p)
         }
+        "box" => {
+            let config = BoxConfig {
+                client_id: params.client_id.clone(),
+                client_secret: params.client_secret.clone(),
+            };
+            let mut p = BoxProvider::new(config);
+            p.connect().await
+                .map_err(|e| format!("Box connection failed: {}", e))?;
+            Box::new(p)
+        }
+        "pcloud" => {
+            let config = PCloudConfig {
+                client_id: params.client_id.clone(),
+                client_secret: params.client_secret.clone(),
+                region: "us".to_string(),
+            };
+            let mut p = PCloudProvider::new(config);
+            p.connect().await
+                .map_err(|e| format!("pCloud connection failed: {}", e))?;
+            Box::new(p)
+        }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
     
@@ -780,13 +837,22 @@ pub async fn oauth2_connect(
 pub async fn oauth2_full_auth(
     params: OAuthConnectionParams,
 ) -> Result<String, String> {
-    use crate::providers::{OAuth2Manager, OAuthConfig, oauth2::{bind_callback_listener, wait_for_callback}};
+    use crate::providers::{OAuth2Manager, OAuthConfig, oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback}};
 
     info!("Starting full OAuth2 flow for {}", params.provider);
 
-    // Bind callback listener first to get the ephemeral port
-    let (listener, port) = bind_callback_listener().await
-        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    // Box requires exact redirect_uri matching, so use a fixed port
+    let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
+        "box" => 9484,
+        _ => 0,
+    };
+
+    // Bind callback listener (fixed port for Box, ephemeral for others)
+    let (listener, port) = if fixed_port > 0 {
+        bind_callback_listener_on_port(fixed_port).await
+    } else {
+        bind_callback_listener().await
+    }.map_err(|e| format!("Failed to bind callback listener: {}", e))?;
 
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
@@ -797,6 +863,12 @@ pub async fn oauth2_full_auth(
         }
         "onedrive" | "microsoft" => {
             OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
+        }
+        "box" => {
+            OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port)
+        }
+        "pcloud" => {
+            OAuthConfig::pcloud_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -858,9 +930,11 @@ pub async fn oauth2_has_tokens(
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "dropbox" => OAuthProvider::Dropbox,
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
+        "box" => OAuthProvider::Box,
+        "pcloud" => OAuthProvider::PCloud,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     let manager = OAuth2Manager::new();
     Ok(manager.has_tokens(oauth_provider))
 }
@@ -876,9 +950,11 @@ pub async fn oauth2_logout(
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "dropbox" => OAuthProvider::Dropbox,
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
+        "box" => OAuthProvider::Box,
+        "pcloud" => OAuthProvider::PCloud,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     let manager = OAuth2Manager::new();
     manager.clear_tokens(oauth_provider)
         .map_err(|e| format!("Failed to clear tokens: {}", e))?;

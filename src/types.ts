@@ -14,16 +14,36 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega';
+export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen';
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
-  return type === 'googledrive' || type === 'dropbox' || type === 'onedrive';
+  return type === 'googledrive' || type === 'dropbox' || type === 'onedrive' || type === 'box' || type === 'pcloud';
 };
 
 // Check if a provider type is AeroCloud
 export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === 'aerocloud';
+};
+
+// Check if a provider uses non-FTP backend (provider_* Tauri commands)
+export const isNonFtpProvider = (type: ProviderType): boolean => {
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen'].includes(type);
+};
+
+// Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
+export const isFtpProtocol = (type: ProviderType): boolean => {
+  return type === 'ftp' || type === 'ftps';
+};
+
+// Check if a provider supports storage quota queries
+export const supportsStorageQuota = (type: ProviderType): boolean => {
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'azure', 'filen'].includes(type);
+};
+
+// Check if a provider supports native share links
+export const supportsNativeShareLink = (type: ProviderType): boolean => {
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode
@@ -57,6 +77,15 @@ export interface ProviderOptions {
   save_session?: boolean;
   session_expires_at?: number; // Timestamp (ms)
   logout_on_disconnect?: boolean;
+
+  // Azure Blob Storage-specific
+  container?: string;
+  accountName?: string;
+  accessKey?: string;
+  sasToken?: string;
+
+  // pCloud-specific
+  pcloudRegion?: 'us' | 'eu';
 }
 
 export interface ConnectionParams {

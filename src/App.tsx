@@ -7,7 +7,7 @@ import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession,
-  ProviderType
+  ProviderType, isOAuthProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink
 } from './types';
 
 interface DownloadFolderParams {
@@ -73,6 +73,8 @@ import { usePreview } from './hooks/usePreview';
 import { useOverwriteCheck } from './hooks/useOverwriteCheck';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useTransferEvents } from './hooks/useTransferEvents';
+import { useCloudSync } from './hooks/useCloudSync';
 
 // ============================================================================
 // Main App Component
@@ -90,12 +92,12 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 //   useActivityLog     - Structured activity log with filtering
 //   useHumanizedLog    - Human-readable log messages with i18n
 //   useKeyboardShortcuts - Global keyboard shortcuts
+//   useTransferEvents  - Backend transfer/delete event listener + log correlation
 //
 // Remaining inline logic (candidates for future extraction):
-//   - Context menus (showRemoteContextMenu, showLocalContextMenu ~297 lines)
+//   - Context menus (showRemoteContextMenu, showLocalContextMenu ~450 lines)
 //   - File transfer operations (upload/download/delete ~320 lines)
-//   - Transfer event listener (useEffect for backend progress events ~155 lines)
-//   - Connection logic (connectToFtp ~193 lines)
+//   - Connection logic (connectToFtp ~200 lines)
 //   - Cloud sync events (~98 lines)
 // ============================================================================
 const App: React.FC = () => {
@@ -148,7 +150,7 @@ const App: React.FC = () => {
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
@@ -159,14 +161,7 @@ const App: React.FC = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  const [showCloudPanel, setShowCloudPanel] = useState(false);
-  const [cloudSyncing, setCloudSyncing] = useState(false);  // AeroCloud sync in progress
-  const [isCloudActive, setIsCloudActive] = useState(false);  // AeroCloud is enabled (persistent)
-  const [cloudServerName, setCloudServerName] = useState<string>('');  // Cloud server profile name
-  const [cloudLastSync, setCloudLastSync] = useState<string | null>(null);  // Last sync timestamp for badges
-  const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');  // Cloud local folder path
-  const [cloudRemoteFolder, setCloudRemoteFolder] = useState<string>('');  // Cloud remote folder path
-  const [cloudPublicUrlBase, setCloudPublicUrlBase] = useState<string>('');  // Public URL base for share links
+  // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
@@ -177,21 +172,13 @@ const App: React.FC = () => {
   // Transfer Queue (unified upload + download)
   const transferQueue = useTransferQueue();
 
-  // Mapping from backend transfer_id to queue item id (for folder progress updates)
-  const transferIdToQueueId = React.useRef<Map<string, string>>(new Map());
-
-  // Mapping from backend transfer_id to activity log entry id (for updating running -> complete)
-  const transferIdToLogId = React.useRef<Map<string, string>>(new Map());
-  // Maps filenames to manually started log IDs (to merge frontend and backend logs)
-  const pendingFileLogIds = React.useRef<Map<string, string>>(new Map());
-  // Maps filenames to delete log IDs (to update "Removing..." -> "Removed" in-place)
-  const pendingDeleteLogIds = React.useRef<Map<string, string>>(new Map());
   const localSearchRef = React.useRef<HTMLInputElement>(null);
 
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
 
   const [localSearchFilter, setLocalSearchFilter] = useState('');
+  const [showLocalSearchBar, setShowLocalSearchBar] = useState(false);
 
   const t = useTranslation();
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
@@ -272,14 +259,6 @@ const App: React.FC = () => {
     return true;
   }, [isConnected, connectionParams.server, currentLocalPath]);
 
-  // Helper: Check if current connection is a Provider (non-FTP)
-  const isCurrentOAuthProvider = React.useMemo(() => {
-    // Get protocol from active session as fallback
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    // Includes OAuth providers AND other providers like S3, WebDAV, MEGA
-    return protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
-  }, [connectionParams.protocol, sessions, activeSessionId]);
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
@@ -291,6 +270,17 @@ const App: React.FC = () => {
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
+
+  // AeroCloud state + event listeners (extracted hook)
+  const {
+    showCloudPanel, setShowCloudPanel,
+    cloudSyncing, isCloudActive, setIsCloudActive,
+    cloudServerName, setCloudServerName,
+    cloudLastSync, setCloudLastSync,
+    cloudLocalFolder, setCloudLocalFolder,
+    cloudRemoteFolder, setCloudRemoteFolder,
+    cloudPublicUrlBase, setCloudPublicUrlBase,
+  } = useCloudSync({ activityLog, humanLog, t, checkForUpdate });
 
   // showToastNotifications provided by useSettings
 
@@ -422,9 +412,9 @@ const App: React.FC = () => {
       else loadLocalFiles(currentLocalPath);
     },
 
-    // Ctrl+F: focus search filter
+    // Ctrl+F: toggle local search bar
     'Ctrl+F': () => {
-      localSearchRef.current?.focus();
+      setShowLocalSearchBar(prev => !prev);
     },
 
     // Space key: Open preview for selected file
@@ -471,7 +461,7 @@ const App: React.FC = () => {
   // Fetch storage quota when connected to providers that support it
   useEffect(() => {
     const supportsQuota = isConnected && connectionParams.protocol &&
-      ['mega', 'googledrive', 'dropbox', 'onedrive'].includes(connectionParams.protocol);
+      supportsStorageQuota(connectionParams.protocol);
     if (supportsQuota) {
       invoke<{ used: number; total: number; free: number }>('provider_storage_info')
         .then(info => setStorageQuota(info))
@@ -500,9 +490,7 @@ const App: React.FC = () => {
     // Get protocol from active session as fallback
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
-    if (isOAuth || isProvider) {
+    if (protocol && isNonFtpProvider(protocol)) {
       console.log('[Keep-Alive] Skipping for non-FTP provider:', protocol);
       return;
     }
@@ -591,201 +579,6 @@ const App: React.FC = () => {
     return () => clearInterval(checkStuck);
   }, [activeTransfer?.percentage]);
 
-  // Transfer events (backend progress updates) - handles downloads, uploads, and deletes
-  useEffect(() => {
-    const unlisten = listen<TransferEvent>('transfer_event', (event) => {
-      const data = event.payload;
-      // locationLabel replaced by i18n logic in handlers
-
-      // ========== TRANSFER EVENTS (download/upload) ==========
-      if (data.event_type === 'start') {
-        let logId = '';
-        // Check if we have a pending manual log for this file (deduplication)
-        if (pendingFileLogIds.current.has(data.filename)) {
-          logId = pendingFileLogIds.current.get(data.filename)!;
-          pendingFileLogIds.current.delete(data.filename);
-        } else {
-          // Folder scan started - create log entry and track for later update
-          logId = humanLog.logStart(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD', { filename: data.filename });
-        }
-        transferIdToLogId.current.set(data.transfer_id, logId);
-
-        // Try to match with queue item by filename and mark as folder
-        const queueItem = transferQueue.items.find(i => i.filename === data.filename && i.status === 'pending');
-        if (queueItem) {
-          transferIdToQueueId.current.set(data.transfer_id, queueItem.id);
-          transferQueue.markAsFolder(queueItem.id);
-          transferQueue.startTransfer(queueItem.id);
-        }
-      } else if (data.event_type === 'file_start') {
-        // Individual file transfer starting - track log ID for in-place update on file_complete
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const fileLogId = humanLog.logRaw(data.direction === 'download' ? 'activity.download_start' : 'activity.upload_start',
-          data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
-          { filename: data.filename, location: loc }, 'running');
-        pendingFileLogIds.current.set(`${data.transfer_id}:${data.filename}`, fileLogId);
-      } else if (data.event_type === 'file_complete') {
-        // Individual file transfer complete - update existing "Uploading/Downloading..." entry to success
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const key = `${data.transfer_id}:${data.filename}`;
-        const existingId = pendingFileLogIds.current.get(key);
-        const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
-        const msg = t(successKey, { filename: data.filename, location: loc, details: '' }).trim();
-        if (existingId) {
-          activityLog.updateEntry(existingId, { status: 'success', message: msg });
-          pendingFileLogIds.current.delete(key);
-        } else {
-          humanLog.logRaw(successKey, data.direction === 'upload' ? 'UPLOAD' : 'DOWNLOAD',
-            { filename: data.filename, location: loc, details: '' }, 'success');
-        }
-      } else if (data.event_type === 'file_error') {
-        // Individual file transfer error
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
-          'ERROR', { filename: data.filename, location: loc }, 'error');
-      } else if (data.event_type === 'progress' && data.progress) {
-        setActiveTransfer(data.progress);
-
-        // Update folder queue item with file count progress (only for folder transfers)
-        // Folder transfers have transfer_id like "dl-folder-..." or "ul-folder-..."
-        if (data.transfer_id.includes('folder')) {
-          const queueId = transferIdToQueueId.current.get(data.transfer_id);
-          if (queueId) {
-            transferQueue.updateFolderProgress(queueId, data.progress.total, data.progress.transferred);
-          }
-        }
-      } else if (data.event_type === 'complete') {
-        setActiveTransfer(null);
-
-        // Attempt to extract stats from the original english message if available
-        // e.g. "Uploaded file.txt (10MB in 2s)"
-        let size = '';
-        let time = '';
-        if (data.message) {
-          const match = data.message.match(/\(([^)]+)\)$/);
-          if (match) {
-            const content = match[1];
-            if (content.includes(' in ')) {
-              const parts = content.split(' in ');
-              size = parts[0];
-              time = parts[1];
-            } else {
-              size = content;
-            }
-          }
-        }
-
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
-        const details = size && time ? `(${size} in ${time})` : size ? `(${size})` : '';
-        const formattedMessage = t(successKey, { filename: data.filename, location: loc, details });
-
-        // Update existing log entry from 'running' to 'success' instead of creating new
-        const logId = transferIdToLogId.current.get(data.transfer_id);
-        if (logId) {
-          activityLog.updateEntry(logId, {
-            status: 'success',
-            message: formattedMessage
-          });
-          transferIdToLogId.current.delete(data.transfer_id);
-        }
-        // No fallback - avoid duplicate logs. The JS function handles its own logging.
-
-        // Complete the queue item
-        const queueId = transferIdToQueueId.current.get(data.transfer_id);
-        if (queueId) {
-          transferQueue.completeTransfer(queueId);
-          transferIdToQueueId.current.delete(data.transfer_id);
-        }
-
-        if (data.direction === 'upload') loadRemoteFiles();
-        else if (data.direction === 'download') loadLocalFiles(currentLocalPath);
-      } else if (data.event_type === 'error') {
-        setActiveTransfer(null);
-
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const errorKey = data.direction === 'upload' ? 'activity.upload_error' : 'activity.download_error';
-        const formattedMessage = t(errorKey, { filename: data.filename, location: loc });
-
-        // Update existing log entry to error status instead of creating new
-        const logId = transferIdToLogId.current.get(data.transfer_id);
-        if (logId) {
-          activityLog.updateEntry(logId, {
-            status: 'error',
-            message: formattedMessage
-          });
-          transferIdToLogId.current.delete(data.transfer_id);
-        } else {
-          humanLog.logRaw(errorKey, 'ERROR', { filename: data.filename, location: loc }, 'error');
-        }
-
-        // Fail the queue item
-        const queueId = transferIdToQueueId.current.get(data.transfer_id);
-        if (queueId) {
-          transferQueue.failTransfer(queueId, data.message || 'Transfer failed');
-          transferIdToQueueId.current.delete(data.transfer_id);
-        }
-
-        notify.error('Transfer Failed', data.message);
-      } else if (data.event_type === 'cancelled') {
-        setActiveTransfer(null);
-        notify.warning('Transfer Cancelled', data.message);
-      }
-
-      // ========== DELETE EVENTS ==========
-      // For recursive folder deletes, the backend emits per-file events.
-      // We track each file's log ID so "Removing..." updates to "Removed" in-place.
-      else if (data.event_type === 'delete_start') {
-        // Folder delete scan started - log once for the folder
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
-        pendingDeleteLogIds.current.set(data.filename, logId);
-      } else if (data.event_type === 'delete_file_start') {
-        // Individual file delete starting - log and track for update
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
-        pendingDeleteLogIds.current.set(data.filename, logId);
-      } else if (data.event_type === 'delete_file_complete') {
-        // Individual file deleted - update existing "Removing..." entry
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
-        if (existingId) {
-          const msg = t('activity.delete_file_success', { location: loc, filename: data.filename });
-          activityLog.updateEntry(existingId, { status: 'success', message: msg });
-          pendingDeleteLogIds.current.delete(data.filename);
-        } else {
-          humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
-        }
-      } else if (data.event_type === 'delete_dir_complete') {
-        // Directory removed - update existing entry or create new
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
-        if (existingId) {
-          const msg = t('activity.delete_dir_success', { location: loc, filename: data.filename });
-          activityLog.updateEntry(existingId, { status: 'success', message: msg });
-          pendingDeleteLogIds.current.delete(data.filename);
-        } else {
-          humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
-        }
-      } else if (data.event_type === 'delete_complete') {
-        // Folder delete complete (Task) - refresh file list
-        if (data.direction === 'remote') loadRemoteFiles();
-        else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
-      } else if (data.event_type === 'delete_error') {
-        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
-        if (existingId) {
-          const msg = t('activity.delete_error', { location: loc, filename: data.filename });
-          activityLog.updateEntry(existingId, { status: 'error', message: msg });
-          pendingDeleteLogIds.current.delete(data.filename);
-        } else {
-          humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');
-        }
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [currentLocalPath, activityLog, transferQueue]);
-
   // Menu events from native menu
   useEffect(() => {
     const unlisten = listen<string>('menu-event', (event) => {
@@ -846,8 +639,8 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
       const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+      const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
       console.log('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -880,6 +673,12 @@ const App: React.FC = () => {
       notify.error('Error', `Failed to list files: ${error}`);
     }
   };
+
+  // Transfer events (backend progress updates) - handles downloads, uploads, and deletes
+  const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
+    t, activityLog, humanLog, transferQueue, notify,
+    setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
+  });
 
   const handleRemoteSearch = async (query: string) => {
     if (!query.trim()) {
@@ -982,179 +781,14 @@ const App: React.FC = () => {
     connectionParams,
   });
 
-  // Check AeroCloud state on mount and listen for status changes
-  useEffect(() => {
-    // Check initial cloud config
-    const checkCloudConfig = async () => {
-      try {
-        const config = await invoke<{
-          enabled: boolean;
-          cloud_name?: string;
-          server_profile?: string;
-          last_sync?: string;
-          local_folder?: string;
-          remote_folder?: string;
-          public_url_base?: string | null;
-        }>('get_cloud_config');
-        setIsCloudActive(config.enabled);
-        // Use custom cloud_name if set, otherwise fall back to server_profile
-        if (config.cloud_name) {
-          setCloudServerName(config.cloud_name);
-        } else if (config.server_profile) {
-          setCloudServerName(config.server_profile);
-        }
-        if (config.last_sync) {
-          setCloudLastSync(config.last_sync);
-        }
-        if (config.local_folder) {
-          setCloudLocalFolder(config.local_folder);
-        }
-        if (config.remote_folder) {
-          setCloudRemoteFolder(config.remote_folder);
-        }
-        if (config.public_url_base) {
-          setCloudPublicUrlBase(config.public_url_base);
-        }
-
-        // Auto-start background sync if cloud is enabled
-        if (config.enabled) {
-          console.log('Cloud enabled, starting background sync...');
-          try {
-            await invoke('start_background_sync');
-            console.log('Background sync started');
-          } catch (syncError) {
-            console.log('Background sync start error (may already be running):', syncError);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to check cloud config:', e);
-      }
-    };
-    checkCloudConfig();
-
-    // Debounce cloud sync status logs to avoid duplicates from React StrictMode
-    let lastCloudLogStatus = '';
-    let lastCloudLogTime = 0;
-
-    // Track cloud sync log ID for updating status
-    let cloudSyncLogId: string | null = null;
-
-    // Listen for cloud sync status events
-    const unlistenStatus = listen<{ status: string; message: string }>('cloud-sync-status', (event) => {
-      const { status, message } = event.payload;
-      console.log('Cloud status:', status, message);
-
-      // Debounce: skip if same status logged within 500ms
-      const now = Date.now();
-      if (status === lastCloudLogStatus && now - lastCloudLogTime < 500) {
-        return;
-      }
-      lastCloudLogStatus = status;
-      lastCloudLogTime = now;
-
-      if (status === 'active') {
-        // Sync completed, back to idle (active = enabled but not syncing)
-        setCloudSyncing(false);
-        setIsCloudActive(true);
-        // Refresh last_sync timestamp for badges
-        setCloudLastSync(new Date().toISOString());
-        // Only log success if we were actually syncing (has a running log)
-        if (cloudSyncLogId) {
-          activityLog.updateEntry(cloudSyncLogId, {
-            status: 'success',
-            message: t('activity.sync_success', { server: cloudServerName })
-          });
-          cloudSyncLogId = null;
-        }
-      } else if (status === 'idle') {
-        setCloudSyncing(false);
-        setIsCloudActive(true);
-      } else if (status === 'syncing') {
-        // Actually transferring files now
-        setCloudSyncing(true);
-        setIsCloudActive(true);
-        // Create log entry and track for update
-        cloudSyncLogId = humanLog.logRaw('activity.sync_start', 'INFO', { server: cloudServerName }, 'running');
-      } else if (status === 'error') {
-        setCloudSyncing(false);
-        console.error('Cloud sync error:', message);
-        if (cloudSyncLogId) {
-          activityLog.updateEntry(cloudSyncLogId, {
-            status: 'error',
-            message: t('activity.sync_error', { server: cloudServerName, message })
-          });
-          cloudSyncLogId = null;
-        } else {
-          humanLog.logRaw('activity.sync_error', 'ERROR', { server: cloudServerName, message }, 'error');
-        }
-      } else if (status === 'disabled') {
-        setCloudSyncing(false);
-        setIsCloudActive(false);
-      }
-    });
-
-    // Listen for tray menu events
-    const unlistenMenu = listen<string>('menu-event', async (event) => {
-      const action = event.payload;
-      console.log('Tray menu action:', action);
-
-      if (action === 'cloud_sync_now') {
-        // Trigger manual sync
-        try {
-          activityLog.log('INFO', 'AeroCloud: sincronizzazione manuale avviata', 'running');
-          await invoke('trigger_cloud_sync');
-        } catch (e) {
-          activityLog.log('INFO', `AeroCloud: sincronizzazione fallita: ${e}`, 'error');
-        }
-      } else if (action === 'cloud_pause') {
-        // Stop background sync
-        try {
-          await invoke('stop_background_sync');
-          console.log('Background sync paused from tray');
-        } catch (e) {
-          console.error('Failed to pause sync:', e);
-        }
-      } else if (action === 'cloud_open_folder') {
-        // Open cloud folder in file manager
-        try {
-          const config = await invoke<{ local_folder: string }>('get_cloud_config');
-          if (config.local_folder) {
-            await invoke('open_in_file_manager', { path: config.local_folder });
-          }
-        } catch (e) {
-          console.error('Failed to open cloud folder:', e);
-        }
-      } else if (action === 'check_update') {
-        // Check for updates from tray menu
-        checkForUpdate(true);
-      }
-    });
-
-    // Listen for cloud sync completion to show activity log / toast
-    const unlistenSyncComplete = listen<{ uploaded: number; downloaded: number; errors: string[] }>('cloud_sync_complete', (event) => {
-      const result = event.payload;
-      if (result.errors.length > 0) {
-        activityLog.log('INFO', `Errore sincronizzazione AeroCloud: ${result.errors.length} errori`, 'error');
-      } else {
-        activityLog.log('INFO', `AeroCloud sincronizzato: ↑${result.uploaded} ↓${result.downloaded} file`, 'success');
-      }
-    });
-
-    return () => {
-      unlistenStatus.then(fn => fn());
-      unlistenMenu.then(fn => fn());
-      unlistenSyncComplete.then(fn => fn());
-    };
-  }, []);
-
   // FTP operations
   const connectToFtp = async () => {
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = connectionParams.protocol;
     console.log('[connectToFtp] connectionParams:', connectionParams);
     console.log('[connectToFtp] protocol:', protocol);
-    const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
-    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
+    const isOAuth = !!protocol && isOAuthProvider(protocol);
+    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
     console.log('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
@@ -1163,7 +797,8 @@ const App: React.FC = () => {
       setIsConnected(true);
       setLoading(false);
       setShowConnectionScreen(false);
-      const providerName = protocol === 'googledrive' ? 'Google Drive' : protocol === 'dropbox' ? 'Dropbox' : 'OneDrive';
+      const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+      const providerName = providerNames[protocol] || protocol;
       notify.success('Connected', `Connected to ${providerName}`);
       // Load remote files for OAuth provider - pass protocol explicitly
       await loadRemoteFiles(protocol);
@@ -1446,9 +1081,9 @@ const App: React.FC = () => {
 
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
-    const isOAuth = protocol && ['googledrive', 'dropbox', 'onedrive'].includes(protocol);
+    const isOAuth = !!protocol && isOAuthProvider(protocol);
     // Treat 'mega' as a general provider like S3/WebDAV, not legacy FTP
-    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(protocol);
+    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
@@ -1872,8 +1507,8 @@ const App: React.FC = () => {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
       const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+      const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
 
       let response: FileListResponse;
       if (isProvider) {
@@ -1999,7 +1634,7 @@ const App: React.FC = () => {
     // Check if we're using a Provider (get protocol from active session as fallback)
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+    const isProvider = !!protocol && isNonFtpProvider(protocol);
 
     try {
       if (isDir) {
@@ -2055,7 +1690,7 @@ const App: React.FC = () => {
       // Check if we're using a Provider (get protocol from active session as fallback)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
 
       if (isDir) {
         if (isProvider) {
@@ -2355,7 +1990,7 @@ const App: React.FC = () => {
       // Get protocol from active session as fallback (outside loop for efficiency)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
 
       for (const name of names) {
         const file = remoteFiles.find(f => f.name === name);
@@ -2485,7 +2120,7 @@ const App: React.FC = () => {
         // Get protocol from active session as fallback
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+        const isProvider = !!protocol && isNonFtpProvider(protocol);
 
         if (isProvider) {
           if (isDir) {
@@ -2583,7 +2218,7 @@ const App: React.FC = () => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+            const isProvider = !!protocol && isNonFtpProvider(protocol);
 
             if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
@@ -2618,7 +2253,7 @@ const App: React.FC = () => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+            const isProvider = !!protocol && isNonFtpProvider(protocol);
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -2715,8 +2350,8 @@ const App: React.FC = () => {
     }
 
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
-    const supportsNativeShareLink = currentProtocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'mega'].includes(currentProtocol);
-    if (supportsNativeShareLink) {
+    const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
+    if (hasNativeShareLink) {
       items.push({
         label: 'Create Share Link',
         icon: <Share2 size={14} />,
@@ -2867,37 +2502,57 @@ const App: React.FC = () => {
         {
           label: 'ZIP',
           icon: <Archive size={14} />,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.zip`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.zip`);
-              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
-              await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath, password: null });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Compressed!', `Created ${baseName}.zip`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
+          action: () => {
+            setInputDialog({
+              title: `${t('contextMenu.encryptionOptional')} — ${baseName}.zip`,
+              defaultValue: '',
+              isPassword: true,
+              placeholder: t('contextMenu.encryptionOptionalHint'),
+              onConfirm: async (password: string) => {
+                setInputDialog(null);
+                try {
+                  const outputPath = `${currentLocalPath}/${baseName}.zip`;
+                  notify.info(t('contextMenu.compressing'), `${baseName}.zip`);
+                  const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
+                  await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath, password: password || null });
+                  const suffix = password ? ' (AES-256)' : '';
+                  activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip${suffix} (${count} item${count > 1 ? 's' : ''})` });
+                  notify.success('Compressed!', `Created ${baseName}.zip${suffix}`);
+                  await loadLocalFiles(currentLocalPath);
+                } catch (err) {
+                  activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+                  notify.error(t('contextMenu.compressionFailed'), String(err));
+                }
+              }
+            });
           }
         },
         {
           label: '7z',
           icon: <Archive size={14} />,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.7z`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.7z`);
-              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
-              await invoke<string>('compress_7z', { paths: getCompressPaths(), outputPath, password: null });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Compressed!', `Created ${baseName}.7z`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
+          action: () => {
+            setInputDialog({
+              title: `${t('contextMenu.encryptionOptional')} — ${baseName}.7z`,
+              defaultValue: '',
+              isPassword: true,
+              placeholder: t('contextMenu.encryptionOptionalHint'),
+              onConfirm: async (password: string) => {
+                setInputDialog(null);
+                try {
+                  const outputPath = `${currentLocalPath}/${baseName}.7z`;
+                  notify.info(t('contextMenu.compressing'), `${baseName}.7z`);
+                  const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
+                  await invoke<string>('compress_7z', { paths: getCompressPaths(), outputPath, password: password || null });
+                  const suffix = password ? ' (AES-256)' : '';
+                  activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z${suffix} (${count} item${count > 1 ? 's' : ''})` });
+                  notify.success('Compressed!', `Created ${baseName}.7z${suffix}`);
+                  await loadLocalFiles(currentLocalPath);
+                } catch (err) {
+                  activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
+                  notify.error(t('contextMenu.compressionFailed'), String(err));
+                }
+              }
+            });
           }
         },
         {
@@ -3096,7 +2751,7 @@ const App: React.FC = () => {
       // Get protocol from active session as fallback
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = protocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'].includes(protocol);
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
     } else {
@@ -3157,7 +2812,7 @@ const App: React.FC = () => {
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(null)} />}
-      {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} />}
+      {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
       {propertiesDialog && (
         <PropertiesDialog
           file={propertiesDialog}
@@ -3343,7 +2998,7 @@ const App: React.FC = () => {
               // The form should only appear when clicking Edit, not when connecting
 
               // Check if this is an OAuth provider
-              const isOAuth = params.protocol && ['googledrive', 'dropbox', 'onedrive'].includes(params.protocol);
+              const isOAuth = params.protocol && isOAuthProvider(params.protocol);
               console.log('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
               console.log('[onSavedServerConnect] isOAuth:', isOAuth);
 
@@ -3352,7 +3007,8 @@ const App: React.FC = () => {
                 // Just switch to file manager view
                 setIsConnected(true);
                 setShowConnectionScreen(false);
-                const providerName = params.displayName || (params.protocol === 'googledrive' ? 'Google Drive' : params.protocol === 'dropbox' ? 'Dropbox' : 'OneDrive');
+                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+                const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
                 notify.success('Connected', `Connected to ${providerName}`);
                 // Load remote files for OAuth provider - pass protocol explicitly
                 await loadRemoteFiles(params.protocol);
@@ -3374,7 +3030,7 @@ const App: React.FC = () => {
               }
 
               // Check if this is a provider protocol (all protocols use provider_connect)
-              const isProvider = params.protocol && ['ftp', 'ftps', 's3', 'webdav', 'mega', 'sftp'].includes(params.protocol);
+              const isProvider = params.protocol && ['ftp', 'ftps', 's3', 'webdav', 'mega', 'sftp', 'filen'].includes(params.protocol);
 
               if (isProvider) {
                 // S3/WebDAV connection via provider_connect
@@ -3665,18 +3321,6 @@ const App: React.FC = () => {
                   <HardDrive size={16} /> {t('browser.local')}
                 </button>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
-                {/* Search Filter - hidden on small screens */}
-                <div className="relative hidden lg:block">
-                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    ref={localSearchRef}
-                    type="text"
-                    placeholder="Filter local files..."
-                    value={localSearchFilter}
-                    onChange={e => setLocalSearchFilter(e.target.value)}
-                    className="w-40 pl-8 pr-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
                 {/* Preview Toggle - hidden on small screens */}
                 <button
                   onClick={() => setShowLocalPreview(p => !p)}
@@ -3705,6 +3349,10 @@ const App: React.FC = () => {
                           case 'googledrive': return 'Google Drive';
                           case 'dropbox': return 'Dropbox';
                           case 'onedrive': return 'OneDrive';
+                          case 'box': return 'Box';
+                          case 'pcloud': return 'pCloud';
+                          case 'azure': return 'Azure Blob';
+                          case 'filen': return 'Filen';
                           case 'mega': return 'MEGA';
                           default: return 'FTP';
                         }
@@ -4021,8 +3669,53 @@ const App: React.FC = () => {
                     >
                       <RefreshCw size={13} />
                     </button>
+                    <button
+                      onClick={() => {
+                        if (localSearchFilter) {
+                          setLocalSearchFilter('');
+                          setShowLocalSearchBar(false);
+                        } else {
+                          setShowLocalSearchBar(prev => !prev);
+                        }
+                      }}
+                      className={`flex-shrink-0 px-2 flex items-center transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                      title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
+                    >
+                      <Search size={13} />
+                    </button>
                   </div>
                 </div>
+                {showLocalSearchBar && (
+                  <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
+                    <Search size={14} className="text-blue-500 flex-shrink-0" />
+                    <input
+                      autoFocus
+                      ref={localSearchRef}
+                      type="text"
+                      placeholder={t('search.local_placeholder') || 'Filter local files...'}
+                      value={localSearchFilter}
+                      onChange={e => setLocalSearchFilter(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') {
+                          setShowLocalSearchBar(false);
+                          setLocalSearchFilter('');
+                        }
+                      }}
+                      className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
+                    />
+                    {localSearchFilter && (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
+                        {localFiles.filter(f => f.name.toLowerCase().includes(localSearchFilter.toLowerCase())).length} results
+                      </span>
+                    )}
+                    <button
+                      onClick={() => { setShowLocalSearchBar(false); setLocalSearchFilter(''); }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
                 <div className="flex-1 overflow-auto">
                   {viewMode === 'list' ? (
                     <table className="w-full">
@@ -4428,6 +4121,10 @@ const App: React.FC = () => {
             if (protocol === 'googledrive') return 'Google Drive';
             if (protocol === 'dropbox') return 'Dropbox';
             if (protocol === 'onedrive') return 'OneDrive';
+            if (protocol === 'box') return 'Box';
+            if (protocol === 'pcloud') return 'pCloud';
+            if (protocol === 'azure') return 'Azure Blob';
+            if (protocol === 'filen') return 'Filen';
             if (protocol === 'mega') return 'MEGA';
             // For FTP/FTPS/SFTP/etc, show username@server or session name
             const server = connectionParams.server || activeSession?.connectionParams?.server;

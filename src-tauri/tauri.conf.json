@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -66,14 +66,5 @@
             }
         }
     },
-    "plugins": {
-        "updater": {
-            "active": true,
-            "dialog": false,
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyMTBCNkI2QzhDM0E2RjkKUldUNXBzUEl0cllROHVDbmdiTHNMQnRHOHI4amVyaUlVSFhTSjZJMEJwZXVhbFI4OVhiV2hZSzEK",
-            "endpoints": [
-                "https://api.github.com/repos/axpnet/aeroftp/releases/latest"
-            ]
-        }
-    }
+    "plugins": {}
 }

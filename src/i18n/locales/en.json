@@ -121,6 +121,10 @@
             "dropboxDesc": "Connect with Dropbox Account",
             "onedriveDesc": "Connect with Microsoft Account",
             "megaDesc": "Secure Cloud Storage",
+            "boxDesc": "Connect with Box Account",
+            "pcloudDesc": "Connect with pCloud Account",
+            "azureDesc": "Microsoft Azure Storage",
+            "filenDesc": "E2E Encrypted Cloud",
             "sshAuth": "SSH Authentication (Optional)",
             "sshAuthHelp": "Leave empty to use password authentication. For key-based auth, provide your private key path.",
             "privateKeyPath": "Private Key Path",
@@ -215,6 +219,8 @@
             "passwordRequired": "Password Required",
             "enterArchivePassword": "This archive is encrypted. Enter password:",
             "wrongPassword": "Wrong password or corrupted archive",
+            "encryptionOptional": "Set Password (AES-256)",
+            "encryptionOptionalHint": "Leave empty for no encryption",
             "delete": "Delete"
         },
         "transfer": {
@@ -569,6 +575,9 @@
         },
         "search": {
             "remote_placeholder": "Search remote files...",
+            "local_placeholder": "Filter local files...",
+            "search_files": "Search files",
+            "clear": "Clear search",
             "results": "results"
         },
         "versions": {
