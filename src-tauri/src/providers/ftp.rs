@@ -4,20 +4,23 @@
 //! Uses the suppaftp crate for FTP operations.
 
 use async_trait::async_trait;
-use suppaftp::tokio::AsyncFtpStream;
+use suppaftp::tokio::{AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
 use suppaftp::types::FileType;
 use std::io::Cursor;
 use tokio::io::AsyncReadExt;
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, FtpConfig,
+    FtpTlsMode,
 };
 
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
     config: FtpConfig,
-    stream: Option<AsyncFtpStream>,
+    stream: Option<AsyncNativeTlsFtpStream>,
     current_path: String,
+    /// Whether server supports MLSD/MLST (RFC 3659)
+    mlsd_supported: bool,
 }
 
 impl FtpProvider {
@@ -27,12 +30,24 @@ impl FtpProvider {
             config,
             stream: None,
             current_path: "/".to_string(),
+            mlsd_supported: false,
         }
     }
     
     /// Get mutable reference to the FTP stream, returning error if not connected
-    fn stream_mut(&mut self) -> Result<&mut AsyncFtpStream, ProviderError> {
+    fn stream_mut(&mut self) -> Result<&mut AsyncNativeTlsFtpStream, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
+    }
+
+    /// Create a TLS connector with the configured certificate verification settings
+    fn make_tls_connector(&self) -> Result<AsyncNativeTlsConnector, ProviderError> {
+        let mut builder = native_tls::TlsConnector::builder();
+        if !self.config.verify_cert {
+            builder.danger_accept_invalid_certs(true);
+            builder.danger_accept_invalid_hostnames(true);
+        }
+        let connector = suppaftp::async_native_tls::TlsConnector::from(builder);
+        Ok(AsyncNativeTlsConnector::from(connector))
     }
     
     /// Parse FTP listing into RemoteEntry
@@ -143,12 +158,115 @@ impl FtpProvider {
             metadata: Default::default(),
         })
     }
+
+    /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
+    /// Format: "fact1=val1;fact2=val2; filename"
+    fn parse_mlsd_entry(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
+        // Split on first space after semicolons to get facts and filename
+        let (facts_str, name) = line.split_once(' ')?;
+        let name = name.to_string();
+
+        if name == "." || name == ".." {
+            return None;
+        }
+
+        let mut is_dir = false;
+        let mut is_symlink = false;
+        let mut size: u64 = 0;
+        let mut modified: Option<String> = None;
+        let mut permissions: Option<String> = None;
+        let mut owner: Option<String> = None;
+        let mut group: Option<String> = None;
+
+        for fact in facts_str.split(';') {
+            let fact = fact.trim();
+            if fact.is_empty() {
+                continue;
+            }
+            let (key, value) = match fact.split_once('=') {
+                Some((k, v)) => (k.to_lowercase(), v),
+                None => continue,
+            };
+
+            match key.as_str() {
+                "type" => {
+                    let v_lower = value.to_lowercase();
+                    is_dir = v_lower == "dir" || v_lower == "cdir" || v_lower == "pdir";
+                    is_symlink = v_lower == "os.unix=symlink" || v_lower == "os.unix=slink";
+                }
+                "size" | "sizd" => {
+                    size = value.parse().unwrap_or(0);
+                }
+                "modify" => {
+                    // YYYYMMDDHHMMSS[.sss] → format nicely
+                    modified = Some(Self::format_mlsd_time(value));
+                }
+                "unix.mode" => {
+                    permissions = Some(value.to_string());
+                }
+                "unix.owner" | "unix.uid" => {
+                    owner = Some(value.to_string());
+                }
+                "unix.group" | "unix.gid" => {
+                    group = Some(value.to_string());
+                }
+                "perm" => {
+                    // MLSD perm facts (e.g. "rwcedf") - store as metadata
+                    if permissions.is_none() {
+                        permissions = Some(value.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Skip cdir/pdir (current/parent directory entries)
+        if facts_str.to_lowercase().contains("type=cdir") || facts_str.to_lowercase().contains("type=pdir") {
+            return None;
+        }
+
+        let path = if base_path.ends_with('/') {
+            format!("{}{}", base_path, name)
+        } else {
+            format!("{}/{}", base_path, name)
+        };
+
+        Some(RemoteEntry {
+            name,
+            path,
+            is_dir,
+            size,
+            modified,
+            permissions,
+            owner,
+            group,
+            is_symlink,
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        })
+    }
+
+    /// Format MLSD timestamp (YYYYMMDDHHMMSS) to readable form
+    fn format_mlsd_time(ts: &str) -> String {
+        if ts.len() >= 14 {
+            format!(
+                "{}-{}-{} {}:{}:{}",
+                &ts[0..4], &ts[4..6], &ts[6..8],
+                &ts[8..10], &ts[10..12], &ts[12..14]
+            )
+        } else if ts.len() >= 8 {
+            format!("{}-{}-{}", &ts[0..4], &ts[4..6], &ts[6..8])
+        } else {
+            ts.to_string()
+        }
+    }
 }
 
 #[async_trait]
 impl StorageProvider for FtpProvider {
     fn provider_type(&self) -> ProviderType {
-        if self.config.use_tls {
+        if self.config.tls_mode != FtpTlsMode::None {
             ProviderType::Ftps
         } else {
             ProviderType::Ftp
@@ -161,23 +279,67 @@ impl StorageProvider for FtpProvider {
     
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        
-        let mut stream = AsyncFtpStream::connect(&addr)
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-        
+        let domain = self.config.host.clone();
+
+        // Connect and optionally upgrade to TLS based on tls_mode
+        let mut stream = match self.config.tls_mode {
+            FtpTlsMode::None => {
+                // Plain FTP - no TLS
+                AsyncNativeTlsFtpStream::connect(&addr)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            }
+            FtpTlsMode::Explicit => {
+                // Explicit TLS (AUTH TLS) - connect plain, then upgrade
+                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                let connector = self.make_tls_connector()?;
+                stream.into_secure(connector, &domain)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e)))?
+            }
+            FtpTlsMode::Implicit => {
+                // Implicit TLS - connect then immediately upgrade (port 990)
+                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                let connector = self.make_tls_connector()?;
+                stream.into_secure(connector, &domain)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e)))?
+            }
+            FtpTlsMode::ExplicitIfAvailable => {
+                // Try explicit TLS, fall back to plain
+                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                let connector = self.make_tls_connector()?;
+                match stream.into_secure(connector, &domain).await {
+                    Ok(secure) => secure,
+                    Err(_) => {
+                        // TLS not supported, reconnect as plain
+                        tracing::warn!("TLS upgrade not supported by server, falling back to plain FTP");
+                        AsyncNativeTlsFtpStream::connect(&addr)
+                            .await
+                            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                    }
+                }
+            }
+        };
+
         // Login
         stream
             .login(&self.config.username, &self.config.password)
             .await
             .map_err(|e| ProviderError::AuthenticationFailed(e.to_string()))?;
-        
+
         // Set binary transfer mode
         stream
             .transfer_type(FileType::Binary)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         // Navigate to initial path if specified
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() {
@@ -187,13 +349,19 @@ impl StorageProvider for FtpProvider {
                     .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
             }
         }
-        
+
+        // Check FEAT for MLSD support
+        self.mlsd_supported = match stream.feat().await {
+            Ok(features) => features.contains_key("MLST") || features.contains_key("MLSD"),
+            Err(_) => false,
+        };
+
         // Get current directory
         self.current_path = stream
             .pwd()
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         self.stream = Some(stream);
         Ok(())
     }
@@ -210,24 +378,43 @@ impl StorageProvider for FtpProvider {
     }
     
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let stream = self.stream_mut()?;
-        
         let list_path = if path.is_empty() || path == "." {
             None
         } else {
-            Some(path)
+            Some(path.to_string())
         };
-        
+
+        let base_path = list_path.as_deref().unwrap_or(&self.current_path).to_string();
+
+        // Prefer MLSD when supported
+        if self.mlsd_supported {
+            let stream = self.stream_mut()?;
+            match stream.mlsd(list_path.as_deref()).await {
+                Ok(lines) => {
+                    let entries: Vec<RemoteEntry> = lines
+                        .iter()
+                        .filter_map(|line| self.parse_mlsd_entry(line, &base_path))
+                        .collect();
+                    return Ok(entries);
+                }
+                Err(_) => {
+                    // Fall through to LIST
+                }
+            }
+        }
+
+        // Fallback to LIST
+        let stream = self.stream_mut()?;
         let lines = stream
-            .list(list_path)
+            .list(list_path.as_deref())
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         let entries: Vec<RemoteEntry> = lines
             .iter()
             .filter_map(|line| self.parse_listing(line))
             .collect();
-        
+
         Ok(entries)
     }
     
@@ -438,19 +625,33 @@ impl StorageProvider for FtpProvider {
     }
     
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        // FTP doesn't have a direct stat command, so we list parent and find the entry
+        // Use MLST when available for direct single-file info
+        if self.mlsd_supported {
+            let stream = self.stream_mut()?;
+            if let Ok(mlst_line) = stream.mlst(Some(path)).await {
+                let parent = std::path::Path::new(path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "/".to_string());
+                if let Some(entry) = self.parse_mlsd_entry(&mlst_line.trim(), &parent) {
+                    return Ok(entry);
+                }
+            }
+        }
+
+        // Fallback: list parent and find the entry
         let parent = std::path::Path::new(path)
             .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string());
-        
+
         let name = std::path::Path::new(path)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .ok_or_else(|| ProviderError::InvalidPath(path.to_string()))?;
-        
+
         let entries = self.list(&parent).await?;
-        
+
         entries
             .into_iter()
             .find(|e| e.name == name)
@@ -492,6 +693,166 @@ impl StorageProvider for FtpProvider {
         ))
     }
     
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let pattern_lower = pattern.to_lowercase();
+        let mut results = Vec::new();
+        let search_path = if path.is_empty() || path == "." {
+            self.current_path.clone()
+        } else {
+            path.to_string()
+        };
+        let mut dirs_to_scan = vec![search_path];
+
+        while let Some(dir) = dirs_to_scan.pop() {
+            // Save current_path, list, restore
+            let saved = self.current_path.clone();
+            self.current_path = dir.clone();
+            let entries = match self.list(&dir).await {
+                Ok(e) => e,
+                Err(_) => {
+                    self.current_path = saved;
+                    continue;
+                }
+            };
+            self.current_path = saved;
+
+            for entry in entries {
+                if entry.is_dir {
+                    dirs_to_scan.push(entry.path.clone());
+                }
+
+                if entry.name.to_lowercase().contains(&pattern_lower) {
+                    results.push(entry);
+                    if results.len() >= 500 {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let stream = self.stream_mut()?;
+
+        // Get total file size
+        let total_size = stream
+            .size(remote_path)
+            .await
+            .unwrap_or(0) as u64;
+
+        stream
+            .transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        // Send REST command to set offset
+        stream
+            .resume_transfer(offset as usize)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
+
+        // Now retrieve from offset
+        let mut data_stream = stream
+            .retr_as_stream(remote_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let mut data = Vec::new();
+        data_stream
+            .read_to_end(&mut data)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
+        stream
+            .finalize_retr_stream(data_stream)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        if let Some(progress) = on_progress {
+            progress(offset + data.len() as u64, total_size);
+        }
+
+        // Append to existing local file or create new one
+        use tokio::io::AsyncWriteExt as _;
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(false)
+            .open(local_path)
+            .await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        // Seek to offset and write
+        file.set_len(offset)
+            .await
+            .map_err(|e| ProviderError::IoError(e))?;
+        use tokio::io::AsyncSeekExt;
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(|e| ProviderError::IoError(e))?;
+        file.write_all(&data)
+            .await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        Ok(())
+    }
+
+    async fn resume_upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let data = tokio::fs::read(local_path)
+            .await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        let total_size = data.len() as u64;
+
+        if offset >= total_size {
+            return Ok(()); // Nothing to upload
+        }
+
+        // Send remaining data via APPE (append)
+        let remaining = &data[offset as usize..];
+        let mut cursor = Cursor::new(remaining);
+
+        let stream = self.stream_mut()?;
+        stream
+            .transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        stream
+            .append_file(remote_path, &mut cursor)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        if let Some(progress) = on_progress {
+            progress(total_size, total_size);
+        }
+
+        Ok(())
+    }
+
     fn supports_chmod(&self) -> bool {
         true
     }
@@ -521,7 +882,8 @@ mod tests {
             port: 21,
             username: "user".to_string(),
             password: "pass".to_string(),
-            use_tls: false,
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
             initial_path: None,
         });
         
@@ -534,13 +896,73 @@ mod tests {
     }
     
     #[test]
+    fn test_parse_mlsd_entry() {
+        let provider = FtpProvider::new(FtpConfig {
+            host: "test".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+
+        let line = "type=file;size=12345;modify=20260131120000;unix.mode=0644; readme.txt";
+        let entry = provider.parse_mlsd_entry(line, "/home").unwrap();
+
+        assert_eq!(entry.name, "readme.txt");
+        assert!(!entry.is_dir);
+        assert_eq!(entry.size, 12345);
+        assert_eq!(entry.modified.as_deref(), Some("2026-01-31 12:00:00"));
+        assert_eq!(entry.permissions.as_deref(), Some("0644"));
+        assert_eq!(entry.path, "/home/readme.txt");
+    }
+
+    #[test]
+    fn test_parse_mlsd_directory() {
+        let provider = FtpProvider::new(FtpConfig {
+            host: "test".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+
+        let line = "type=dir;modify=20260115080000; projects";
+        let entry = provider.parse_mlsd_entry(line, "/").unwrap();
+
+        assert_eq!(entry.name, "projects");
+        assert!(entry.is_dir);
+        assert_eq!(entry.path, "/projects");
+    }
+
+    #[test]
+    fn test_parse_mlsd_skips_cdir_pdir() {
+        let provider = FtpProvider::new(FtpConfig {
+            host: "test".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+
+        assert!(provider.parse_mlsd_entry("type=cdir;modify=20260101000000; .", "/").is_none());
+        assert!(provider.parse_mlsd_entry("type=pdir;modify=20260101000000; ..", "/").is_none());
+    }
+
+    #[test]
     fn test_parse_dos_listing() {
         let provider = FtpProvider::new(FtpConfig {
             host: "test".to_string(),
             port: 21,
             username: "user".to_string(),
             password: "pass".to_string(),
-            use_tls: false,
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
             initial_path: None,
         });
         

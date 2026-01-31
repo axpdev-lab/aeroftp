@@ -1,35 +1,202 @@
-# 🌍 AeroFTP Internationalization (i18n) Guide
+# AeroFTP Internationalization (i18n) Guide
 
-This document explains how to add new translations to AeroFTP.
+> Last Updated: 31 January 2026
+> Version: v1.4.0
+> Languages: 51 | Keys: 531 | Coverage: 100%
+
+---
 
 ## Overview
 
-AeroFTP uses a lightweight, custom i18n system built on React Context. It provides:
+AeroFTP uses a lightweight, custom i18n system built on React Context:
+
 - **Zero dependencies** - No external i18n libraries
-- **Type-safe translations** - Full TypeScript support with autocompletion
+- **Type-safe** - Full TypeScript support with autocompletion
 - **Browser detection** - Automatically detects user's preferred language
 - **Persistence** - Language preference saved to localStorage
 - **Fallback** - Falls back to English for missing translations
-- **Parameter interpolation** - Supports dynamic values in strings
+- **Parameter interpolation** - Supports `{paramName}` syntax
+- **RTL support** - Arabic, Hebrew, Persian, Urdu
+
+---
+
+## Supported Languages (51)
+
+### Original (5)
+
+| Code | Language | Native Name | Status |
+|------|----------|-------------|--------|
+| `en` | English | English | Base language |
+| `it` | Italian | Italiano | Manually translated |
+| `es` | Spanish | Espanol | Sync + placeholder |
+| `fr` | French | Francais | Sync + placeholder |
+| `zh` | Chinese | Simplified Chinese | Sync + placeholder |
+
+### Major European (12)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `de` | German | Deutsch |
+| `pt` | Portuguese | Portugues |
+| `ru` | Russian | Russkij |
+| `nl` | Dutch | Nederlands |
+| `pl` | Polish | Polski |
+| `uk` | Ukrainian | Ukrainska |
+| `ro` | Romanian | Romana |
+| `cs` | Czech | Cestina |
+| `hu` | Hungarian | Magyar |
+| `el` | Greek | Ellinika |
+| `bg` | Bulgarian | Bulgarski |
+| `sk` | Slovak | Slovencina |
+
+### Nordic (5)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `sv` | Swedish | Svenska |
+| `da` | Danish | Dansk |
+| `no` | Norwegian | Norsk |
+| `fi` | Finnish | Suomi |
+| `is` | Icelandic | Islenska |
+
+### Asian (10)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `ja` | Japanese | Nihongo |
+| `ko` | Korean | Hangugeo |
+| `vi` | Vietnamese | Tieng Viet |
+| `th` | Thai | Thai |
+| `id` | Indonesian | Bahasa Indonesia |
+| `ms` | Malay | Bahasa Melayu |
+| `tl` | Filipino | Tagalog |
+| `km` | Khmer | Phasa Khmer |
+| `hi` | Hindi | Hindi |
+| `bn` | Bengali | Bangla |
+
+### Middle Eastern - RTL (4)
+
+| Code | Language | Native Name | Direction |
+|------|----------|-------------|-----------|
+| `ar` | Arabic | Al-Arabiyya | RTL |
+| `he` | Hebrew | Ivrit | RTL |
+| `fa` | Persian | Farsi | RTL |
+| `ur` | Urdu | Urdu | RTL |
+
+### Balkan & Caucasus (6)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `hr` | Croatian | Hrvatski |
+| `sr` | Serbian | Srpski |
+| `sl` | Slovenian | Slovenscina |
+| `mk` | Macedonian | Makedonski |
+| `ka` | Georgian | Kartuli |
+| `hy` | Armenian | Hayeren |
+
+### Baltic (3)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `lt` | Lithuanian | Lietuviu |
+| `lv` | Latvian | Latviesu |
+| `et` | Estonian | Eesti |
+
+### Celtic & Iberian (4)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `cy` | Welsh | Cymraeg |
+| `gl` | Galician | Galego |
+| `ca` | Catalan | Catala |
+| `eu` | Basque | Euskara |
+
+### African (1)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `sw` | Swahili | Kiswahili |
+
+### Turkish (1)
+
+| Code | Language | Native Name |
+|------|----------|-------------|
+| `tr` | Turkish | Turkce |
+
+---
+
+## Translation Keys (531)
+
+Translations are organized by 24 namespaces:
+
+| Namespace | Description | Keys |
+|-----------|-------------|------|
+| `common` | Buttons, actions (Save, Cancel, Delete...) | General UI |
+| `connection` | Connection screen labels | Login form |
+| `protocol` | Protocol-specific labels | FTP, SFTP, S3, etc. |
+| `browser` | File browser UI | Panels, address bar |
+| `contextMenu` | Right-click menu items | File operations |
+| `transfer` | Transfer progress/queue | Upload/download |
+| `settings` | Settings panel | Preferences |
+| `devtools` | DevTools/code editor | Monaco integration |
+| `cloud` | AeroCloud sync | Sync features |
+| `statusBar` | Status bar labels | Connection info |
+| `shortcuts` | Keyboard shortcuts | Shortcut dialog |
+| `dialogs` | Dialog titles | Modals |
+| `overwrite` | Overwrite confirmation | File conflicts |
+| `toast` | Toast notifications | Success/error messages |
+| `about` | About dialog | App info |
+| `support` | Support dialog | Help links |
+| `activity` | Activity log | Transfer log |
+| `statusbar` | Extended status bar | Quota, info |
+| `migration` | Migration messages | Version upgrades |
+| `masterPassword` | Master password vault | Encryption vault |
+| `search` | Remote search | Search bar (v1.4.0) |
+| `versions` | File versions | Version history (v1.4.0) |
+| `sharing` | Share permissions | Sharing dialog (v1.4.0) |
+| `locking` | File locking | Lock/unlock (v1.4.0) |
+
+---
 
 ## Project Structure
 
 ```
 src/i18n/
 ├── index.ts              # Public exports
-├── I18nContext.tsx       # Provider & hooks
-├── types.ts              # TypeScript interfaces
+├── I18nContext.tsx        # Provider, hooks, getNestedValue
+├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (51)
 └── locales/
-    ├── en.json           # English (base language)
-    └── it.json           # Italian
+    ├── en.json           # English (base, 531 keys)
+    ├── it.json           # Italian (manually translated)
+    ├── ar.json           # Arabic (RTL)
+    ├── ...               # 48 more languages
+    └── zh.json           # Chinese
 ```
+
+---
+
+## CLI Tools
+
+```bash
+# Validate all translations (100% coverage check)
+npm run i18n:validate
+
+# Sync new keys from en.json to all 51 languages
+# Adds [NEEDS TRANSLATION] placeholder for missing keys
+npm run i18n:sync
+
+# Show translation statistics
+npm run i18n:stats
+```
+
+---
 
 ## How to Add a New Language
 
 ### Step 1: Create the Translation File
 
 1. Copy `src/i18n/locales/en.json` to `src/i18n/locales/{code}.json`
-   - Use ISO 639-1 language codes (e.g., `de`, `fr`, `es`, `pt`, `zh`, `ja`)
+   - Use ISO 639-1 language codes (e.g., `de`, `fr`, `es`)
 
 2. Update the `meta` section:
    ```json
@@ -40,145 +207,87 @@ src/i18n/
        "nativeName": "Deutsch",
        "direction": "ltr"
      },
-     "translations": {
-       // ... translate all keys
-     }
+     "translations": { ... }
    }
    ```
 
-3. Translate all keys in the `translations` object
-
 ### Step 2: Register the Language
 
-1. Open `src/i18n/types.ts`
+In `src/i18n/types.ts`:
 
-2. Add the language code to the `Language` type:
-   ```typescript
-   export type Language = 'en' | 'it' | 'de';  // Add new code here
-   ```
-
-3. Add the language to `AVAILABLE_LANGUAGES`:
-   ```typescript
-   export const AVAILABLE_LANGUAGES: LanguageInfo[] = [
-     { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
-     { code: 'it', name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹' },
-     { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },  // New
-   ];
-   ```
+1. Add the code to the `Language` type
+2. Add to `AVAILABLE_LANGUAGES` array with flag emoji
 
 ### Step 3: Import the Translation
 
-1. Open `src/i18n/I18nContext.tsx`
+In `src/i18n/I18nContext.tsx`:
 
-2. Add the import:
-   ```typescript
-   import deTranslations from './locales/de.json';
-   ```
+1. Add `import deTranslations from './locales/de.json';`
+2. Add to `TRANSLATIONS` map
 
-3. Add to `TRANSLATIONS` map:
-   ```typescript
-   const TRANSLATIONS: Record<Language, { translations: TranslationKeys }> = {
-     en: enTranslations as { translations: TranslationKeys },
-     it: itTranslations as { translations: TranslationKeys },
-     de: deTranslations as { translations: TranslationKeys },  // New
-   };
-   ```
+### Step 4: Verify
 
-### Step 4: Test
-
-1. Run `npm run build` to check for TypeScript errors
-2. Run `npm run dev` and test the language selector in Settings → Appearance
-
-## Translation Keys Reference
-
-Translations are organized by namespace:
-
-| Namespace     | Description                                |
-| ------------- | ------------------------------------------ |
-| `common`      | Buttons, actions (Save, Cancel, Delete...) |
-| `connection`  | Connection screen labels                   |
-| `browser`     | File browser UI                            |
-| `contextMenu` | Right-click menu items                     |
-| `transfer`    | Transfer progress/queue                    |
-| `settings`    | Settings panel                             |
-| `devtools`    | DevTools panel                             |
-| `cloud`       | AeroCloud sync                             |
-| `statusBar`   | Status bar labels                          |
-| `dialogs`     | Dialog titles                              |
-| `toast`       | Toast notifications                        |
-
-## Using Parameter Interpolation
-
-Translations can include dynamic values using `{paramName}` syntax:
-
-**Translation file:**
-```json
-"toast": {
-  "connectionSuccess": "Connected to {server}",
-  "syncComplete": "Sync complete: ↑{uploaded} ↓{downloaded}"
-}
+```bash
+npm run i18n:validate   # Should show 100%
+npm run build           # No TypeScript errors
 ```
-
-**Usage in component:**
-```typescript
-const { t } = useI18n();
-t('toast.connectionSuccess', { server: 'ftp.example.com' });
-// Output: "Connected to ftp.example.com"
-
-t('toast.syncComplete', { uploaded: 5, downloaded: 3 });
-// Output: "Sync complete: ↑5 ↓3"
-```
-
-## Using Translations in Components
-
-### Import the hook
-```typescript
-import { useI18n } from '../i18n';
-// or
-import { useTranslation } from '../i18n';
-```
-
-### Use in component
-```typescript
-const MyComponent: React.FC = () => {
-  const { t, language, setLanguage } = useI18n();
-  // or just: const t = useTranslation();
-  
-  return (
-    <div>
-      <h1>{t('common.settings')}</h1>
-      <button onClick={() => setLanguage('it')}>
-        {t('common.save')}
-      </button>
-    </div>
-  );
-};
-```
-
-## Best Practices
-
-1. **Always use English as base** - Translate from `en.json`
-2. **Keep keys organized** - Use namespaces consistently
-3. **Test all edge cases** - Long strings, special characters, plurals
-4. **Handle RTL if needed** - Set `direction: "rtl"` for Arabic, Hebrew, etc.
-5. **Use native names** - Show "Deutsch" not "German" in selector
-
-## Character Encoding
-
-All translation files must be saved as **UTF-8** to properly handle:
-- Accented characters (é, ü, ñ, etc.)
-- CJK characters (日本語, 中文, 한국어)
-- RTL scripts (العربية, עברית)
-- Special symbols (€, £, ¥, ©, ™)
-
-## Available Languages
-
-| Code | Language | Native Name | Status            |
-| ---- | -------- | ----------- | ----------------- |
-| `en` | English  | English     | ✅ Complete (Base) |
-| `it` | Italian  | Italiano    | ✅ Complete        |
 
 ---
 
-**Maintainer**: axpdev  
-**Last Updated**: 2026-01-05
+## How to Add New Translation Keys
+
+1. Add the key to `src/i18n/locales/en.json` in the appropriate namespace
+2. Run `npm run i18n:sync` to propagate to all 51 languages
+3. Manually translate Italian (`it.json`) - other languages get `[NEEDS TRANSLATION]` placeholders
+4. Run `npm run i18n:validate` to confirm 100%
+
+---
+
+## Using Translations in Components
+
+```typescript
+// Import
+import { useTranslation } from '../i18n';
+
+// Use
+const t = useTranslation();
+return <h1>{t('common.settings')}</h1>;
+
+// With parameters
+t('toast.connectionSuccess', { server: 'ftp.example.com' });
+// Output: "Connected to ftp.example.com"
+```
+
+For full context access (language switching):
+```typescript
+import { useI18n } from '../i18n';
+const { t, language, setLanguage } = useI18n();
+```
+
+---
+
+## Best Practices
+
+1. **English is the base** - Always add keys to `en.json` first
+2. **Use namespaces** - Group related keys together
+3. **Run sync after adding keys** - `npm run i18n:sync`
+4. **Test RTL** - Set `direction: "rtl"` for Arabic, Hebrew, Persian, Urdu
+5. **Technical terms stay English** - FTP, SFTP, OAuth, S3, WebDAV
+6. **UTF-8 encoding** - All files must be UTF-8
+
+---
+
+## Competitor Comparison
+
+| Client | Languages |
+|--------|-----------|
+| **AeroFTP** | **51** |
+| FileZilla | 47 |
+| WinSCP | ~15 |
+| Cyberduck | ~10 |
+| Transmit | ~5 |
+
+---
+
+**Maintainer**: axpdev
+**Last Updated**: 31 January 2026

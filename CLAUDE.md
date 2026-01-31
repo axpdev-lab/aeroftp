@@ -42,7 +42,6 @@ refactor(providers): simplify OAuth reconnection logic
 
 ### Bad Examples (avoid)
 ```
-🚀 Added new feature          # No emojis
 Added new feature             # Missing type
 feat: Add New Feature         # Use lowercase
 feat: added a new feature     # Use imperative mood
@@ -136,12 +135,12 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Stato Progetto (v1.3.4-dev)
+## Stato Progetto (v1.4.0-dev)
 
-### Versione corrente: v1.3.3 (rilasciata) → v1.3.4 (in sviluppo)
+### Versione corrente: v1.3.4 (rilasciata) → v1.4.0 (in sviluppo)
 
 ### Sicurezza (0 vulnerabilita aperte)
-- CVE-2025-54804: **Risolta** - russh aggiornato da v0.48 a v0.54.5, rimossa dipendenza russh-keys
+- CVE-2025-54804: **Risolta** - russh aggiornato a v0.57
 - SFTP Host Key Verification: TOFU con modulo built-in russh (`known_hosts`)
 - OAuth2: Porta ephemeral (OS-assigned, porta 0)
 - FTP: Warning visivo rosso "Insecure" con banner
@@ -149,46 +148,32 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 - Memoria: zeroize/secrecy per tutte le password e chiavi SSH
 
 ### Stack tecnologico
-- **Backend**: Rust (Tauri 2) con russh 0.54, suppaftp 8, reqwest 0.12, zip 7
+- **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Protocolli**: FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA.nz
-- **Archivi**: ZIP, 7z (AES-256), TAR, GZ, XZ, BZ2
+- **Archivi**: ZIP (AES-256), 7z (AES-256), TAR, GZ, XZ, BZ2, RAR (extract)
 - **i18n**: 51 lingue al 100%
 - **CI/CD**: GitHub Actions → GitHub Releases + Snap Store
 
 ### Dipendenze critiche
 | Crate | Versione | Note |
 |-------|----------|------|
-| russh | 0.54 | SSH/SFTP (CVE risolta) |
+| russh | 0.57 | SSH/SFTP |
 | russh-sftp | 2.1 | Operazioni SFTP |
+| suppaftp | 8 | FTP/FTPS con MLSD/MLST/FEAT |
+| reqwest | 0.13 | HTTP client |
+| quick-xml | 0.39 | WebDAV XML parsing |
 | keyring | 3 (linux-native) | OS Keyring |
 | argon2 | 0.5 | KDF per vault |
 | aes-gcm | 0.10 | Cifratura vault |
 | sevenz-rust | 0.6 | 7z con AES-256 |
+| zip | 7.2 | ZIP con AES-256 |
+| unrar | 0.5 | RAR extraction |
 
-### Dependency Upgrade Roadmap
-
-#### Completati in v1.3.4
-| Crate | Da | A | Note |
-|-------|-----|-----|------|
-| secrecy | 0.8 | 0.10 | SecretString API, Rust Edition 2021 |
-| bzip2 | 0.4 | 0.6 | Backend pure-Rust (libbz2-rs-sys) |
-| thiserror | 1 | 2 | Supporto no-std, Edition 2021 |
-| suppaftp | 7 | 8 | Solo rustls breaking, tokio API invariata |
-| zip | 2 | 7 | ZIP encryption support, ZIP64 fixes |
-
-#### Pendenti
-| Crate | Attuale | Target | Priorita | Note |
-|-------|---------|--------|----------|------|
-| russh | 0.54 | 0.57 | v1.4.0 | Nuovi cipher, future-compat fix |
-| reqwest | 0.12 | 0.13 | v1.4.0 | HTTP/3, performance |
-| quick-xml | 0.31 | 0.39 | v1.4.0 | WebDAV parsing migliorato |
-| oauth2 | 4 | 5 | v1.5.0 | Nuova API, PKCE nativo |
-
-### Prossime versioni pianificate
-- **v1.4.0**: Archive encryption (ZIP AES-256 + 7z AES-256 write), RAR extraction, bandwidth throttling, dep upgrades (russh, reqwest, quick-xml)
-- **v1.5.0**: AeroVault (location crittografata), CLI/Scripting, Azure Blob, dep upgrade oauth2
-- **v1.7.0**: Cryptomator import/export
+### Prossimi step (da decidere a fine sessione v1.4.0)
+- Frontend UI per nuove feature backend (search bar, quota bar, versioni, thumbnail, permessi, locking)
+- Preparazione release v1.4.0 (CHANGELOG, version bump, i18n sync)
+- Valutare priorita v1.5.0: AeroVault, CLI/Scripting, Azure Blob, oauth2 crate v5
 
 ---
 

@@ -10,7 +10,7 @@ use secrecy::ExposeSecret;
 use std::path::Path;
 
 use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, MegaConfig,
+    StorageProvider, ProviderError, ProviderType, RemoteEntry, MegaConfig, StorageInfo,
 };
 
 pub struct MegaProvider {
@@ -327,11 +327,189 @@ impl StorageProvider for MegaProvider {
     }
     
     fn supports_server_copy(&self) -> bool { true }
-    
-    async fn server_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> { 
+
+    async fn server_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         self.run_mega_cmd("mega-cp", &[f, t])
             .await
             .map_err(|e| ProviderError::ServerError(format!("Copy failed: {}", e)))?;
         Ok(())
+    }
+
+    fn supports_share_links(&self) -> bool { true }
+
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        _expires_in_secs: Option<u64>,
+    ) -> Result<String, ProviderError> {
+        let abs_path = self.resolve_path(path);
+        let output = self.run_mega_cmd("mega-export", &["-a", &abs_path])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Export link failed: {}", e)))?;
+
+        // mega-export output format: "Exported /path: https://mega.nz/..."
+        for line in output.lines() {
+            if let Some(url_start) = line.find("https://mega.nz/") {
+                return Ok(line[url_start..].trim().to_string());
+            }
+        }
+
+        Err(ProviderError::ParseError(
+            format!("Could not parse export link from MEGAcmd output: {}", output.trim())
+        ))
+    }
+
+    async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
+        let abs_path = self.resolve_path(path);
+        self.run_mega_cmd("mega-export", &["-d", &abs_path])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Remove export link failed: {}", e)))?;
+        Ok(())
+    }
+
+    fn supports_import_link(&self) -> bool { true }
+
+    async fn import_link(&mut self, link: &str, dest: &str) -> Result<(), ProviderError> {
+        let abs_dest = self.resolve_path(dest);
+        self.run_mega_cmd("mega-import", &[link, &abs_dest])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Import link failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        let output = self.run_mega_cmd("mega-df", &[])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Storage info failed: {}", e)))?;
+
+        // mega-df output example:
+        // Cloud drive:     1234567890 of 53687091200 (2.29%)
+        // or with -h:
+        // Cloud drive:     1.15 GB of 50 GB (2.29%)
+        // We parse the raw bytes version (without -h flag)
+        let mut used: u64 = 0;
+        let mut total: u64 = 0;
+
+        for line in output.lines() {
+            let line = line.trim();
+            // Look for lines with "of" pattern containing byte counts
+            if let Some(colon_pos) = line.find(':') {
+                let rest = line[colon_pos + 1..].trim();
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                // Format: "<used> of <total> ..."
+                if parts.len() >= 3 && parts[1] == "of" {
+                    if let (Ok(u), Ok(t)) = (parts[0].parse::<u64>(), parts[2].parse::<u64>()) {
+                        used += u;
+                        total = t; // Total is the same across lines
+                    }
+                }
+            }
+        }
+
+        Ok(StorageInfo {
+            used,
+            total,
+            free: total.saturating_sub(used),
+        })
+    }
+
+    async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
+        let abs_path = self.resolve_path(path);
+        let output = self.run_mega_cmd("mega-du", &[&abs_path])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Disk usage failed: {}", e)))?;
+
+        // mega-du output: "Total storage used: 123456789 bytes" or "/path: 123456789"
+        for line in output.lines().rev() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(last) = parts.last() {
+                if let Ok(bytes) = last.parse::<u64>() {
+                    return Ok(bytes);
+                }
+            }
+        }
+
+        Err(ProviderError::ParseError(
+            format!("Could not parse disk usage from: {}", output.trim())
+        ))
+    }
+
+    fn supports_find(&self) -> bool { true }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let abs_path = self.resolve_path(path);
+        let output = self.run_mega_cmd("mega-find", &[&abs_path, "--pattern", pattern])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Find failed: {}", e)))?;
+
+        let mut entries = Vec::new();
+        for line in output.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+
+            // mega-find outputs full paths, one per line
+            let name = Path::new(line)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| line.to_string());
+
+            let is_dir = line.ends_with('/');
+            let clean_path = line.trim_end_matches('/').to_string();
+
+            entries.push(RemoteEntry {
+                name: name.trim_end_matches('/').to_string(),
+                path: clean_path,
+                is_dir,
+                size: 0,
+                modified: None,
+                is_symlink: false,
+                link_target: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                mime_type: None,
+                metadata: Default::default(),
+            });
+        }
+
+        Ok(entries)
+    }
+
+    async fn set_speed_limit(&mut self, upload_kb: u64, download_kb: u64) -> Result<(), ProviderError> {
+        let ul = upload_kb.to_string();
+        let dl = download_kb.to_string();
+        self.run_mega_cmd("mega-speedlimit", &["-u", &ul, "-d", &dl])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Set speed limit failed: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
+        let output = self.run_mega_cmd("mega-speedlimit", &[])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Get speed limit failed: {}", e)))?;
+
+        // mega-speedlimit output:
+        // Upload speed limit = 0 (unlimited)
+        // Download speed limit = 0 (unlimited)
+        let mut upload: u64 = 0;
+        let mut download: u64 = 0;
+
+        for line in output.lines() {
+            let line_lower = line.to_lowercase();
+            if let Some(eq_pos) = line.find('=') {
+                let val_str = line[eq_pos + 1..].trim();
+                // Parse first number before any parenthetical
+                let num_str = val_str.split_whitespace().next().unwrap_or("0");
+                let val = num_str.parse::<u64>().unwrap_or(0);
+                if line_lower.contains("upload") {
+                    upload = val;
+                } else if line_lower.contains("download") {
+                    download = val;
+                }
+            }
+        }
+
+        Ok((upload, download))
     }
 }

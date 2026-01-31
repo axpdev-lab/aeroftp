@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { X, Github, Heart, Cpu, Globe, Mail, Copy, Check, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Github, Mail, Copy, Check, ChevronDown, ChevronUp, Wallet, Heart, ExternalLink } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 
@@ -10,44 +11,77 @@ interface AboutDialogProps {
     onClose: () => void;
 }
 
+interface SystemInfo {
+    app_version: string;
+    os: string;
+    os_version: string;
+    arch: string;
+    tauri_version: string;
+    rust_version: string;
+    keyring_backend: string;
+    config_dir: string;
+    vault_exists: boolean;
+    known_hosts_exists: boolean;
+}
+
+type TabId = 'info' | 'technical' | 'support';
+
 // Crypto addresses for donations
 const CRYPTO_ADDRESSES = {
     btc: {
         name: 'Bitcoin',
         symbol: 'BTC',
         address: 'bc1qdxur90s5j4s55rwe9rc9n95fau4rg3tfatfhkn',
-        icon: '₿',
+        icon: '\u20BF',
         color: 'from-orange-500 to-yellow-500',
-        bgColor: 'bg-orange-500/20',
     },
     eth: {
         name: 'Ethereum / EVM',
         symbol: 'ETH',
         address: '0x08F9D9C41E833539Fd733e19119A89f0664c3AeE',
-        icon: 'Ξ',
+        icon: '\u039E',
         color: 'from-blue-400 to-purple-500',
-        bgColor: 'bg-blue-500/20',
     },
     sol: {
         name: 'Solana',
         symbol: 'SOL',
         address: '25A8sBNqzbR9rvrd3qyYwBkwirEh1pUiegUG6CrswHrd',
-        icon: '◎',
+        icon: '\u25CE',
         color: 'from-purple-500 to-green-400',
-        bgColor: 'bg-purple-500/20',
     },
     ltc: {
         name: 'Litecoin',
         symbol: 'LTC',
         address: 'LTk8iRvUqAtYyer8SPAkEAakpPXxfFY1D1',
-        icon: 'Ł',
+        icon: '\u0141',
         color: 'from-gray-400 to-blue-400',
-        bgColor: 'bg-gray-500/20',
     },
 };
 
+// Key dependencies to display in technical tab
+const KEY_DEPENDENCIES = [
+    { name: 'russh', version: '0.54', description: 'SSH/SFTP' },
+    { name: 'russh-sftp', version: '2.1', description: 'SFTP ops' },
+    { name: 'suppaftp', version: '8', description: 'FTP/FTPS' },
+    { name: 'reqwest', version: '0.12', description: 'HTTP' },
+    { name: 'keyring', version: '3', description: 'OS Keyring' },
+    { name: 'aes-gcm', version: '0.10', description: 'AES-256-GCM' },
+    { name: 'argon2', version: '0.5', description: 'KDF' },
+    { name: 'zip', version: '7', description: 'ZIP archives' },
+    { name: 'sevenz-rust', version: '0.6', description: '7z AES-256' },
+    { name: 'quick-xml', version: '0.31', description: 'WebDAV' },
+    { name: 'oauth2', version: '4', description: 'OAuth2' },
+];
+
+const FRONTEND_DEPS = [
+    { name: 'React', version: '18' },
+    { name: 'TypeScript', version: '5' },
+    { name: 'Tailwind CSS', version: '3' },
+    { name: 'Monaco Editor', version: '0.52' },
+];
+
 // Crypto Donate Panel Component
-const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
+const CryptoDonatePanel: React.FC = () => {
     const t = useTranslation();
     const [copiedChain, setCopiedChain] = useState<string | null>(null);
     const [expandedChain, setExpandedChain] = useState<string | null>(null);
@@ -63,10 +97,8 @@ const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
             {Object.entries(CRYPTO_ADDRESSES).map(([key, chain]) => (
                 <div
                     key={key}
-                    className={`rounded-lg border border-gray-700 overflow-hidden transition-all duration-200 ${expandedChain === key ? 'bg-gray-800/80' : 'bg-gray-800/40 hover:bg-gray-800/60'
-                        }`}
+                    className={`rounded-lg border border-gray-700 overflow-hidden transition-all duration-200 ${expandedChain === key ? 'bg-gray-800/80' : 'bg-gray-800/40 hover:bg-gray-800/60'}`}
                 >
-                    {/* Chain Header */}
                     <button
                         onClick={() => setExpandedChain(expandedChain === key ? null : key)}
                         className="w-full flex items-center justify-between px-3 py-2 text-left"
@@ -83,7 +115,6 @@ const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
                         {expandedChain === key ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
                     </button>
 
-                    {/* Expanded Address */}
                     {expandedChain === key && (
                         <div className="px-3 pb-3 space-y-2">
                             <div className="flex items-center gap-2 p-2 bg-gray-900 rounded-lg border border-gray-700">
@@ -103,7 +134,7 @@ const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
                             </div>
                             {copiedChain === key && (
                                 <div className="text-xs text-green-400 text-center animate-pulse">
-                                    ✓ {t('toast.clipboardCopied')}
+                                    {t('toast.clipboardCopied')}
                                 </div>
                             )}
                         </div>
@@ -111,46 +142,92 @@ const CryptoDonatePanel: React.FC<{ onClose?: () => void }> = () => {
                 </div>
             ))}
 
-            {/* Cyber Footer */}
             <div className="text-center pt-2">
                 <p className="text-[10px] text-gray-600 font-mono">
-                    // {t('support.footer')}
+                    {t('support.footer')}
                 </p>
             </div>
         </div>
     );
 };
 
+// Info row helper
+const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?: boolean }> = ({ label, value, mono = true }) => (
+    <div className="flex justify-between items-start py-1.5 border-b border-gray-800/50 last:border-0">
+        <span className="text-xs text-gray-500 shrink-0">{label}</span>
+        <span className={`text-xs text-gray-300 text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+);
+
 export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
-    const [showDonatePanel, setShowDonatePanel] = useState(false);
+    const [activeTab, setActiveTab] = useState<TabId>('info');
     const [appVersion, setAppVersion] = useState('0.0.0');
+    const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+    const [showDonatePanel, setShowDonatePanel] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     useEffect(() => {
-        getVersion().then(setAppVersion).catch(() => setAppVersion('0.8.3'));
-    }, []);
+        if (!isOpen) return;
+        getVersion().then(setAppVersion).catch(() => setAppVersion('1.3.4'));
+        invoke<SystemInfo>('get_system_info').then(setSystemInfo).catch(() => {});
+        // Reset state on open
+        setActiveTab('info');
+        setShowDonatePanel(false);
+        setCopied(false);
+    }, [isOpen]);
+
+    const tabs: { id: TabId; label: string }[] = [
+        { id: 'info', label: t('about.tabs.info') },
+        { id: 'technical', label: t('about.tabs.technical') },
+        { id: 'support', label: t('about.tabs.support') },
+    ];
+
+    const technicalText = useMemo(() => {
+        if (!systemInfo) return '';
+        const lines = [
+            `AeroFTP ${appVersion}`,
+            '',
+            `--- ${t('about.buildInfo')} ---`,
+            `Tauri: ${systemInfo.tauri_version}`,
+            `Rust: ${systemInfo.rust_version}`,
+            `React: 18`,
+            `TypeScript: 5`,
+            '',
+            `--- ${t('about.systemDetails')} ---`,
+            `${t('about.operatingSystem')}: ${systemInfo.os}`,
+            `${t('about.architecture')}: ${systemInfo.arch}`,
+            `${t('about.keyringBackend')}: ${systemInfo.keyring_backend}`,
+            `${t('about.configDir')}: ${systemInfo.config_dir}`,
+            `${t('about.vaultStatus')}: ${systemInfo.vault_exists ? t('about.active') : t('about.inactive')}`,
+            `${t('about.knownHosts')}: ${systemInfo.known_hosts_exists ? t('about.found') : t('about.notFound')}`,
+            '',
+            `--- ${t('about.linkedLibraries')} ---`,
+            ...KEY_DEPENDENCIES.map(d => `${d.name}: ${d.version} (${d.description})`),
+        ];
+        return lines.join('\n');
+    }, [systemInfo, appVersion, t]);
+
+    const copyTechnicalInfo = () => {
+        navigator.clipboard.writeText(technicalText);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={onClose}
-            />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-            {/* Dialog */}
-            <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                {/* Cyber Header */}
-                <div className="bg-gradient-to-br from-cyan-600 via-blue-600 to-purple-700 p-6 text-white text-center relative overflow-hidden">
-                    {/* Grid overlay for cyber effect */}
+            <div className="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in flex flex-col" style={{ maxHeight: '85vh' }}>
+                {/* Header */}
+                <div className="bg-gradient-to-br from-cyan-600 via-blue-600 to-purple-700 p-5 text-white text-center relative overflow-hidden shrink-0">
                     <div className="absolute inset-0 opacity-10" style={{
                         backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
                         backgroundSize: '20px 20px'
                     }} />
 
-                    {/* Close button */}
                     <button
                         onClick={onClose}
                         className="absolute top-3 right-3 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
@@ -159,8 +236,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                         <X size={16} />
                     </button>
 
-                    {/* Logo */}
-                    <div className="w-20 h-20 mx-auto mb-4 bg-white/10 backdrop-blur-sm rounded-2xl shadow-lg flex items-center justify-center p-2 border border-white/20">
+                    <div className="w-16 h-16 mx-auto mb-3 bg-white/10 backdrop-blur-sm rounded-2xl shadow-lg flex items-center justify-center p-1.5 border border-white/20">
                         <img
                             src="/icons/AeroFTP_simbol_color_512x512.png"
                             alt="AeroFTP"
@@ -168,95 +244,220 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                         />
                     </div>
 
-                    <h1 className="text-2xl font-bold font-mono">AeroFTP</h1>
-                    <p className="text-cyan-200 text-sm mt-1 font-mono">{t('common.version')} {appVersion}</p>
+                    <h1 className="text-xl font-bold font-mono">AeroFTP</h1>
+                    <p className="text-cyan-200 text-sm mt-0.5 font-mono">{t('common.version')} {appVersion}</p>
                 </div>
 
-                {/* Content */}
-                <div className="p-5 space-y-4">
-                    <p className="text-center text-gray-400 text-sm">
-                        {'>'} {t('about.tagline')}
-                    </p>
-
-                    {/* Features Grid - 3 columns with all 9 features */}
-                    <div className="grid grid-cols-3 gap-1.5 text-xs text-gray-500 py-2">
-                        <div className="flex items-center gap-1.5 font-mono">⚡ {t('about.features.rustEngine')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">📝 {t('about.features.monacoEditor')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🖥️ {t('about.features.ptyTerminal')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🤖 {t('about.features.aiAgent')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🔒 {t('about.features.ftpsSecure')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🔄 {t('about.features.fileSync')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">☁️ {t('about.features.aeroCloud')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🎵 {t('about.features.mediaPlayer')}</div>
-                        <div className="flex items-center gap-1.5 font-mono">🖼️ {t('about.features.imagePreview')}</div>
-                    </div>
-
-                    {/* Tech Stack */}
-                    <div className="flex justify-center gap-4 py-2 border-t border-gray-800">
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Cpu size={14} />
-                            <span className="font-mono">Rust + Tauri</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Globe size={14} />
-                            <span className="font-mono">React + TS</span>
-                        </div>
-                    </div>
-
-                    {/* Links */}
-                    <div className="flex justify-center gap-3">
+                {/* Tab bar */}
+                <div className="flex border-b border-gray-700 shrink-0">
+                    {tabs.map(tab => (
                         <button
-                            onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative ${
+                                activeTab === tab.id
+                                    ? 'text-cyan-400'
+                                    : 'text-gray-500 hover:text-gray-300'
+                            }`}
                         >
-                            <Github size={16} />
-                            {t('about.github')}
+                            {tab.label}
+                            {activeTab === tab.id && (
+                                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-cyan-400" />
+                            )}
                         </button>
-                        <button
-                            onClick={() => openUrl('mailto:aeroftp@axpdev.it')}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
-                        >
-                            <Mail size={16} />
-                            {t('about.contact')}
-                        </button>
-                    </div>
+                    ))}
+                </div>
 
-                    {/* Crypto Donations Section */}
-                    <div className="border-t border-gray-800 pt-4">
-                        <button
-                            onClick={() => setShowDonatePanel(!showDonatePanel)}
-                            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-300 ${showDonatePanel
-                                ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white'
-                                : 'bg-gradient-to-r from-gray-800 to-gray-700 hover:from-cyan-900 hover:to-purple-900 text-gray-300 border border-gray-700'
-                                }`}
-                        >
-                            <Wallet size={18} />
-                            <span className="font-mono text-sm">
-                                {showDonatePanel ? `// ${t('about.donateWith')}` : `💰 ${t('about.supportDev')}`}
-                            </span>
-                            {showDonatePanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
+                {/* Tab content */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                    {/* Info Tab */}
+                    {activeTab === 'info' && (
+                        <div className="p-5 space-y-4">
+                            <p className="text-center text-gray-400 text-sm">
+                                {t('about.tagline')}
+                            </p>
 
-                        {showDonatePanel && (
-                            <div className="mt-3 animate-slide-down">
-                                <CryptoDonatePanel />
+                            {/* Features list */}
+                            <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs text-gray-400 py-2">
+                                <div className="font-mono">{t('about.features.rustEngine')}</div>
+                                <div className="font-mono">{t('about.features.monacoEditor')}</div>
+                                <div className="font-mono">{t('about.features.ptyTerminal')}</div>
+                                <div className="font-mono">{t('about.features.aiAgent')}</div>
+                                <div className="font-mono">{t('about.features.ftpsSecure')}</div>
+                                <div className="font-mono">{t('about.features.fileSync')}</div>
+                                <div className="font-mono">{t('about.features.aeroCloud')}</div>
+                                <div className="font-mono">{t('about.features.mediaPlayer')}</div>
+                                <div className="font-mono">{t('about.features.imagePreview')}</div>
                             </div>
-                        )}
-                    </div>
 
-                    {/* Credits */}
-                    <div className="text-center pt-3 border-t border-gray-800">
-                        <p className="text-xs text-gray-500 flex items-center justify-center gap-1 font-mono">
-                            {'>'} {t('about.madeWith')} <Heart size={12} className="text-red-500" /> by AxpDev
-                        </p>
-                        <p className="text-[10px] text-gray-600 mt-1 font-mono">
-                            // {t('about.aiCredits')}
-                        </p>
-                        <p className="text-[10px] text-gray-700 mt-1 font-mono">
-                            {t('about.copyright')}
-                        </p>
-                    </div>
+                            {/* Protocols */}
+                            <div className="text-center py-2 border-t border-gray-800">
+                                <p className="text-[11px] text-gray-500 font-mono">
+                                    FTP / FTPS / SFTP / WebDAV / S3 / Google Drive / Dropbox / OneDrive / MEGA.nz
+                                </p>
+                            </div>
+
+                            {/* License */}
+                            <div className="text-center py-2 border-t border-gray-800">
+                                <p className="text-xs text-gray-400 font-mono">{t('about.license')}</p>
+                                <button
+                                    onClick={() => openUrl('https://www.gnu.org/licenses/gpl-3.0.html')}
+                                    className="text-[11px] text-cyan-500 hover:text-cyan-400 transition-colors font-mono mt-0.5 inline-block"
+                                >
+                                    GNU General Public License v3.0
+                                </button>
+                            </div>
+
+                            {/* Credits */}
+                            <div className="text-center pt-2 border-t border-gray-800 space-y-1">
+                                <p className="text-xs text-gray-500 flex items-center justify-center gap-1 font-mono">
+                                    {t('about.madeWith')} <Heart size={12} className="text-red-500" /> by AxpDev
+                                </p>
+                                <p className="text-[10px] text-gray-600 font-mono">
+                                    {t('about.aiCredits')}
+                                </p>
+                                <p className="text-[10px] text-gray-700 font-mono">
+                                    {t('about.copyright')}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Technical Tab */}
+                    {activeTab === 'technical' && (
+                        <div className="p-5 space-y-4">
+                            {/* Build info */}
+                            <div>
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.buildInfo')}</h3>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                    <InfoRow label="Tauri" value={systemInfo?.tauri_version ?? '...'} />
+                                    <InfoRow label="Rust" value={systemInfo?.rust_version ?? '...'} />
+                                    <InfoRow label="React" value="18" />
+                                    <InfoRow label="TypeScript" value="5" />
+                                </div>
+                            </div>
+
+                            {/* System Details */}
+                            <div>
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.systemDetails')}</h3>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                    <InfoRow label={t('about.operatingSystem')} value={systemInfo?.os ?? '...'} />
+                                    <InfoRow label={t('about.architecture')} value={systemInfo?.arch ?? '...'} />
+                                    <InfoRow label={t('about.keyringBackend')} value={systemInfo?.keyring_backend ?? '...'} />
+                                    <InfoRow label={t('about.configDir')} value={systemInfo?.config_dir ?? '...'} />
+                                    <InfoRow label={t('about.vaultStatus')} value={
+                                        systemInfo ? (systemInfo.vault_exists ? t('about.active') : t('about.inactive')) : '...'
+                                    } />
+                                    <InfoRow label={t('about.knownHosts')} value={
+                                        systemInfo ? (systemInfo.known_hosts_exists ? t('about.found') : t('about.notFound')) : '...'
+                                    } />
+                                </div>
+                            </div>
+
+                            {/* Linked Libraries */}
+                            <div>
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.linkedLibraries')}</h3>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                    {KEY_DEPENDENCIES.map(dep => (
+                                        <InfoRow key={dep.name} label={dep.name} value={
+                                            <span>{dep.version} <span className="text-gray-600">({dep.description})</span></span>
+                                        } />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Frontend Dependencies */}
+                            <div>
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('about.frontendDeps')}</h3>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-1">
+                                    {FRONTEND_DEPS.map(dep => (
+                                        <InfoRow key={dep.name} label={dep.name} value={dep.version} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Support Tab */}
+                    {activeTab === 'support' && (
+                        <div className="p-5 space-y-4">
+                            {/* Links */}
+                            <div className="flex justify-center gap-3">
+                                <button
+                                    onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
+                                >
+                                    <Github size={16} />
+                                    {t('about.github')}
+                                </button>
+                                <button
+                                    onClick={() => openUrl('mailto:aeroftp@axpdev.it')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors text-sm text-gray-300"
+                                >
+                                    <Mail size={16} />
+                                    {t('about.contact')}
+                                </button>
+                            </div>
+
+                            {/* Website */}
+                            <div className="text-center">
+                                <button
+                                    onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                    className="inline-flex items-center gap-1.5 text-xs text-cyan-500 hover:text-cyan-400 transition-colors font-mono"
+                                >
+                                    <ExternalLink size={12} />
+                                    github.com/axpnet/aeroftp
+                                </button>
+                            </div>
+
+                            {/* Crypto Donations */}
+                            <div className="border-t border-gray-800 pt-4">
+                                <button
+                                    onClick={() => setShowDonatePanel(!showDonatePanel)}
+                                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-300 ${showDonatePanel
+                                        ? 'bg-gradient-to-r from-cyan-600 to-purple-600 text-white'
+                                        : 'bg-gradient-to-r from-gray-800 to-gray-700 hover:from-cyan-900 hover:to-purple-900 text-gray-300 border border-gray-700'
+                                        }`}
+                                >
+                                    <Wallet size={18} />
+                                    <span className="font-mono text-sm">
+                                        {t(showDonatePanel ? 'about.donateWith' : 'about.supportDev')}
+                                    </span>
+                                    {showDonatePanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </button>
+
+                                {showDonatePanel && (
+                                    <div className="mt-3 animate-slide-down">
+                                        <CryptoDonatePanel />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
+
+                {/* Bottom bar with copy button (visible on technical tab) */}
+                {activeTab === 'technical' && (
+                    <div className="shrink-0 border-t border-gray-700 px-4 py-3 flex justify-between items-center bg-gray-900">
+                        <button
+                            onClick={copyTechnicalInfo}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors ${
+                                copied
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                    : 'bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700'
+                            }`}
+                        >
+                            {copied ? <Check size={14} /> : <Copy size={14} />}
+                            {copied ? t('toast.clipboardCopied') : t('about.copyToClipboard')}
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+                        >
+                            {t('common.ok')}
+                        </button>
+                    </div>
+                )}
             </div>
 
             <style>{`

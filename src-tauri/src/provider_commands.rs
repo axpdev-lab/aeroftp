@@ -10,7 +10,8 @@ use tracing::{info, warn};
 
 use crate::providers::{
     StorageProvider, ProviderFactory, ProviderType,
-    ProviderConfig, RemoteEntry,
+    ProviderConfig, RemoteEntry, StorageInfo,
+    FileVersion, LockInfo, SharePermission,
 };
 
 /// State for managing the active storage provider
@@ -70,6 +71,10 @@ pub struct ProviderConnectionParams {
     pub key_passphrase: Option<String>,
     /// SFTP: Connection timeout in seconds
     pub timeout: Option<u64>,
+    /// FTP/FTPS: TLS mode ("none", "explicit", "implicit", "explicit_if_available")
+    pub tls_mode: Option<String>,
+    /// FTP/FTPS: Accept invalid/self-signed certificates
+    pub verify_cert: Option<bool>,
 }
 
 impl ProviderConnectionParams {
@@ -104,6 +109,16 @@ impl ProviderConnectionParams {
             }
             if self.path_style.unwrap_or(false) {
                 extra.insert("path_style".to_string(), "true".to_string());
+            }
+        }
+
+        // Add FTP/FTPS-specific options
+        if provider_type == ProviderType::Ftp || provider_type == ProviderType::Ftps {
+            if let Some(ref tls_mode) = self.tls_mode {
+                extra.insert("tls_mode".to_string(), tls_mode.clone());
+            }
+            if let Some(verify) = self.verify_cert {
+                extra.insert("verify_cert".to_string(), verify.to_string());
             }
         }
 
@@ -895,4 +910,342 @@ pub async fn provider_create_share_link(
     
     info!("Created share link for {}: {}", path, share_url);
     Ok(share_url)
+}
+
+/// Remove a share/export link for a file or folder
+#[tauri::command]
+pub async fn provider_remove_share_link(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.remove_share_link(&path).await
+        .map_err(|e| format!("Failed to remove share link: {}", e))?;
+
+    info!("Removed share link for {}", path);
+    Ok(())
+}
+
+/// Import a file/folder from a public link into the account
+#[tauri::command]
+pub async fn provider_import_link(
+    state: State<'_, ProviderState>,
+    link: String,
+    dest: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if !provider.supports_import_link() {
+        return Err(format!(
+            "{} does not support importing from links",
+            provider.provider_type()
+        ));
+    }
+
+    provider.import_link(&link, &dest).await
+        .map_err(|e| format!("Failed to import link: {}", e))?;
+
+    info!("Imported link to {}", dest);
+    Ok(())
+}
+
+/// Get storage quota information (used/total/free bytes)
+#[tauri::command]
+pub async fn provider_storage_info(
+    state: State<'_, ProviderState>,
+) -> Result<StorageInfo, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.storage_info().await
+        .map_err(|e| format!("Failed to get storage info: {}", e))
+}
+
+/// Get disk usage for a path in bytes
+#[tauri::command]
+pub async fn provider_disk_usage(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<u64, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.disk_usage(&path).await
+        .map_err(|e| format!("Failed to get disk usage: {}", e))
+}
+
+/// Search for files matching a pattern under the given path
+#[tauri::command]
+pub async fn provider_find(
+    state: State<'_, ProviderState>,
+    path: String,
+    pattern: String,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if !provider.supports_find() {
+        return Err(format!(
+            "{} does not support remote search",
+            provider.provider_type()
+        ));
+    }
+
+    provider.find(&path, &pattern).await
+        .map_err(|e| format!("Search failed: {}", e))
+}
+
+/// Set transfer speed limits (KB/s, 0 = unlimited)
+#[tauri::command]
+pub async fn provider_set_speed_limit(
+    state: State<'_, ProviderState>,
+    upload_kb: u64,
+    download_kb: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.set_speed_limit(upload_kb, download_kb).await
+        .map_err(|e| format!("Failed to set speed limit: {}", e))
+}
+
+/// Get current transfer speed limits (upload_kb, download_kb) in KB/s
+#[tauri::command]
+pub async fn provider_get_speed_limit(
+    state: State<'_, ProviderState>,
+) -> Result<(u64, u64), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.get_speed_limit().await
+        .map_err(|e| format!("Failed to get speed limit: {}", e))
+}
+
+/// Check if the current provider supports resume transfers
+#[tauri::command]
+pub async fn provider_supports_resume(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_resume())
+}
+
+/// Resume a download from a given byte offset
+#[tauri::command]
+pub async fn provider_resume_download(
+    state: State<'_, ProviderState>,
+    remote_path: String,
+    local_path: String,
+    offset: u64,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if let Some(parent) = std::path::Path::new(&local_path).parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+
+    provider.resume_download(&remote_path, &local_path, offset, None).await
+        .map_err(|e| format!("Resume download failed: {}", e))?;
+
+    Ok(format!("Resume download completed: {}", remote_path))
+}
+
+/// Resume an upload from a given byte offset
+#[tauri::command]
+pub async fn provider_resume_upload(
+    state: State<'_, ProviderState>,
+    local_path: String,
+    remote_path: String,
+    offset: u64,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider.resume_upload(&local_path, &remote_path, offset, None).await
+        .map_err(|e| format!("Resume upload failed: {}", e))?;
+
+    Ok(format!("Resume upload completed: {}", remote_path))
+}
+
+// --- File Versions ---
+
+#[tauri::command]
+pub async fn provider_supports_versions(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_versions())
+}
+
+#[tauri::command]
+pub async fn provider_list_versions(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<FileVersion>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.list_versions(&path).await
+        .map_err(|e| format!("List versions failed: {}", e))
+}
+
+#[tauri::command]
+pub async fn provider_download_version(
+    state: State<'_, ProviderState>,
+    path: String,
+    version_id: String,
+    local_path: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.download_version(&path, &version_id, &local_path).await
+        .map_err(|e| format!("Download version failed: {}", e))?;
+    Ok(format!("Downloaded version {} of {}", version_id, path))
+}
+
+#[tauri::command]
+pub async fn provider_restore_version(
+    state: State<'_, ProviderState>,
+    path: String,
+    version_id: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.restore_version(&path, &version_id).await
+        .map_err(|e| format!("Restore version failed: {}", e))
+}
+
+// --- File Locking ---
+
+#[tauri::command]
+pub async fn provider_supports_locking(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_locking())
+}
+
+#[tauri::command]
+pub async fn provider_lock_file(
+    state: State<'_, ProviderState>,
+    path: String,
+    timeout: u64,
+) -> Result<LockInfo, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.lock_file(&path, timeout).await
+        .map_err(|e| format!("Lock failed: {}", e))
+}
+
+#[tauri::command]
+pub async fn provider_unlock_file(
+    state: State<'_, ProviderState>,
+    path: String,
+    lock_token: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.unlock_file(&path, &lock_token).await
+        .map_err(|e| format!("Unlock failed: {}", e))
+}
+
+// --- Thumbnails ---
+
+#[tauri::command]
+pub async fn provider_supports_thumbnails(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_thumbnails())
+}
+
+#[tauri::command]
+pub async fn provider_get_thumbnail(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.get_thumbnail(&path).await
+        .map_err(|e| format!("Get thumbnail failed: {}", e))
+}
+
+// --- Permissions / Advanced Sharing ---
+
+#[tauri::command]
+pub async fn provider_supports_permissions(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_permissions())
+}
+
+#[tauri::command]
+pub async fn provider_list_permissions(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<SharePermission>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.list_permissions(&path).await
+        .map_err(|e| format!("List permissions failed: {}", e))
+}
+
+#[tauri::command]
+pub async fn provider_add_permission(
+    state: State<'_, ProviderState>,
+    path: String,
+    role: String,
+    target_type: String,
+    target: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let perm = SharePermission { role, target_type, target };
+    provider.add_permission(&path, &perm).await
+        .map_err(|e| format!("Add permission failed: {}", e))
+}
+
+#[tauri::command]
+pub async fn provider_remove_permission(
+    state: State<'_, ProviderState>,
+    path: String,
+    target: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider.remove_permission(&path, &target).await
+        .map_err(|e| format!("Remove permission failed: {}", e))
 }

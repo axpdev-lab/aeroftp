@@ -374,6 +374,156 @@ impl S3Provider {
         }
         None
     }
+
+    /// Minimum part size for multipart upload (5 MB)
+    const MULTIPART_THRESHOLD: usize = 5 * 1024 * 1024;
+    /// Part size for multipart upload chunks (5 MB)
+    const MULTIPART_PART_SIZE: usize = 5 * 1024 * 1024;
+
+    /// Initiate a multipart upload, returns the UploadId
+    async fn create_multipart_upload(&self, key: &str) -> Result<String, ProviderError> {
+        let response = self.s3_request(
+            Method::POST,
+            key,
+            Some(&[("uploads", "")]),
+            Some(Vec::new()),
+        ).await?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            return Err(ProviderError::TransferFailed(
+                format!("CreateMultipartUpload failed ({}): {}", status, body),
+            ));
+        }
+
+        self.extract_xml_tag(&body, "UploadId")
+            .ok_or_else(|| ProviderError::ParseError("Missing UploadId in response".to_string()))
+    }
+
+    /// Upload a single part, returns the ETag
+    async fn upload_part(
+        &self,
+        key: &str,
+        upload_id: &str,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<String, ProviderError> {
+        let part_num_str = part_number.to_string();
+        let params: &[(&str, &str)] = &[
+            ("partNumber", &part_num_str),
+            ("uploadId", upload_id),
+        ];
+
+        let response = self.s3_request(Method::PUT, key, Some(params), Some(data)).await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(
+                format!("UploadPart {} failed ({}): {}", part_number, status, body),
+            ));
+        }
+
+        // ETag is in the response headers
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .ok_or_else(|| ProviderError::ParseError("Missing ETag in UploadPart response".to_string()))?;
+
+        Ok(etag)
+    }
+
+    /// Complete a multipart upload
+    async fn complete_multipart_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+        parts: &[(u32, String)],
+    ) -> Result<(), ProviderError> {
+        // Build XML body
+        let mut xml = String::from("<CompleteMultipartUpload>");
+        for (part_number, etag) in parts {
+            xml.push_str(&format!(
+                "<Part><PartNumber>{}</PartNumber><ETag>{}</ETag></Part>",
+                part_number, etag,
+            ));
+        }
+        xml.push_str("</CompleteMultipartUpload>");
+
+        let response = self.s3_request(
+            Method::POST,
+            key,
+            Some(&[("uploadId", upload_id)]),
+            Some(xml.into_bytes()),
+        ).await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(
+                format!("CompleteMultipartUpload failed ({}): {}", status, body),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Upload data using S3 multipart upload
+    async fn upload_multipart(
+        &self,
+        key: &str,
+        data: Vec<u8>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let total_size = data.len() as u64;
+        let upload_id = self.create_multipart_upload(key).await?;
+
+        let mut parts: Vec<(u32, String)> = Vec::new();
+        let mut offset = 0usize;
+        let mut part_number = 1u32;
+
+        while offset < data.len() {
+            let end = std::cmp::min(offset + Self::MULTIPART_PART_SIZE, data.len());
+            let chunk = data[offset..end].to_vec();
+            let chunk_len = chunk.len();
+
+            match self.upload_part(key, &upload_id, part_number, chunk).await {
+                Ok(etag) => {
+                    parts.push((part_number, etag));
+                    offset += chunk_len;
+                    if let Some(ref progress) = on_progress {
+                        progress(offset as u64, total_size);
+                    }
+                    part_number += 1;
+                }
+                Err(e) => {
+                    let _ = self.abort_multipart_upload(key, &upload_id).await;
+                    return Err(e);
+                }
+            }
+        }
+
+        self.complete_multipart_upload(key, &upload_id, &parts).await
+    }
+
+    /// Abort a multipart upload
+    async fn abort_multipart_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+    ) -> Result<(), ProviderError> {
+        let _ = self.s3_request(
+            Method::DELETE,
+            key,
+            Some(&[("uploadId", upload_id)]),
+            None,
+        ).await;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -661,15 +811,20 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let data = tokio::fs::read(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
-        
+
         let total_size = data.len() as u64;
         let key = remote_path.trim_start_matches('/');
-        
+
+        // Use multipart upload for files larger than 5MB
+        if data.len() > Self::MULTIPART_THRESHOLD {
+            return self.upload_multipart(key, data, on_progress).await;
+        }
+
         let response = self.s3_request(Method::PUT, key, None, Some(data)).await?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 if let Some(progress) = on_progress {
@@ -763,12 +918,12 @@ impl StorageProvider for S3Provider {
         Ok(())
     }
     
-    async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
-        // S3 doesn't support rename directly - must copy + delete
-        // For now, return not supported (copy is expensive for large files)
-        Err(ProviderError::NotSupported(
-            "S3 rename requires copy+delete which can be expensive. Use server_copy + delete.".to_string()
-        ))
+    async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // S3 rename = server_copy + delete
+        self.server_copy(from, to).await?;
+        self.delete(from).await?;
+        info!("Renamed (copy+delete) {} to {}", from, to);
+        Ok(())
     }
     
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -967,6 +1122,152 @@ impl StorageProvider for S3Provider {
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
         
         Ok(format!("{}?{}&X-Amz-Signature={}", url, query_params, signature))
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let prefix = path.trim_matches('/');
+        let prefix_with_slash = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", prefix)
+        };
+
+        // Use ListObjectsV2 with prefix (no delimiter to get all recursive objects)
+        let mut all_entries = Vec::new();
+        let mut continuation_token: Option<String> = None;
+        let pattern_lower = pattern.to_lowercase();
+
+        loop {
+            let mut params: Vec<(&str, &str)> = vec![
+                ("list-type", "2"),
+                ("max-keys", "1000"),
+            ];
+
+            if !prefix_with_slash.is_empty() {
+                params.push(("prefix", &prefix_with_slash));
+            }
+
+            let token_str: String;
+            if let Some(ref token) = continuation_token {
+                token_str = token.clone();
+                params.push(("continuation-token", &token_str));
+            }
+
+            let response = self.s3_request(Method::GET, "", Some(&params), None).await?;
+
+            if response.status() != StatusCode::OK {
+                let body = response.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!("Search failed: {}", body)));
+            }
+
+            let xml = response.text().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            // Parse keys and filter by pattern
+            let key_pattern = regex::Regex::new(r"<Key>([^<]+)</Key>")
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            for cap in key_pattern.captures_iter(&xml) {
+                if let Some(key_match) = cap.get(1) {
+                    let key = key_match.as_str();
+                    let name = key.rsplit('/').next().unwrap_or(key);
+
+                    if name.to_lowercase().contains(&pattern_lower) && !key.ends_with('/') {
+                        let size_str = {
+                            // Extract size for this key from the Contents block
+                            let contents_re = regex::Regex::new(&format!(
+                                r"(?s)<Contents>.*?<Key>{}</Key>.*?<Size>(\d+)</Size>.*?</Contents>",
+                                regex::escape(key)
+                            )).ok();
+                            contents_re.and_then(|re| {
+                                re.captures(&xml).and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+                            })
+                        };
+
+                        let size: u64 = size_str.and_then(|s| s.parse().ok()).unwrap_or(0);
+
+                        all_entries.push(RemoteEntry {
+                            name: name.to_string(),
+                            path: format!("/{}", key),
+                            is_dir: false,
+                            size,
+                            modified: None,
+                            permissions: None,
+                            owner: None,
+                            group: None,
+                            is_symlink: false,
+                            link_target: None,
+                            mime_type: None,
+                            metadata: HashMap::new(),
+                        });
+                    }
+                }
+            }
+
+            let next_token = self.extract_xml_tag(&xml, "NextContinuationToken");
+            match next_token {
+                Some(token) if all_entries.len() < 500 => continuation_token = Some(token),
+                _ => break,
+            }
+        }
+
+        Ok(all_entries)
+    }
+
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let from_key = from.trim_start_matches('/');
+        let to_key = to.trim_start_matches('/');
+        let copy_source = format!("/{}/{}", self.config.bucket, from_key);
+
+        let url = self.build_url(to_key);
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(b"");
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("x-amz-copy-source".to_string(), copy_source);
+        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (key, value) in headers.iter() {
+            request = request.header(key, value);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", "0");
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                info!("Copied {} to {}", from, to);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(format!("Copy failed ({}): {}", status, body)))
+            }
+        }
     }
 }
 

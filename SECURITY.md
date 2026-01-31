@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.3.x   | Yes |
+| 1.4.x   | Yes |
+| 1.3.x   | Security fixes only |
 | < 1.3   | No  |
 
 ## Security Architecture
@@ -33,15 +34,30 @@ When the OS keyring is unavailable, credentials are stored in a local encrypted 
 
 | Protocol | Encryption | Details |
 | -------- | ---------- | ------- |
-| FTP | None | Plain-text, use only on trusted networks |
-| FTPS | TLS/SSL | Implicit TLS on port 990 |
-| SFTP | SSH | Native Rust implementation (russh) |
+| FTP | None (configurable) | Plain-text by default; supports Explicit TLS, Implicit TLS, or opportunistic TLS upgrade |
+| FTPS | TLS/SSL | Explicit TLS (AUTH TLS, port 21) or Implicit TLS (port 990). Certificate verification configurable. |
+| SFTP | SSH | Native Rust implementation (russh 0.57) |
 | WebDAV | HTTPS | TLS encrypted |
-| S3 | HTTPS | AWS SDK with TLS |
+| S3 | HTTPS | SigV4 authentication with TLS |
 | Google Drive | HTTPS + OAuth2 | PKCE flow with token refresh |
 | Dropbox | HTTPS + OAuth2 | PKCE flow with token refresh |
 | OneDrive | HTTPS + OAuth2 | PKCE flow with token refresh |
 | MEGA.nz | Client-side AES | End-to-end encrypted, zero-knowledge |
+
+### FTPS Encryption Modes (v1.4.0)
+
+AeroFTP supports all standard FTPS encryption modes:
+
+| Mode | Description | Default Port |
+| ---- | ----------- | ------------ |
+| **Explicit TLS** | Connects plain, sends AUTH TLS to upgrade before login | 21 |
+| **Implicit TLS** | Direct TLS connection from the start | 990 |
+| **Explicit if available** | Attempts AUTH TLS, falls back to plain FTP if server doesn't support it | 21 |
+| **None** | Plain FTP (insecure warning displayed) | 21 |
+
+Additional options:
+- **Certificate verification**: Enabled by default; can be disabled per-connection for self-signed certificates
+- **TLS backend**: `native-tls` (system TLS library: OpenSSL on Linux, Secure Transport on macOS, SChannel on Windows)
 
 ### OAuth2 Security
 
@@ -49,18 +65,22 @@ When the OS keyring is unavailable, credentials are stored in a local encrypted 
 - **CSRF** protection via state token validation
 - **Token storage** in OS keyring or encrypted vault
 - **Automatic refresh** with 5-minute buffer before expiry
+- **Ephemeral callback port**: OS-assigned random port (not a fixed port)
 
 ### Archive Encryption
 
-- **7z**: AES-256 encryption/decryption support
-- **ZIP**: Deflate compression (level 6)
-- **TAR**: .tar, .tar.gz, .tar.xz, .tar.bz2 support
+| Format | Encryption | Backend |
+| ------ | ---------- | ------- |
+| **ZIP** | AES-256 (read + write) | `zip` v7.2 |
+| **7z** | AES-256 (read + write) | `sevenz-rust` v0.6 + p7zip sidecar |
+| **RAR** | Password-protected extraction | p7zip CLI |
 
 ### Memory Safety
 
 - `zeroize` crate clears passwords and keys from memory after use
 - `secrecy` crate provides zero-on-drop containers for secrets
 - Passwords are never logged or written to disk in plain text
+- Rust ownership model prevents use-after-free and buffer overflows
 
 ### File System Hardening
 
@@ -78,23 +98,13 @@ AeroFTP implements Trust On First Use (TOFU) for SFTP connections:
 - Supports `[host]:port` format for non-standard ports
 - Creates `~/.ssh/` directory with `0700` and `known_hosts` with `0600` permissions automatically
 
-### OAuth2 Ephemeral Port
-
-OAuth2 callback server binds to port `0`, letting the OS assign a random available port:
-
-- Eliminates fixed-port predictability (previously port 17548)
-- Prevents local token interception by other processes listening on the known port
-- The redirect URI is constructed dynamically with the assigned port
-- No competitor uses ephemeral ports for OAuth2 callbacks
-
 ### FTP Insecure Connection Warning
 
-When the user selects FTP (unencrypted), AeroFTP displays:
+When the user selects plain FTP (no TLS), AeroFTP displays:
 
 - A red **"Insecure"** badge on the protocol selector
-- A warning banner recommending FTPS or SFTP as secure alternatives
-- Fully localized via i18n (51 languages)
-- No competitor visually warns users about plain-text FTP risks
+- A warning banner recommending FTPS or SFTP
+- Fully localized (51 languages)
 
 ### Privacy and Analytics
 
@@ -106,21 +116,19 @@ When the user selects FTP (unencrypted), AeroFTP displays:
 
 ## Unique Security Advantages
 
-AeroFTP implements security measures not found in any competing FTP client:
-
 | Feature | Description | Why It Matters |
 | ------- | ----------- | -------------- |
-| **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF when OS keyring is unavailable | Competitors store credentials in plaintext config files when keyring fails. AeroFTP never has plaintext credentials on disk. |
-| **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback instead of fixed port | A fixed port (e.g. 17548) allows any local process to bind first and intercept tokens. Ephemeral ports are unpredictable. |
-| **FTP Insecure Warning** | Visual red badge and warning banner on FTP protocol selection | No competitor warns users that FTP transmits passwords in cleartext. AeroFTP educates users to choose FTPS/SFTP. |
-| **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM after use | Rust-exclusive advantage. C++/Java competitors leave passwords in memory until garbage collected or process exit, vulnerable to memory dumps. |
+| **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF when OS keyring is unavailable | Competitors store credentials in plaintext config files when keyring fails |
+| **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
+| **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
+| **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
+| **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS | Full control over encryption level per connection |
 
 ## Known Issues
 
 | ID | Component | Severity | Status | Details |
 | -- | --------- | -------- | ------ | ------- |
-| [CVE-2025-54804](https://github.com/axpnet/aeroftp/security/dependabot/3) | russh v0.48 (SFTP) | Medium | **Resolved** | Fixed by upgrading to russh v0.54.5. Removed russh-keys dependency. |
-| - | SFTP host key verification | Low | Resolved | Trust On First Use (TOFU) via russh built-in `known_hosts` module. Rejects connections on key mismatch (MITM protection). |
+| [CVE-2025-54804](https://github.com/axpnet/aeroftp/security/dependabot/3) | russh (SFTP) | Medium | **Resolved** | Fixed by upgrading to russh v0.57. |
 
 ## Reporting a Vulnerability
 
@@ -136,4 +144,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.3.4 - January 2026*
+*AeroFTP v1.4.0 - January 2026*

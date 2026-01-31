@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig,
+    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -520,6 +520,122 @@ impl StorageProvider for DropboxProvider {
         Ok("Dropbox API v2".to_string())
     }
 
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path = if from.starts_with('/') {
+            self.normalize_path(from)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, from))
+        };
+
+        let to_path = if to.starts_with('/') {
+            self.normalize_path(to)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, to))
+        };
+
+        let body = serde_json::json!({
+            "from_path": from_path,
+            "to_path": to_path
+        });
+
+        let _: serde_json::Value = self.rpc_call("files/copy_v2", &body).await?;
+
+        info!("Copied {} to {}", from, to);
+        Ok(())
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let search_path = self.normalize_path(path);
+
+        let body = serde_json::json!({
+            "query": pattern,
+            "options": {
+                "path": if search_path.is_empty() { "" } else { search_path.as_str() },
+                "max_results": 200,
+                "file_status": "active"
+            }
+        });
+
+        let url = format!("{}/files/search_v2", API_BASE);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Search failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct MatchMetadata {
+            metadata: DropboxMetadata,
+        }
+        #[derive(Deserialize)]
+        struct SearchMatch {
+            metadata: MatchMetadata,
+        }
+        #[derive(Deserialize)]
+        struct SearchResult {
+            matches: Vec<SearchMatch>,
+        }
+
+        let result: SearchResult = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(result.matches.iter()
+            .map(|m| self.to_remote_entry(&m.metadata.metadata))
+            .collect())
+    }
+
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        let url = format!("{}/users/get_space_usage", API_BASE);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Space usage failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct Allocation {
+            allocated: u64,
+        }
+        #[derive(Deserialize)]
+        struct SpaceUsage {
+            used: u64,
+            allocation: Allocation,
+        }
+
+        let usage: SpaceUsage = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(StorageInfo {
+            used: usage.used,
+            total: usage.allocation.allocated,
+            free: usage.allocation.allocated.saturating_sub(usage.used),
+        })
+    }
+
     fn supports_share_links(&self) -> bool {
         true
     }
@@ -618,5 +734,155 @@ impl StorageProvider for DropboxProvider {
 
         info!("Created share link for {}: {}", path, result.url);
         Ok(result.url)
+    }
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let body = serde_json::json!({
+            "path": full_path,
+            "limit": 100
+        });
+
+        let url = format!("{}/files/list_revisions", API_BASE);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List revisions failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct RevisionEntry {
+            rev: String,
+            size: u64,
+            server_modified: String,
+        }
+        #[derive(Deserialize)]
+        struct RevisionList {
+            entries: Vec<RevisionEntry>,
+        }
+
+        let list: RevisionList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.entries.iter().map(|r| super::FileVersion {
+            id: r.rev.clone(),
+            modified: Some(r.server_modified.clone()),
+            size: r.size,
+            modified_by: None,
+        }).collect())
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let arg = serde_json::json!({
+            "path": format!("rev:{}", version_id)
+        });
+
+        let url = format!("{}/files/download", CONTENT_BASE);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header("Dropbox-API-Arg", arg.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!("Download revision failed: {}", text)));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let _ = full_path; // Used for path resolution
+        tokio::fs::write(local_path, &bytes).await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        Ok(())
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let body = serde_json::json!({
+            "path": full_path,
+            "rev": version_id
+        });
+
+        let _: serde_json::Value = self.rpc_call("files/restore", &body).await?;
+        info!("Restored {} to revision {}", path, version_id);
+        Ok(())
+    }
+
+    fn supports_thumbnails(&self) -> bool {
+        true
+    }
+
+    async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let arg = serde_json::json!({
+            "path": full_path,
+            "format": "jpeg",
+            "size": "w256h256"
+        });
+
+        let url = format!("{}/files/get_thumbnail_v2", CONTENT_BASE);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header("Dropbox-API-Arg", arg.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::NotFound("No thumbnail available".to_string()));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        // Return as base64 data URI
+        Ok(format!("data:image/jpeg;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)))
     }
 }

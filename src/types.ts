@@ -26,6 +26,9 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === 'aerocloud';
 };
 
+// FTP/FTPS TLS encryption mode
+export type FtpTlsMode = 'none' | 'explicit' | 'implicit' | 'explicit_if_available';
+
 // Provider-specific configuration options
 export interface ProviderOptions {
   // S3-specific
@@ -36,6 +39,10 @@ export interface ProviderOptions {
 
   // WebDAV-specific
   // (no extra options needed, uses standard auth)
+
+  // FTP/FTPS-specific
+  tlsMode?: FtpTlsMode;      // TLS encryption mode
+  verifyCert?: boolean;       // Verify server certificate (default: true)
 
   // SFTP-specific
   private_key_path?: string;  // Path to SSH private key

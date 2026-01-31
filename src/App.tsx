@@ -38,13 +38,16 @@ import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as
 import { SyncPanel } from './components/SyncPanel';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
+import { FileVersionsDialog } from './components/FileVersionsDialog';
+import { SharePermissionsDialog } from './components/SharePermissionsDialog';
+import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen,
   Download, Upload, Pencil, Trash2, X,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, Server, XCircle
+  Lock, Unlock, Server, XCircle, History, Users
 } from 'lucide-react';
 
 // Utilities
@@ -109,6 +112,19 @@ const App: React.FC = () => {
   } = settings;
 
   const [isConnected, setIsConnected] = useState(false);
+  const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number } | null>(null);
+  const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
+  const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
+  const [remoteSearching, setRemoteSearching] = useState(false);
+  const [showRemoteSearchBar, setShowRemoteSearchBar] = useState(false);
+  // File versions dialog
+  const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string } | null>(null);
+  // Share permissions dialog
+  const [sharePermissionsDialog, setSharePermissionsDialog] = useState<{ path: string; name: string } | null>(null);
+  // WebDAV file locks
+  const [lockedFiles, setLockedFiles] = useState<Map<string, string>>(new Map());
+  // Provider capabilities (cached per session)
+  const [providerCaps, setProviderCaps] = useState<{ versions: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, thumbnails: false, permissions: false, locking: false });
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
   const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
   const [currentRemotePath, setCurrentRemotePath] = useState('/');
@@ -452,6 +468,29 @@ const App: React.FC = () => {
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
 
+  // Fetch storage quota when connected to providers that support it
+  useEffect(() => {
+    const supportsQuota = isConnected && connectionParams.protocol &&
+      ['mega', 'googledrive', 'dropbox', 'onedrive'].includes(connectionParams.protocol);
+    if (supportsQuota) {
+      invoke<{ used: number; total: number; free: number }>('provider_storage_info')
+        .then(info => setStorageQuota(info))
+        .catch(() => setStorageQuota(null));
+    } else {
+      setStorageQuota(null);
+    }
+  }, [isConnected, connectionParams.protocol]);
+
+  // Check provider capabilities when connected
+  useEffect(() => {
+    if (isConnected) {
+      refreshProviderCaps();
+      setLockedFiles(new Map());
+    } else {
+      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+    }
+  }, [isConnected, connectionParams.protocol]);
+
   // FTP Keep-Alive: Send NOOP every 60 seconds to prevent connection timeout
   // Skip for OAuth providers as they don't need keep-alive
   useEffect(() => {
@@ -519,7 +558,10 @@ const App: React.FC = () => {
     });
   };
 
-  const sortedRemoteFiles = useMemo(() => sortFiles(remoteFiles, remoteSortField, remoteSortOrder), [remoteFiles, remoteSortField, remoteSortOrder]);
+  const sortedRemoteFiles = useMemo(() => {
+    const source = remoteSearchResults !== null ? remoteSearchResults : remoteFiles;
+    return sortFiles(source, remoteSortField, remoteSortOrder);
+  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder]);
   const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder]);
 
   const handleRemoteSort = (field: SortField) => {
@@ -839,6 +881,46 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRemoteSearch = async (query: string) => {
+    if (!query.trim()) {
+      setRemoteSearchResults(null);
+      return;
+    }
+    setRemoteSearching(true);
+    try {
+      const results = await invoke<RemoteFile[]>('provider_find', {
+        path: currentRemotePath || '/',
+        pattern: `*${query.trim()}*`,
+      });
+      setRemoteSearchResults(results);
+    } catch {
+      setRemoteSearchResults([]);
+    } finally {
+      setRemoteSearching(false);
+    }
+  };
+
+  // Check provider capabilities after connection (for context menu features)
+  const refreshProviderCaps = async () => {
+    const protocol = connectionParams.protocol;
+    if (!protocol || ['ftp', 'ftps', 'sftp'].includes(protocol)) {
+      // FTP/SFTP don't use provider_* capability commands
+      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+      return;
+    }
+    try {
+      const [versions, thumbnails, permissions, locking] = await Promise.all([
+        invoke<boolean>('provider_supports_versions').catch(() => false),
+        invoke<boolean>('provider_supports_thumbnails').catch(() => false),
+        invoke<boolean>('provider_supports_permissions').catch(() => false),
+        invoke<boolean>('provider_supports_locking').catch(() => false),
+      ]);
+      setProviderCaps({ versions, thumbnails, permissions, locking });
+    } catch {
+      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+    }
+  };
+
   useEffect(() => {
     (async () => {
       // Check for saved settings with defaultLocalPath or last visited folder
@@ -1154,6 +1236,9 @@ const App: React.FC = () => {
           private_key_path: connectionParams.options?.private_key_path || null,
           key_passphrase: connectionParams.options?.key_passphrase || null,
           timeout: connectionParams.options?.timeout || 30,
+          // FTP/FTPS-specific options
+          tls_mode: connectionParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+          verify_cert: connectionParams.options?.verifyCert !== undefined ? connectionParams.options.verifyCert : true,
         };
 
 
@@ -1470,6 +1555,11 @@ const App: React.FC = () => {
           region: connectParams.options?.region || 'us-east-1',
           endpoint: connectParams.options?.endpoint || null,
           path_style: connectParams.options?.pathStyle || false,
+          private_key_path: connectParams.options?.private_key_path || null,
+          key_passphrase: connectParams.options?.key_passphrase || null,
+          timeout: connectParams.options?.timeout || 30,
+          tls_mode: connectParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+          verify_cert: connectParams.options?.verifyCert !== undefined ? connectParams.options.verifyCert : true,
         };
 
         console.log('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
@@ -2624,9 +2714,9 @@ const App: React.FC = () => {
       });
     }
 
-    // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs)
-    const supportsNativeShareLink = currentProtocol && ['googledrive', 'dropbox', 'onedrive', 's3'].includes(currentProtocol);
-    if (supportsNativeShareLink && !file.is_dir) {
+    // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
+    const supportsNativeShareLink = currentProtocol && ['googledrive', 'dropbox', 'onedrive', 's3', 'mega'].includes(currentProtocol);
+    if (supportsNativeShareLink) {
       items.push({
         label: 'Create Share Link',
         icon: <Share2 size={14} />,
@@ -2641,6 +2731,79 @@ const App: React.FC = () => {
           }
         }
       });
+    }
+
+    // Add Import MEGA Link option (MEGA only)
+    if (currentProtocol === 'mega') {
+      items.push({
+        label: 'Import MEGA Link',
+        icon: <Download size={14} />,
+        action: async () => {
+          const link = window.prompt('Paste a MEGA public link to import:');
+          if (!link || !link.trim()) return;
+          try {
+            notify.info('Importing link...', 'This may take a moment');
+            const dest = currentRemotePath || '/';
+            await invoke('provider_import_link', { link: link.trim(), dest });
+            notify.success('Link imported!', `Imported to ${dest}`);
+            loadRemoteFiles();
+          } catch (err) {
+            notify.error('Failed to import link', String(err));
+          }
+        }
+      });
+    }
+
+    // File Versions (GDrive, Dropbox, OneDrive)
+    if (providerCaps.versions && !file.is_dir && count === 1) {
+      items.push({
+        label: t('versions.menu') || 'File Versions',
+        icon: <History size={14} />,
+        action: () => setVersionsDialog({ path: file.path, name: file.name }),
+      });
+    }
+
+    // Share Permissions (GDrive, OneDrive)
+    if (providerCaps.permissions && count === 1) {
+      items.push({
+        label: t('sharing.menu') || 'Sharing',
+        icon: <Users size={14} />,
+        action: () => setSharePermissionsDialog({ path: file.path, name: file.name }),
+      });
+    }
+
+    // Lock/Unlock (WebDAV)
+    if (providerCaps.locking && !file.is_dir && count === 1) {
+      const lockToken = lockedFiles.get(file.path);
+      if (lockToken) {
+        items.push({
+          label: t('locking.unlock') || 'Unlock File',
+          icon: <Unlock size={14} />,
+          action: async () => {
+            try {
+              await invoke('provider_unlock_file', { path: file.path, lockToken });
+              setLockedFiles(prev => { const next = new Map(prev); next.delete(file.path); return next; });
+              notify.success('File unlocked');
+            } catch (err) {
+              notify.error('Failed to unlock', String(err));
+            }
+          },
+        });
+      } else {
+        items.push({
+          label: t('locking.lock') || 'Lock File',
+          icon: <Lock size={14} />,
+          action: async () => {
+            try {
+              const info = await invoke<{ token: string; owner: string | null; timeout: number; exclusive: boolean }>('provider_lock_file', { path: file.path, timeout: 3600 });
+              setLockedFiles(prev => new Map(prev).set(file.path, info.token));
+              notify.success('File locked', `Token: ${info.token.slice(0, 20)}...`);
+            } catch (err) {
+              notify.error('Failed to lock', String(err));
+            }
+          },
+        });
+      }
     }
 
     contextMenu.show(e, items);
@@ -2709,7 +2872,7 @@ const App: React.FC = () => {
               const outputPath = `${currentLocalPath}/${baseName}.zip`;
               notify.info(t('contextMenu.compressing'), `${baseName}.zip`);
               const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
-              await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath });
+              await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath, password: null });
               activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip (${count} item${count > 1 ? 's' : ''})` });
               notify.success('Compressed!', `Created ${baseName}.zip`);
               await loadLocalFiles(currentLocalPath);
@@ -2813,52 +2976,66 @@ const App: React.FC = () => {
       ]
     });
 
-    // Extract option (for archive files - ZIP, 7z, TAR variants)
+    // Extract option (for archive files - ZIP, 7z, TAR, RAR variants)
     const isZipArchive = !file.is_dir && /\.(zip)$/i.test(file.name);
     const is7zArchive = !file.is_dir && /\.(7z)$/i.test(file.name);
+    const isRarArchive = !file.is_dir && /\.(rar)$/i.test(file.name);
     const isTarArchive = !file.is_dir && /\.(tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(file.name);
-    const isArchive = isZipArchive || is7zArchive || isTarArchive;
+    const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive;
 
     if (isArchive && count === 1) {
       const doExtract = async (createSubfolder: boolean) => {
         try {
-          if (is7zArchive) {
-            const isEncrypted = await invoke<boolean>('is_7z_encrypted', { archivePath: file.path });
-            if (isEncrypted) {
-              setInputDialog({
-                title: t('contextMenu.passwordRequired'),
-                defaultValue: '',
-                isPassword: true,
-                onConfirm: async (password: string) => {
-                  setInputDialog(null);
-                  if (!password) {
-                    notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
-                    return;
-                  }
-                  try {
-                    const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
-                    notify.info(t('contextMenu.extracting'), file.name);
-                    const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
-                    await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
-                    activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
-                    notify.success('Extracted!', `Files extracted to ${dest}`);
-                    await loadLocalFiles(currentLocalPath);
-                  } catch (err) {
-                    activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
-                    notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
-                  }
+          // Check encryption for 7z, ZIP, and RAR archives
+          const isEncrypted = is7zArchive
+            ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
+            : isZipArchive
+              ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
+              : isRarArchive
+                ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
+                : false;
+          if (isEncrypted) {
+            setInputDialog({
+              title: t('contextMenu.passwordRequired'),
+              defaultValue: '',
+              isPassword: true,
+              onConfirm: async (password: string) => {
+                setInputDialog(null);
+                if (!password) {
+                  notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
+                  return;
                 }
-              });
-              return;
-            }
+                try {
+                  const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
+                  notify.info(t('contextMenu.extracting'), file.name);
+                  const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                  if (is7zArchive) {
+                    await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                  } else if (isRarArchive) {
+                    await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                  } else {
+                    await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password });
+                  }
+                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+                  notify.success('Extracted!', `Files extracted to ${dest}`);
+                  await loadLocalFiles(currentLocalPath);
+                } catch (err) {
+                  activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
+                  notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
+                }
+              }
+            });
+            return;
           }
           const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
           notify.info(t('contextMenu.extracting'), file.name);
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
           if (isZipArchive) {
-            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
+            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null });
           } else if (is7zArchive) {
             await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+          } else if (isRarArchive) {
+            await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
           } else if (isTarArchive) {
             await invoke<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
           }
@@ -3033,6 +3210,21 @@ const App: React.FC = () => {
         fileName={permissionsDialog?.file.name || ''}
         currentPermissions={permissionsDialog?.file.permissions || undefined}
       />
+      {versionsDialog && (
+        <FileVersionsDialog
+          filePath={versionsDialog.path}
+          fileName={versionsDialog.name}
+          onClose={() => setVersionsDialog(null)}
+          onRestore={() => { setVersionsDialog(null); loadRemoteFiles(); }}
+        />
+      )}
+      {sharePermissionsDialog && (
+        <SharePermissionsDialog
+          filePath={sharePermissionsDialog.path}
+          fileName={sharePermissionsDialog.name}
+          onClose={() => setSharePermissionsDialog(null)}
+        />
+      )}
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
       <OverwriteDialog
@@ -3181,8 +3373,8 @@ const App: React.FC = () => {
                 return;
               }
 
-              // Check if this is a provider protocol (S3, WebDAV, MEGA)
-              const isProvider = params.protocol && ['s3', 'webdav', 'mega', 'sftp'].includes(params.protocol);
+              // Check if this is a provider protocol (all protocols use provider_connect)
+              const isProvider = params.protocol && ['ftp', 'ftps', 's3', 'webdav', 'mega', 'sftp'].includes(params.protocol);
 
               if (isProvider) {
                 // S3/WebDAV connection via provider_connect
@@ -3221,6 +3413,9 @@ const App: React.FC = () => {
                     private_key_path: params.options?.private_key_path || null,
                     key_passphrase: params.options?.key_passphrase || null,
                     timeout: params.options?.timeout || 30,
+                    // FTP/FTPS-specific options
+                    tls_mode: params.options?.tlsMode || (params.protocol === 'ftps' ? 'implicit' : undefined),
+                    verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
                   };
 
                   console.log('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
@@ -3395,7 +3590,7 @@ const App: React.FC = () => {
                     {activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
                     {(() => {
                       const count = activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size;
-                      return count > 0 ? (
+                      return count > 1 ? (
                         <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-green-600 text-[10px] font-bold shadow-sm border border-green-300">
                           {count}
                         </span>
@@ -3423,7 +3618,7 @@ const App: React.FC = () => {
                   <Trash2 size={16} />
                   {(() => {
                     const count = activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size;
-                    return count > 0 ? (
+                    return count > 1 ? (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-red-600 text-[10px] font-bold shadow-sm border border-red-300">
                         {count}
                       </span>
@@ -3552,8 +3747,57 @@ const App: React.FC = () => {
                     >
                       <RefreshCw size={13} />
                     </button>
+                    {isConnected && (
+                      <button
+                        onClick={() => {
+                          if (remoteSearchResults !== null) {
+                            setRemoteSearchResults(null);
+                            setRemoteSearchQuery('');
+                          } else {
+                            setShowRemoteSearchBar(prev => !prev);
+                          }
+                        }}
+                        className={`flex-shrink-0 px-2 flex items-center transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                      >
+                        {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                      </button>
+                    )}
                   </div>
                 </div>
+                {/* Remote Search Bar */}
+                {showRemoteSearchBar && isConnected && (
+                  <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
+                    <Search size={14} className="text-blue-500 flex-shrink-0" />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder={t('search.remote_placeholder') || 'Search remote files...'}
+                      value={remoteSearchQuery}
+                      onChange={e => setRemoteSearchQuery(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && remoteSearchQuery.trim()) {
+                          handleRemoteSearch(remoteSearchQuery);
+                        } else if (e.key === 'Escape') {
+                          setShowRemoteSearchBar(false);
+                          setRemoteSearchQuery('');
+                          setRemoteSearchResults(null);
+                        }
+                      }}
+                      className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
+                    />
+                    {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
+                    {remoteSearchResults !== null && (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{remoteSearchResults.length} results</span>
+                    )}
+                    <button
+                      onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
                 <div className="flex-1 overflow-auto">
                   {!isConnected ? (
                     <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -3641,6 +3885,7 @@ const App: React.FC = () => {
                             <td className="px-4 py-2 flex items-center gap-2">
                               {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
                               {file.name}
+                              {lockedFiles.has(file.path) && <span title="Locked"><Lock size={12} className="text-orange-500" /></span>}
                               {getSyncBadge(file.path, file.modified || undefined, false)}
                             </td>
                             <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>
@@ -3708,6 +3953,14 @@ const App: React.FC = () => {
                           {file.is_dir ? (
                             <div className="file-grid-icon">
                               <Folder size={32} className="text-yellow-500" />
+                            </div>
+                          ) : providerCaps.thumbnails && isImageFile(file.name) ? (
+                            <div className="file-grid-icon">
+                              <ProviderThumbnail
+                                path={file.path}
+                                name={file.name}
+                                size={48}
+                              />
                             </div>
                           ) : isImageFile(file.name) ? (
                             <ImageThumbnail
@@ -4201,6 +4454,7 @@ const App: React.FC = () => {
           updateAvailable={updateAvailable}
           debugMode={debugMode}
           onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
+          storageQuota={storageQuota}
         />
       )}
 

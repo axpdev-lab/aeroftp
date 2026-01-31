@@ -87,6 +87,10 @@ pub struct SftpProvider {
     current_dir: String,
     /// Home directory (resolved on connect)
     home_dir: String,
+    /// Download speed limit in bytes/sec (0 = unlimited)
+    download_limit_bps: u64,
+    /// Upload speed limit in bytes/sec (0 = unlimited)
+    upload_limit_bps: u64,
 }
 
 impl SftpProvider {
@@ -97,6 +101,8 @@ impl SftpProvider {
             sftp: None,
             current_dir: "/".to_string(),
             home_dir: "/".to_string(),
+            download_limit_bps: 0,
+            upload_limit_bps: 0,
         }
     }
 
@@ -436,9 +442,10 @@ impl StorageProvider for SftpProvider {
         let mut local_file = tokio::fs::File::create(local_path).await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to create local file: {}", e)))?;
 
-        // Read and write in chunks
+        // Read and write in chunks with optional rate limiting
         let mut buffer = vec![0u8; 32768]; // 32KB chunks
         let mut transferred: u64 = 0;
+        let start = std::time::Instant::now();
 
         loop {
             let bytes_read = remote_file.read(&mut buffer).await
@@ -455,6 +462,15 @@ impl StorageProvider for SftpProvider {
 
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
+            }
+
+            // Apply bandwidth throttling
+            if self.download_limit_bps > 0 {
+                let expected = std::time::Duration::from_secs_f64(transferred as f64 / self.download_limit_bps as f64);
+                let elapsed = start.elapsed();
+                if expected > elapsed {
+                    tokio::time::sleep(expected - elapsed).await;
+                }
             }
         }
 
@@ -500,9 +516,10 @@ impl StorageProvider for SftpProvider {
         let mut remote_file = sftp.create(&full_path).await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to create remote file: {}", e)))?;
 
-        // Read and write in chunks
+        // Read and write in chunks with optional rate limiting
         let mut buffer = vec![0u8; 32768]; // 32KB chunks
         let mut transferred: u64 = 0;
+        let start = std::time::Instant::now();
 
         loop {
             let bytes_read = local_file.read(&mut buffer).await
@@ -519,6 +536,15 @@ impl StorageProvider for SftpProvider {
 
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
+            }
+
+            // Apply bandwidth throttling
+            if self.upload_limit_bps > 0 {
+                let expected = std::time::Duration::from_secs_f64(transferred as f64 / self.upload_limit_bps as f64);
+                let elapsed = start.elapsed();
+                if expected > elapsed {
+                    tokio::time::sleep(expected - elapsed).await;
+                }
             }
         }
 
@@ -694,6 +720,79 @@ impl StorageProvider for SftpProvider {
 
     fn supports_symlinks(&self) -> bool {
         true // SFTP supports symlinks
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let root = self.normalize_path(path);
+        let pattern_lower = pattern.to_lowercase();
+        let mut results = Vec::new();
+        let mut dirs_to_scan = vec![root];
+
+        while let Some(dir) = dirs_to_scan.pop() {
+            let entries = match sftp.read_dir(&dir).await {
+                Ok(e) => e,
+                Err(_) => continue, // Skip inaccessible directories
+            };
+
+            for entry in entries {
+                let name = entry.file_name();
+                if name == "." || name == ".." {
+                    continue;
+                }
+
+                let entry_path = if dir == "/" {
+                    format!("/{}", name)
+                } else {
+                    format!("{}/{}", dir.trim_end_matches('/'), name)
+                };
+
+                let remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+
+                if remote_entry.is_dir {
+                    dirs_to_scan.push(entry_path.clone());
+                }
+
+                if name.to_lowercase().contains(&pattern_lower) {
+                    results.push(remote_entry);
+                    if results.len() >= 500 {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn storage_info(&mut self) -> Result<super::StorageInfo, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let path = self.normalize_path(".");
+
+        let stat = sftp.fs_info(path).await
+            .map_err(|e| ProviderError::ServerError(format!("statvfs failed: {}", e)))?
+            .ok_or_else(|| ProviderError::NotSupported("Server does not support statvfs".to_string()))?;
+
+        let total = stat.blocks * stat.fragment_size;
+        let free = stat.blocks_avail * stat.fragment_size;
+        let used = total.saturating_sub(free);
+
+        Ok(super::StorageInfo { used, total, free })
+    }
+
+    async fn set_speed_limit(&mut self, upload_kb: u64, download_kb: u64) -> Result<(), ProviderError> {
+        self.upload_limit_bps = upload_kb * 1024;
+        self.download_limit_bps = download_kb * 1024;
+        tracing::info!("SFTP: Speed limits set: download={}KB/s upload={}KB/s", download_kb, upload_kb);
+        Ok(())
+    }
+
+    async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
+        Ok((self.upload_limit_bps / 1024, self.download_limit_bps / 1024))
     }
 }
 

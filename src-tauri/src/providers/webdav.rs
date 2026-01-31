@@ -34,6 +34,14 @@ mod webdav_methods {
     pub fn move_method() -> Method {
         Method::from_bytes(b"MOVE").unwrap()
     }
+
+    pub fn lock() -> Method {
+        Method::from_bytes(b"LOCK").unwrap()
+    }
+
+    pub fn unlock() -> Method {
+        Method::from_bytes(b"UNLOCK").unwrap()
+    }
 }
 
 /// WebDAV Storage Provider
@@ -747,10 +755,158 @@ impl StorageProvider for WebDavProvider {
         Ok(format!("WebDAV Server: {} (DAV compliance: {})", server, dav))
     }
     
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let pattern_lower = pattern.to_lowercase();
+        let mut results = Vec::new();
+        let mut dirs_to_scan = vec![path.to_string()];
+
+        while let Some(dir) = dirs_to_scan.pop() {
+            let entries = match self.list(&dir).await {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for entry in entries {
+                if entry.is_dir {
+                    dirs_to_scan.push(entry.path.clone());
+                }
+
+                if entry.name.to_lowercase().contains(&pattern_lower) {
+                    results.push(entry);
+                    if results.len() >= 500 {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn storage_info(&mut self) -> Result<super::StorageInfo, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        // RFC 4331: WebDAV quota properties
+        let response = self.request(webdav_methods::propfind(), &self.current_path.clone()).await
+            .header("Depth", "0")
+            .header("Content-Type", "application/xml")
+            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+                <d:propfind xmlns:d="DAV:">
+                    <d:prop>
+                        <d:quota-available-bytes/>
+                        <d:quota-used-bytes/>
+                    </d:prop>
+                </d:propfind>"#)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() && response.status() != StatusCode::MULTI_STATUS {
+            return Err(ProviderError::NotSupported("storage_info".to_string()));
+        }
+
+        let xml = response.text().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        let used = self.extract_tag_content(&xml, "quota-used-bytes")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        let free = self.extract_tag_content(&xml, "quota-available-bytes")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        let total = used + free;
+
+        Ok(super::StorageInfo { used, total, free })
+    }
+
+    fn supports_locking(&self) -> bool {
+        true
+    }
+
+    async fn lock_file(&mut self, path: &str, timeout: u64) -> Result<super::LockInfo, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let timeout_header = if timeout == 0 {
+            "Infinite".to_string()
+        } else {
+            format!("Second-{}", timeout)
+        };
+
+        let lock_body = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:lockinfo xmlns:d="DAV:">
+                <d:lockscope><d:exclusive/></d:lockscope>
+                <d:locktype><d:write/></d:locktype>
+                <d:owner><d:href>AeroFTP</d:href></d:owner>
+            </d:lockinfo>"#;
+
+        let response = self.request(webdav_methods::lock(), path).await
+            .header("Depth", "0")
+            .header("Timeout", &timeout_header)
+            .header("Content-Type", "application/xml")
+            .body(lock_body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!("LOCK failed ({}): {}", status, text)));
+        }
+
+        // Extract lock token from Lock-Token header or XML response
+        let lock_token = response.headers()
+            .get("lock-token")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.trim_matches(|c| c == '<' || c == '>').to_string())
+            .unwrap_or_default();
+
+        Ok(super::LockInfo {
+            token: lock_token,
+            owner: Some("AeroFTP".to_string()),
+            timeout,
+            exclusive: true,
+        })
+    }
+
+    async fn unlock_file(&mut self, path: &str, lock_token: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let token_header = format!("<{}>", lock_token);
+
+        let response = self.request(webdav_methods::unlock(), path).await
+            .header("Lock-Token", &token_header)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT => Ok(()),
+            status => {
+                let text = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(format!("UNLOCK failed ({}): {}", status, text)))
+            }
+        }
+    }
+
     fn supports_server_copy(&self) -> bool {
         true
     }
-    
+
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);

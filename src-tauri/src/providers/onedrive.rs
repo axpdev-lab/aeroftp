@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig,
+    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -717,5 +717,459 @@ impl StorageProvider for OneDriveProvider {
 
         info!("Created share link for {}: {}", path, url);
         Ok(url)
+    }
+
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path = if from.starts_with('/') {
+            from.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), from)
+        };
+
+        let from_id = self.resolve_path(&from_path).await?;
+
+        // Resolve destination parent and name
+        let to_path = to.trim_matches('/');
+        let (to_parent, to_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+
+        let to_parent_path = if to_parent.is_empty() {
+            self.current_path.clone()
+        } else if to_parent.starts_with('/') {
+            to_parent.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), to_parent)
+        };
+
+        let to_parent_id = self.resolve_path(&to_parent_path).await?;
+
+        let body = serde_json::json!({
+            "parentReference": { "id": to_parent_id },
+            "name": to_name
+        });
+
+        let url = format!("{}/copy", self.api_item(&from_id));
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        // OneDrive copy returns 202 Accepted (async operation)
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Copy failed: {}", text)));
+        }
+
+        info!("Copied {} to {}", from, to);
+        Ok(())
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let item_id = if path == "/" || path.is_empty() {
+            "root".to_string()
+        } else {
+            self.resolve_path(path).await?
+        };
+
+        let url = format!(
+            "{}/search(q='{}')",
+            self.api_item(&item_id),
+            urlencoding::encode(pattern)
+        );
+
+        let mut all_entries = Vec::new();
+        let mut current_url = url;
+
+        loop {
+            let response = self.client
+                .get(&current_url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Search failed: {}", text)));
+            }
+
+            let result: ChildrenResponse = response.json().await
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+            for item in &result.value {
+                all_entries.push(self.to_remote_entry(item, path));
+            }
+
+            match result.next_link {
+                Some(next) if all_entries.len() < 500 => current_url = next,
+                _ => break,
+            }
+        }
+
+        Ok(all_entries)
+    }
+
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        let url = format!("{}/me/drive", GRAPH_API_BASE);
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Drive info failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct Quota {
+            total: Option<u64>,
+            used: Option<u64>,
+            remaining: Option<u64>,
+        }
+        #[derive(Deserialize)]
+        struct DriveInfo {
+            quota: Option<Quota>,
+        }
+
+        let info: DriveInfo = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        let quota = info.quota.ok_or_else(|| ProviderError::Other("No quota info".to_string()))?;
+        let total = quota.total.unwrap_or(0);
+        let used = quota.used.unwrap_or(0);
+
+        Ok(StorageInfo {
+            used,
+            total,
+            free: quota.remaining.unwrap_or_else(|| total.saturating_sub(used)),
+        })
+    }
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/versions", self.api_item(&item_id));
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List versions failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Identity {
+            display_name: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct User {
+            user: Option<Identity>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Version {
+            id: String,
+            last_modified_date_time: Option<String>,
+            size: Option<u64>,
+            last_modified_by: Option<User>,
+        }
+        #[derive(Deserialize)]
+        struct VersionList {
+            value: Vec<Version>,
+        }
+
+        let list: VersionList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.value.iter().map(|v| super::FileVersion {
+            id: v.id.clone(),
+            modified: v.last_modified_date_time.clone(),
+            size: v.size.unwrap_or(0),
+            modified_by: v.last_modified_by.as_ref()
+                .and_then(|u| u.user.as_ref())
+                .and_then(|i| i.display_name.clone()),
+        }).collect())
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/versions/{}/content", self.api_item(&item_id), version_id);
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!("Download version failed: {}", text)));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        tokio::fs::write(local_path, &bytes).await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        Ok(())
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/versions/{}/restoreVersion", self.api_item(&item_id), version_id);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() && response.status().as_u16() != 204 {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Restore version failed: {}", text)));
+        }
+
+        info!("Restored {} to version {}", path, version_id);
+        Ok(())
+    }
+
+    fn supports_thumbnails(&self) -> bool {
+        true
+    }
+
+    async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/thumbnails/0/medium/content", self.api_item(&item_id));
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::NotFound("No thumbnail available".to_string()));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        Ok(format!("data:image/jpeg;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)))
+    }
+
+    fn supports_permissions(&self) -> bool {
+        true
+    }
+
+    async fn list_permissions(&mut self, path: &str) -> Result<Vec<super::SharePermission>, ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/permissions", self.api_item(&item_id));
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List permissions failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        struct GrantedTo {
+            user: Option<GrantedUser>,
+        }
+        #[derive(Deserialize)]
+        struct GrantedUser {
+            email: Option<String>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Permission {
+            id: Option<String>,
+            roles: Option<Vec<String>>,
+            granted_to_v2: Option<GrantedTo>,
+        }
+        #[derive(Deserialize)]
+        struct PermList {
+            value: Vec<Permission>,
+        }
+
+        let list: PermList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.value.iter().map(|p| {
+            let role = p.roles.as_ref()
+                .and_then(|r| r.first().cloned())
+                .unwrap_or_else(|| "read".to_string());
+            let target = p.granted_to_v2.as_ref()
+                .and_then(|g| g.user.as_ref())
+                .and_then(|u| u.email.clone())
+                .unwrap_or_default();
+            super::SharePermission {
+                role,
+                target_type: if target.is_empty() { "anyone".to_string() } else { "user".to_string() },
+                target,
+            }
+        }).collect())
+    }
+
+    async fn add_permission(
+        &mut self,
+        path: &str,
+        permission: &super::SharePermission,
+    ) -> Result<(), ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = format!("{}/invite", self.api_item(&item_id));
+
+        let body = serde_json::json!({
+            "recipients": [{
+                "email": permission.target
+            }],
+            "roles": [permission.role],
+            "requireSignIn": true
+        });
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Add permission failed: {}", text)));
+        }
+
+        Ok(())
+    }
+
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        // OneDrive resumable upload via upload session
+        let data = tokio::fs::read(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
+        let total_size = data.len() as u64;
+
+        let path_str = remote_path.trim_matches('/');
+        let url = format!(
+            "{}/me/drive/root:/{}:/createUploadSession",
+            GRAPH_API_BASE, urlencoding::encode(path_str)
+        );
+
+        let body = serde_json::json!({
+            "item": {
+                "@microsoft.graph.conflictBehavior": "replace"
+            }
+        });
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!("Create upload session failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct UploadSession {
+            upload_url: String,
+        }
+
+        let session: UploadSession = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        // Upload in 10MB chunks
+        let chunk_size = 10 * 1024 * 1024usize;
+        let mut offset = 0usize;
+
+        while offset < data.len() {
+            let end = std::cmp::min(offset + chunk_size, data.len());
+            let chunk = &data[offset..end];
+
+            let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
+
+            let resp = self.client
+                .put(&session.upload_url)
+                .header("Content-Range", &content_range)
+                .header("Content-Length", chunk.len().to_string())
+                .body(chunk.to_vec())
+                .send()
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+            let status = resp.status();
+            if !status.is_success() && status.as_u16() != 202 {
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::TransferFailed(format!("Upload chunk failed ({}): {}", status, text)));
+            }
+
+            offset = end;
+            if let Some(ref progress) = on_progress {
+                progress(offset as u64, total_size);
+            }
+        }
+
+        info!("Resumable upload completed: {}", remote_path);
+        Ok(())
     }
 }

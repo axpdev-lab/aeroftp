@@ -362,7 +362,28 @@
             "supportDev": "Støtt utviklingen",
             "donateWith": "Doner med krypto",
             "github": "GitHub",
-            "contact": "Contact"
+            "contact": "Contact",
+            "tabs": {
+                "info": "[NEEDS TRANSLATION] Information",
+                "technical": "[NEEDS TRANSLATION] Technical",
+                "support": "[NEEDS TRANSLATION] Support"
+            },
+            "buildInfo": "[NEEDS TRANSLATION] Build Info",
+            "systemDetails": "[NEEDS TRANSLATION] System Details",
+            "linkedLibraries": "[NEEDS TRANSLATION] Linked Libraries",
+            "frontendDeps": "[NEEDS TRANSLATION] Frontend",
+            "operatingSystem": "[NEEDS TRANSLATION] Operating System",
+            "architecture": "[NEEDS TRANSLATION] Architecture",
+            "keyringBackend": "[NEEDS TRANSLATION] Keyring Backend",
+            "configDir": "[NEEDS TRANSLATION] Config Directory",
+            "vaultStatus": "[NEEDS TRANSLATION] Encrypted Vault",
+            "knownHosts": "[NEEDS TRANSLATION] Known Hosts",
+            "active": "[NEEDS TRANSLATION] Active",
+            "inactive": "[NEEDS TRANSLATION] Inactive",
+            "found": "[NEEDS TRANSLATION] Found",
+            "notFound": "[NEEDS TRANSLATION] Not found",
+            "copyToClipboard": "[NEEDS TRANSLATION] Copy to Clipboard",
+            "license": "[NEEDS TRANSLATION] License"
         },
         "support": {
             "title": "Støtt AeroFTP",
@@ -459,7 +480,13 @@
             "webdavNote": "WebDAV-stien må være fullstendig.",
             "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
             "ftpWarningTitle": "[NEEDS TRANSLATION] Unencrypted connection",
-            "ftpWarningDesc": "[NEEDS TRANSLATION] FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection."
+            "ftpWarningDesc": "[NEEDS TRANSLATION] FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection.",
+            "encryption": "[NEEDS TRANSLATION] Encryption",
+            "encryptionNone": "[NEEDS TRANSLATION] Only use plain FTP (insecure)",
+            "encryptionExplicit": "[NEEDS TRANSLATION] Require explicit FTP over TLS",
+            "encryptionImplicit": "[NEEDS TRANSLATION] Require implicit FTP over TLS",
+            "encryptionExplicitIfAvailable": "[NEEDS TRANSLATION] Use explicit FTP over TLS if available",
+            "acceptInvalidCerts": "[NEEDS TRANSLATION] Accept invalid or self-signed certificates"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -539,6 +566,34 @@
             "create": "Create Vault",
             "unlock": "Unlock",
             "cancel": "Cancel"
+        },
+        "search": {
+            "remote_placeholder": "[NEEDS TRANSLATION] Search remote files...",
+            "results": "[NEEDS TRANSLATION] results"
+        },
+        "versions": {
+            "title": "[NEEDS TRANSLATION] File Versions",
+            "menu": "[NEEDS TRANSLATION] File Versions",
+            "date": "[NEEDS TRANSLATION] Date",
+            "size": "[NEEDS TRANSLATION] Size",
+            "author": "[NEEDS TRANSLATION] Author",
+            "actions": "[NEEDS TRANSLATION] Actions",
+            "current": "[NEEDS TRANSLATION] Current",
+            "download": "[NEEDS TRANSLATION] Download this version",
+            "restore": "[NEEDS TRANSLATION] Restore this version",
+            "none": "[NEEDS TRANSLATION] No versions available"
+        },
+        "sharing": {
+            "title": "[NEEDS TRANSLATION] Sharing",
+            "menu": "[NEEDS TRANSLATION] Sharing",
+            "email_placeholder": "[NEEDS TRANSLATION] Email address",
+            "add": "[NEEDS TRANSLATION] Add",
+            "remove": "[NEEDS TRANSLATION] Remove",
+            "none": "[NEEDS TRANSLATION] No permissions set"
+        },
+        "locking": {
+            "lock": "[NEEDS TRANSLATION] Lock File",
+            "unlock": "[NEEDS TRANSLATION] Unlock File"
         }
     }
 }

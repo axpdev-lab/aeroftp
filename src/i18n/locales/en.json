@@ -142,7 +142,13 @@
             "webdavNote": "WebDAV path should include the full path to your files. For Nextcloud use:",
             "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
             "ftpWarningTitle": "Unencrypted connection",
-            "ftpWarningDesc": "FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection."
+            "ftpWarningDesc": "FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection.",
+            "encryption": "Encryption",
+            "encryptionNone": "Only use plain FTP (insecure)",
+            "encryptionExplicit": "Require explicit FTP over TLS",
+            "encryptionImplicit": "Require implicit FTP over TLS",
+            "encryptionExplicitIfAvailable": "Use explicit FTP over TLS if available",
+            "acceptInvalidCerts": "Accept invalid or self-signed certificates"
         },
         "browser": {
             "remote": "Remote",
@@ -420,6 +426,11 @@
         },
         "about": {
             "tagline": "More than FTP. A complete developer toolkit.",
+            "tabs": {
+                "info": "Information",
+                "technical": "Technical",
+                "support": "Support"
+            },
             "features": {
                 "rustEngine": "Rust Engine",
                 "monacoEditor": "Monaco Editor",
@@ -431,6 +442,22 @@
                 "mediaPlayer": "Media Player",
                 "imagePreview": "Image Preview"
             },
+            "buildInfo": "Build Info",
+            "systemDetails": "System Details",
+            "linkedLibraries": "Linked Libraries",
+            "frontendDeps": "Frontend",
+            "operatingSystem": "Operating System",
+            "architecture": "Architecture",
+            "keyringBackend": "Keyring Backend",
+            "configDir": "Config Directory",
+            "vaultStatus": "Encrypted Vault",
+            "knownHosts": "Known Hosts",
+            "active": "Active",
+            "inactive": "Inactive",
+            "found": "Found",
+            "notFound": "Not found",
+            "copyToClipboard": "Copy to Clipboard",
+            "license": "License",
             "madeWith": "Made with",
             "aiCredits": "AI: Claude Opus 4.5 + support models",
             "copyright": "© 2025-2026 All rights reserved",
@@ -539,6 +566,34 @@
             "create": "Create Vault",
             "unlock": "Unlock",
             "cancel": "Cancel"
+        },
+        "search": {
+            "remote_placeholder": "Search remote files...",
+            "results": "results"
+        },
+        "versions": {
+            "title": "File Versions",
+            "menu": "File Versions",
+            "date": "Date",
+            "size": "Size",
+            "author": "Author",
+            "actions": "Actions",
+            "current": "Current",
+            "download": "Download this version",
+            "restore": "Restore this version",
+            "none": "No versions available"
+        },
+        "sharing": {
+            "title": "Sharing",
+            "menu": "Sharing",
+            "email_placeholder": "Email address",
+            "add": "Add",
+            "remove": "Remove",
+            "none": "No permissions set"
+        },
+        "locking": {
+            "lock": "Lock File",
+            "unlock": "Unlock File"
         }
     }
 }

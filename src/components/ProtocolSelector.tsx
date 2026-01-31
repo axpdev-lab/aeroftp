@@ -13,7 +13,7 @@ import {
     HardDrive,
     ChevronDown
 } from 'lucide-react';
-import { ProviderType } from '../types';
+import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 
 // Official brand logos as inline SVGs
@@ -381,6 +381,9 @@ interface ProtocolFieldsProps {
         private_key_path?: string;
         key_passphrase?: string;
         timeout?: number;
+        // FTP/FTPS-specific
+        tlsMode?: FtpTlsMode;
+        verifyCert?: boolean;
     };
     onChange: (options: ProtocolFieldsProps['options']) => void;
     disabled?: boolean;
@@ -533,25 +536,67 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         );
     }
 
-    if (protocol === 'ftp') {
+    if (protocol === 'ftp' || protocol === 'ftps') {
+        const defaultTlsMode = protocol === 'ftps' ? 'implicit' : 'none';
+        const currentTlsMode = options.tlsMode || defaultTlsMode;
+        const showInsecureWarning = currentTlsMode === 'none';
+
         return (
-            <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-                <div className="flex items-start gap-2">
-                    <ShieldCheck size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                        <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                            {t('protocol.ftpWarningTitle')}
-                        </p>
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                            {t('protocol.ftpWarningDesc')}
-                        </p>
-                    </div>
+            <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
+                {/* Encryption mode */}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">{t('protocol.encryption')}</label>
+                    <select
+                        value={currentTlsMode}
+                        onChange={(e) => onChange({ ...options, tlsMode: e.target.value as FtpTlsMode })}
+                        disabled={disabled}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                    >
+                        {protocol === 'ftp' && (
+                            <option value="none">{t('protocol.encryptionNone')}</option>
+                        )}
+                        <option value="explicit">{t('protocol.encryptionExplicit')}</option>
+                        <option value="implicit">{t('protocol.encryptionImplicit')}</option>
+                        {protocol === 'ftp' && (
+                            <option value="explicit_if_available">{t('protocol.encryptionExplicitIfAvailable')}</option>
+                        )}
+                    </select>
                 </div>
+
+                {/* Accept invalid certificates (only when TLS is used) */}
+                {currentTlsMode !== 'none' && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={options.verifyCert === false}
+                            onChange={(e) => onChange({ ...options, verifyCert: !e.target.checked })}
+                            disabled={disabled}
+                            className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                        />
+                        {t('protocol.acceptInvalidCerts')}
+                    </label>
+                )}
+
+                {/* Insecure warning */}
+                {showInsecureWarning && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                        <div className="flex items-start gap-2">
+                            <ShieldCheck size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                                    {t('protocol.ftpWarningTitle')}
+                                </p>
+                                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                    {t('protocol.ftpWarningDesc')}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
-    // FTPS doesn't need extra fields
     return null;
 };
 

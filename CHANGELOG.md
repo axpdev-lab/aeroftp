@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-31
+
+### Cross-Provider Enhancements + FTPS TLS + Performance
+
+Major feature release bringing cross-provider operations (search, versions, thumbnails, permissions, locking), full FTPS TLS encryption with 4 modes, FTP protocol enhancements (MLSD/MLST, resume transfers), S3 multipart upload, archive encryption, and 8 dependency upgrades.
+
+#### Added - FTPS TLS Encryption
+- **Explicit TLS (AUTH TLS)**: Connects plain on port 21, upgrades to TLS before login via `into_secure()`
+- **Implicit TLS**: Direct TLS connection on port 990
+- **Explicit if available**: Attempts AUTH TLS, falls back to plain FTP if server doesn't support it
+- **Certificate verification**: Configurable per-connection, allows self-signed certificates
+- **TLS backend**: `native-tls` (OpenSSL on Linux, Secure Transport on macOS, SChannel on Windows)
+- **UI encryption dropdown**: Protocol-specific dropdown for FTP (default: None) and FTPS (default: Implicit)
+
+#### Added - Cross-Provider Features
+- **Remote Search**: Search bar with real-time results across all 9 protocols
+- **File Versions**: Version history dialog for Google Drive, Dropbox, and OneDrive
+- **Thumbnails**: Image previews in file listings for cloud providers (Google Drive, Dropbox, OneDrive)
+- **Share Permissions**: Permission management dialog for Google Drive and OneDrive
+- **WebDAV Locking**: Lock/Unlock context menu for WebDAV (RFC 4918)
+- **Storage Quota**: Quota display for SFTP, WebDAV, Google Drive, Dropbox, OneDrive, MEGA
+
+#### Added - FTP Protocol Enhancements
+- **MLSD/MLST (RFC 3659)**: Machine-readable directory listings with FEAT detection and automatic fallback to LIST
+- **Resume Downloads (REST)**: Partial download resume via REST offset + RETR
+- **Resume Uploads (APPE)**: Partial upload resume via APPE (append)
+
+#### Added - Archive Encryption
+- **ZIP AES-256**: Read and write encrypted ZIP archives via `zip` v7.2
+- **7z AES-256**: Read and write encrypted 7z archives via `sevenz-rust` v0.6
+- **RAR password extraction**: Password-protected RAR extraction via p7zip
+
+#### Added - S3 & OneDrive Enhancements
+- **S3 Multipart Upload**: Large file uploads with automatic part splitting
+- **OneDrive Resumable Upload**: Resumable upload sessions for large files
+
+#### Changed - Dependency Upgrades
+- **russh 0.54 -> 0.57**: New ciphers, future-compat fixes
+- **reqwest 0.12 -> 0.13**: HTTP/3 support, performance improvements
+- **quick-xml 0.31 -> 0.39**: Improved WebDAV XML parsing
+- **suppaftp 8**: Added `tokio-async-native-tls` feature for FTPS TLS support
+- **zip 7.2**: AES-256 encryption support
+- **sevenz-rust 0.6**: AES-256 encryption support
+- **ring 0.17.14**: Updated cryptographic backend
+- **zeroize 1.8.2**: Memory safety for credentials
+
+#### Changed - UI Improvements
+- **Toolbar badge threshold**: File count badge on Upload/Delete buttons now only shows for 2+ selected files
+- **FTP insecure warning**: Red "Insecure" badge and warning banner when plain FTP is selected
+
+#### Fixed - i18n
+- **537 keys across 51 languages**: All new cross-provider, FTPS, and archive keys synced
+- **Italian fully translated**: All new keys translated for Italian locale
+
+---
+
 ## [1.3.4] - 2026-01-29
 
 ### Security Hardening + Debug Mode + Dependency Upgrades

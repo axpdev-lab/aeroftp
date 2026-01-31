@@ -170,6 +170,156 @@ pub trait StorageProvider: Send + Sync {
     ) -> Result<String, ProviderError> {
         Err(ProviderError::NotSupported("share_link".to_string()))
     }
+
+    /// Check if provider supports importing from public links
+    fn supports_import_link(&self) -> bool {
+        false
+    }
+
+    /// Import a file/folder from a public link into the account
+    async fn import_link(&mut self, _link: &str, _dest: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("import_link".to_string()))
+    }
+
+    /// Remove a previously created share/export link
+    async fn remove_share_link(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("remove_share_link".to_string()))
+    }
+
+    /// Get storage quota information (used/total/free)
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        Err(ProviderError::NotSupported("storage_info".to_string()))
+    }
+
+    /// Get disk usage for a specific path in bytes
+    async fn disk_usage(&mut self, _path: &str) -> Result<u64, ProviderError> {
+        Err(ProviderError::NotSupported("disk_usage".to_string()))
+    }
+
+    /// Check if provider supports remote search
+    fn supports_find(&self) -> bool {
+        false
+    }
+
+    /// Search for files matching a pattern under the given path
+    async fn find(&mut self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        Err(ProviderError::NotSupported("find".to_string()))
+    }
+
+    /// Set transfer speed limits (in KB/s, 0 = unlimited)
+    async fn set_speed_limit(&mut self, _upload_kb: u64, _download_kb: u64) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("set_speed_limit".to_string()))
+    }
+
+    /// Get current transfer speed limits (upload_kb, download_kb) in KB/s
+    async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
+        Err(ProviderError::NotSupported("get_speed_limit".to_string()))
+    }
+
+    /// Check if provider supports resume (REST command)
+    fn supports_resume(&self) -> bool {
+        false
+    }
+
+    /// Resume a download from a given byte offset
+    async fn resume_download(
+        &mut self,
+        _remote_path: &str,
+        _local_path: &str,
+        _offset: u64,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("resume_download".to_string()))
+    }
+
+    /// Resume an upload from a given byte offset
+    async fn resume_upload(
+        &mut self,
+        _local_path: &str,
+        _remote_path: &str,
+        _offset: u64,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("resume_upload".to_string()))
+    }
+
+    /// Check if provider supports file versions
+    fn supports_versions(&self) -> bool {
+        false
+    }
+
+    /// List versions of a file
+    async fn list_versions(&mut self, _path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        Err(ProviderError::NotSupported("list_versions".to_string()))
+    }
+
+    /// Download a specific version of a file
+    async fn download_version(
+        &mut self,
+        _path: &str,
+        _version_id: &str,
+        _local_path: &str,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("download_version".to_string()))
+    }
+
+    /// Restore a file to a specific version
+    async fn restore_version(&mut self, _path: &str, _version_id: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("restore_version".to_string()))
+    }
+
+    /// Check if provider supports file locking
+    fn supports_locking(&self) -> bool {
+        false
+    }
+
+    /// Lock a file
+    async fn lock_file(&mut self, _path: &str, _timeout: u64) -> Result<LockInfo, ProviderError> {
+        Err(ProviderError::NotSupported("lock_file".to_string()))
+    }
+
+    /// Unlock a file
+    async fn unlock_file(&mut self, _path: &str, _lock_token: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("unlock_file".to_string()))
+    }
+
+    /// Check if provider supports thumbnails
+    fn supports_thumbnails(&self) -> bool {
+        false
+    }
+
+    /// Get a thumbnail URL or base64-encoded data for a file
+    async fn get_thumbnail(&mut self, _path: &str) -> Result<String, ProviderError> {
+        Err(ProviderError::NotSupported("get_thumbnail".to_string()))
+    }
+
+    /// Check if provider supports advanced sharing (per-user permissions)
+    fn supports_permissions(&self) -> bool {
+        false
+    }
+
+    /// List current permissions/shares on a file
+    async fn list_permissions(&mut self, _path: &str) -> Result<Vec<SharePermission>, ProviderError> {
+        Err(ProviderError::NotSupported("list_permissions".to_string()))
+    }
+
+    /// Add a permission/share to a file
+    async fn add_permission(
+        &mut self,
+        _path: &str,
+        _permission: &SharePermission,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("add_permission".to_string()))
+    }
+
+    /// Remove a permission/share from a file
+    async fn remove_permission(
+        &mut self,
+        _path: &str,
+        _target: &str,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("remove_permission".to_string()))
+    }
 }
 
 /// Provider factory for creating provider instances

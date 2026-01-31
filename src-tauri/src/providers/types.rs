@@ -132,6 +132,26 @@ impl ProviderConfig {
     }
 }
 
+/// TLS mode for FTP connections
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FtpTlsMode {
+    /// Plain FTP (no encryption)
+    None,
+    /// Explicit TLS (AUTH TLS on port 21) - required
+    Explicit,
+    /// Implicit TLS (direct TLS on port 990)
+    Implicit,
+    /// Try explicit TLS, fall back to plain if unsupported
+    ExplicitIfAvailable,
+}
+
+impl Default for FtpTlsMode {
+    fn default() -> Self {
+        FtpTlsMode::None
+    }
+}
+
 /// FTP-specific configuration
 #[derive(Debug, Clone)]
 pub struct FtpConfig {
@@ -139,18 +159,39 @@ pub struct FtpConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
-    pub use_tls: bool,
+    pub tls_mode: FtpTlsMode,
+    pub verify_cert: bool,
     pub initial_path: Option<String>,
 }
 
 impl FtpConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let tls_mode = config.extra.get("tls_mode")
+            .map(|v| match v.as_str() {
+                "explicit" => FtpTlsMode::Explicit,
+                "implicit" => FtpTlsMode::Implicit,
+                "explicit_if_available" => FtpTlsMode::ExplicitIfAvailable,
+                _ => FtpTlsMode::None,
+            })
+            .unwrap_or_else(|| {
+                if config.provider_type == ProviderType::Ftps {
+                    FtpTlsMode::Implicit
+                } else {
+                    FtpTlsMode::None
+                }
+            });
+
+        let verify_cert = config.extra.get("verify_cert")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+
         Ok(Self {
             host: config.host.clone(),
             port: config.effective_port(),
             username: config.username.clone().unwrap_or_else(|| "anonymous".to_string()),
             password: config.password.clone().unwrap_or_default(),
-            use_tls: config.provider_type == ProviderType::Ftps,
+            tls_mode,
+            verify_cert,
             initial_path: config.initial_path.clone(),
         })
     }
@@ -479,6 +520,54 @@ impl ProviderError {
                 | ProviderError::NotConnected
         )
     }
+}
+
+/// Storage quota information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageInfo {
+    /// Bytes used
+    pub used: u64,
+    /// Total bytes available
+    pub total: u64,
+    /// Bytes free
+    pub free: u64,
+}
+
+/// File version metadata (for versioned providers like Google Drive, Dropbox, OneDrive)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileVersion {
+    /// Version identifier
+    pub id: String,
+    /// Modification timestamp
+    pub modified: Option<String>,
+    /// Size in bytes
+    pub size: u64,
+    /// User who modified (if available)
+    pub modified_by: Option<String>,
+}
+
+/// Lock information for WebDAV locking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LockInfo {
+    /// Lock token
+    pub token: String,
+    /// Lock owner
+    pub owner: Option<String>,
+    /// Lock timeout in seconds (0 = infinite)
+    pub timeout: u64,
+    /// Whether this is an exclusive lock
+    pub exclusive: bool,
+}
+
+/// Share permission for advanced sharing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharePermission {
+    /// Permission role: "reader", "writer", "commenter", "owner"
+    pub role: String,
+    /// Target type: "user", "group", "domain", "anyone"
+    pub target_type: String,
+    /// Target email or identifier (empty for "anyone")
+    pub target: String,
 }
 
 /// Transfer progress information (for future progress events)

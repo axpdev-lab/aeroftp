@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig,
+    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -760,5 +760,511 @@ impl StorageProvider for GoogleDriveProvider {
 
         info!("Created share link for {}: {}", path, url);
         Ok(url)
+    }
+
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Resolve source file
+        let from_path = from.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
+            (&from_path[..pos], &from_path[pos + 1..])
+        } else {
+            ("", from_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+
+        // Resolve destination parent
+        let to_path = to.trim_matches('/');
+        let (to_parent, to_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+
+        let to_parent_id = if to_parent.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(to_parent).await?
+        };
+
+        let metadata = serde_json::json!({
+            "name": to_name,
+            "parents": [to_parent_id]
+        });
+
+        let url = format!("{}/files/{}/copy", DRIVE_API_BASE, file.id);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(metadata.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Copy failed: {}", text)));
+        }
+
+        info!("Copied {} to {}", from, to);
+        Ok(())
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // Google Drive API supports native search via q parameter
+        // Search both filename and full-text content for comprehensive results
+        let escaped = pattern.replace("'", "\\'");
+        let query = format!(
+            "(name contains '{}' or fullText contains '{}') and trashed=false",
+            escaped, escaped
+        );
+
+        let mut all_entries = Vec::new();
+        let mut page_token: Option<String> = None;
+
+        loop {
+            let mut url = format!(
+                "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=200",
+                DRIVE_API_BASE, urlencoding::encode(&query)
+            );
+
+            if let Some(ref token) = page_token {
+                url.push_str(&format!("&pageToken={}", token));
+            }
+
+            let response = self.client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Search failed: {}", text)));
+            }
+
+            let list: DriveFileList = response.json().await
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+            for file in &list.files {
+                all_entries.push(self.to_remote_entry(file, path));
+            }
+
+            match list.next_page_token {
+                Some(token) if all_entries.len() < 500 => page_token = Some(token),
+                _ => break,
+            }
+        }
+
+        Ok(all_entries)
+    }
+
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        let url = format!("{}/about?fields=storageQuota", DRIVE_API_BASE);
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("About failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Quota {
+            limit: Option<String>,
+            usage: Option<String>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct AboutResponse {
+            storage_quota: Quota,
+        }
+
+        let about: AboutResponse = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        let total = about.storage_quota.limit
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        let used = about.storage_quota.usage
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        Ok(StorageInfo {
+            used,
+            total,
+            free: total.saturating_sub(used),
+        })
+    }
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!(
+            "{}/files/{}/revisions?fields=revisions(id,modifiedTime,size,lastModifyingUser)",
+            DRIVE_API_BASE, file.id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List revisions failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct User {
+            display_name: Option<String>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Revision {
+            id: String,
+            modified_time: Option<String>,
+            size: Option<String>,
+            last_modifying_user: Option<User>,
+        }
+        #[derive(Deserialize)]
+        struct RevisionList {
+            revisions: Vec<Revision>,
+        }
+
+        let list: RevisionList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.revisions.iter().map(|r| super::FileVersion {
+            id: r.id.clone(),
+            modified: r.modified_time.clone(),
+            size: r.size.as_ref().and_then(|s| s.parse().ok()).unwrap_or(0),
+            modified_by: r.last_modifying_user.as_ref().and_then(|u| u.display_name.clone()),
+        }).collect())
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!(
+            "{}/files/{}/revisions/{}?alt=media",
+            DRIVE_API_BASE, file.id, version_id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!("Download revision failed: {}", text)));
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        tokio::fs::write(local_path, &bytes).await
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        Ok(())
+    }
+
+    fn supports_thumbnails(&self) -> bool {
+        true
+    }
+
+    async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!(
+            "{}/files/{}?fields=thumbnailLink",
+            DRIVE_API_BASE, file.id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Get thumbnail failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ThumbResponse {
+            thumbnail_link: Option<String>,
+        }
+
+        let result: ThumbResponse = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        result.thumbnail_link
+            .ok_or_else(|| ProviderError::NotFound("No thumbnail available".to_string()))
+    }
+
+    fn supports_permissions(&self) -> bool {
+        true
+    }
+
+    async fn list_permissions(&mut self, path: &str) -> Result<Vec<super::SharePermission>, ProviderError> {
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!(
+            "{}/files/{}/permissions?fields=permissions(id,role,type,emailAddress)",
+            DRIVE_API_BASE, file.id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List permissions failed: {}", text)));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Permission {
+            role: String,
+            #[serde(rename = "type")]
+            perm_type: String,
+            email_address: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct PermList {
+            permissions: Vec<Permission>,
+        }
+
+        let list: PermList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.permissions.iter().map(|p| super::SharePermission {
+            role: p.role.clone(),
+            target_type: p.perm_type.clone(),
+            target: p.email_address.clone().unwrap_or_default(),
+        }).collect())
+    }
+
+    async fn add_permission(
+        &mut self,
+        path: &str,
+        permission: &super::SharePermission,
+    ) -> Result<(), ProviderError> {
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let mut body = serde_json::json!({
+            "role": permission.role,
+            "type": permission.target_type,
+        });
+
+        if !permission.target.is_empty() {
+            body["emailAddress"] = serde_json::Value::String(permission.target.clone());
+        }
+
+        let url = format!("{}/files/{}/permissions", DRIVE_API_BASE, file.id);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Add permission failed: {}", text)));
+        }
+
+        Ok(())
+    }
+
+    async fn remove_permission(&mut self, path: &str, target: &str) -> Result<(), ProviderError> {
+        // First list permissions to find the matching permission ID
+        let perms = self.list_permissions(path).await?;
+        let _matching = perms.iter().find(|p| p.target == target)
+            .ok_or_else(|| ProviderError::NotFound(format!("Permission for {} not found", target)))?;
+
+        // Need the actual permission ID from the API
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        // List with IDs
+        let url = format!(
+            "{}/files/{}/permissions?fields=permissions(id,emailAddress)",
+            DRIVE_API_BASE, file.id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct PermId {
+            id: String,
+            email_address: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct PermIdList {
+            permissions: Vec<PermId>,
+        }
+
+        let list: PermIdList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        let perm = list.permissions.iter()
+            .find(|p| p.email_address.as_deref() == Some(target))
+            .ok_or_else(|| ProviderError::NotFound(format!("Permission for {} not found", target)))?;
+
+        let delete_url = format!("{}/files/{}/permissions/{}", DRIVE_API_BASE, file.id, perm.id);
+
+        let del_response = self.client
+            .delete(&delete_url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !del_response.status().is_success() {
+            let text = del_response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Remove permission failed: {}", text)));
+        }
+
+        Ok(())
     }
 }

@@ -28,10 +28,38 @@ use ftp::{FtpManager, RemoteFile};
 #[cfg(unix)]
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
 
+/// Global transfer speed limits (bytes per second, 0 = unlimited)
+pub struct SpeedLimits {
+    pub download_bps: std::sync::atomic::AtomicU64,
+    pub upload_bps: std::sync::atomic::AtomicU64,
+}
+
+impl SpeedLimits {
+    fn new() -> Self {
+        Self {
+            download_bps: std::sync::atomic::AtomicU64::new(0),
+            upload_bps: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+}
+
+/// Apply rate limiting by sleeping after transferring a chunk.
+/// Returns immediately if limit is 0 (unlimited).
+pub async fn throttle_transfer(bytes_transferred: u64, elapsed: std::time::Duration, limit_bps: u64) {
+    if limit_bps == 0 {
+        return;
+    }
+    let expected_duration = std::time::Duration::from_secs_f64(bytes_transferred as f64 / limit_bps as f64);
+    if expected_duration > elapsed {
+        tokio::time::sleep(expected_duration - elapsed).await;
+    }
+}
+
 // Shared application state
 struct AppState {
     ftp_manager: Mutex<FtpManager>,
     cancel_flag: Mutex<bool>,
+    speed_limits: SpeedLimits,
 }
 
 impl AppState {
@@ -39,6 +67,7 @@ impl AppState {
         Self {
             ftp_manager: Mutex::new(FtpManager::new()),
             cancel_flag: Mutex::new(false),
+            speed_limits: SpeedLimits::new(),
         }
     }
 }
@@ -1141,6 +1170,37 @@ async fn cancel_transfer(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+// ============ Bandwidth Throttling ============
+
+/// Set global transfer speed limits (KB/s, 0 = unlimited)
+#[tauri::command]
+async fn set_speed_limit(
+    state: State<'_, AppState>,
+    download_kb: u64,
+    upload_kb: u64,
+) -> Result<(), String> {
+    state.speed_limits.download_bps.store(
+        download_kb * 1024,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    state.speed_limits.upload_bps.store(
+        upload_kb * 1024,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    info!("Speed limits set: download={}KB/s upload={}KB/s (0=unlimited)", download_kb, upload_kb);
+    Ok(())
+}
+
+/// Get current global transfer speed limits (KB/s)
+#[tauri::command]
+async fn get_speed_limit(
+    state: State<'_, AppState>,
+) -> Result<(u64, u64), String> {
+    let dl = state.speed_limits.download_bps.load(std::sync::atomic::Ordering::Relaxed) / 1024;
+    let ul = state.speed_limits.upload_bps.load(std::sync::atomic::Ordering::Relaxed) / 1024;
+    Ok((dl, ul))
+}
+
 // ============ Environment Detection ============
 
 /// Check if the application is running as a Snap package
@@ -1194,10 +1254,10 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "tracing".into(), version: "0.1.44".into(), category: "Core".into() },
         // Protocols
         DependencyInfo { name: "suppaftp".into(), version: "8.0.1".into(), category: "Protocols".into() },
-        DependencyInfo { name: "russh".into(), version: "0.54.5".into(), category: "Protocols".into() },
+        DependencyInfo { name: "russh".into(), version: "0.57.0".into(), category: "Protocols".into() },
         DependencyInfo { name: "russh-sftp".into(), version: "2.1.1".into(), category: "Protocols".into() },
-        DependencyInfo { name: "reqwest".into(), version: "0.12.28".into(), category: "Protocols".into() },
-        DependencyInfo { name: "quick-xml".into(), version: "0.31.0".into(), category: "Protocols".into() },
+        DependencyInfo { name: "reqwest".into(), version: "0.13.1".into(), category: "Protocols".into() },
+        DependencyInfo { name: "quick-xml".into(), version: "0.39.0".into(), category: "Protocols".into() },
         DependencyInfo { name: "oauth2".into(), version: "4.4.2".into(), category: "Protocols".into() },
         // Security
         DependencyInfo { name: "keyring".into(), version: "3.6.3".into(), category: "Security".into() },
@@ -1923,7 +1983,7 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
 
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
-async fn compress_files(paths: Vec<String>, output_path: String) -> Result<String, String> {
+async fn compress_files(paths: Vec<String>, output_path: String, password: Option<String>) -> Result<String, String> {
     use std::fs::File;
     use std::io::{Read, Write};
     use zip::write::SimpleFileOptions;
@@ -1934,7 +1994,7 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
         .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default()
+    let base_options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .compression_level(Some(6));
 
@@ -1942,13 +2002,17 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
         let path = std::path::Path::new(path);
 
         if path.is_file() {
-            // Add single file
             let file_name = path.file_name()
                 .ok_or("Invalid file name")?
                 .to_string_lossy();
 
-            zip.start_file(file_name.to_string(), options)
-                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+            if let Some(ref pwd) = password {
+                zip.start_file(file_name.to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+            } else {
+                zip.start_file(file_name.to_string(), base_options)
+                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+            }
 
             let mut f = File::open(path)
                 .map_err(|e| format!("Failed to open file: {}", e))?;
@@ -1959,7 +2023,6 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
                 .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
 
         } else if path.is_dir() {
-            // Add directory recursively
             let _base_name = path.file_name()
                 .ok_or("Invalid directory name")?
                 .to_string_lossy();
@@ -1970,8 +2033,13 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
                     .map_err(|e| format!("Path error: {}", e))?;
 
                 if entry_path.is_file() {
-                    zip.start_file(relative_path.to_string_lossy().to_string(), options)
-                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                    if let Some(ref pwd) = password {
+                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                    } else {
+                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options)
+                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                    }
 
                     let mut f = File::open(entry_path)
                         .map_err(|e| format!("Failed to open file: {}", e))?;
@@ -1983,8 +2051,13 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
 
                 } else if entry_path.is_dir() && entry_path != path {
                     let dir_path = format!("{}/", relative_path.to_string_lossy());
-                    zip.add_directory(&dir_path, options)
-                        .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                    if let Some(ref pwd) = password {
+                        zip.add_directory(&dir_path, base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+                            .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                    } else {
+                        zip.add_directory(&dir_path, base_options)
+                            .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                    }
                 }
             }
         }
@@ -1998,7 +2071,7 @@ async fn compress_files(paths: Vec<String>, output_path: String) -> Result<Strin
 
 /// Extract a ZIP archive
 #[tauri::command]
-async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool) -> Result<String, String> {
+async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
     use std::fs::{self, File};
     use zip::ZipArchive;
 
@@ -2026,8 +2099,13 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
-            .map_err(|e| format!("Failed to read file from archive: {}", e))?;
+        let mut file = if let Some(ref pwd) = password {
+            archive.by_index_decrypt(i, pwd.as_bytes())
+                .map_err(|e| format!("Failed to decrypt file from archive: {}", e))?
+        } else {
+            archive.by_index(i)
+                .map_err(|e| format!("Failed to read file from archive: {}", e))?
+        };
 
         let outpath = std::path::Path::new(&actual_output).join(file.name());
 
@@ -2058,7 +2136,7 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
 async fn compress_7z(
     paths: Vec<String>,
     output_path: String,
-    _password: Option<String>,  // Reserved for future encrypted write support
+    password: Option<String>,
 ) -> Result<String, String> {
     use sevenz_rust::*;
     use std::fs::File;
@@ -2105,10 +2183,18 @@ async fn compress_7z(
     let mut sz = SevenZWriter::new(output_file)
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
-    // Set LZMA2 compression (best ratio)
-    sz.set_content_methods(vec![
-        SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
-    ]);
+    // Set compression and optional AES-256 encryption
+    if let Some(ref pwd) = password {
+        let aes_options = AesEncoderOptions::new(Password::from(pwd.as_str()));
+        sz.set_content_methods(vec![
+            aes_options.into(),
+            SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
+        ]);
+    } else {
+        sz.set_content_methods(vec![
+            SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
+        ]);
+    }
 
     // Add files to archive
     for (archive_name, full_path) in &entries {
@@ -2200,6 +2286,30 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
             }
         }
     }
+}
+
+/// Check if a ZIP archive is password protected (AES or ZipCrypto)
+#[tauri::command]
+async fn is_zip_encrypted(archive_path: String) -> Result<bool, String> {
+    use std::fs::File;
+    use zip::ZipArchive;
+
+    let file = File::open(&archive_path)
+        .map_err(|e| format!("Failed to open archive: {}", e))?;
+
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("Failed to read archive: {}", e))?;
+
+    // Check if any file in the archive is encrypted
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index_raw(i) {
+            if entry.encrypted() {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 /// Compress files/folders into a TAR-based archive.
@@ -2340,6 +2450,74 @@ async fn extract_tar(
     }
 
     Ok(final_output.to_string_lossy().to_string())
+}
+
+/// Extract a RAR archive with optional password
+#[tauri::command]
+async fn extract_rar(
+    archive_path: String,
+    output_dir: String,
+    password: Option<String>,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    use std::path::Path;
+
+    let final_output = if create_subfolder {
+        let archive_name = Path::new(&archive_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "extracted".to_string());
+        Path::new(&output_dir).join(&archive_name)
+    } else {
+        Path::new(&output_dir).to_path_buf()
+    };
+
+    std::fs::create_dir_all(&final_output)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    let archive = if let Some(ref pwd) = password {
+        unrar::Archive::with_password(&archive_path, pwd.as_bytes())
+    } else {
+        unrar::Archive::new(&archive_path)
+    };
+
+    let mut archive = archive.open_for_processing()
+        .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
+
+    while let Some(header) = archive.read_header()
+        .map_err(|e| format!("Failed to read RAR header: {}", e))?
+    {
+        archive = if header.entry().is_file() {
+            header.extract_with_base(&final_output)
+                .map_err(|e| format!("Failed to extract RAR entry: {}", e))?
+        } else {
+            header.skip()
+                .map_err(|e| format!("Failed to skip RAR entry: {}", e))?
+        };
+    }
+
+    Ok(final_output.to_string_lossy().to_string())
+}
+
+/// Check if a RAR archive is password protected
+#[tauri::command]
+async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
+    let archive = unrar::Archive::new(&archive_path)
+        .open_for_listing()
+        .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
+
+    for entry in archive {
+        match entry {
+            Ok(e) => {
+                if e.is_encrypted() {
+                    return Ok(true);
+                }
+            }
+            Err(_) => return Ok(true), // If listing fails, assume encrypted
+        }
+    }
+
+    Ok(false)
 }
 
 #[tauri::command]
@@ -3684,6 +3862,8 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            set_speed_limit,
+            get_speed_limit,
             is_running_as_snap,
             get_local_files,
             open_in_file_manager,
@@ -3701,6 +3881,9 @@ pub fn run() {
             compress_7z,
             extract_7z,
             is_7z_encrypted,
+            is_zip_encrypted,
+            extract_rar,
+            is_rar_encrypted,
             compress_tar,
             extract_tar,
             ftp_read_file_base64,
@@ -3777,6 +3960,33 @@ pub fn run() {
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,
             provider_commands::provider_create_share_link,
+            provider_commands::provider_remove_share_link,
+            provider_commands::provider_import_link,
+            provider_commands::provider_storage_info,
+            provider_commands::provider_disk_usage,
+            provider_commands::provider_find,
+            provider_commands::provider_set_speed_limit,
+            provider_commands::provider_get_speed_limit,
+            provider_commands::provider_supports_resume,
+            provider_commands::provider_resume_download,
+            provider_commands::provider_resume_upload,
+            // File versions
+            provider_commands::provider_supports_versions,
+            provider_commands::provider_list_versions,
+            provider_commands::provider_download_version,
+            provider_commands::provider_restore_version,
+            // File locking
+            provider_commands::provider_supports_locking,
+            provider_commands::provider_lock_file,
+            provider_commands::provider_unlock_file,
+            // Thumbnails
+            provider_commands::provider_supports_thumbnails,
+            provider_commands::provider_get_thumbnail,
+            // Permissions / Advanced sharing
+            provider_commands::provider_supports_permissions,
+            provider_commands::provider_list_permissions,
+            provider_commands::provider_add_permission,
+            provider_commands::provider_remove_permission,
             // Multi-session provider commands
             session_commands::session_connect,
             session_commands::session_disconnect,

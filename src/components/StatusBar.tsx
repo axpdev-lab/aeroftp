@@ -10,6 +10,12 @@ interface UpdateInfo {
     install_format?: string;
 }
 
+interface StorageQuota {
+    used: number;
+    total: number;
+    free: number;
+}
+
 interface StatusBarProps {
     isConnected: boolean;
     serverInfo?: string;
@@ -27,6 +33,7 @@ interface StatusBarProps {
     activityLogCount?: number;
     updateAvailable?: UpdateInfo | null;
     debugMode?: boolean;
+    storageQuota?: StorageQuota | null;
     onToggleDebug?: () => void;
     onToggleDevTools?: () => void;
     onToggleSync?: () => void;
@@ -52,6 +59,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     activityLogCount = 0,
     updateAvailable,
     debugMode = false,
+    storageQuota,
     onToggleDebug,
     onToggleDevTools,
     onToggleSync,
@@ -60,6 +68,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleActivityLog,
 }) => {
     const t = useTranslation();
+
+    const formatBytes = (bytes: number): string => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+    };
 
     return (
         <div className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">
@@ -122,6 +138,26 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
             {/* Right: File Count + Sync + DevTools */}
             <div className="flex items-center gap-4">
+                {/* Storage Quota */}
+                {isConnected && storageQuota && storageQuota.total > 0 && (
+                    <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>
+                        <HardDrive size={12} className="text-purple-500" />
+                        <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all ${
+                                    (storageQuota.used / storageQuota.total) > 0.9
+                                        ? 'bg-red-500'
+                                        : (storageQuota.used / storageQuota.total) > 0.7
+                                            ? 'bg-amber-500'
+                                            : 'bg-purple-500'
+                                }`}
+                                style={{ width: `${Math.min(100, (storageQuota.used / storageQuota.total) * 100)}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px]">{formatBytes(storageQuota.free)} free</span>
+                    </div>
+                )}
+
                 {isConnected && (
                     <div className="flex items-center gap-1.5">
                         <Globe size={12} className="text-blue-500" />
