@@ -101,7 +101,7 @@ impl WebDavProvider {
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
         
         tracing::info!("[WebDAV] Parsing XML with base_path: {}, url: {}", base_path, self.config.url);
-        
+
         let match_count = response_pattern.captures_iter(xml).count();
         tracing::info!("[WebDAV] Found {} response elements in XML", match_count);
         
@@ -129,12 +129,20 @@ impl WebDavProvider {
                 
                 // Check if this is the directory itself (not a child entry)
                 // Handle various formats: full URL, absolute path, or relative path
-                let is_self_reference = clean_path == base_clean 
+                // Extract URL path component (e.g., "/dav" from "https://host/dav/")
+                let url_path_clean = url_clean
+                    .find("://")
+                    .and_then(|i| url_clean[i + 3..].find('/').map(|j| i + 3 + j))
+                    .map(|i| url_clean[i..].trim_end_matches('/'))
+                    .unwrap_or("");
+
+                let is_self_reference = clean_path == base_clean
                     || clean_path == url_clean
-                    || clean_path.ends_with(base_clean)
                     || (base_clean == "/" && clean_path == url_clean)
-                    || clean_path.ends_with(&format!("/{}", base_clean.trim_start_matches('/')))
-                    || (base_clean != "/" && url_clean.ends_with(clean_path));
+                    || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
+                    || (!base_clean.is_empty() && clean_path.ends_with(&format!("/{}", base_clean.trim_start_matches('/'))))
+                    || (!base_clean.is_empty() && base_clean != "/" && url_clean.ends_with(clean_path))
+                    || (!url_path_clean.is_empty() && clean_path == url_path_clean);
                 
                 if is_self_reference {
                     tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
@@ -142,15 +150,34 @@ impl WebDavProvider {
                 }
                 
                 // Check if it's a collection (directory) - handle various namespace formats
-                // DriveHQ uses <a:collection/> and <a:iscollection>1</a:iscollection>
-                let is_dir = content.contains(":collection/>") ||
-                             content.contains(":collection />") ||
-                             content.contains("<collection/>") ||
-                             content.contains("<collection />") ||
-                             content.contains(">1</a:iscollection>") ||
-                             content.contains(">1</d:iscollection>") ||
-                             content.contains(">1</D:iscollection>") ||
-                             content.contains("iscollection>1</");
+                // Self-closing: <d:collection/>, <D:collection />, <collection/>
+                // Open+close: <d:collection></d:collection>, <D:collection></D:collection>
+                // DriveHQ uses <a:iscollection>1</a:iscollection>
+                // Check if resourcetype contains "collection" keyword (any format):
+                // Koofr: <D:collection xmlns:D="DAV:"/>  (has attributes before />)
+                // Nextcloud: <d:collection/>
+                // Generic: <collection/>, <D:collection></D:collection>
+                // Strategy: find <resourcetype>...</resourcetype> block, check for "collection" inside
+                let content_lower = content.to_lowercase();
+                // Find <resourcetype>...</resourcetype> block and check for "collection" inside
+                // Closing tag may have namespace: </d:resourcetype>, </D:resourcetype>, </resourcetype>
+                let has_collection_in_resourcetype = {
+                    if let Some(rt_start) = content_lower.find("resourcetype>") {
+                        let after_rt = rt_start + "resourcetype>".len();
+                        // Find closing </...resourcetype> - search for next "resourcetype>" after opening
+                        if let Some(rt_end_rel) = content_lower[after_rt..].find("resourcetype>") {
+                            let rt_content = &content_lower[after_rt..after_rt + rt_end_rel];
+                            rt_content.contains("collection")
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                let is_dir_by_iscollection = content_lower.contains("iscollection>1</");
+                let href_ends_slash = href.ends_with('/');
+                let is_dir = has_collection_in_resourcetype || is_dir_by_iscollection || href_ends_slash;
                 
                 // Extract content length
                 let size: u64 = self.extract_tag_content(content, "getcontentlength")
@@ -395,15 +422,14 @@ impl StorageProvider for WebDavProvider {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                // Check for collection using various namespace formats (d:, D:, a:, lp1:, or no prefix)
-                let is_collection = xml.contains(":collection/>") ||
-                                   xml.contains(":collection />") ||
-                                   xml.contains("<collection/>") ||
-                                   xml.contains("<collection />") ||
-                                   xml.contains(">1</a:iscollection>") ||
-                                   xml.contains(">1</d:iscollection>") ||
-                                   xml.contains(">1</D:iscollection>") ||
-                                   xml.contains("iscollection>1</");
+                // Check for collection - search for "collection" inside resourcetype block
+                let xml_lower = xml.to_lowercase();
+                let is_collection = if let Some(rt_start) = xml_lower.find("resourcetype>") {
+                    let after_rt = rt_start + "resourcetype>".len();
+                    if let Some(rt_end_rel) = xml_lower[after_rt..].find("resourcetype>") {
+                        xml_lower[after_rt..after_rt + rt_end_rel].contains("collection")
+                    } else { false }
+                } else { false } || xml_lower.contains("iscollection>1</");
                 
                 if is_collection {
                     self.current_path = path.to_string();
@@ -654,14 +680,14 @@ impl StorageProvider for WebDavProvider {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                let is_dir = xml.contains(":collection/>") ||
-                             xml.contains(":collection />") ||
-                             xml.contains("<collection/>") ||
-                             xml.contains("<collection />") ||
-                             xml.contains(">1</a:iscollection>") ||
-                             xml.contains(">1</d:iscollection>") ||
-                             xml.contains(">1</D:iscollection>") ||
-                             xml.contains("iscollection>1</");
+                // Check for collection - search for "collection" inside resourcetype block
+                let xml_lower = xml.to_lowercase();
+                let is_dir = if let Some(rt_start) = xml_lower.find("resourcetype>") {
+                    let after_rt = rt_start + "resourcetype>".len();
+                    if let Some(rt_end_rel) = xml_lower[after_rt..].find("resourcetype>") {
+                        xml_lower[after_rt..after_rt + rt_end_rel].contains("collection")
+                    } else { false }
+                } else { false } || xml_lower.contains("iscollection>1</");
                 let size: u64 = self.extract_tag_content(&xml, "getcontentlength")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);

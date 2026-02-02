@@ -56,13 +56,13 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
     // Set environment variables for better terminal experience
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    
-    // Set a colorful PS1 prompt: cyan user@host, blue path, white $
-    // Format: \[\e[1;36m\]user@host\[\e[0m\]:\[\e[1;34m\]path\[\e[0m\]$ 
-    cmd.env("PS1", r"\[\e[1;36m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ ");
     cmd.env("FORCE_COLOR", "1");
     cmd.env("CLICOLOR", "1");
     cmd.env("CLICOLOR_FORCE", "1");
+
+    // Unix: set a colorful PS1 prompt (bash/zsh)
+    #[cfg(unix)]
+    cmd.env("PS1", r"\[\e[1;36m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ ");
     
     // Set working directory
     if let Some(path) = cwd {

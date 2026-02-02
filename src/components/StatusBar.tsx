@@ -154,7 +154,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 style={{ width: `${Math.min(100, (storageQuota.used / storageQuota.total) * 100)}%` }}
                             />
                         </div>
-                        <span className="text-[10px]">{formatBytes(storageQuota.free)} free</span>
+                        <span className="text-[10px]">{formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}</span>
                     </div>
                 )}
 

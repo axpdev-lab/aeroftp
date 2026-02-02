@@ -88,6 +88,8 @@ pub struct GoogleDriveProvider {
     current_path: String,
     /// Cache: path -> folder_id
     folder_cache: HashMap<String, String>,
+    /// Authenticated user email
+    account_email: Option<String>,
 }
 
 impl GoogleDriveProvider {
@@ -100,6 +102,7 @@ impl GoogleDriveProvider {
             current_folder_id: "root".to_string(),
             current_path: "/".to_string(),
             folder_cache: HashMap::new(),
+            account_email: None,
         }
     }
 
@@ -110,8 +113,9 @@ impl GoogleDriveProvider {
 
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
+        use secrecy::ExposeSecret;
         let token = self.oauth_manager.get_valid_token(&self.oauth_config()).await?;
-        HeaderValue::from_str(&format!("Bearer {}", token))
+        HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
             .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)))
     }
 
@@ -358,6 +362,10 @@ impl StorageProvider for GoogleDriveProvider {
         "Google Drive".to_string()
     }
 
+    fn account_email(&self) -> Option<String> {
+        self.account_email.clone()
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if !self.is_authenticated() {
             return Err(ProviderError::AuthenticationFailed(
@@ -367,11 +375,26 @@ impl StorageProvider for GoogleDriveProvider {
 
         // Validate token by making a simple API call
         let _ = self.list_folder("root").await?;
-        
+
         self.connected = true;
         self.current_folder_id = "root".to_string();
         self.current_path = "/".to_string();
-        
+
+        // Fetch user email from Google Drive about endpoint
+        if let Ok(auth) = self.auth_header().await {
+            if let Ok(resp) = self.client
+                .get("https://www.googleapis.com/drive/v3/about?fields=user")
+                .header(AUTHORIZATION, auth)
+                .send().await
+            {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    if let Some(email) = body["user"]["emailAddress"].as_str() {
+                        self.account_email = Some(email.to_string());
+                    }
+                }
+            }
+        }
+
         info!("Connected to Google Drive");
         Ok(())
     }
@@ -454,10 +477,21 @@ impl StorageProvider for GoogleDriveProvider {
 
         let bytes = self.download_file_by_id(&file.id, &file.mime_type).await?;
 
-        tokio::fs::write(local_path, &bytes).await
+        // For Workspace files, append the export extension to the local path
+        let actual_local_path = if let Some((_, ext)) = Self::workspace_export_info(&file.mime_type) {
+            if !local_path.ends_with(ext) {
+                format!("{}{}", local_path, ext)
+            } else {
+                local_path.to_string()
+            }
+        } else {
+            local_path.to_string()
+        };
+
+        tokio::fs::write(&actual_local_path, &bytes).await
             .map_err(|e| ProviderError::Other(format!("Write error: {}", e)))?;
 
-        info!("Downloaded {} to {}", remote_path, local_path);
+        info!("Downloaded {} to {}", remote_path, actual_local_path);
         Ok(())
     }
 

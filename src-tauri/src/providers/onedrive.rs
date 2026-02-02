@@ -103,6 +103,8 @@ pub struct OneDriveProvider {
     current_item_id: String,
     /// Cache: path -> item_id
     path_cache: HashMap<String, String>,
+    /// Authenticated user email
+    account_email: Option<String>,
 }
 
 impl OneDriveProvider {
@@ -115,6 +117,7 @@ impl OneDriveProvider {
             current_path: "/".to_string(),
             current_item_id: "root".to_string(),
             path_cache: HashMap::new(),
+            account_email: None,
         }
     }
 
@@ -125,8 +128,9 @@ impl OneDriveProvider {
 
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
+        use secrecy::ExposeSecret;
         let token = self.oauth_manager.get_valid_token(&self.oauth_config()).await?;
-        HeaderValue::from_str(&format!("Bearer {}", token))
+        HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
             .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)))
     }
 
@@ -303,6 +307,10 @@ impl StorageProvider for OneDriveProvider {
         "OneDrive".to_string()
     }
 
+    fn account_email(&self) -> Option<String> {
+        self.account_email.clone()
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if !self.is_authenticated() {
             return Err(ProviderError::AuthenticationFailed(
@@ -312,7 +320,7 @@ impl StorageProvider for OneDriveProvider {
 
         // Validate by getting drive info
         let url = format!("{}/me/drive", GRAPH_API_BASE);
-        
+
         let response = self.client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -324,10 +332,17 @@ impl StorageProvider for OneDriveProvider {
             return Err(ProviderError::AuthenticationFailed("Invalid token".to_string()));
         }
 
+        // Parse owner email from drive info
+        if let Ok(body) = response.json::<serde_json::Value>().await {
+            if let Some(email) = body["owner"]["user"]["email"].as_str() {
+                self.account_email = Some(email.to_string());
+            }
+        }
+
         self.connected = true;
         self.current_path = "/".to_string();
         self.current_item_id = "root".to_string();
-        
+
         info!("Connected to OneDrive");
         Ok(())
     }

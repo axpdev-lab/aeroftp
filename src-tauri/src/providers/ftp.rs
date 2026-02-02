@@ -329,8 +329,10 @@ impl StorageProvider for FtpProvider {
         };
 
         // Login
+        use secrecy::ExposeSecret;
+        let pwd = self.config.password.expose_secret();
         stream
-            .login(&self.config.username, &self.config.password)
+            .login(self.config.username.as_str(), pwd)
             .await
             .map_err(|e| ProviderError::AuthenticationFailed(e.to_string()))?;
 

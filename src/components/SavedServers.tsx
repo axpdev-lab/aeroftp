@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock, GripVertical } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '../types';
 import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
+import { PROVIDER_LOGOS } from './ProviderLogos';
 
 // OAuth settings storage key (same as SettingsPanel)
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
@@ -64,11 +65,51 @@ const STORAGE_KEY = 'aeroftp-saved-servers';
 // Generate a unique ID
 const generateId = () => `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-// Get saved servers from localStorage
+// Derive providerId from protocol/host for legacy servers without it
+const deriveProviderId = (server: ServerProfile): string | undefined => {
+    const proto = server.protocol;
+    if (!proto) return undefined;
+    // Native providers map directly
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'googledrive', 'dropbox', 'onedrive'].includes(proto)) return proto;
+    const host = (server.host || '').toLowerCase();
+    if (proto === 's3') {
+        if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
+        if (host.includes('backblazeb2')) return 'backblaze';
+        if (host.includes('wasabisys')) return 'wasabi';
+        if (host.includes('storjshare') || host.includes('gateway.storj')) return 'storj';
+        if (host.includes('digitaloceanspaces')) return 'digitalocean-spaces';
+        if (host.includes('idrivee2') || host.includes('idrivecloud')) return 'idrive-e2';
+        if (host.includes('aliyuncs') || host.includes('oss')) return 'alibaba-oss';
+        if (host.includes('myqcloud') || host.includes('cos.')) return 'tencent-cos';
+        if (host.includes('oraclecloud')) return 'oracle-cloud';
+        if (host.includes('amazonaws')) return 'aws-s3';
+    }
+    if (proto === 'webdav') {
+        if (host.includes('drivehq')) return 'drivehq';
+        if (host.includes('nextcloud')) return 'nextcloud';
+        if (host.includes('owncloud')) return 'owncloud';
+        if (host.includes('koofr')) return 'koofr';
+        if (host.includes('jianguoyun')) return 'jianguoyun';
+        if (host.includes('teracloud') || host.includes('infini-cloud')) return 'infinicloud';
+    }
+    return undefined;
+};
+
+// Get saved servers from localStorage (auto-migrate missing providerId)
 const getSavedServers = (): ServerProfile[] => {
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        return stored ? JSON.parse(stored) : [];
+        if (!stored) return [];
+        const servers: ServerProfile[] = JSON.parse(stored);
+        let migrated = false;
+        for (const s of servers) {
+            if (!s.providerId) {
+                const derived = deriveProviderId(s);
+                if (derived) { s.providerId = derived; migrated = true; }
+            }
+        }
+        if (migrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
+        return servers;
     } catch {
         return [];
     }
@@ -91,6 +132,48 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
+
+    // Drag-to-reorder state
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const [overIdx, setOverIdx] = useState<number | null>(null);
+    const dragNodeRef = useRef<HTMLDivElement | null>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    const handleReorderDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        setDragIdx(idx);
+        dragNodeRef.current = e.currentTarget;
+        // Use a translucent clone as drag image
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(idx));
+        // Delay adding dragging class so the ghost image captures the original look
+        requestAnimationFrame(() => {
+            if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4';
+        });
+    }, []);
+
+    const handleReorderDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragIdx === null || idx === dragIdx) return;
+        setOverIdx(idx);
+    }, [dragIdx]);
+
+    const handleReorderDrop = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        if (dragIdx === null || dragIdx === idx) return;
+        const reordered = [...servers];
+        const [moved] = reordered.splice(dragIdx, 1);
+        reordered.splice(idx, 0, moved);
+        setServers(reordered);
+        saveServers(reordered);
+    }, [dragIdx, servers]);
+
+    const handleReorderDragEnd = useCallback(() => {
+        if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
+        dragNodeRef.current = null;
+        setDragIdx(null);
+        setOverIdx(null);
+    }, []);
 
     // Protocol colors for avatar
     const protocolColors: Record<string, string> = {
@@ -172,7 +255,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     client_secret: credentials.clientSecret,
                 };
 
-                // Check if tokens already exist - if so, skip auth flow and just connect
+                // Check if tokens already exist - if so, try to connect directly
                 const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider });
 
                 if (!hasTokens) {
@@ -183,22 +266,37 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     console.log('[SavedServers] OAuth tokens found, skipping auth flow');
                 }
 
-                // Connect using stored tokens
-                const displayName = await invoke<string>('oauth2_connect', { params });
+                // Connect using stored tokens; if expired without refresh token, re-auth
+                let result: { display_name: string; account_email: string | null };
+                try {
+                    result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                } catch (connectErr) {
+                    const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+                    if (errMsg.includes('Token expired') || errMsg.includes('token') && errMsg.includes('refresh')) {
+                        console.log('[SavedServers] Token expired, re-authenticating...');
+                        await invoke('oauth2_full_auth', { params });
+                        result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                    } else {
+                        throw connectErr;
+                    }
+                }
 
-                // Update last connected
+                // Save account email to server profile if retrieved
+                const updatedUsername = result.account_email || server.username;
                 const updated = servers.map(s =>
-                    s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
+                    s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s
                 );
                 setServers(updated);
                 saveServers(updated);
 
                 // Call onConnect with OAuth params
                 onConnect({
-                    server: displayName,
-                    username: '',
+                    server: result.display_name,
+                    username: updatedUsername,
                     password: '',
                     protocol: server.protocol,
+                    displayName: server.name,
+                    providerId: server.providerId,
                 }, server.initialPath, server.localInitialPath);
 
             } catch (e) {
@@ -222,6 +320,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             password = await invoke<string>('get_credential', { account: `server_${server.id}` });
         } catch (e) {
             console.error(`Failed to load credential for ${server.name}:`, e);
+            // If credential was expected but keyring unavailable, redirect to edit
+            if (server.hasStoredCredential) {
+                setOauthError(t('connection.credentialLoadFailed'));
+                onEdit(server);
+                return;
+            }
         }
 
         // Build connection params - for providers, don't append port to host
@@ -238,8 +342,9 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             password,
             protocol: server.protocol || 'ftp',
             port: server.port,
-            displayName: server.name,  // Pass custom name for tab display
-            options: server.options,   // Pass S3/WebDAV options
+            displayName: server.name,
+            options: server.options,
+            providerId: server.providerId,
         }, server.initialPath, server.localInitialPath);
     };
 
@@ -282,25 +387,40 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 </div>
             )}
 
-            <div className="space-y-2">
-                {servers.map(server => (
+            <div ref={listRef} className="space-y-2">
+                {servers.map((server, idx) => (
                     <div
                         key={server.id}
-                        className={`flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group ${oauthConnecting === server.id ? 'opacity-75' : ''}`}
+                        draggable
+                        onDragStart={(e) => handleReorderDragStart(e, idx)}
+                        onDragOver={(e) => handleReorderDragOver(e, idx)}
+                        onDrop={(e) => handleReorderDrop(e, idx)}
+                        onDragEnd={handleReorderDragEnd}
+                        className={`flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 group ${oauthConnecting === server.id ? 'opacity-75' : ''} ${dragIdx === idx ? 'scale-[0.97] shadow-lg ring-2 ring-blue-400/50' : ''} ${overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-t-2 border-blue-400' : 'border-t-2 border-transparent'}`}
                     >
-                        <button
-                            onClick={() => handleConnect(server)}
-                            disabled={oauthConnecting !== null}
-                            className="flex-1 text-left flex items-center gap-3 disabled:cursor-wait"
-                        >
-                            <div className={`w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} flex items-center justify-center text-white ${oauthConnecting === server.id ? 'animate-pulse' : ''}`}>
-                                {isOAuthProvider(server.protocol || 'ftp') ? (
-                                    <Cloud size={18} />
-                                ) : (
-                                    <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>
-                                )}
-                            </div>
-                            <div>
+                        {/* Drag handle */}
+                        <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 -ml-1"
+                             title="Drag to reorder">
+                            <GripVertical size={16} />
+                        </div>
+                            {/* Server icon — click to connect */}
+                        {(() => {
+                            const logoKey = server.providerId || server.protocol || '';
+                            const LogoComponent = PROVIDER_LOGOS[logoKey];
+                            const hasLogo = !!LogoComponent;
+                            return (
+                                <button
+                                    onClick={() => handleConnect(server)}
+                                    disabled={oauthConnecting !== null}
+                                    className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:ring-2 hover:ring-blue-400 hover:shadow-lg disabled:cursor-wait ${oauthConnecting === server.id ? 'animate-pulse' : ''} ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} text-white`}`}
+                                    title={t('common.connect')}
+                                >
+                                    {hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
+                                </button>
+                            );
+                        })()}
+                        {/* Server info — not clickable for connection */}
+                        <div className="flex-1 min-w-0">
                                 <div className="font-medium flex items-center gap-2">
                                     {server.name || server.host}
                                     {server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at && (
@@ -317,16 +437,29 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {isOAuthProvider(server.protocol || 'ftp')
-                                        ? t('connection.oauth2Connection')
+                                        ? `OAuth2 — ${server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' } as Record<string, string>)[server.protocol || ''] || server.protocol}`
                                         : server.protocol === 'filen'
-                                            ? server.username
+                                            ? `E2E AES-256 — ${server.username}`
                                             : server.protocol === 'mega'
-                                                ? server.username
-                                                : `${server.username}@${server.host}:${server.port}`
+                                                ? `E2E AES-128 — ${server.username}`
+                                                : server.protocol === 's3'
+                                                    ? (() => {
+                                                        const bucket = server.options?.bucket || 'S3';
+                                                        const host = server.host?.replace(/^https?:\/\//, '') || '';
+                                                        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2'
+                                                            : host.includes('backblazeb2') ? 'Backblaze B2'
+                                                            : host.includes('amazonaws') ? 'AWS S3'
+                                                            : host.includes('wasabisys') ? 'Wasabi'
+                                                            : host.includes('digitaloceanspaces') ? 'DigitalOcean'
+                                                            : host.split('.')[0];
+                                                        return `${bucket} — ${provider}`;
+                                                    })()
+                                                    : server.protocol === 'webdav'
+                                                        ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
+                                                        : `${server.username}@${server.host}:${server.port}`
                                     }
                                 </div>
-                            </div>
-                        </button>
+                        </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                                 onClick={() => handleEdit(server)}

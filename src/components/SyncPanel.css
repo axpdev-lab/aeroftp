@@ -10,7 +10,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    z-index: 9999;
     backdrop-filter: blur(8px);
 }
 
@@ -118,6 +118,39 @@
 :root:not(.dark) .sync-path-value {
     color: #2563eb;
     background: rgba(59, 130, 246, 0.1);
+}
+
+.sync-path-input {
+    font-size: 12px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+    flex: 1;
+    border: 1px solid transparent;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.sync-path-input:focus {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.sync-path-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+:root:not(.dark) .sync-path-input {
+    color: #2563eb;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+:root:not(.dark) .sync-path-input:focus {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
 }
 
 /* Options Section */
@@ -317,7 +350,7 @@
 
 .sync-table-header {
     display: grid;
-    grid-template-columns: 40px 100px 1fr 80px 80px;
+    grid-template-columns: 40px 100px 1fr 28px 80px 80px;
     padding: 10px 16px;
     background: #1f2937;
     border-bottom: 1px solid #374151;
@@ -343,7 +376,7 @@
 
 .sync-row {
     display: grid;
-    grid-template-columns: 40px 100px 1fr 80px 80px;
+    grid-template-columns: 40px 100px 1fr 28px 80px 80px;
     padding: 12px 16px;
     border-bottom: 1px solid #1f2937;
     cursor: pointer;
@@ -479,4 +512,39 @@
 .sync-execute-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4) !important;
+}
+
+/* Cancel button */
+.sync-cancel-btn {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: white !important;
+    border-color: #ef4444 !important;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.sync-cancel-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Result column */
+.sync-col-result {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Row status highlights during sync */
+.sync-row-success {
+    background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.sync-row-error {
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* Directory rows are dimmed and non-selectable */
+.sync-row-dir {
+    opacity: 0.5;
+    cursor: default;
 }

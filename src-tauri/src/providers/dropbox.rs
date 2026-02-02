@@ -77,6 +77,8 @@ pub struct DropboxProvider {
     client: reqwest::Client,
     connected: bool,
     current_path: String,
+    /// Authenticated user email
+    account_email: Option<String>,
 }
 
 impl DropboxProvider {
@@ -87,6 +89,7 @@ impl DropboxProvider {
             client: reqwest::Client::new(),
             connected: false,
             current_path: "".to_string(), // Dropbox root is ""
+            account_email: None,
         }
     }
 
@@ -97,8 +100,9 @@ impl DropboxProvider {
 
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
+        use secrecy::ExposeSecret;
         let token = self.oauth_manager.get_valid_token(&self.oauth_config()).await?;
-        HeaderValue::from_str(&format!("Bearer {}", token))
+        HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
             .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)))
     }
 
@@ -222,6 +226,10 @@ impl StorageProvider for DropboxProvider {
         "Dropbox".to_string()
     }
 
+    fn account_email(&self) -> Option<String> {
+        self.account_email.clone()
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if !self.is_authenticated() {
             return Err(ProviderError::AuthenticationFailed(
@@ -231,7 +239,7 @@ impl StorageProvider for DropboxProvider {
 
         // Validate by getting account info
         let url = format!("{}/users/get_current_account", API_BASE);
-        
+
         let response = self.client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -240,12 +248,24 @@ impl StorageProvider for DropboxProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(ProviderError::AuthenticationFailed("Invalid token".to_string()));
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            info!("Dropbox auth failed: HTTP {} - {}", status, body);
+            return Err(ProviderError::AuthenticationFailed(
+                format!("Invalid token (HTTP {})", status)
+            ));
+        }
+
+        // Parse email from response
+        if let Ok(body) = response.json::<serde_json::Value>().await {
+            if let Some(email) = body["email"].as_str() {
+                self.account_email = Some(email.to_string());
+            }
         }
 
         self.connected = true;
         self.current_path = "".to_string();
-        
+
         info!("Connected to Dropbox");
         Ok(())
     }
@@ -370,6 +390,11 @@ impl StorageProvider for DropboxProvider {
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Download failed: {}", text)));
+        }
 
         let bytes = response.bytes().await
             .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
@@ -734,6 +759,75 @@ impl StorageProvider for DropboxProvider {
 
         info!("Created share link for {}: {}", path, result.url);
         Ok(result.url)
+    }
+
+    async fn remove_share_link(
+        &mut self,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        // First get the existing share link URL
+        let body = serde_json::json!({
+            "path": full_path,
+            "direct_only": false
+        });
+
+        let url = format!("{}/sharing/list_shared_links", API_BASE);
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::Other("Failed to list share links".to_string()));
+        }
+
+        #[derive(Deserialize)]
+        struct SharedLink {
+            url: String,
+        }
+        #[derive(Deserialize)]
+        struct SharedLinksResult {
+            links: Vec<SharedLink>,
+        }
+
+        let result: SharedLinksResult = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+
+        let link_url = result.links.first()
+            .ok_or_else(|| ProviderError::Other("No share link found to remove".to_string()))?;
+
+        // Revoke the shared link
+        let body = serde_json::json!({
+            "url": link_url.url
+        });
+
+        let url = format!("{}/sharing/revoke_shared_link", API_BASE);
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Failed to revoke share link: {}", text)));
+        }
+
+        info!("Revoked share link for {}", path);
+        Ok(())
     }
 
     fn supports_versions(&self) -> bool {

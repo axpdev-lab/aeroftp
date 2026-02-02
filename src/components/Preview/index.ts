@@ -40,8 +40,6 @@ export { AudioPlayer } from './viewers/AudioPlayer';
 export { VideoPlayer } from './viewers/VideoPlayer';
 export { PDFViewer } from './viewers/PDFViewer';
 export { TextViewer } from './viewers/TextViewer';
-// export { MarkdownViewer } from './viewers/MarkdownViewer';
-// export { TextViewer } from './viewers/TextViewer';
 
 // Audio controls
 export { AudioVisualizer } from './controls/AudioVisualizer';

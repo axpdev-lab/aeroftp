@@ -80,9 +80,9 @@ export function useOAuth2(): UseOAuth2Return {
    */
   const connect = useCallback(async (params: OAuthConnectionParams): Promise<string> => {
     try {
-      const displayName = await invoke<string>('oauth2_connect', { params });
+      const result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
       setIsAuthenticating(false);
-      return displayName;
+      return result.display_name;
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setError(errorMsg);

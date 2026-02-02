@@ -14,15 +14,11 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Sha512, Digest};
 use std::collections::HashMap;
-use std::io::Write;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
-/// Write debug line to /tmp/filen_debug.log
+/// Debug logging through tracing infrastructure (no file I/O)
 fn filen_log(msg: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/filen_debug.log") {
-        let _ = writeln!(f, "[{}] {}", chrono::Local::now().format("%H:%M:%S"), msg);
-    }
-    eprintln!("[FILEN] {}", msg);
+    debug!(target: "filen", "{}", msg);
 }
 
 use super::{

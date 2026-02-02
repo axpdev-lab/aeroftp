@@ -6,6 +6,8 @@ import { sendNotification } from '@tauri-apps/plugin-notification';
 import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield } from 'lucide-react';
 import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
+import { PROVIDER_LOGOS } from './ProviderLogos';
+import { ExportImportDialog } from './ExportImportDialog';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -19,23 +21,44 @@ const PROTOCOL_COLORS: Record<string, string> = {
     dropbox: 'from-blue-600 to-blue-400',
     onedrive: 'from-sky-500 to-sky-400',
     mega: 'from-red-600 to-red-500',
+    box: 'from-blue-500 to-blue-600',
+    pcloud: 'from-green-500 to-teal-400',
+    azure: 'from-blue-600 to-indigo-500',
+    filen: 'from-emerald-500 to-green-400',
 };
 
-// Get display info for a server
+// Get display info for a server (matches SavedServers sidebar schema)
 const getServerDisplayInfo = (server: ServerProfile) => {
     const protocol = server.protocol || 'ftp';
     const isOAuth = isOAuthProvider(protocol as ProviderType);
 
     if (isOAuth) {
-        return 'OAuth2 Connection';
+        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+        return `OAuth2 — ${server.username || providerNames[protocol] || protocol}`;
     }
 
-    if (protocol === 's3') {
-        return `${server.options?.bucket || 'bucket'}@${server.host}`;
+    if (protocol === 'filen') {
+        return `E2E AES-256 — ${server.username}`;
     }
 
     if (protocol === 'mega') {
-        return server.username;
+        return `E2E AES-128 — ${server.username}`;
+    }
+
+    if (protocol === 's3') {
+        const bucket = server.options?.bucket || 'S3';
+        const host = server.host?.replace(/^https?:\/\//, '') || '';
+        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2'
+            : host.includes('backblazeb2') ? 'Backblaze B2'
+            : host.includes('amazonaws') ? 'AWS S3'
+            : host.includes('wasabisys') ? 'Wasabi'
+            : host.includes('digitaloceanspaces') ? 'DigitalOcean'
+            : host.split('.')[0];
+        return `${bucket} — ${provider}`;
+    }
+
+    if (protocol === 'webdav') {
+        return `${server.username}@${server.host?.replace(/^https?:\/\//, '')}`;
     }
 
     return `${server.username}@${server.host}:${server.port}`;
@@ -75,12 +98,16 @@ interface OAuthSettings {
     googledrive: { clientId: string; clientSecret: string };
     dropbox: { clientId: string; clientSecret: string };
     onedrive: { clientId: string; clientSecret: string };
+    box: { clientId: string; clientSecret: string };
+    pcloud: { clientId: string; clientSecret: string };
 }
 
 const defaultOAuthSettings: OAuthSettings = {
     googledrive: { clientId: '', clientSecret: '' },
     dropbox: { clientId: '', clientSecret: '' },
     onedrive: { clientId: '', clientSecret: '' },
+    box: { clientId: '', clientSecret: '' },
+    pcloud: { clientId: '', clientSecret: '' },
 };
 
 interface AppSettings {
@@ -221,6 +248,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);
     const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
+    const [showExportImport, setShowExportImport] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
     // i18n hook
@@ -236,7 +264,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (savedServers) setServers(JSON.parse(savedServers));
                 // Load OAuth settings from secure credential store (fallback: localStorage)
                 const loadOAuthFromStore = async () => {
-                    const providers = ['googledrive', 'dropbox', 'onedrive'] as const;
+                    const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
                     const loaded = { ...defaultOAuthSettings };
                     for (const p of providers) {
                         try {
@@ -267,7 +295,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
         // Save OAuth secrets to secure credential store (not localStorage)
-        const providers = ['googledrive', 'dropbox', 'onedrive'] as const;
+        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
         for (const p of providers) {
             const creds = oauthSettings[p];
             if (creds.clientId) {
@@ -320,6 +348,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     };
 
     return (
+        <>
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -555,12 +584,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Saved Servers</h3>
-                                    <button
-                                        onClick={() => setEditingServer({ id: crypto.randomUUID(), name: '', host: '', port: 21, username: '', password: '' })}
-                                        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5"
-                                    >
-                                        <Plus size={14} /> Add Server
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setShowExportImport(true)}
+                                            className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5"
+                                            title={t('settings.exportImport')}
+                                        >
+                                            <Shield size={14} /> {t('settings.exportImport')}
+                                        </button>
+                                        <button
+                                            onClick={() => setEditingServer({ id: crypto.randomUUID(), name: '', host: '', port: 21, username: '', password: '' })}
+                                            className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5"
+                                        >
+                                            <Plus size={14} /> Add Server
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {servers.length === 0 ? (
@@ -583,13 +621,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         {/* Protocol-colored avatar */}
-                                                        <div className={`w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} flex items-center justify-center text-white`}>
-                                                            {isOAuth ? (
-                                                                <Cloud size={18} />
-                                                            ) : (
-                                                                <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>
-                                                            )}
-                                                        </div>
+                                                        {(() => {
+                                                            const logoKey = server.providerId || protocol;
+                                                            const LogoComponent = PROVIDER_LOGOS[logoKey];
+                                                            const hasLogo = !!LogoComponent;
+                                                            return (
+                                                                <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
+                                                                    {hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         <div>
                                                             <div className="font-medium flex items-center gap-2">
                                                                 {server.name || server.host}
@@ -643,9 +684,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     const protocol = editingServer.protocol || 'ftp';
                                     const isOAuth = isOAuthProvider(protocol as ProviderType);
                                     const isMega = protocol === 'mega';
+                                    const isFilen = protocol === 'filen';
                                     const isS3 = protocol === 's3';
+                                    const isAzure = protocol === 'azure';
                                     const isSftp = protocol === 'sftp';
-                                    const needsHostPort = !isOAuth && !isMega;
+                                    const needsHostPort = !isOAuth && !isMega && !isFilen;
                                     const needsPassword = !isOAuth;
                                     const isNewServer = !servers.some(s => s.id === editingServer.id);
 
@@ -654,12 +697,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         { value: 'ftp', label: 'FTP', port: 21 },
                                         { value: 'ftps', label: 'FTPS (Secure)', port: 990 },
                                         { value: 'sftp', label: 'SFTP (SSH)', port: 22 },
-                                        { value: 's3', label: 'Amazon S3', port: 443 },
+                                        { value: 's3', label: 'S3 / R2 / B2', port: 443 },
                                         { value: 'webdav', label: 'WebDAV', port: 443 },
                                         { value: 'mega', label: 'MEGA', port: 443 },
+                                        { value: 'filen', label: 'Filen (E2E)', port: 443 },
                                         { value: 'googledrive', label: 'Google Drive', port: 443 },
                                         { value: 'dropbox', label: 'Dropbox', port: 443 },
                                         { value: 'onedrive', label: 'OneDrive', port: 443 },
+                                        { value: 'box', label: 'Box', port: 443 },
+                                        { value: 'pcloud', label: 'pCloud', port: 443 },
+                                        { value: 'azure', label: 'Azure Blob', port: 443 },
                                     ];
 
                                     const handleProtocolChange = (newProtocol: string) => {
@@ -681,9 +728,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
                                             <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} flex items-center justify-center text-white`}>
-                                                        {isOAuth ? <Cloud size={18} /> : <Server size={18} />}
-                                                    </div>
+                                                    {(() => {
+                                                        const logoKey = editingServer.providerId || protocol;
+                                                        const LogoComponent = PROVIDER_LOGOS[logoKey];
+                                                        const hasLogo = !!LogoComponent;
+                                                        return (
+                                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
+                                                                {hasLogo ? <LogoComponent size={20} /> : isOAuth ? <Cloud size={18} /> : <Server size={18} />}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     <div>
                                                         <h3 className="text-lg font-semibold">{isNewServer ? 'Add Server' : 'Edit Server'}</h3>
                                                         <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
@@ -758,7 +812,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </>
                                                     )}
 
-                                                    {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3 */}
+                                                    {/* Filen - email + password, no host */}
+                                                    {isFilen && (
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Filen Email</label>
+                                                            <input
+                                                                type="email"
+                                                                placeholder="email@example.com"
+                                                                value={editingServer.username}
+                                                                onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'filen.io', port: 443 })}
+                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3/Azure */}
                                                     {needsHostPort && (
                                                         <div className="flex gap-2">
                                                             <div className="flex-1">
@@ -899,11 +967,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <button
                                                         onClick={() => {
                                                             const exists = servers.some(s => s.id === editingServer.id);
+                                                            let updatedServers: ServerProfile[];
                                                             if (exists) {
-                                                                setServers(prev => prev.map(s => s.id === editingServer.id ? editingServer : s));
+                                                                updatedServers = servers.map(s => s.id === editingServer.id ? editingServer : s);
                                                             } else {
-                                                                setServers(prev => [...prev, editingServer]);
+                                                                updatedServers = [...servers, editingServer];
                                                             }
+                                                            setServers(updatedServers);
+                                                            // Persist immediately so changes aren't lost if user closes without Save Changes
+                                                            localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
                                                             setEditingServer(null);
                                                             setHasChanges(true);
                                                         }}
@@ -1179,6 +1251,92 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     </div>
                                 </div>
 
+                                {/* Box */}
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                                                <Cloud size={16} className="text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium">Box</h4>
+                                                <p className="text-xs text-gray-500">Connect with Box Account</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => openUrl('https://app.box.com/developers/console')}
+                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                        >
+                                            Get credentials <ExternalLink size={12} />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Client ID</label>
+                                            <input
+                                                type="text"
+                                                value={oauthSettings.box.clientId}
+                                                onChange={e => updateOAuthSetting('box', 'clientId', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <input
+                                                type="password"
+                                                value={oauthSettings.box.clientSecret}
+                                                onChange={e => updateOAuthSetting('box', 'clientSecret', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* pCloud */}
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                                                <Cloud size={16} className="text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium">pCloud</h4>
+                                                <p className="text-xs text-gray-500">Connect with pCloud Account</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => openUrl('https://docs.pcloud.com/methods/oauth_2.0/authorize.html')}
+                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                        >
+                                            Get credentials <ExternalLink size={12} />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Client ID</label>
+                                            <input
+                                                type="text"
+                                                value={oauthSettings.pcloud.clientId}
+                                                onChange={e => updateOAuthSetting('pcloud', 'clientId', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <input
+                                                type="password"
+                                                value={oauthSettings.pcloud.clientSecret}
+                                                onChange={e => updateOAuthSetting('pcloud', 'clientSecret', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
                                     <p className="text-sm text-blue-700 dark:text-blue-300">
                                         <strong>Note:</strong> OAuth2 credentials are stored locally and never sent to AeroFTP servers.
@@ -1383,6 +1541,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 </div>
             </div>
         </div>
+
+            {/* Export/Import Dialog */}
+            {showExportImport && (
+                <ExportImportDialog
+                    servers={servers}
+                    onImport={(newServers) => {
+                        const updated = [...servers, ...newServers];
+                        setServers(updated);
+                        localStorage.setItem(SERVERS_KEY, JSON.stringify(updated));
+                        setShowExportImport(false);
+                    }}
+                    onClose={() => setShowExportImport(false)}
+                />
+            )}
+        </>
     );
 };
 

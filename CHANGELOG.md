@@ -5,6 +5,125 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-02-02
+
+### Sync Index + Storage Quota + FTP Retry + Session Fix
+
+Enhanced sync with persistent index cache for conflict detection, storage quota display in status bar for 9 providers, FTP retry with exponential backoff for large batch transfers, and critical OAuth session switch fix.
+
+#### Added
+- **Sync index cache**: Persistent file index saved after each sync to `~/.config/aeroftp/sync-index/`, enabling true conflict detection (both sides changed since last sync) and faster subsequent comparisons
+- **Storage quota in status bar**: Used/total space display with progress bar for Google Drive, Dropbox, OneDrive, Box, pCloud, Filen, SFTP (statvfs), WebDAV (RFC 4331), and MEGA (mega-df)
+- **FTP retry with exponential backoff**: Automatic retry (up to 3 attempts) for "Data connection already open" errors during FTP sync, with NOOP reset and 500ms/1000ms backoff between attempts
+- **Sync panel editable paths**: Local and remote paths in sync panel are now editable input fields, independent from main file browser navigation
+- **Empty directory sync**: Standalone empty directories are now created during sync operations, with directory count shown in completion report
+- **Sync index UI indicator**: "Index cached" badge with Zap icon appears next to scan button when a sync index exists for the current path pair
+
+#### Fixed
+- **OAuth session switching**: Fixed "OAuth credentials not found" error when switching between provider tabs by adding OS keyring fallback for credential lookup in `switchSession`
+- **Storage quota not updating on tab switch**: Fixed quota display showing stale data or disappearing when switching sessions, by fetching quota directly after reconnection instead of relying on React effect timing
+- **Google Drive keyring key mismatch**: Fixed credential lookup using wrong keyring key format (`google_drive` vs `googledrive`) during session reconnection
+- **Azure listed in quota support**: Removed Azure Blob from `supportsStorageQuota()` list since it has no backend implementation
+- **Dropbox `download_to_bytes` HTTP check**: Added missing HTTP status check — error responses were previously returned as file content
+- **Dropbox `remove_share_link`**: Implemented missing backend method using `sharing/revoke_shared_link` API
+- **FTP inter-transfer delay**: Increased from 150ms to 350ms to reduce "Data connection already open" errors on rapid sequential transfers
+
+#### Changed
+- **Status bar quota format**: Changed from "X free" to "used / total" format with color-coded progress bar (purple < 70%, amber < 90%, red > 90%)
+- **SFTP and WebDAV added to quota support list**: These protocols support storage info via statvfs and RFC 4331 respectively
+
+---
+
+## [1.5.2] - 2026-02-02
+
+### Codebase Audit + Multi-Protocol Sync + Credential Fix
+
+#### Added
+- **Multi-protocol directory sync**: Sync Files now works with all 13 protocols (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Filen) via new `provider_compare_directories` command using the `StorageProvider` trait
+- **Sync toolbar button**: Dedicated "Sync Files" button in the toolbar for quick access, distinct from the synchronized navigation toggle
+- **Sync progress bar**: Real-time byte-level progress indicator during sync operations, showing current file, speed, and percentage
+- **Sync completion report**: Summary panel after sync showing uploaded/downloaded/skipped/error counts, total bytes transferred, and duration
+- **Shared crypto module**: Consolidated duplicate Argon2id + AES-256-GCM cryptographic primitives into `crypto.rs`, consumed by credential store and profile export
+- **Credential keyring fallback**: Direct keyring access bypasses conservative probe when OS keyring appears unavailable on first launch
+- **Windows terminal support**: Removed Unix-only restriction from PTY module — terminal now works on Windows via conpty (PowerShell) in addition to Linux/macOS
+
+#### Fixed
+- **Credential loading on first launch**: Saved server passwords failed to load when OS keyring probe returned false on startup (common with gnome-keyring on Linux). Now falls back to direct keyring access and shows explanatory message with auto-redirect to edit form if still unavailable
+- **SEC-001: Archive password zeroization**: ZIP, 7z, and RAR archive passwords are now wrapped in `secrecy::SecretString`, ensuring automatic memory zeroization on drop instead of lingering as plain strings
+- **SEC-004: OAuth token memory protection**: OAuth2 access tokens returned by `get_valid_token()` are now wrapped in `SecretString` across all 5 OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud)
+- **FTP connection failure**: Fixed critical bug where FTP/FTPS connections routed through `provider_connect` instead of `connect_ftp`, causing "Not connected to server" errors on first directory navigation
+- **Dropbox OAuth connection**: Fixed token exchange failure caused by ephemeral callback port not matching registered redirect URI. Dropbox now uses fixed port 17548 and requests `token_access_type=offline` for persistent refresh tokens
+- **Navigation sync for OAuth/cloud providers**: Fixed synced navigation breaking when navigating to root directory on providers where remote base path is `/` (empty string after path normalization). Also fixed local Up button not triggering sync for cloud providers
+- **Sync upload subdirectory creation**: Pre-create parent directories before uploading files in subdirectories during sync, preventing "Parent directory does not exist" errors on WebDAV and cloud providers
+- **WebDAV self-reference filtering**: Fixed PROPFIND response parsing for WebDAV servers with non-root base paths (e.g., Jianguoyun `/dav/`) where the self-reference entry was not filtered, causing path resolution errors
+- **Keep-alive for cloud providers**: Fixed FTP NOOP being sent on non-FTP connections by adding `activeSessionId` to the keep-alive effect dependency array
+- **Export/Import translations**: Added proper translations for 18 export/import dialog keys across all 49 non-English languages
+- **Filen/MEGA debug logging removed**: Replaced plaintext file logging (`/tmp/filen_debug.log`, `/tmp/aeroftp-mega.log`) with `tracing::debug!` to prevent sensitive data exposure in production
+- **Sync panel i18n**: Replaced hardcoded Italian text and emoji icons with Lucide icons and 45 new i18n keys across all 51 languages
+- **AI provider naming collision**: Renamed `ai.rs::ProviderType` to `AIProviderType` to avoid collision with storage providers
+- **S3 logging inconsistency**: Changed `s3.rs` from `log` crate to `tracing` for consistency
+
+#### Removed
+- **Dead useAnalytics hook**: Removed unused analytics hook and related exports (Aptabase integration was never activated)
+- **Abandoned components**: Deleted orphaned `MigrationDialog.tsx`, `MasterPasswordDialog.tsx`, `SnapNoticeDialog.tsx`
+- **7 unused Cargo dependencies**: Removed `aes`, `cbc`, `ctr`, `zeroize`, `futures`, `tokio-util`, `tauri-plugin-aptabase`
+- **Dead type exports**: Removed unused `AppState`, `Theme`, `SyncOperation`, `DownloadFolderParams`, `UploadFolderParams` from types.ts
+- **Exposed API key**: Removed commented Aptabase analytics code containing hardcoded API key
+- **Debug artifacts**: Removed commented `/tmp/webdav_debug.xml` write in webdav.rs
+
+#### Changed
+- **Provider preset ordering**: Stable providers now appear before Beta in S3 and WebDAV dropdown lists
+- **IDrive e2**: Promoted from Beta to Stable after successful testing
+- **DriveHQ logo**: Updated to higher resolution with 1.4x scale factor for better visibility
+- **package.json cleanup**: Moved `@types/howler` and `@types/prismjs` from dependencies to devDependencies
+
+---
+
+## [1.5.1] - 2026-02-01
+
+### WebDAV Compatibility + Provider Keep-Alive + UI Polish
+
+#### Added
+- **4 new S3/WebDAV presets**: Jianguoyun (WebDAV), InfiniCLOUD (WebDAV), Alibaba Cloud OSS (S3), Tencent Cloud COS (S3) — total 30 connection options
+- **Provider logos in saved servers**: Saved servers sidebar and Settings panel now display official provider SVG logos instead of generic letter/cloud icons
+- **Provider logos in session tabs**: S3/WebDAV connections show the specific provider logo (Cloudflare R2, Backblaze, etc.) instead of generic database/cloud icons
+- **Provider identity tracking**: `providerId` field added to ServerProfile and session data, preserving which preset was used across save/connect/tab lifecycle
+- **Documentation links**: All S3/WebDAV presets show a "Docs" link in the connection form header, linking to the provider's official setup guide
+- **Official provider logos**: Added SVG/PNG logos for Jianguoyun, InfiniCLOUD, Alibaba Cloud, Tencent Cloud, DriveHQ; updated IDrive e2 to official logo
+- **OAuth account email retrieval**: All OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud) now fetch and store the authenticated user's email after connection
+- **Password visibility toggle**: Eye icon on all password fields (FTP, S3, MEGA, Filen) to show/hide passwords in the connection form
+- **Settings > Cloud Provider**: Added Box and pCloud credential configuration sections (Client ID + Client Secret with OS Keyring storage)
+- **Settings > Server > Add Server**: Added Filen, Box, pCloud, and Azure Blob to the protocol dropdown
+- **Provider keep-alive**: Non-FTP providers (WebDAV, S3, SFTP, OAuth) now receive periodic keep-alive pings every 60 seconds to prevent server-side connection timeouts
+- **Session tab drag-to-reorder**: Drag and drop session tabs to rearrange connection order
+- **Saved server drag-to-reorder**: Drag and drop saved servers to rearrange with grip handle
+
+#### Fixed
+- **WebDAV directory detection (Koofr)**: Rewrote `<resourcetype>` XML parsing to search for "collection" keyword within the resourcetype block instead of pattern-matching specific tag formats. Fixes Koofr's non-standard `<D:collection xmlns:D="DAV:"/>` format and ensures compatibility with all WebDAV servers (Nextcloud, DriveHQ, ownCloud, etc.)
+- **WebDAV directory detection in cd/stat**: Applied the same robust collection detection to `cd()` and `stat()` methods, which still used the old fragile pattern matching
+- **WebDAV self-reference filtering**: Fixed root directory listing including itself as an entry due to empty string `ends_with` matching
+- **Koofr preset URL**: Corrected default WebDAV URL to `https://app.koofr.net/dav/Koofr` with proper base path `/dav/Koofr/`
+- **Jianguoyun preset URL**: Corrected default WebDAV URL to `https://dav.jianguoyun.com/dav` with proper base path `/dav/`
+- **Saved server click behavior**: Only clicking the server icon initiates a connection; the text area no longer triggers accidental connections. Icon has hover effect (scale + ring) to indicate it's a button
+- **Session tab names**: OAuth provider connections from saved servers now display the custom saved name instead of the generic provider name
+- **Edit server flow**: Saving an edited server now resets the form and returns to the saved servers list
+- **SettingsPanel missing colors**: Added gradient colors for Box, pCloud, Azure, Filen protocols (were falling back to gray)
+
+#### Changed
+- **Koofr**: Promoted from Beta to Stable after comprehensive WebDAV testing
+- **Jianguoyun**: Promoted from Beta to Stable
+- **InfiniCLOUD**: Promoted from Beta to Stable
+- **Cloudflare R2**: Promoted from Beta to Stable after successful testing
+- **Provider logos in connection form**: S3/WebDAV preset header now shows the official SVG logo (Cloudflare, Backblaze, etc.) instead of a generic cloud icon
+- **Saved server subtitles**: Unified display schema across sidebar and Settings panel
+  - S3: `bucket — Cloudflare R2` (auto-detected from endpoint)
+  - WebDAV: `user@host` (without `https://` prefix and port)
+  - OAuth: `OAuth2 — user@email.com` (or provider name as fallback)
+  - MEGA: `E2E AES-128 — user@email.com`
+  - Filen: `E2E AES-256 — user@email.com`
+
+---
+
 ## [1.5.0] - 2026-01-31
 
 ### 4 New Cloud Providers + FTP Security Defaults + UI Refresh

@@ -28,13 +28,9 @@ impl MegaProvider {
         }
     }
 
-    /// Helper to log to file for debugging
+    /// Debug logging through tracing infrastructure (no file I/O)
     fn log_debug(&self, msg: &str) {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/aeroftp-mega.log") {
-            let _ = writeln!(file, "{}", msg);
-        }
-        println!("{}", msg); // Keep stdout just in case
+        tracing::debug!(target: "mega", "{}", msg);
     }
 
     /// Helper to run mega-* commands

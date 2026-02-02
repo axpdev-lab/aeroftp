@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 use tokio::io::AsyncReadExt;
+use secrecy::{ExposeSecret, SecretString};
 
 #[allow(dead_code)]
 #[derive(Debug, Error)]
@@ -45,7 +46,7 @@ pub struct FtpManager {
     current_path: String,
     server: Option<String>,
     username: Option<String>,
-    password: Option<String>,  // Stored for auto-reconnect
+    password: Option<SecretString>,  // Stored for auto-reconnect, zeroized on drop
 }
 
 #[allow(dead_code)]
@@ -99,7 +100,7 @@ impl FtpManager {
             .map_err(|e| FtpManagerError::OperationFailed(format!("Login failed: {}", e)))?;
         
         self.username = Some(username.to_string());
-        self.password = Some(password.to_string());  // Store for auto-reconnect
+        self.password = Some(SecretString::from(password.to_string()));  // Store for auto-reconnect
         info!("Successfully logged in as {}", username);
         
         // Get current working directory after login
@@ -634,19 +635,20 @@ impl FtpManager {
             .ok_or(FtpManagerError::NotConnected)?;
         let username = self.username.clone()
             .ok_or(FtpManagerError::NotConnected)?;
-        let password = self.password.clone()
+        let password = self.password.as_ref()
             .ok_or(FtpManagerError::NotConnected)?;
-        
+        let password_exposed = password.expose_secret().to_string();
+
         info!("Attempting to reconnect to {}", server);
-        
+
         // Disconnect existing stream if any
         if self.stream.is_some() {
             let _ = self.disconnect().await;
         }
-        
+
         // Reconnect
         self.connect(&server).await?;
-        self.login(&username, &password).await?;
+        self.login(&username, &password_exposed).await?;
         
         info!("Successfully reconnected to {}", server);
         Ok(())

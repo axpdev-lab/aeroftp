@@ -7,7 +7,7 @@ use reqwest::Client;
 // Provider types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-pub enum ProviderType {
+pub enum AIProviderType {
     Google,
     OpenAI,
     Anthropic,
@@ -27,7 +27,7 @@ pub struct ChatMessage {
 // AI Request from frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIRequest {
-    pub provider_type: ProviderType,
+    pub provider_type: AIProviderType,
     pub model: String,
     pub api_key: Option<String>,
     pub base_url: String,
@@ -235,7 +235,7 @@ mod openai_compat {
         }
 
         // OpenRouter requires additional headers
-        if request.provider_type == ProviderType::OpenRouter {
+        if request.provider_type == AIProviderType::OpenRouter {
             headers.insert(
                 "HTTP-Referer",
                 "https://aeroftp.app".parse().unwrap(),
@@ -369,28 +369,28 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
     let client = Client::new();
 
     match request.provider_type {
-        ProviderType::Google => gemini::call(&client, &request).await,
-        ProviderType::OpenAI => openai_compat::call(&client, &request, "/chat/completions").await,
-        ProviderType::XAI => openai_compat::call(&client, &request, "/chat/completions").await,
-        ProviderType::OpenRouter => openai_compat::call(&client, &request, "/chat/completions").await,
-        ProviderType::Ollama => openai_compat::call(&client, &request, "/api/chat").await,
-        ProviderType::Anthropic => anthropic::call(&client, &request).await,
-        ProviderType::Custom => openai_compat::call(&client, &request, "/chat/completions").await,
+        AIProviderType::Google => gemini::call(&client, &request).await,
+        AIProviderType::OpenAI => openai_compat::call(&client, &request, "/chat/completions").await,
+        AIProviderType::XAI => openai_compat::call(&client, &request, "/chat/completions").await,
+        AIProviderType::OpenRouter => openai_compat::call(&client, &request, "/chat/completions").await,
+        AIProviderType::Ollama => openai_compat::call(&client, &request, "/api/chat").await,
+        AIProviderType::Anthropic => anthropic::call(&client, &request).await,
+        AIProviderType::Custom => openai_compat::call(&client, &request, "/chat/completions").await,
     }
 }
 
 // Test provider connection
-pub async fn test_provider(provider_type: ProviderType, base_url: String, api_key: Option<String>) -> Result<bool, AIError> {
+pub async fn test_provider(provider_type: AIProviderType, base_url: String, api_key: Option<String>) -> Result<bool, AIError> {
     let client = Client::new();
 
     match provider_type {
-        ProviderType::Ollama => {
+        AIProviderType::Ollama => {
             // Just check if Ollama is running
             let url = format!("{}/api/tags", base_url);
             let response = client.get(&url).send().await?;
             Ok(response.status().is_success())
         }
-        ProviderType::Google => {
+        AIProviderType::Google => {
             // List models endpoint
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
             let url = format!("{}/models?key={}", base_url, api_key);

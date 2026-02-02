@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 31 January 2026
-> Version: v1.5.0
+> Last Updated: 2 February 2026
+> Version: v1.5.3
 
 ---
 
@@ -76,7 +76,9 @@
 |---------|---------|-----------|-----------|--------|----------|----------|
 | Personal Cloud | Yes (AeroCloud) | No | No | No | No | No |
 | Background Sync | Yes (Tray) | No | No | No | No | No |
-| Folder Sync | Yes | Yes | No | Yes | Yes | Yes |
+| Folder Sync | Yes (all 13 protocols) | Yes | No | Yes | Yes | Yes |
+| Sync Index Cache | Yes | No | No | No | No | No |
+| Storage Quota | Yes (9 providers) | No | Yes | No | Yes | No |
 | Scripting | Planned | No | No | Yes | No | No |
 | Queue Management | Yes | Yes | Yes | Yes | Yes | Yes |
 
@@ -129,19 +131,21 @@
 | Feature | Description |
 |---------|-------------|
 | **AeroCloud** | Transform any FTP into personal cloud with bidirectional sync |
-| **13 Native Protocols** | FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Filen |
+| **13 Native Protocols + 30 Presets** | FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Filen |
 | **Filen E2E Support** | Only client besides Filen web app with native Filen E2E encryption support |
 | **Monaco Editor** | VS Code engine for remote file editing |
 | **AeroAgent AI** | AI assistant for commands and file analysis |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
 | **Tray Background Sync** | Continuous sync without main window |
+| **Sync Index Cache** | Persistent cache for faster re-scans and true conflict detection |
+| **Storage Quota Display** | Real-time used/total in status bar (9 providers) |
 | **AES-256-GCM Vault** | Argon2id + AES-256-GCM vault when keyring unavailable |
 | **Ephemeral OAuth Ports** | OS-assigned random port for callback |
 | **Memory Zeroization** | Passwords cleared from memory via zeroize/secrecy |
 | **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) |
 | **Workspace Export** | Auto-export Google Docs/Sheets/Slides to DOCX/XLSX/PPTX |
 | **Change Tracking** | Delta sync foundation via Google Drive changes API |
-| **Cross-Provider Search** | Remote search on all 13 providers |
+| **Cross-Provider Search** | Remote search on all 13 providers (30 connection options with presets) |
 | **File Versions** | Version history on Google Drive, Dropbox, OneDrive, Box, pCloud |
 
 ---
@@ -173,13 +177,23 @@
 - ErrorBoundary, modularized hooks architecture
 - 4 new native providers: Box, pCloud, Azure Blob, Filen (v1.5.0)
 - FTP default changed to opportunistic TLS (v1.5.0)
+- WebDAV directory detection fix for Koofr and other servers (v1.5.1)
+- Provider keep-alive pings for all non-FTP providers (v1.5.1)
+- Session tab and saved server drag-to-reorder (v1.5.1)
+- Provider logos in saved servers, session tabs, and connection forms (v1.5.1)
+- 4 new S3/WebDAV presets: Jianguoyun, InfiniCLOUD, Alibaba Cloud OSS, Tencent Cloud COS (v1.5.1)
+- WebDAV presets promoted to Stable: Koofr, Jianguoyun, InfiniCLOUD (v1.5.1)
+- Multi-protocol sync via StorageProvider trait (v1.5.2)
+- Sync index cache for faster re-scans and true conflict detection (v1.5.3)
+- Storage quota display in status bar for 9 providers (v1.5.3)
+- OAuth session switching with keyring fallback (v1.5.3)
+- FTP transfer retry with exponential backoff (v1.5.3)
 
 ### v1.6.0 - Planned
 - AeroAgent Pro (remote tools, streaming, context awareness)
 - CLI/Scripting foundation
 - AeroVault (encrypted virtual location)
-- S3 presets: Cloudflare R2, Backblaze B2, Storj, Wasabi, Oracle Cloud
-- WebDAV presets: Nextcloud, Koofr
+- Additional S3/WebDAV presets (Wasabi, Oracle Cloud, IDrive e2, DigitalOcean Spaces)
 
 ### v1.7.0 - Planned
 - AeroAgent streaming + native function calling
@@ -196,7 +210,7 @@
                     CLOUD INTEGRATION
                           |
          Cyberduck        |        AeroFTP
-                          |        (v1.5.0)
+                          |        (v1.5.3)
     ----------------------+----------------------> PRO FEATURES
          FileZilla        |
                           |

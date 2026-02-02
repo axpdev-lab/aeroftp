@@ -6,8 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, Pencil, X, Lock, ArrowLeft } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
+import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
@@ -75,6 +76,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Edit state
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
+    const [showPassword, setShowPassword] = useState(false);
 
     // Provider selection state (for S3/WebDAV)
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
@@ -127,6 +129,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
+                        providerId: selectedProviderId || s.providerId,
                     };
                 }
                 return s;
@@ -154,6 +157,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
                 options: optionsToSave,
+                providerId: selectedProviderId || undefined,
             };
             // Store password in secure credential store (never in localStorage)
             if (connectionParams.password) {
@@ -167,18 +171,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // Handle connect with optional save
-    // Handle connect with optional save
+    // Handle the main action button
     const handleConnectAndSave = () => {
         if (editingProfileId) {
-            // In edit mode, "Save Changes" just saves and exits edit mode
+            // Edit mode: save changes and reset form
             saveToServers();
             setEditingProfileId(null);
             setConnectionName('');
             setSaveConnection(false);
-            // Optionally clear form? Let's leave it as is so user can connect if they want
-        } else {
+            onConnectionParamsChange({ server: '', username: '', password: '' });
+            onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
+        } else if (saveConnection) {
+            // Save mode: only save, user connects from saved servers list
             saveToServers();
+            setConnectionName('');
+            setSaveConnection(false);
+            onConnectionParamsChange({ server: '', username: '', password: '' });
+            onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
+        } else {
+            // Connect mode: just connect without saving
             onConnect();
         }
     };
@@ -187,6 +198,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setEditingProfileId(profile.id);
         setConnectionName(profile.name);
         setSaveConnection(true); // Implied for editing
+        setSelectedProviderId(profile.providerId || null);
 
         // Load password from OS keyring if stored
         let password = profile.password || '';
@@ -277,6 +289,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             protocol: provider.protocol as ProviderType,
             server: provider.defaults?.server || '',
             port: provider.defaults?.port || getDefaultPort(provider.protocol as ProviderType),
+            providerId: provider.isGeneric ? undefined : provider.id,
             options: {
                 ...connectionParams.options,
                 pathStyle: provider.defaults?.pathStyle,
@@ -286,13 +299,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         onConnectionParamsChange(newParams);
     };
 
-    // Dynamic server placeholder based on protocol
+    // Dynamic server placeholder based on protocol and provider
     const getServerPlaceholder = () => {
+        if (selectedProvider) {
+            const serverField = selectedProvider.fields?.find(f => f.key === 'server');
+            if (serverField?.placeholder) return serverField.placeholder;
+            if (selectedProvider.defaults?.server) return selectedProvider.defaults.server.replace('https://', '');
+        }
         switch (protocol) {
             case 'webdav':
-                return 'cloud.example.com/remote.php/dav/files/user/';
+                return 'cloud.example.com';
             case 's3':
-                return 's3.amazonaws.com (or MinIO endpoint)';
+                return 's3.amazonaws.com';
             default:
                 return t('connection.serverPlaceholder');
         }
@@ -486,7 +504,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 rounded-xl mb-3">
                                         <div className="flex items-center gap-2">
                                             <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-lg flex items-center justify-center">
-                                                <Cloud size={16} style={{ color: selectedProvider.color }} />
+                                                {selectedProvider.id && PROVIDER_LOGOS[selectedProvider.id]
+                                                    ? React.createElement(PROVIDER_LOGOS[selectedProvider.id], { size: 20 })
+                                                    : <Cloud size={16} style={{ color: selectedProvider.color }} />
+                                                }
                                             </div>
                                             <div>
                                                 <span className="font-medium text-sm">{selectedProvider.name}</span>
@@ -495,12 +516,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 )}
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => setSelectedProviderId(null)}
-                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
-                                        >
-                                            {t('connection.change')}
-                                        </button>
+                                        <div className="flex items-center gap-3">
+                                            {selectedProvider.helpUrl && (
+                                                <a
+                                                    href={selectedProvider.helpUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
+                                                    title="Documentation"
+                                                >
+                                                    <ExternalLink size={12} />
+                                                    Docs
+                                                </a>
+                                            )}
+                                            <button
+                                                onClick={() => setSelectedProviderId(null)}
+                                                className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                                            >
+                                                {t('connection.change')}
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
@@ -526,13 +561,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">Password</label>
-                                            <input
-                                                type="password"
-                                                value={connectionParams.password}
-                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder="Filen account password"
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    placeholder="Filen account password"
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
@@ -643,13 +683,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">Password</label>
-                                            <input
-                                                type="password"
-                                                value={connectionParams.password}
-                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                placeholder={t('connection.megaPasswordPlaceholder')}
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    placeholder={t('connection.megaPasswordPlaceholder')}
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
@@ -775,6 +820,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Connecting...</>
+                                                ) : saveConnection ? (
+                                                    <><Save size={18} /> Save</>
                                                 ) : (
                                                     <><Cloud size={20} /> Secure Login</>
                                                 )}
@@ -811,13 +858,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{getPasswordLabel()}</label>
-                                            <input
-                                                type="password"
-                                                value={connectionParams.password}
-                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                                placeholder={t('connection.passwordPlaceholder')}
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                                    placeholder={t('connection.passwordPlaceholder')}
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* Protocol-specific fields */}
@@ -827,6 +879,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
                                             disabled={loading}
                                             onBrowseKeyFile={protocol === 'sftp' ? handleBrowseSshKey : undefined}
+                                            selectedProviderId={selectedProviderId}
+                                            isEditing={!!editingProfileId}
                                         />
 
                                         <div>
@@ -912,7 +966,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         Save Changes
                                                     </>
                                                 ) : (
-                                                    saveConnection ? 'Connect & Save' : t('common.connect')
+                                                    saveConnection ? <><Save size={18} /> Save</> : t('common.connect')
                                                 )}
                                             </button>
                                         </div>

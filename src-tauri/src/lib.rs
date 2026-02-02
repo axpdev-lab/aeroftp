@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tracing::{info, warn, error};
 use semver::Version;
 use reqwest::Client as HttpClient;
+use secrecy::{ExposeSecret, SecretString};
 
 mod ftp;
 mod sync;
@@ -20,12 +21,12 @@ mod providers;
 mod provider_commands;
 mod session_manager;
 mod session_commands;
+mod crypto;
 mod credential_store;
-#[cfg(unix)]
+mod profile_export;
 mod pty;
 
 use ftp::{FtpManager, RemoteFile};
-#[cfg(unix)]
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
@@ -2004,6 +2005,9 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
     use zip::ZipWriter;
     use walkdir::WalkDir;
 
+    // Wrap password in SecretString for zeroization on drop
+    let secret_password: Option<SecretString> = password.map(SecretString::from);
+
     let file = File::create(&output_path)
         .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
@@ -2020,8 +2024,8 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
                 .ok_or("Invalid file name")?
                 .to_string_lossy();
 
-            if let Some(ref pwd) = password {
-                zip.start_file(file_name.to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+            if let Some(ref pwd) = secret_password {
+                zip.start_file(file_name.to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
                     .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
             } else {
                 zip.start_file(file_name.to_string(), base_options)
@@ -2047,8 +2051,8 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
                     .map_err(|e| format!("Path error: {}", e))?;
 
                 if entry_path.is_file() {
-                    if let Some(ref pwd) = password {
-                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+                    if let Some(ref pwd) = secret_password {
+                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
                             .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
                     } else {
                         zip.start_file(relative_path.to_string_lossy().to_string(), base_options)
@@ -2065,8 +2069,8 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 
                 } else if entry_path.is_dir() && entry_path != path {
                     let dir_path = format!("{}/", relative_path.to_string_lossy());
-                    if let Some(ref pwd) = password {
-                        zip.add_directory(&dir_path, base_options.with_aes_encryption(zip::AesMode::Aes256, pwd))
+                    if let Some(ref pwd) = secret_password {
+                        zip.add_directory(&dir_path, base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
                             .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
                     } else {
                         zip.add_directory(&dir_path, base_options)
@@ -2088,6 +2092,9 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
     use std::fs::{self, File};
     use zip::ZipArchive;
+
+    // Wrap password in SecretString for zeroization on drop
+    let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path)
         .map_err(|e| format!("Failed to open archive: {}", e))?;
@@ -2113,8 +2120,8 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = if let Some(ref pwd) = password {
-            archive.by_index_decrypt(i, pwd.as_bytes())
+        let mut file = if let Some(ref pwd) = secret_password {
+            archive.by_index_decrypt(i, pwd.expose_secret().as_bytes())
                 .map_err(|e| format!("Failed to decrypt file from archive: {}", e))?
         } else {
             archive.by_index(i)
@@ -2157,6 +2164,9 @@ async fn compress_7z(
     use std::path::Path;
     use walkdir::WalkDir;
 
+    // Wrap password in SecretString for zeroization on drop
+    let secret_password: Option<SecretString> = password.map(SecretString::from);
+
     // Collect all files to compress
     let mut entries: Vec<(String, String)> = Vec::new(); // (archive_name, full_path)
 
@@ -2198,8 +2208,8 @@ async fn compress_7z(
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
     // Set compression and optional AES-256 encryption
-    if let Some(ref pwd) = password {
-        let aes_options = AesEncoderOptions::new(Password::from(pwd.as_str()));
+    if let Some(ref pwd) = secret_password {
+        let aes_options = AesEncoderOptions::new(Password::from(pwd.expose_secret()));
         sz.set_content_methods(vec![
             aes_options.into(),
             SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
@@ -2256,12 +2266,15 @@ async fn extract_7z(
     fs::create_dir_all(&final_output_dir)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
+    // Wrap password in SecretString for zeroization on drop
+    let secret_password: Option<SecretString> = password.map(SecretString::from);
+
     // Extract archive
-    if let Some(pwd) = password {
+    if let Some(ref pwd) = secret_password {
         decompress_file_with_password(
             &archive_path,
             &final_output_dir,
-            pwd.as_str().into(),
+            Password::from(pwd.expose_secret()),
         ).map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
     } else {
         decompress_file(&archive_path, &final_output_dir)
@@ -2489,8 +2502,11 @@ async fn extract_rar(
     std::fs::create_dir_all(&final_output)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
-    let archive = if let Some(ref pwd) = password {
-        unrar::Archive::with_password(&archive_path, pwd.as_bytes())
+    // Wrap password in SecretString for zeroization on drop
+    let secret_password: Option<SecretString> = password.map(SecretString::from);
+
+    let archive = if let Some(ref pwd) = secret_password {
+        unrar::Archive::with_password(&archive_path, pwd.expose_secret().as_bytes())
     } else {
         unrar::Archive::new(&archive_path)
     };
@@ -2683,44 +2699,65 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
 // ============ Sync Commands ============
 
 use sync::{
-    CompareOptions, FileComparison, FileInfo,
-    build_comparison_results, should_exclude,
+    CompareOptions, FileComparison, FileInfo, SyncIndex, SyncIndexEntry,
+    build_comparison_results, build_comparison_results_with_index, should_exclude,
+    load_sync_index, save_sync_index,
 };
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use std::collections::HashMap;
 
 #[tauri::command]
 async fn compare_directories(
+    app: AppHandle,
     state: State<'_, AppState>,
     local_path: String,
     remote_path: String,
     options: Option<CompareOptions>,
 ) -> Result<Vec<FileComparison>, String> {
     let options = options.unwrap_or_default();
-    
+
     info!("Comparing directories: local={}, remote={}", local_path, remote_path);
-    
+
+    // Emit scan phase: local
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "local",
+        "files_found": 0,
+    }));
+
     // Get local files
     let local_files = get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns)
         .await
         .map_err(|e| format!("Failed to scan local directory: {}", e))?;
-    
-    // Get remote files
+
+    // Emit scan phase: remote (with local count)
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "remote",
+        "files_found": local_files.len(),
+    }));
+
+    // Get remote files with progress
     let mut ftp_manager = state.ftp_manager.lock().await;
-    let remote_files = get_remote_files_recursive(&mut ftp_manager, &remote_path, &remote_path, &options.exclude_patterns)
+    let remote_files = get_remote_files_recursive_with_progress(&app, &mut ftp_manager, &remote_path, &remote_path, &options.exclude_patterns, local_files.len())
         .await
         .map_err(|e| format!("Failed to scan remote directory: {}", e))?;
-    
-    // Build comparison results
-    let results = build_comparison_results(local_files, remote_files, &options);
-    
-    info!("Comparison complete: {} differences found", results.len());
-    
+
+    // Emit scan phase: comparing
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "comparing",
+        "files_found": local_files.len() + remote_files.len(),
+    }));
+
+    // Load sync index if available for conflict detection
+    let index = load_sync_index(&local_path, &remote_path).ok().flatten();
+    let results = build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+
+    info!("Comparison complete: {} differences found (index: {})", results.len(), if index.is_some() { "used" } else { "none" });
+
     Ok(results)
 }
 
 /// Scan local directory iteratively and build file info map
-async fn get_local_files_recursive(
+pub async fn get_local_files_recursive(
     base_path: &str,
     _current_path: &str,
     exclude_patterns: &[String],
@@ -2870,7 +2907,85 @@ async fn get_remote_files_recursive(
     
     // Return to base path
     let _ = ftp_manager.change_dir(base_path).await;
-    
+
+    Ok(files)
+}
+
+/// Scan remote directory with progress events
+async fn get_remote_files_recursive_with_progress(
+    app: &AppHandle,
+    ftp_manager: &mut ftp::FtpManager,
+    base_path: &str,
+    _current_path: &str,
+    exclude_patterns: &[String],
+    local_count: usize,
+) -> Result<HashMap<String, FileInfo>, String> {
+    let mut files = HashMap::new();
+    let mut dirs_to_process = vec![base_path.to_string()];
+
+    while let Some(current_dir) = dirs_to_process.pop() {
+        if let Err(e) = ftp_manager.change_dir(&current_dir).await {
+            info!("Warning: Could not change to directory {}: {}", current_dir, e);
+            continue;
+        }
+
+        let entries = match ftp_manager.list_files().await {
+            Ok(e) => e,
+            Err(e) => {
+                info!("Warning: Could not list files in {}: {}", current_dir, e);
+                continue;
+            }
+        };
+
+        for entry in entries {
+            if entry.name == "." || entry.name == ".." {
+                continue;
+            }
+
+            let relative_path = if current_dir == base_path {
+                entry.name.clone()
+            } else {
+                let rel_dir = current_dir.strip_prefix(base_path).unwrap_or(&current_dir);
+                let rel_dir = rel_dir.trim_start_matches('/');
+                if rel_dir.is_empty() {
+                    entry.name.clone()
+                } else {
+                    format!("{}/{}", rel_dir, entry.name)
+                }
+            };
+
+            if should_exclude(&relative_path, exclude_patterns) {
+                continue;
+            }
+
+            let file_info = FileInfo {
+                name: entry.name.clone(),
+                path: format!("{}/{}", current_dir, entry.name),
+                size: entry.size.unwrap_or(0),
+                modified: entry.modified.and_then(|s| {
+                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
+                        .ok()
+                        .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+                }),
+                is_dir: entry.is_dir,
+                checksum: None,
+            };
+
+            files.insert(relative_path, file_info);
+
+            if entry.is_dir {
+                dirs_to_process.push(format!("{}/{}", current_dir, entry.name));
+            }
+        }
+
+        // Emit progress after each directory listing
+        let _ = app.emit("sync_scan_progress", serde_json::json!({
+            "phase": "remote",
+            "files_found": local_count + files.len(),
+        }));
+    }
+
+    let _ = ftp_manager.change_dir(base_path).await;
     Ok(files)
 }
 
@@ -2878,6 +2993,17 @@ async fn get_remote_files_recursive(
 fn get_compare_options_default() -> CompareOptions {
     CompareOptions::default()
 }
+
+#[tauri::command]
+fn load_sync_index_cmd(local_path: String, remote_path: String) -> Result<Option<SyncIndex>, String> {
+    load_sync_index(&local_path, &remote_path)
+}
+
+#[tauri::command]
+fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
+    save_sync_index(&index)
+}
+
 // ============ AI Commands ============
 
 #[tauri::command]
@@ -2889,7 +3015,7 @@ async fn ai_chat(request: ai::AIRequest) -> Result<ai::AIResponse, String> {
 
 #[tauri::command]
 async fn ai_test_provider(
-    provider_type: ai::ProviderType,
+    provider_type: ai::AIProviderType,
     base_url: String,
     api_key: Option<String>,
 ) -> Result<bool, String> {
@@ -3641,15 +3767,30 @@ async fn get_credential_status() -> Result<CredentialStatus, String> {
 
 #[tauri::command]
 async fn store_credential(account: String, password: String) -> Result<(), String> {
-    let store = get_credential_store()?;
-    store.store_and_track(&account, &password)
+    // Try credential store (probe-based)
+    if let Ok(store) = get_credential_store() {
+        return store.store_and_track(&account, &password)
+            .map_err(|e| format!("Failed to store credential: {}", e));
+    }
+    // Fallback: try direct keyring access without probe
+    let entry = keyring::Entry::new("aeroftp", &account)
+        .map_err(|e| format!("Keyring unavailable: {}", e))?;
+    entry.set_password(&password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
 #[tauri::command]
 async fn get_credential(account: String) -> Result<String, String> {
-    let store = get_credential_store()?;
-    store.get(&account)
+    // Try credential store (probe-based)
+    if let Ok(store) = get_credential_store() {
+        return store.get(&account)
+            .map_err(|e| format!("Failed to get credential: {}", e));
+    }
+    // Fallback: try direct keyring access without probe
+    // On Linux, gnome-keyring may reject probe but serve real credentials
+    let entry = keyring::Entry::new("aeroftp", &account)
+        .map_err(|e| format!("Keyring unavailable: {}", e))?;
+    entry.get_password()
         .map_err(|e| format!("Failed to get credential: {}", e))
 }
 
@@ -3709,6 +3850,64 @@ fn get_credential_store() -> Result<credential_store::CredentialStore, String> {
     Err("No credential store available. OS keyring not found and vault not configured.".to_string())
 }
 
+// ============ Profile Export/Import ============
+
+#[tauri::command]
+async fn export_server_profiles(
+    servers_json: String,
+    password: String,
+    include_credentials: bool,
+    file_path: String,
+) -> Result<profile_export::ExportMetadata, String> {
+    let mut servers: Vec<profile_export::ServerProfileExport> = serde_json::from_str(&servers_json)
+        .map_err(|e| format!("Invalid server data: {}", e))?;
+
+    // Fetch credentials from secure store if requested
+    if include_credentials {
+        if let Ok(store) = get_credential_store() {
+            for server in &mut servers {
+                if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
+                    server.credential = Some(cred);
+                }
+            }
+        }
+    }
+
+    profile_export::export_profiles(servers, &password, std::path::Path::new(&file_path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn import_server_profiles(
+    file_path: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    let (servers, metadata) = profile_export::import_profiles(std::path::Path::new(&file_path), &password)
+        .map_err(|e| e.to_string())?;
+
+    // Store credentials in secure store and strip from returned data
+    if let Ok(store) = get_credential_store() {
+        for server in &servers {
+            if let Some(ref cred) = server.credential {
+                let _ = store.store_and_track(&format!("server_{}", server.id), cred);
+            }
+        }
+    }
+
+    // Return servers without credentials + metadata
+    let result = serde_json::json!({
+        "servers": servers,
+        "metadata": metadata,
+    });
+    Ok(result)
+}
+
+#[tauri::command]
+async fn read_export_metadata(file_path: String) -> Result<profile_export::ExportMetadata, String> {
+    profile_export::read_metadata(std::path::Path::new(&file_path))
+        .map_err(|e| e.to_string())
+}
+
 // ============ App Entry Point ============
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3720,8 +3919,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
-        // TODO: Aptabase requires Tokio runtime - defer to v1.3.1
-        // .plugin(tauri_plugin_aptabase::Builder::new("A-EU-9382651799").build())
         .plugin(tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build())
@@ -3915,8 +4112,7 @@ pub fn run() {
         .manage(provider_commands::ProviderState::new())
         .manage(session_manager::MultiProviderState::new());
 
-    // Add PTY state only on Unix systems
-    #[cfg(unix)]
+    // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
 
     builder
@@ -3966,6 +4162,8 @@ pub fn run() {
             toggle_menu_bar,
             compare_directories,
             get_compare_options_default,
+            load_sync_index_cmd,
+            save_sync_index_cmd,
             // AeroCloud commands
             get_cloud_config,
             save_cloud_config_cmd,
@@ -3989,6 +4187,9 @@ pub fn run() {
             store_credential,
             get_credential,
             delete_credential,
+            export_server_profiles,
+            import_server_profiles,
+            read_export_metadata,
             setup_master_password,
             unlock_vault,
             migrate_plaintext_credentials,
@@ -4033,6 +4234,7 @@ pub fn run() {
             provider_commands::provider_create_share_link,
             provider_commands::provider_remove_share_link,
             provider_commands::provider_import_link,
+            provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,
             provider_commands::provider_disk_usage,
             provider_commands::provider_find,
@@ -4072,13 +4274,9 @@ pub fn run() {
             session_commands::session_download,
             session_commands::session_upload,
             session_commands::session_create_share_link,
-            #[cfg(unix)]
             spawn_shell,
-            #[cfg(unix)]
             pty_write,
-            #[cfg(unix)]
             pty_resize,
-            #[cfg(unix)]
             pty_close
         ])
         .run(tauri::generate_context!())

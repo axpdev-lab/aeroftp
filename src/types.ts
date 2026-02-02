@@ -38,12 +38,12 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'azure', 'filen'].includes(type);
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav'].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode
@@ -96,6 +96,7 @@ export interface ConnectionParams {
   port?: number;            // Default based on protocol
   options?: ProviderOptions;
   displayName?: string;     // Custom name for tab display
+  providerId?: string;      // Registry provider ID for logo display
 }
 
 export interface DownloadParams {
@@ -104,16 +105,6 @@ export interface DownloadParams {
 }
 
 export interface UploadParams {
-  local_path: string;
-  remote_path: string;
-}
-
-export interface DownloadFolderParams {
-  remote_path: string;
-  local_path: string;
-}
-
-export interface UploadFolderParams {
   local_path: string;
   remote_path: string;
 }
@@ -171,24 +162,8 @@ export interface ServerProfile {
   color?: string;
   lastConnected?: string;
   options?: ProviderOptions;  // Provider-specific options (S3 bucket, etc.)
+  providerId?: string;        // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
 }
-
-// App state
-export interface AppState {
-  isConnected: boolean;
-  isConnecting: boolean;
-  currentRemotePath: string;
-  currentLocalPath: string;
-  remoteFiles: RemoteFile[];
-  localFiles: LocalFile[];
-  selectedRemoteFiles: string[];
-  selectedLocalFiles: string[];
-  activeTransfer: TransferProgress | null;
-  error: string | null;
-}
-
-// Theme type
-export type Theme = 'light' | 'dark' | 'system';
 
 // Session status for multi-tab management
 export type SessionStatus = 'connected' | 'disconnected' | 'connecting' | 'cached';
@@ -205,6 +180,7 @@ export interface FtpSession {
   localFiles: LocalFile[];       // Cached local files
   lastActivity: Date;
   connectionParams: ConnectionParams;
+  providerId?: string;        // Registry provider ID for logo display
   // Per-session navigation sync state
   isSyncNavigation?: boolean;
   syncBasePaths?: { remote: string; local: string } | null;
@@ -265,8 +241,16 @@ export interface CompareOptions {
   direction: SyncDirection;
 }
 
-export interface SyncOperation {
-  comparison: FileComparison;
-  action: SyncAction;
-  selected: boolean;
+export interface SyncIndexEntry {
+  size: number;
+  modified: string | null;
+  is_dir: boolean;
+}
+
+export interface SyncIndex {
+  version: number;
+  last_sync: string;
+  local_path: string;
+  remote_path: string;
+  files: Record<string, SyncIndexEntry>;
 }

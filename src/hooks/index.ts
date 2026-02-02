@@ -18,16 +18,6 @@ export { useActivityLog, ActivityLogProvider } from './useActivityLog';
 export { useHumanizedLog } from './useHumanizedLog';
 export type { HumanizedLogParams, HumanizedOperationType } from './useHumanizedLog';
 
-// Analytics (privacy-first, opt-in only)
-export {
-  useAnalytics,
-  trackAppStarted,
-  trackConnectionSuccess,
-  trackTransferCompleted,
-  trackFeatureUsed,
-  Features
-} from './useAnalytics';
-
 // Modularized hooks (extracted from App.tsx)
 export { useSettings } from './useSettings';
 export { useAutoUpdate } from './useAutoUpdate';

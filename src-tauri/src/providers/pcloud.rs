@@ -109,6 +109,8 @@ pub struct PCloudProvider {
     client: reqwest::Client,
     connected: bool,
     current_path: String,
+    /// Authenticated user email
+    account_email: Option<String>,
 }
 
 impl PCloudProvider {
@@ -119,19 +121,22 @@ impl PCloudProvider {
             client: reqwest::Client::new(),
             connected: false,
             current_path: "/".to_string(),
+            account_email: None,
         }
     }
 
-    /// Get access token
-    async fn get_token(&self) -> Result<String, ProviderError> {
+    /// Get access token (SecretString for memory zeroization, exposed for API calls)
+    async fn get_token_str(&self) -> Result<String, ProviderError> {
+        use secrecy::ExposeSecret;
         let config = OAuthConfig::pcloud(&self.config.client_id, &self.config.client_secret);
-        self.oauth_manager.get_valid_token(&config).await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e)))
+        let secret = self.oauth_manager.get_valid_token(&config).await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e)))?;
+        Ok(secret.expose_secret().to_string())
     }
 
     /// Build API URL with auth token
     async fn api_url(&self, method: &str) -> Result<String, ProviderError> {
-        let token = self.get_token().await?;
+        let token = self.get_token_str().await?;
         Ok(format!("{}/{}?access_token={}", self.config.api_base(), method, token))
     }
 
@@ -204,6 +209,8 @@ impl StorageProvider for PCloudProvider {
         format!("pCloud ({})", self.config.region.to_uppercase())
     }
 
+    fn account_email(&self) -> Option<String> { self.account_email.clone() }
+
     fn is_connected(&self) -> bool { self.connected }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -213,6 +220,13 @@ impl StorageProvider for PCloudProvider {
 
         if !resp.status().is_success() {
             return Err(ProviderError::AuthenticationFailed("pCloud authentication failed".to_string()));
+        }
+
+        // Parse email from userinfo
+        if let Ok(body) = resp.json::<serde_json::Value>().await {
+            if let Some(email) = body["email"].as_str() {
+                self.account_email = Some(email.to_string());
+            }
         }
 
         self.connected = true;
@@ -230,7 +244,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/listfolder?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -271,7 +285,7 @@ impl StorageProvider for PCloudProvider {
         // Verify folder exists
         let url = format!("{}/listfolder?access_token={}&path={}&nofiles=1",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&new_path));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -301,7 +315,7 @@ impl StorageProvider for PCloudProvider {
 
     async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
-        let token = self.get_token().await?;
+        let token = self.get_token_str().await?;
 
         // Step 1: Get download link
         let url = format!("{}/getfilelink?access_token={}&path={}",
@@ -340,7 +354,7 @@ impl StorageProvider for PCloudProvider {
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let resolved = self.resolve_path(remote_path);
-        let token = self.get_token().await?;
+        let token = self.get_token_str().await?;
 
         // Step 1: Get download link
         let url = format!("{}/getfilelink?access_token={}&path={}",
@@ -381,7 +395,7 @@ impl StorageProvider for PCloudProvider {
             _ => ("/", resolved.trim_start_matches('/')),
         };
 
-        let token = self.get_token().await?;
+        let token = self.get_token_str().await?;
         let data = tokio::fs::read(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
 
@@ -409,7 +423,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/createfolder?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -425,7 +439,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/deletefile?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -441,7 +455,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/deletefolderrecursive?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -464,7 +478,7 @@ impl StorageProvider for PCloudProvider {
         // Try file rename first
         let url = format!("{}/renamefile?access_token={}&path={}&topath={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
@@ -480,7 +494,7 @@ impl StorageProvider for PCloudProvider {
         // Try folder rename
         let url = format!("{}/renamefolder?access_token={}&path={}&topath={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
@@ -497,7 +511,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/stat?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -564,7 +578,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/getfilepublink?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudPubLink = self.client.get(&url).send().await
@@ -584,7 +598,7 @@ impl StorageProvider for PCloudProvider {
         // Try file first, then folder
         let url = format!("{}/deletepublink?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -597,7 +611,7 @@ impl StorageProvider for PCloudProvider {
         // Try folder variant
         let url = format!("{}/deletepublink?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await
@@ -618,7 +632,7 @@ impl StorageProvider for PCloudProvider {
         // Try copyfile first
         let url = format!("{}/copyfile?access_token={}&path={}&topath={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
@@ -632,7 +646,7 @@ impl StorageProvider for PCloudProvider {
         // Try copyfolder
         let url = format!("{}/copyfolder?access_token={}&path={}&topath={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
@@ -651,7 +665,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/getthumblink?access_token={}&path={}&size=256x256",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudThumbLink = self.client.get(&url).send().await
@@ -687,7 +701,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/listrevisions?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudRevisions = self.client.get(&url).send().await
@@ -716,7 +730,7 @@ impl StorageProvider for PCloudProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let token = self.get_token().await?;
+        let token = self.get_token_str().await?;
 
         // Get download link for specific revision
         let url = format!("{}/getfilelink?access_token={}&path={}&revisionid={}",
@@ -757,7 +771,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}/checksumfile?access_token={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         #[derive(Debug, Deserialize)]
@@ -795,7 +809,7 @@ impl StorageProvider for PCloudProvider {
         // pCloud's downloadfile tells the server to fetch a URL and save it
         let api_url = format!("{}/downloadfile?access_token={}&url={}&path={}",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(url),
             urlencoding::encode(&resolved));
 
@@ -818,7 +832,7 @@ impl StorageProvider for PCloudProvider {
         // Use recursive listfolder and filter client-side
         let url = format!("{}/listfolder?access_token={}&path={}&recursive=1",
             self.config.api_base(),
-            self.get_token().await?,
+            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         let resp: PCloudResponse = self.client.get(&url).send().await

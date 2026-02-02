@@ -1,7 +1,8 @@
 import * as React from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider } from '../types';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo } from './ProviderLogos';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, PROVIDER_LOGOS } from './ProviderLogos';
 
 interface CloudTabState {
     enabled: boolean;
@@ -19,6 +20,8 @@ interface SessionTabsProps {
     // Cloud tab props
     cloudTab?: CloudTabState;
     onCloudTabClick?: () => void;
+    // Tab reorder
+    onReorder?: (sessions: FtpSession[]) => void;
 }
 
 const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string; title: string }> = {
@@ -34,13 +37,15 @@ const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
 };
 
 // Provider-specific icons with status awareness
-const ProviderIcon: React.FC<{ 
-    protocol: ProviderType | undefined; 
-    size?: number; 
+const ProviderIcon: React.FC<{
+    protocol: ProviderType | undefined;
+    providerId?: string;
+    size?: number;
     className?: string;
     isConnected?: boolean;
 }> = ({
     protocol,
+    providerId,
     size = 14,
     className = '',
     isConnected = true
@@ -48,7 +53,13 @@ const ProviderIcon: React.FC<{
     // Apply opacity for disconnected state
     const opacityClass = isConnected ? '' : 'opacity-50';
     const combinedClass = `${className} ${opacityClass}`.trim();
-    
+
+    // Check for provider-specific logo first (S3/WebDAV presets)
+    if (providerId) {
+        const LogoComponent = PROVIDER_LOGOS[providerId];
+        if (LogoComponent) return <span className={opacityClass}><LogoComponent size={size} /></span>;
+    }
+
     switch (protocol) {
         case 'googledrive':
             return (
@@ -76,10 +87,8 @@ const ProviderIcon: React.FC<{
                 </svg>
             );
         case 'webdav':
-            // WebDAV - Cloud icon orange (like ProtocolSelector)
             return <Cloud size={size} className={`${combinedClass} text-orange-500`} />;
         case 's3':
-            // S3 bucket icon - orange/amber database style
             return <Database size={size} className={`${combinedClass} text-amber-600`} />;
         case 'mega':
             return <MegaLogo size={size} />;
@@ -92,13 +101,10 @@ const ProviderIcon: React.FC<{
         case 'filen':
             return <FilenLogo size={size} />;
         case 'sftp':
-            // SFTP - Lock icon green (secure SSH file transfer)
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
-            // FTPS - Shield icon green (FTP over TLS/SSL)
             return <ShieldCheck size={size} className={`${combinedClass} text-green-500`} />;
         default:
-            // FTP - standard green wifi
             return <Wifi size={size} className={combinedClass} />;
     }
 };
@@ -130,8 +136,47 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     onNewTab,
     cloudTab,
     onCloudTabClick,
+    onReorder,
 }) => {
     const showTabs = sessions.length > 0 || (cloudTab?.enabled);
+
+    // Drag-to-reorder state
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const [overIdx, setOverIdx] = useState<number | null>(null);
+    const dragNodeRef = useRef<HTMLDivElement | null>(null);
+
+    const handleTabDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        setDragIdx(idx);
+        dragNodeRef.current = e.currentTarget;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('application/x-session-tab', String(idx));
+        requestAnimationFrame(() => {
+            if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4';
+        });
+    }, []);
+
+    const handleTabDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragIdx === null || idx === dragIdx) return;
+        setOverIdx(idx);
+    }, [dragIdx]);
+
+    const handleTabDrop = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        if (dragIdx === null || dragIdx === idx || !onReorder) return;
+        const reordered = [...sessions];
+        const [moved] = reordered.splice(dragIdx, 1);
+        reordered.splice(idx, 0, moved);
+        onReorder(reordered);
+    }, [dragIdx, sessions, onReorder]);
+
+    const handleTabDragEnd = useCallback(() => {
+        if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
+        dragNodeRef.current = null;
+        setDragIdx(null);
+        setOverIdx(null);
+    }, []);
 
     if (!showTabs) return null;
 
@@ -182,21 +227,27 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
             )}
 
             {/* Session Tabs with Provider Icons */}
-            {sessions.map((session) => {
+            {sessions.map((session, idx) => {
                 const isActive = session.id === activeSessionId;
                 const protocol = session.connectionParams?.protocol;
                 const isProvider = isProviderProtocol(protocol);
                 const isOAuth = protocol && isOAuthProvider(protocol);
                 const isConnected = session.status === 'connected';
                 const status = statusConfig[session.status];
+                const isDragTarget = overIdx === idx && dragIdx !== null && dragIdx !== idx;
 
                 return (
                     <div
                         key={session.id}
+                        draggable={!!onReorder}
+                        onDragStart={(e) => handleTabDragStart(e, idx)}
+                        onDragOver={(e) => handleTabDragOver(e, idx)}
+                        onDrop={(e) => handleTabDrop(e, idx)}
+                        onDragEnd={handleTabDragEnd}
                         className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[200px] ${isActive
                             ? 'bg-white dark:bg-gray-700 shadow-sm'
                             : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
-                            }`}
+                            } ${dragIdx === idx ? 'scale-95' : ''} ${isDragTarget ? 'border-l-2 border-blue-500' : ''}`}
                         onClick={() => onTabClick(session.id)}
                     >
                         {/* Status/Provider indicator */}
@@ -207,7 +258,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                             {session.status === 'connecting' ? (
                                 <Loader2 size={14} className="animate-spin" />
                             ) : isProvider ? (
-                                <ProviderIcon protocol={protocol} size={14} isConnected={isConnected} />
+                                <ProviderIcon protocol={protocol} providerId={session.providerId} size={14} isConnected={isConnected} />
                             ) : (
                                 isConnected ? <Wifi size={14} /> : <WifiOff size={14} />
                             )}

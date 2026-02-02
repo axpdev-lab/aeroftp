@@ -4,7 +4,7 @@
 //! the StorageProvider abstraction, enabling support for FTP, WebDAV, S3, etc.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -764,12 +764,19 @@ pub async fn oauth2_complete_auth(
     Ok("Authentication successful".to_string())
 }
 
+/// OAuth2 connection result with display name and account email
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuth2ConnectResult {
+    pub display_name: String,
+    pub account_email: Option<String>,
+}
+
 /// Connect to an OAuth2-based cloud provider (after authentication)
 #[tauri::command]
 pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
     params: OAuthConnectionParams,
-) -> Result<String, String> {
+) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
                           google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
                           onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig};
@@ -823,13 +830,14 @@ pub async fn oauth2_connect(
     };
     
     let display_name = provider.display_name();
-    
+    let account_email = provider.account_email();
+
     // Store provider
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(provider);
-    
-    info!("Connected to {}", display_name);
-    Ok(display_name)
+
+    info!("Connected to {} ({})", display_name, account_email.as_deref().unwrap_or("no email"));
+    Ok(OAuth2ConnectResult { display_name, account_email })
 }
 
 /// Full OAuth2 authentication flow - starts server, opens browser, waits for callback, completes auth
@@ -841,9 +849,10 @@ pub async fn oauth2_full_auth(
 
     info!("Starting full OAuth2 flow for {}", params.provider);
 
-    // Box requires exact redirect_uri matching, so use a fixed port
+    // Some providers require exact redirect_uri matching, so use a fixed port
     let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
         "box" => 9484,
+        "dropbox" => 17548,
         _ => 0,
     };
 
@@ -1324,4 +1333,132 @@ pub async fn provider_remove_permission(
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     provider.remove_permission(&path, &target).await
         .map_err(|e| format!("Remove permission failed: {}", e))
+}
+
+/// Compare local and remote directories using the StorageProvider trait.
+/// Works with all protocols (SFTP, WebDAV, S3, Google Drive, etc.)
+#[tauri::command]
+pub async fn provider_compare_directories(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    local_path: String,
+    remote_path: String,
+    options: Option<crate::sync::CompareOptions>,
+) -> Result<Vec<crate::sync::FileComparison>, String> {
+    use std::collections::HashMap;
+    use crate::sync::{FileInfo, should_exclude, build_comparison_results_with_index, load_sync_index};
+
+    let options = options.unwrap_or_default();
+
+    info!("Provider compare: local={}, remote={}", local_path, remote_path);
+
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "local", "files_found": 0,
+    }));
+
+    // Get local files (reuse the same logic from lib.rs)
+    let local_files = crate::get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns)
+        .await
+        .map_err(|e| format!("Failed to scan local directory: {}", e))?;
+
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "remote", "files_found": local_files.len(),
+    }));
+
+    // Get remote files via provider - lock/unlock per directory to avoid blocking other operations
+    let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
+    let mut dirs_to_process = vec![remote_path.clone()];
+
+    // First check we're connected
+    {
+        let provider_lock = state.provider.lock().await;
+        if provider_lock.is_none() {
+            return Err("Not connected to any provider".to_string());
+        }
+    }
+
+    while let Some(current_dir) = dirs_to_process.pop() {
+        // Lock provider only for this single list operation, then release
+        let entries = {
+            let mut provider_lock = state.provider.lock().await;
+            let provider = provider_lock.as_mut()
+                .ok_or("Not connected to any provider")?;
+            provider.list(&current_dir).await
+                .map_err(|e| format!("Failed to list {}: {}", current_dir, e))?
+        };
+
+        for entry in entries {
+            if entry.name == "." || entry.name == ".." {
+                continue;
+            }
+
+            let relative_path = if current_dir == remote_path {
+                entry.name.clone()
+            } else {
+                let rel_dir = current_dir.strip_prefix(&remote_path).unwrap_or(&current_dir);
+                let rel_dir = rel_dir.trim_start_matches('/');
+                if rel_dir.is_empty() {
+                    entry.name.clone()
+                } else {
+                    format!("{}/{}", rel_dir, entry.name)
+                }
+            };
+
+            if should_exclude(&relative_path, &options.exclude_patterns) {
+                continue;
+            }
+
+            let modified = entry.modified.and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .ok()
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
+                            .ok()
+                            .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+                    })
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                            .ok()
+                            .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+                    })
+            });
+
+            let file_info = FileInfo {
+                name: entry.name.clone(),
+                path: entry.path.clone(),
+                size: entry.size,
+                modified,
+                is_dir: entry.is_dir,
+                checksum: None,
+            };
+
+            remote_files.insert(relative_path, file_info);
+
+            if entry.is_dir {
+                let sub_path = if current_dir.ends_with('/') {
+                    format!("{}{}", current_dir, entry.name)
+                } else {
+                    format!("{}/{}", current_dir, entry.name)
+                };
+                dirs_to_process.push(sub_path);
+            }
+        }
+
+        let _ = app.emit("sync_scan_progress", serde_json::json!({
+            "phase": "remote",
+            "files_found": local_files.len() + remote_files.len(),
+        }));
+    }
+
+    let _ = app.emit("sync_scan_progress", serde_json::json!({
+        "phase": "comparing",
+        "files_found": local_files.len() + remote_files.len(),
+    }));
+
+    let index = load_sync_index(&local_path, &remote_path).ok().flatten();
+    let results = build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    info!("Provider compare complete: {} differences found (index: {})", results.len(), if index.is_some() { "used" } else { "none" });
+
+    Ok(results)
 }

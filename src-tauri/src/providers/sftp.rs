@@ -189,7 +189,9 @@ impl SftpProvider {
         tracing::info!("SFTP: Loading private key from {}", expanded_path);
 
         // Load and parse the key using russh's built-in key loading
-        let key_pair = keys::load_secret_key(&expanded_path, self.config.key_passphrase.as_deref())
+        use secrecy::ExposeSecret;
+        let passphrase_str = self.config.key_passphrase.as_ref().map(|s| s.expose_secret().to_string());
+        let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
             .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
 
         // Wrap in PrivateKeyWithHashAlg (required by russh 0.54+)
@@ -263,7 +265,8 @@ impl StorageProvider for SftpProvider {
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
             // Password authentication
-            let result = handle.authenticate_password(&self.config.username, password).await
+            use secrecy::ExposeSecret;
+            let result = handle.authenticate_password(&self.config.username, password.expose_secret()).await
                 .map_err(|e| ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e)))?;
             matches!(result, AuthResult::Success)
         } else {
@@ -806,7 +809,7 @@ mod tests {
             host: "example.com".to_string(),
             port: 22,
             username: "testuser".to_string(),
-            password: Some("testpass".to_string()),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
             private_key_path: None,
             key_passphrase: None,
             initial_path: None,

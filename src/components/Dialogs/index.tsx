@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Link2, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff } from 'lucide-react';
 
 // ============ Helper Functions ============
 const formatBytes = (bytes: number | null): string => {

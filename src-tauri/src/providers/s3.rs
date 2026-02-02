@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use log::{debug, info};
+use tracing::{debug, info};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
 

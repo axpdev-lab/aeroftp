@@ -105,7 +105,8 @@
             "megaPasswordPlaceholder": "Your MEGA password",
             "dismiss": "Dismiss",
             "authenticating": "Authenticating...",
-            "oauth2Connection": "OAuth2 Connection"
+            "oauth2Connection": "OAuth2 Connection",
+            "credentialLoadFailed": "[NEEDS TRANSLATION] Could not load saved password. OS keyring may be locked. Please re-enter your password."
         },
         "browser": {
             "remote": "Zdalny",
@@ -245,7 +246,24 @@
             "securityLocal": "Hasła są przechowywane lokalnie na Twoim urządzeniu",
             "securityOAuth": "Tokeny OAuth używają bezpiecznego przechowywania plików",
             "securityNoSend": "Dane uwierzytelniające nigdy nie są wysyłane na zewnętrzne serwery",
-            "securityTLS": "Wszystkie połączenia używają szyfrowania, gdy jest dostępne"
+            "securityTLS": "Wszystkie połączenia używają szyfrowania, gdy jest dostępne",
+            "exportImport": "Eksport / Import",
+            "exportServers": "Eksportuj serwery",
+            "importServers": "Importuj serwery",
+            "exportDescription": "Zapisz {count} serwerów w zaszyfrowanym pliku",
+            "importDescription": "Przywróć z pliku kopii zapasowej .aeroftp",
+            "includeCredentials": "Dołącz zapisane dane uwierzytelniające",
+            "includeCredentialsHint": "Hasła i klucze API zostaną zaszyfrowane w pliku",
+            "encryptionPassword": "Hasło szyfrowania (min. 8 znaków)",
+            "confirmPassword": "Potwierdź hasło",
+            "decryptionPassword": "Hasło deszyfrowania",
+            "passwordMismatch": "Hasła nie są zgodne",
+            "passwordTooShort": "Hasło musi mieć co najmniej 8 znaków",
+            "passwordRequired": "Hasło jest wymagane",
+            "exporting": "Eksportowanie...",
+            "importing": "Importowanie...",
+            "exportSuccess": "Pomyślnie wyeksportowano {count} serwerów",
+            "importSuccess": "Pomyślnie zaimportowano {count} nowych serwerów"
         },
         "devtools": {
             "title": "Narzędzia deweloperskie",
@@ -261,7 +279,9 @@
             "syntaxHighlighting": "Podświetlanie składni",
             "wordWrap": "Zawijanie wierszy",
             "lineNumbers": "Numery linii",
-            "minimap": "Minimapa"
+            "minimap": "Minimapa",
+            "duplicatesSkipped": "[NEEDS TRANSLATION] duplicates skipped",
+            "invalidPassword": "Nieprawidłowe hasło"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -603,6 +623,63 @@
         "locking": {
             "lock": "[NEEDS TRANSLATION] Lock File",
             "unlock": "[NEEDS TRANSLATION] Unlock File"
+        },
+        "syncPanel": {
+            "title": "[NEEDS TRANSLATION] Synchronize Files",
+            "local": "[NEEDS TRANSLATION] Local",
+            "remote": "[NEEDS TRANSLATION] Remote",
+            "direction": "[NEEDS TRANSLATION] Direction",
+            "dirRemoteToLocal": "[NEEDS TRANSLATION] Remote → Local",
+            "dirLocalToRemote": "[NEEDS TRANSLATION] Local → Remote",
+            "dirBoth": "[NEEDS TRANSLATION] Both",
+            "descRemoteToLocal": "[NEEDS TRANSLATION] Checks which remote files are newer and downloads them to the local folder.",
+            "descLocalToRemote": "[NEEDS TRANSLATION] Checks which local files are newer and uploads them to the remote server.",
+            "descBidirectional": "[NEEDS TRANSLATION] Checks differences in both directions: downloads newer remote files and uploads newer local files.",
+            "timestamp": "[NEEDS TRANSLATION] Timestamp",
+            "size": "[NEEDS TRANSLATION] Size",
+            "checksum": "[NEEDS TRANSLATION] Checksum (slow)",
+            "comparing": "[NEEDS TRANSLATION] Comparing",
+            "compareNow": "[NEEDS TRANSLATION] Compare Now",
+            "scanning": "[NEEDS TRANSLATION] Scanning directories",
+            "clickCompare": "[NEEDS TRANSLATION] Click \"Compare Now\" to scan for differences",
+            "notConnected": "[NEEDS TRANSLATION] Not connected to server",
+            "colStatus": "[NEEDS TRANSLATION] Status",
+            "colFile": "[NEEDS TRANSLATION] File",
+            "colLocal": "[NEEDS TRANSLATION] Local",
+            "colRemote": "[NEEDS TRANSLATION] Remote",
+            "statusIdentical": "[NEEDS TRANSLATION] Identical",
+            "statusUpload": "[NEEDS TRANSLATION] Upload",
+            "statusDownload": "[NEEDS TRANSLATION] Download",
+            "statusNewLocal": "[NEEDS TRANSLATION] New Local",
+            "statusNewRemote": "[NEEDS TRANSLATION] New Remote",
+            "statusConflict": "[NEEDS TRANSLATION] Conflict",
+            "statusSizeDiffers": "[NEEDS TRANSLATION] Size Differs",
+            "syncing": "[NEEDS TRANSLATION] Syncing",
+            "syncComplete": "[NEEDS TRANSLATION] Synchronization complete",
+            "filesSelected": "[NEEDS TRANSLATION] files selected",
+            "reset": "[NEEDS TRANSLATION] Reset",
+            "deselect": "[NEEDS TRANSLATION] Deselect",
+            "selectAll": "[NEEDS TRANSLATION] Select All",
+            "close": "[NEEDS TRANSLATION] Close",
+            "synchronize": "[NEEDS TRANSLATION] Synchronize",
+            "reportSuccess": "[NEEDS TRANSLATION] Synchronization completed successfully",
+            "reportPartial": "[NEEDS TRANSLATION] Synchronization completed with errors",
+            "reportUploaded": "[NEEDS TRANSLATION] Uploaded",
+            "reportDownloaded": "[NEEDS TRANSLATION] Downloaded",
+            "reportSkipped": "[NEEDS TRANSLATION] Skipped",
+            "reportErrors": "[NEEDS TRANSLATION] Errors",
+            "reportTransferred": "[NEEDS TRANSLATION] Transferred",
+            "reportDuration": "[NEEDS TRANSLATION] Duration",
+            "cancel": "[NEEDS TRANSLATION] Cancel",
+            "filesFound": "[NEEDS TRANSLATION] files found",
+            "scanPhase": {
+                "local": "[NEEDS TRANSLATION] Scanning local files",
+                "remote": "[NEEDS TRANSLATION] Scanning remote files",
+                "comparing": "[NEEDS TRANSLATION] Comparing files"
+            },
+            "reportDirsCreated": "[NEEDS TRANSLATION] Folders created",
+            "indexAvailable": "[NEEDS TRANSLATION] Index cached",
+            "indexAvailableTooltip": "[NEEDS TRANSLATION] A sync index from a previous sync is available — conflict detection is enhanced"
         }
     }
 }

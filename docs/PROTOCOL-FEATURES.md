@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 31 January 2026
-> Version: v1.5.0 (4 New Cloud Providers + FTP Security Defaults)
+> Last Updated: 2 February 2026
+> Version: v1.5.3 (Sync Index Cache + Storage Quota + FTP Retry)
 
 ---
 
@@ -136,6 +136,71 @@
 
 ---
 
+## Directory Sync (v1.5.2)
+
+Bidirectional directory synchronization compares local and remote files by timestamp and size, then uploads/downloads as needed.
+
+### Sync Support by Protocol
+
+| Protocol | Compare | Upload | Download | Progress | Notes |
+|----------|---------|--------|----------|----------|-------|
+| **FTP** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
+| **FTPS** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
+| **SFTP** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **WebDAV** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **S3** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Google Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Dropbox** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **OneDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **MEGA** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Box** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **pCloud** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Azure Blob** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Filen** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+
+### Sync Modes
+- **Remote → Local**: Download newer remote files
+- **Local → Remote**: Upload newer local files
+- **Bidirectional**: Sync in both directions (default)
+
+### Comparison Options
+- Timestamp comparison (2-second tolerance for filesystem differences)
+- File size comparison
+- Configurable exclude patterns (`node_modules`, `.git`, `.DS_Store`, etc.)
+
+### Sync Index Cache (v1.5.3)
+Persistent JSON index stored at `~/.config/aeroftp/sync-index/` enables:
+- **True conflict detection**: Both sides changed since last sync → Conflict status
+- **Faster re-scans**: Unchanged files detected via cached size/mtime without full comparison
+- **Per-path-pair storage**: Stable filename generated from hash of local+remote path pair
+- **Auto-save after sync**: Index updated with final file states after successful sync
+
+### FTP Transfer Retry (v1.5.3)
+- Automatic retry with exponential backoff (3 attempts, 500ms base delay)
+- Targets "Data connection" errors specifically
+- FTP-only (cloud providers handle retries internally)
+- Inter-transfer delay increased to 350ms for server stability
+
+---
+
+## Provider Keep-Alive (v1.5.1)
+
+All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
+
+---
+
+## WebDAV Presets (v1.5.1)
+
+| Preset | Status | Notes |
+|--------|--------|-------|
+| **Koofr** | Stable | EU-based, 10 GB free |
+| **Jianguoyun** | Stable | China-based WebDAV |
+| **InfiniCLOUD** | Stable | Japan-based, 20 GB free |
+| **Nextcloud** | Beta | Self-hosted WebDAV |
+| **ownCloud** | Beta | Self-hosted WebDAV |
+
+---
+
 ## New Cloud Providers (v1.5.0)
 
 ### Box (Beta)
@@ -202,12 +267,14 @@
 | v1.4.0 | Cross-provider search/quota/versions/thumbnails/permissions/locking, S3 multipart, FTP resume + MLSD, dep upgrades | Done |
 | v1.4.1 | AI API keys → OS Keyring, ZIP/7z password dialog, ErrorBoundary, hook extractions, dead code cleanup | Done |
 | v1.5.0 | 4 new providers (Box, pCloud, Azure, Filen), FTP TLS default, S3/WebDAV stable badges | Done |
+| v1.5.1 | WebDAV directory fix, provider keep-alive, drag-to-reorder tabs/servers, 4 new presets (30 total), provider logos | Done |
+| v1.5.2 | Multi-protocol sync, codebase audit, credential fix, SEC-001/SEC-004 fixes | Done |
+| v1.5.3 | Sync index cache, storage quota display, OAuth session switching fix, FTP retry with backoff | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v1.5.1 | Testing + stabilization of 4 new providers |
 | v1.6.0 | AeroAgent Pro, CLI/Scripting, AeroVault, oauth2 v5 |
 | v1.7.0 | AeroAgent Intelligence, Terminal Pro |
 | v1.8.0 | Cryptomator Import/Export |

@@ -47,7 +47,7 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, Unlock, Server, XCircle, History, Users
+  Lock, Unlock, Server, XCircle, History, Users, FolderSync
 } from 'lucide-react';
 
 // Utilities
@@ -62,6 +62,7 @@ import { SortableHeader, SortField, SortOrder } from './components/SortableHeade
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
@@ -458,18 +459,20 @@ const App: React.FC = () => {
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
 
-  // Fetch storage quota when connected to providers that support it
-  useEffect(() => {
-    const supportsQuota = isConnected && connectionParams.protocol &&
-      supportsStorageQuota(connectionParams.protocol);
-    if (supportsQuota) {
-      invoke<{ used: number; total: number; free: number }>('provider_storage_info')
-        .then(info => setStorageQuota(info))
-        .catch(() => setStorageQuota(null));
+  // Fetch storage quota for a given protocol (call after successful connection/reconnection)
+  const fetchStorageQuota = async (protocol?: string) => {
+    if (protocol && supportsStorageQuota(protocol as ProviderType)) {
+      try {
+        const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
+        setStorageQuota(info);
+      } catch (e) {
+        console.warn('[StorageQuota] Failed to fetch:', e);
+        setStorageQuota(null);
+      }
     } else {
       setStorageQuota(null);
     }
-  }, [isConnected, connectionParams.protocol]);
+  };
 
   // Check provider capabilities when connected
   useEffect(() => {
@@ -481,29 +484,35 @@ const App: React.FC = () => {
     }
   }, [isConnected, connectionParams.protocol]);
 
-  // FTP Keep-Alive: Send NOOP every 60 seconds to prevent connection timeout
-  // Skip for OAuth providers as they don't need keep-alive
+  // Keep-Alive: Send periodic pings to prevent connection timeout
+  // FTP uses NOOP, providers use provider_keep_alive
   useEffect(() => {
     if (!isConnected) return;
 
-    // Skip keep-alive for non-FTP providers (OAuth, S3, WebDAV)
-    // Get protocol from active session as fallback
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    if (protocol && isNonFtpProvider(protocol)) {
-      console.log('[Keep-Alive] Skipping for non-FTP provider:', protocol);
-      return;
-    }
+    const isProvider = protocol && isNonFtpProvider(protocol);
 
     const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
 
     const keepAliveInterval = setInterval(async () => {
       try {
-        await invoke('ftp_noop');
+        if (isProvider) {
+          await invoke('provider_keep_alive');
+        } else {
+          await invoke('ftp_noop');
+        }
       } catch (error) {
+        if (isProvider) {
+          // Provider keep-alive failed - HTTP-based providers are stateless,
+          // connection will be re-established on next operation
+          console.warn('Provider keep-alive failed (will retry on next operation):', error);
+          return;
+        }
+
         console.warn('Keep-alive NOOP failed, attempting reconnect...', error);
 
-        // Connection lost - attempt auto-reconnect
+        // FTP connection lost - attempt auto-reconnect
         setIsReconnecting(true);
         humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
         notify.info('Reconnecting...', 'Connection lost, attempting to reconnect');
@@ -512,7 +521,6 @@ const App: React.FC = () => {
           await invoke('reconnect_ftp');
           humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: connectionParams.server }, 'success');
           notify.success('Reconnected', 'FTP connection restored');
-          // Refresh file list after reconnection
           const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
@@ -529,7 +537,7 @@ const App: React.FC = () => {
 
     return () => clearInterval(keepAliveInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, connectionParams.server, connectionParams.protocol]);
+  }, [isConnected, connectionParams.server, connectionParams.protocol, activeSessionId]);
 
   // Sorting
   const sortFiles = <T extends { name: string; size: number | null; modified: string | null; is_dir: boolean }>(files: T[], field: SortField, order: SortOrder): T[] => {
@@ -813,6 +821,7 @@ const App: React.FC = () => {
         '/',
         quickConnectDirs.localDir || currentLocalPath
       );
+      fetchStorageQuota(protocol);
       return;
     }
 
@@ -933,6 +942,7 @@ const App: React.FC = () => {
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath
         );
+        fetchStorageQuota(protocol);
       } catch (error) {
         humanLog.logError('CONNECT', { server: providerName }, logId);
         notify.error('Connection Failed', String(error));
@@ -1023,6 +1033,7 @@ const App: React.FC = () => {
       localFiles: [...localFiles],
       lastActivity: new Date(),
       connectionParams: paramsCopy,
+      providerId: paramsCopy.providerId,
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
@@ -1067,6 +1078,7 @@ const App: React.FC = () => {
 
     // Set active session immediately
     setActiveSessionId(sessionId);
+    setStorageQuota(null); // Clear stale quota while reconnecting
 
     // Load cached data immediately (zero latency UX)
     setRemoteFiles(targetSession.remoteFiles);
@@ -1132,6 +1144,21 @@ const App: React.FC = () => {
         if (!clientId || !clientSecret) {
           clientId = localStorage.getItem(`oauth_${protocol}_client_id`);
           clientSecret = localStorage.getItem(`oauth_${protocol}_client_secret`);
+        }
+
+        // Fall back to OS keyring (Box, pCloud, and others store credentials there)
+        if (!clientId || !clientSecret) {
+          try {
+            const keyringProvider = protocol; // Credentials stored with protocol name as-is (e.g., 'googledrive')
+            const kid = await invoke<string>('get_credential', { account: `oauth_${keyringProvider}_client_id` });
+            const ksecret = await invoke<string>('get_credential', { account: `oauth_${keyringProvider}_client_secret` });
+            if (kid && ksecret) {
+              clientId = kid;
+              clientSecret = ksecret;
+            }
+          } catch {
+            // Keyring not available or credentials not stored
+          }
         }
 
         if (!clientId || !clientSecret) {
@@ -1242,6 +1269,9 @@ const App: React.FC = () => {
       // Refresh remote files with real data
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
+
+      // Fetch storage quota after successful reconnection
+      fetchStorageQuota(protocol);
 
       // Also refresh local files for this session's local path
       const localFilesData: LocalFile[] = await invoke('get_local_files', {
@@ -1530,7 +1560,7 @@ const App: React.FC = () => {
         // Join paths avoiding double slashes
         const basePath = syncBasePaths.local.endsWith('/') ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local;
         const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
-        const newLocalPath = relativePath ? basePath + relPath : basePath;
+        const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
         // Check if local path exists
         try {
           const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
@@ -1562,16 +1592,23 @@ const App: React.FC = () => {
 
     // Navigation Sync: mirror to remote panel if enabled
     if (isSyncNavigation && syncBasePaths && isConnected) {
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      const isProvider = !!protocol && isNonFtpProvider(protocol);
+
       const relativePath = path.startsWith(syncBasePaths.local)
         ? path.slice(syncBasePaths.local.length)
         : '';
       // Join paths avoiding double slashes
       const basePath = syncBasePaths.remote.endsWith('/') ? syncBasePaths.remote.slice(0, -1) : syncBasePaths.remote;
       const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
-      const newRemotePath = relativePath ? basePath + relPath : basePath;
+      const newRemotePath = (relativePath ? basePath + relPath : basePath) || '/';
+
       // Check if remote path exists
       try {
-        const response: FileListResponse = await invoke('change_directory', { path: newRemotePath });
+        const response: FileListResponse = isProvider
+          ? await invoke('provider_change_dir', { path: newRemotePath })
+          : await invoke('change_directory', { path: newRemotePath });
         setRemoteFiles(response.files);
         setCurrentRemotePath(response.current_path);
       } catch {
@@ -1584,12 +1621,22 @@ const App: React.FC = () => {
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
     if (!syncNavDialog) return;
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+    const isProviderConn = !!protocol && isNonFtpProvider(protocol);
     try {
       if (syncNavDialog.isRemote) {
-        await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
-        const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
-        setRemoteFiles(response.files);
-        setCurrentRemotePath(response.current_path);
+        if (isProviderConn) {
+          await invoke('provider_mkdir', { path: syncNavDialog.targetPath });
+          const response: FileListResponse = await invoke('provider_change_dir', { path: syncNavDialog.targetPath });
+          setRemoteFiles(response.files);
+          setCurrentRemotePath(response.current_path);
+        } else {
+          await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
+          const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
+          setRemoteFiles(response.files);
+          setCurrentRemotePath(response.current_path);
+        }
         notify.success('Folder Created', syncNavDialog.missingPath);
       } else {
         await invoke('create_local_folder', { path: syncNavDialog.targetPath });
@@ -2306,7 +2353,7 @@ const App: React.FC = () => {
       // Code files use DevTools source viewer
       { label: 'View Source', icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: 'Rename', icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
-      { label: 'Permissions', icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 },
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: 'Permissions', icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
       {
         label: 'Properties', icon: <Info size={14} />, action: () => setPropertiesDialog({
           name: file.name,
@@ -2322,14 +2369,19 @@ const App: React.FC = () => {
       { label: 'Delete', icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
       { label: 'Copy Path', icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success('Path copied'); } },
       { label: 'Copy Name', icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success('Name copied'); } },
-      {
-        label: 'Copy FTP URL', icon: <Link2 size={14} />, action: () => {
-          const url = `ftp://${currentUsername}@${currentServer}${file.path}`;
-          navigator.clipboard.writeText(url);
-          notify.success('FTP URL copied');
-        }
-      },
     ];
+
+    // Copy FTP/SFTP URL — only for traditional protocols
+    if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || currentProtocol === 'sftp')) {
+      const scheme = currentProtocol === 'sftp' ? 'sftp' : 'ftp';
+      items.push({
+        label: `Copy ${scheme.toUpperCase()} URL`, icon: <Link2 size={14} />, action: () => {
+          const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
+          navigator.clipboard.writeText(url);
+          notify.success(`${scheme.toUpperCase()} URL copied`);
+        }
+      });
+    }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
@@ -2352,9 +2404,21 @@ const App: React.FC = () => {
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
     const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
     if (hasNativeShareLink) {
+      const shareIcon = (() => {
+        switch (currentProtocol) {
+          case 'googledrive': return <GoogleDriveLogo size={14} />;
+          case 'dropbox': return <DropboxLogo size={14} />;
+          case 'onedrive': return <OneDriveLogo size={14} />;
+          case 'mega': return <MegaLogo size={14} />;
+          case 'box': return <BoxLogo size={14} />;
+          case 'pcloud': return <PCloudLogo size={14} />;
+          case 'filen': return <FilenLogo size={14} />;
+          default: return <Share2 size={14} />;
+        }
+      })();
       items.push({
         label: 'Create Share Link',
-        icon: <Share2 size={14} />,
+        icon: shareIcon,
         action: async () => {
           try {
             notify.info('Creating share link...', 'This may take a moment');
@@ -2372,7 +2436,7 @@ const App: React.FC = () => {
     if (currentProtocol === 'mega') {
       items.push({
         label: 'Import MEGA Link',
-        icon: <Download size={14} />,
+        icon: <MegaLogo size={14} />,
         action: async () => {
           const link = window.prompt('Paste a MEGA public link to import:');
           if (!link || !link.trim()) return;
@@ -2920,6 +2984,7 @@ const App: React.FC = () => {
         localPath={currentLocalPath}
         remotePath={currentRemotePath}
         isConnected={isConnected}
+        protocol={connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol}
         onSyncComplete={async () => {
           await loadRemoteFiles();
           await loadLocalFiles(currentLocalPath);
@@ -3023,14 +3088,15 @@ const App: React.FC = () => {
                   initialPath || '/',
                   localInitialPath || currentLocalPath
                 );
+                fetchStorageQuota(params.protocol);
                 // Reset form for next "Add New Server"
                 setConnectionParams({ server: '', username: '', password: '' });
                 setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 return;
               }
 
-              // Check if this is a provider protocol (all protocols use provider_connect)
-              const isProvider = params.protocol && ['ftp', 'ftps', 's3', 'webdav', 'mega', 'sftp', 'filen'].includes(params.protocol);
+              // Check if this is a non-FTP provider protocol (S3, WebDAV, MEGA, Filen use provider_connect)
+              const isProvider = params.protocol && isNonFtpProvider(params.protocol);
 
               if (isProvider) {
                 // S3/WebDAV connection via provider_connect
@@ -3107,6 +3173,7 @@ const App: React.FC = () => {
                     response.current_path,
                     localInitialPath || currentLocalPath
                   );
+                  fetchStorageQuota(params.protocol);
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -3203,12 +3270,13 @@ const App: React.FC = () => {
                   serverName: cloudServerName || 'AeroCloud'
                 } : undefined}
                 onCloudTabClick={handleCloudTabClick}
+                onReorder={setSessions}
               />
             )}
             {/* Toolbar */}
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
-                <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : loadLocalFiles(currentLocalPath.split('/').slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
+                <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
                   <FolderUp size={16} /> {t('common.up')}
                 </button>
                 <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
@@ -3309,6 +3377,13 @@ const App: React.FC = () => {
                     >
                       {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
                       {isSyncNavigation ? t('common.synced') : t('common.sync')}
+                    </button>
+                    <button
+                      onClick={() => setShowSyncPanel(true)}
+                      className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
+                      title={t('statusBar.syncFiles')}
+                    >
+                      <FolderSync size={16} /> {t('statusBar.syncFiles')}
                     </button>
                   </>
                 )}
@@ -4126,6 +4201,18 @@ const App: React.FC = () => {
             if (protocol === 'azure') return 'Azure Blob';
             if (protocol === 'filen') return 'Filen';
             if (protocol === 'mega') return 'MEGA';
+            if (protocol === 's3') {
+              // Show bucket name or short hostname instead of full URL
+              const s3Server = connectionParams.server || activeSession?.connectionParams?.server || '';
+              try {
+                const url = new URL(s3Server.startsWith('http') ? s3Server : `https://${s3Server}`);
+                const host = url.hostname;
+                // Shorten Cloudflare R2 and AWS S3 URLs
+                if (host.includes('.r2.cloudflarestorage.com')) return `R2: ${host.split('.')[0].slice(0, 8)}...`;
+                if (host.includes('.amazonaws.com')) return host.replace('.s3.amazonaws.com', '').replace('.s3.', ' (S3 ');
+                return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
+              } catch { return 'S3'; }
+            }
             // For FTP/FTPS/SFTP/etc, show username@server or session name
             const server = connectionParams.server || activeSession?.connectionParams?.server;
             const username = connectionParams.username || activeSession?.connectionParams?.username;

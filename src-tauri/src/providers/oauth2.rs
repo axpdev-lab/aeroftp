@@ -9,6 +9,7 @@ use oauth2::{
     CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge, PkceCodeVerifier,
     RedirectUrl, Scope, TokenResponse, TokenUrl, RefreshToken,
 };
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -113,6 +114,8 @@ pub struct OAuthConfig {
     pub token_url: String,
     pub scopes: Vec<String>,
     pub redirect_uri: String,
+    /// Extra query parameters for the authorization URL (e.g., token_access_type=offline for Dropbox)
+    pub extra_auth_params: Vec<(String, String)>,
 }
 
 impl OAuthConfig {
@@ -129,6 +132,9 @@ impl OAuthConfig {
                 "https://www.googleapis.com/auth/drive.file".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![
+                ("access_type".to_string(), "offline".to_string()),
+            ],
         }
     }
 
@@ -145,8 +151,18 @@ impl OAuthConfig {
             client_secret: Some(client_secret.to_string()),
             auth_url: "https://www.dropbox.com/oauth2/authorize".to_string(),
             token_url: "https://api.dropboxapi.com/oauth2/token".to_string(),
-            scopes: vec![],
+            scopes: vec![
+                "account_info.read".to_string(),
+                "files.metadata.read".to_string(),
+                "files.metadata.write".to_string(),
+                "files.content.read".to_string(),
+                "files.content.write".to_string(),
+                "sharing.read".to_string(),
+            ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![
+                ("token_access_type".to_string(), "offline".to_string()),
+            ],
         }
     }
 
@@ -169,6 +185,7 @@ impl OAuthConfig {
                 "offline_access".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![],
         }
     }
 
@@ -187,6 +204,7 @@ impl OAuthConfig {
             token_url: "https://api.box.com/oauth2/token".to_string(),
             scopes: vec![],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![],
         }
     }
 
@@ -205,6 +223,7 @@ impl OAuthConfig {
             token_url: "https://api.pcloud.com/oauth2_token".to_string(),
             scopes: vec![],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![],
         }
     }
 
@@ -270,7 +289,12 @@ impl OAuth2Manager {
             for scope in &config.scopes {
                 auth_builder = auth_builder.add_scope(Scope::new(scope.clone()));
             }
-            
+
+            // Add extra auth parameters (e.g., token_access_type=offline for Dropbox)
+            for (key, value) in &config.extra_auth_params {
+                auth_builder = auth_builder.add_extra_param(key, value);
+            }
+
             auth_builder.url()
         };
         
@@ -373,9 +397,9 @@ impl OAuth2Manager {
     pub async fn get_valid_token(
         &self,
         config: &OAuthConfig,
-    ) -> Result<String, ProviderError> {
+    ) -> Result<SecretString, ProviderError> {
         let mut tokens = self.load_tokens(config.provider)?;
-        
+
         if tokens.is_expired() {
             if let Some(ref refresh_token) = tokens.refresh_token {
                 tokens = self.refresh_tokens(config, refresh_token).await?;
@@ -385,8 +409,8 @@ impl OAuth2Manager {
                 ));
             }
         }
-        
-        Ok(tokens.access_token)
+
+        Ok(SecretString::from(tokens.access_token))
     }
 
     /// Get the token storage directory

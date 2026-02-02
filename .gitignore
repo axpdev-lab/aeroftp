@@ -58,6 +58,9 @@ overlay/
 flathub-fork/
 snapcraft.login
 
+# AI tool configs (developer-local)
+.kilocodemodes
+
 # Internal development docs (not for public GitHub)
 docs/dev/
 

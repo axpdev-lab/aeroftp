@@ -68,7 +68,10 @@ pub trait StorageProvider: Send + Sync {
     
     /// Get display name for this provider instance
     fn display_name(&self) -> String;
-    
+
+    /// Get the authenticated account email/username (if available after connect)
+    fn account_email(&self) -> Option<String> { None }
+
     /// Connect to the storage backend
     async fn connect(&mut self) -> Result<(), ProviderError>;
     

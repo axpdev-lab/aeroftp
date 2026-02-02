@@ -4,9 +4,9 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.4.x   | Yes |
-| 1.3.x   | Security fixes only |
-| < 1.3   | No  |
+| 1.5.x   | Yes |
+| 1.4.x   | Security fixes only |
+| < 1.4   | No  |
 
 ## Security Architecture
 
@@ -43,6 +43,10 @@ When the OS keyring is unavailable, credentials are stored in a local encrypted 
 | Dropbox | HTTPS + OAuth2 | PKCE flow with token refresh |
 | OneDrive | HTTPS + OAuth2 | PKCE flow with token refresh |
 | MEGA.nz | Client-side AES | End-to-end encrypted, zero-knowledge |
+| Box | HTTPS + OAuth2 | PKCE flow with token refresh |
+| pCloud | HTTPS + OAuth2 | Token-based authentication |
+| Azure Blob | HTTPS | Shared Key HMAC-SHA256 or SAS token |
+| Filen | Client-side AES-256-GCM | E2E encrypted, PBKDF2 key derivation |
 
 ### FTPS Encryption Modes (v1.4.0)
 
@@ -106,11 +110,11 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - A warning banner recommending FTPS or SFTP
 - Fully localized (51 languages)
 
-### Privacy and Analytics
+### OAuth Session Security (v1.5.3)
 
-- **Aptabase** integration: opt-in only, disabled by default
-- No PII collected (only protocol types, feature usage, transfer size ranges)
-- EU data residency (GDPR compliant)
+- OAuth credentials resolved from OS keyring on session switch (no plaintext fallback)
+- Tokens refreshed automatically on tab switching with proper PKCE re-authentication
+- Stale quota/connection state cleared before reconnection
 
 ---
 
@@ -144,4 +148,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.4.0 - January 2026*
+*AeroFTP v1.5.3 - February 2026*

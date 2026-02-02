@@ -180,7 +180,7 @@ pub struct FtpConfig {
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub password: String,
+    pub password: secrecy::SecretString,
     pub tls_mode: FtpTlsMode,
     pub verify_cert: bool,
     pub initial_path: Option<String>,
@@ -211,7 +211,7 @@ impl FtpConfig {
             host: config.host.clone(),
             port: config.effective_port(),
             username: config.username.clone().unwrap_or_else(|| "anonymous".to_string()),
-            password: config.password.clone().unwrap_or_default(),
+            password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             tls_mode,
             verify_cert,
             initial_path: config.initial_path.clone(),
@@ -318,11 +318,11 @@ pub struct SftpConfig {
     pub port: u16,
     pub username: String,
     /// Password authentication (optional if using key)
-    pub password: Option<String>,
+    pub password: Option<secrecy::SecretString>,
     /// Path to private key file (e.g., ~/.ssh/id_rsa)
     pub private_key_path: Option<String>,
     /// Passphrase for encrypted private key
-    pub key_passphrase: Option<String>,
+    pub key_passphrase: Option<secrecy::SecretString>,
     /// Initial directory to navigate to
     pub initial_path: Option<String>,
     /// Connection timeout in seconds
@@ -335,7 +335,8 @@ impl SftpConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("Username required for SFTP".to_string()))?;
 
         let private_key_path = config.extra.get("private_key_path").cloned();
-        let key_passphrase = config.extra.get("key_passphrase").cloned();
+        let key_passphrase = config.extra.get("key_passphrase")
+            .map(|v| secrecy::SecretString::from(v.clone()));
 
         let timeout_secs = config.extra.get("timeout")
             .and_then(|v| v.parse().ok())
@@ -345,7 +346,7 @@ impl SftpConfig {
             host: config.host.clone(),
             port: config.effective_port(),
             username,
-            password: config.password.clone(),
+            password: config.password.clone().map(secrecy::SecretString::from),
             private_key_path,
             key_passphrase,
             initial_path: config.initial_path.clone(),

@@ -9,9 +9,6 @@ use tracing::{info, warn};
 
 const SERVICE_NAME: &str = "aeroftp";
 const VAULT_FILENAME: &str = "vault.db";
-const ARGON2_MEM_COST: u32 = 65536; // 64MB
-const ARGON2_TIME_COST: u32 = 3;
-const ARGON2_PARALLELISM: u32 = 4;
 
 // ============ Error Types ============
 
@@ -111,10 +108,12 @@ impl CredentialStore {
         let vault: VaultFile = serde_json::from_slice(&vault_data)
             .map_err(|e| CredentialError::Serialization(e.to_string()))?;
 
-        let master_key = Self::derive_key(password, &vault.salt)?;
+        let master_key = crate::crypto::derive_key(password, &vault.salt)
+                .map_err(CredentialError::Encryption)?;
 
         // Verify password by decrypting verification token
-        Self::decrypt_aes_gcm(&master_key, &vault.verify_nonce, &vault.verify_data)
+        crate::crypto::decrypt_aes_gcm(&master_key, &vault.verify_nonce, &vault.verify_data)
+                .map_err(CredentialError::Encryption)
             .map_err(|_| CredentialError::InvalidMasterPassword)?;
 
         Ok(Self {
@@ -131,12 +130,14 @@ impl CredentialStore {
         let vault_path = Self::vault_path()?;
 
         // Generate salt
-        let salt = Self::random_bytes(32);
-        let master_key = Self::derive_key(password, &salt)?;
+        let salt = crate::crypto::random_bytes(32);
+        let master_key = crate::crypto::derive_key(password, &salt)
+                .map_err(CredentialError::Encryption)?;
 
         // Create verification token
-        let verify_nonce = Self::random_bytes(12);
-        let verify_data = Self::encrypt_aes_gcm(&master_key, &verify_nonce, b"aeroftp_vault_ok")?;
+        let verify_nonce = crate::crypto::random_bytes(12);
+        let verify_data = crate::crypto::encrypt_aes_gcm(&master_key, &verify_nonce, b"aeroftp_vault_ok")
+                .map_err(CredentialError::Encryption)?;
 
         let vault = VaultFile {
             version: 1,
@@ -175,8 +176,9 @@ impl CredentialStore {
             }
             Backend::EncryptedVault { path, master_key, .. } => {
                 let mut vault = Self::read_vault(path)?;
-                let nonce = Self::random_bytes(12);
-                let data = Self::encrypt_aes_gcm(master_key, &nonce, secret.as_bytes())?;
+                let nonce = crate::crypto::random_bytes(12);
+                let data = crate::crypto::encrypt_aes_gcm(master_key, &nonce, secret.as_bytes())
+                        .map_err(CredentialError::Encryption)?;
                 vault.entries.insert(account.to_string(), VaultEntry { nonce, data });
                 Self::write_vault(path, &vault)?;
                 info!("Credential stored in vault: {}", account);
@@ -201,7 +203,8 @@ impl CredentialStore {
                 let vault = Self::read_vault(path)?;
                 let entry = vault.entries.get(account)
                     .ok_or_else(|| CredentialError::NotFound(account.to_string()))?;
-                let plaintext = Self::decrypt_aes_gcm(master_key, &entry.nonce, &entry.data)?;
+                let plaintext = crate::crypto::decrypt_aes_gcm(master_key, &entry.nonce, &entry.data)
+                        .map_err(CredentialError::Encryption)?;
                 String::from_utf8(plaintext)
                     .map_err(|e| CredentialError::Encryption(e.to_string()))
             }
@@ -321,50 +324,6 @@ impl CredentialStore {
         Ok(())
     }
 
-    fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CredentialError> {
-        use argon2::Argon2;
-
-        let params = argon2::Params::new(
-            ARGON2_MEM_COST,
-            ARGON2_TIME_COST,
-            ARGON2_PARALLELISM,
-            Some(32),
-        ).map_err(|e| CredentialError::Encryption(format!("Argon2 params: {}", e)))?;
-
-        let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-
-        let mut key = [0u8; 32];
-        argon2.hash_password_into(password.as_bytes(), salt, &mut key)
-            .map_err(|e| CredentialError::Encryption(format!("Argon2 derive: {}", e)))?;
-        Ok(key)
-    }
-
-    fn encrypt_aes_gcm(key: &[u8; 32], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, CredentialError> {
-        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
-        use aes_gcm::aead::generic_array::GenericArray;
-
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-        let nonce = GenericArray::from_slice(nonce);
-        cipher.encrypt(nonce, plaintext)
-            .map_err(|e| CredentialError::Encryption(format!("AES-GCM encrypt: {}", e)))
-    }
-
-    fn decrypt_aes_gcm(key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, CredentialError> {
-        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
-        use aes_gcm::aead::generic_array::GenericArray;
-
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-        let nonce = GenericArray::from_slice(nonce);
-        cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| CredentialError::Encryption(format!("AES-GCM decrypt: {}", e)))
-    }
-
-    fn random_bytes(len: usize) -> Vec<u8> {
-        use rand::RngCore;
-        let mut buf = vec![0u8; len];
-        rand::thread_rng().fill_bytes(&mut buf);
-        buf
-    }
 }
 
 // ============ Permission Hardening ============
@@ -417,7 +376,7 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
             let zeros = vec![0u8; size as usize];
             std::fs::write(path, &zeros)?;
             // Second pass with random data
-            let random = CredentialStore::random_bytes(size as usize);
+            let random = crate::crypto::random_bytes(size as usize);
             std::fs::write(path, &random)?;
         }
         std::fs::remove_file(path)?;

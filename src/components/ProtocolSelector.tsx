@@ -11,10 +11,12 @@ import {
     Lock,
     ShieldCheck,
     HardDrive,
-    ChevronDown
+    ChevronDown,
+    ExternalLink
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
+import { getProviderById } from '../providers';
 import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
@@ -440,6 +442,8 @@ interface ProtocolFieldsProps {
     onChange: (options: ProtocolFieldsProps['options']) => void;
     disabled?: boolean;
     onBrowseKeyFile?: () => void;  // Callback for key file selection
+    selectedProviderId?: string | null;  // Provider preset ID for customized hints/placeholders
+    isEditing?: boolean;  // Hide help links when editing existing server
 }
 
 export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
@@ -448,8 +452,11 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     onChange,
     disabled = false,
     onBrowseKeyFile,
+    selectedProviderId,
+    isEditing = false,
 }) => {
     const t = useTranslation();
+    const providerConfig = selectedProviderId ? getProviderById(selectedProviderId) : null;
 
     if (protocol === 'sftp') {
         return (
@@ -515,47 +522,80 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     }
 
     if (protocol === 's3') {
+        // Get provider-specific field configs from registry
+        const bucketField = providerConfig?.fields?.find(f => f.key === 'bucket');
+        const regionField = providerConfig?.fields?.find(f => f.key === 'region');
+        const endpointField = providerConfig?.fields?.find(f => f.key === 'endpoint');
+        const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
+
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Database size={14} />
-                    {t('protocol.s3Config')}
+                    {providerConfig ? `${providerConfig.name} — ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('protocol.bucketNameRequired')}</label>
+                    <label className="block text-sm font-medium mb-1.5">
+                        {bucketField?.label || t('protocol.bucketNameRequired')}
+                    </label>
                     <input
                         type="text"
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                        placeholder={t('protocol.bucketPlaceholder')}
+                        placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
                         required
                     />
+                    {!isEditing && bucketField?.helpText && (
+                        <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
+                    )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">{t('protocol.region')}</label>
-                        <input
-                            type="text"
-                            value={options.region || ''}
-                            onChange={(e) => onChange({ ...options, region: e.target.value })}
-                            disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={t('protocol.regionPlaceholder')}
-                        />
+                        <label className="block text-sm font-medium mb-1.5">
+                            {regionField?.label || t('protocol.region')}
+                        </label>
+                        {hasRegionSelect ? (
+                            <select
+                                value={options.region || ''}
+                                onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                            >
+                                <option value="">Select region...</option>
+                                {regionField!.options!.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input
+                                type="text"
+                                value={options.region || ''}
+                                onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
+                            />
+                        )}
                     </div>
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">{t('protocol.customEndpoint')}</label>
+                        <label className="block text-sm font-medium mb-1.5">
+                            {endpointField?.label || t('protocol.customEndpoint')}
+                        </label>
                         <input
                             type="text"
                             value={options.endpoint || ''}
                             onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                             disabled={disabled}
                             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={t('protocol.endpointPlaceholder')}
+                            placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
                         />
-                        <p className="text-xs text-gray-500 mt-1">{t('protocol.endpointHelp')}</p>
+                        {!isEditing && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                {endpointField?.helpText || t('protocol.endpointHelp')}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -568,22 +608,60 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     />
                     {t('protocol.pathStyle')}
                 </label>
+                {!isEditing && providerConfig?.helpUrl && (
+                    <a
+                        href={providerConfig.helpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 mt-1"
+                    >
+                        <ExternalLink size={12} />
+                        {providerConfig.name} Documentation
+                    </a>
+                )}
             </div>
         );
     }
 
     if (protocol === 'webdav') {
+        const isNextcloud = selectedProviderId === 'nextcloud' || selectedProviderId === 'owncloud';
+        const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
+        const showNextcloudHint = isNextcloud || isCustomOrGeneric;
+
         return (
-            <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
-                <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                    <Cloud size={14} />
-                    <span>
-                        {t('protocol.webdavNote')}
-                    </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                    Example: <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
-                </p>
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3 space-y-2">
+                {showNextcloudHint && (
+                    <>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                            <Cloud size={14} />
+                            <span>{t('protocol.webdavNote')}</span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Example: <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
+                        </p>
+                    </>
+                )}
+                {providerConfig && !isCustomOrGeneric && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                        <Cloud size={14} />
+                        <span>
+                            {providerConfig.defaults?.basePath
+                                ? `Base path: ${providerConfig.defaults.basePath}`
+                                : `Connect to ${providerConfig.name} via WebDAV`}
+                        </span>
+                    </div>
+                )}
+                {!isEditing && providerConfig?.helpUrl && (
+                    <a
+                        href={providerConfig.helpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                        <ExternalLink size={12} />
+                        {providerConfig.name} Documentation
+                    </a>
+                )}
             </div>
         );
     }

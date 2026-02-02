@@ -205,7 +205,7 @@ pub fn compare_file_pair(
         (None, Some(_)) => SyncStatus::RemoteOnly,
         (Some(l), Some(r)) => {
             // Both exist - compare attributes
-            
+
             // First check size if enabled
             if options.compare_size && l.size != r.size {
                 // Different sizes - determine which is newer
@@ -218,7 +218,7 @@ pub fn compare_file_pair(
                     return SyncStatus::SizeMismatch;
                 }
             }
-            
+
             // Size is same (or not comparing size), check timestamp
             if options.compare_timestamp {
                 if timestamps_equal(l.modified, r.modified) {
@@ -306,6 +306,153 @@ pub fn get_recommended_action(status: &SyncStatus, direction: &SyncDirection) ->
         // Identical - no action needed
         (SyncStatus::Identical, _) => SyncAction::Skip,
     }
+}
+
+// ============ Sync Index (cache for faster subsequent syncs) ============
+
+/// Snapshot of a file's state at the time of last successful sync
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncIndexEntry {
+    pub size: u64,
+    pub modified: Option<DateTime<Utc>>,
+    pub is_dir: bool,
+}
+
+/// Persistent index storing the state of files after a successful sync.
+/// Used to detect true conflicts (both sides changed since last sync)
+/// and to skip unchanged files for faster re-scans.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncIndex {
+    /// Version for future migrations
+    pub version: u32,
+    /// When this index was last updated
+    pub last_sync: DateTime<Utc>,
+    /// Local root path at time of sync
+    pub local_path: String,
+    /// Remote root path at time of sync
+    pub remote_path: String,
+    /// File states at time of last sync (key = relative_path)
+    pub files: HashMap<String, SyncIndexEntry>,
+}
+
+impl SyncIndex {
+    pub fn new(local_path: String, remote_path: String) -> Self {
+        Self {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path,
+            remote_path,
+            files: HashMap::new(),
+        }
+    }
+}
+
+/// Get the directory where sync indices are stored
+fn sync_index_dir() -> Result<std::path::PathBuf, String> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let dir = base.join("aeroftp").join("sync-index");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create sync index directory: {}", e))?;
+    Ok(dir)
+}
+
+/// Generate a stable filename from a local+remote path pair
+fn index_filename(local_path: &str, remote_path: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    local_path.hash(&mut hasher);
+    remote_path.hash(&mut hasher);
+    format!("{:016x}.json", hasher.finish())
+}
+
+/// Load a sync index for a given path pair (returns None if not found)
+pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<SyncIndex>, String> {
+    let dir = sync_index_dir()?;
+    let path = dir.join(index_filename(local_path, remote_path));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read sync index: {}", e))?;
+    let index: SyncIndex = serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse sync index: {}", e))?;
+    Ok(Some(index))
+}
+
+/// Save a sync index for a given path pair
+pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
+    let dir = sync_index_dir()?;
+    let path = dir.join(index_filename(&index.local_path, &index.remote_path));
+    let data = serde_json::to_string_pretty(index)
+        .map_err(|e| format!("Failed to serialize sync index: {}", e))?;
+    std::fs::write(&path, data)
+        .map_err(|e| format!("Failed to write sync index: {}", e))?;
+    Ok(())
+}
+
+/// Enhanced comparison that uses the sync index to detect true conflicts.
+/// If both local and remote changed since the index snapshot, it's a Conflict.
+pub fn build_comparison_results_with_index(
+    local_files: HashMap<String, FileInfo>,
+    remote_files: HashMap<String, FileInfo>,
+    options: &CompareOptions,
+    index: Option<&SyncIndex>,
+) -> Vec<FileComparison> {
+    let mut results = Vec::new();
+    let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
+    all_paths.extend(remote_files.keys().cloned());
+
+    for path in all_paths {
+        if should_exclude(&path, &options.exclude_patterns) {
+            continue;
+        }
+
+        let local = local_files.get(&path);
+        let remote = remote_files.get(&path);
+        let is_dir = local.map(|f| f.is_dir).unwrap_or(false)
+            || remote.map(|f| f.is_dir).unwrap_or(false);
+
+        // Check if we can use the index for conflict detection
+        let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
+            if let Some(cached) = idx.files.get(&path) {
+                let local_changed = l.size != cached.size
+                    || !timestamps_equal(l.modified, cached.modified);
+                let remote_changed = r.size != cached.size
+                    || !timestamps_equal(r.modified, cached.modified);
+
+                if local_changed && remote_changed {
+                    // Both sides changed since last sync → true conflict
+                    SyncStatus::Conflict
+                } else if !local_changed && !remote_changed {
+                    SyncStatus::Identical
+                } else if local_changed {
+                    SyncStatus::LocalNewer
+                } else {
+                    SyncStatus::RemoteNewer
+                }
+            } else {
+                // File not in index → fall back to normal comparison
+                compare_file_pair(local, remote, options)
+            }
+        } else {
+            compare_file_pair(local, remote, options)
+        };
+
+        if status != SyncStatus::Identical || is_dir {
+            results.push(FileComparison {
+                relative_path: path,
+                status,
+                local_info: local.cloned(),
+                remote_info: remote.cloned(),
+                is_dir,
+            });
+        }
+    }
+
+    results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    results
 }
 
 #[cfg(test)]

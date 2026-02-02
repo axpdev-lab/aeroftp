@@ -105,7 +105,8 @@
             "megaPasswordPlaceholder": "Your MEGA password",
             "dismiss": "Dismiss",
             "authenticating": "Authenticating...",
-            "oauth2Connection": "OAuth2 Connection"
+            "oauth2Connection": "OAuth2 Connection",
+            "credentialLoadFailed": "[NEEDS TRANSLATION] Could not load saved password. OS keyring may be locked. Please re-enter your password."
         },
         "browser": {
             "remote": "Từ xa",
@@ -245,7 +246,24 @@
             "securityLocal": "Mật khẩu được lưu trữ cục bộ trên thiết bị của bạn",
             "securityOAuth": "Token OAuth sử dụng lưu trữ tệp an toàn",
             "securityNoSend": "Thông tin đăng nhập không bao giờ được gửi đến máy chủ bên ngoài",
-            "securityTLS": "Tất cả kết nối sử dụng mã hóa khi có sẵn"
+            "securityTLS": "Tất cả kết nối sử dụng mã hóa khi có sẵn",
+            "exportImport": "Xuất / Nhập",
+            "exportServers": "Xuất máy chủ",
+            "importServers": "Nhập máy chủ",
+            "exportDescription": "Lưu {count} máy chủ vào tệp mã hóa",
+            "importDescription": "Khôi phục từ tệp sao lưu .aeroftp",
+            "includeCredentials": "Bao gồm thông tin đăng nhập đã lưu",
+            "includeCredentialsHint": "Mật khẩu và khóa API sẽ được mã hóa trong tệp",
+            "encryptionPassword": "Mật khẩu mã hóa (tối thiểu 8 ký tự)",
+            "confirmPassword": "Xác nhận mật khẩu",
+            "decryptionPassword": "Mật khẩu giải mã",
+            "passwordMismatch": "Mật khẩu không khớp",
+            "passwordTooShort": "Mật khẩu phải có ít nhất 8 ký tự",
+            "passwordRequired": "Yêu cầu mật khẩu",
+            "exporting": "Đang xuất...",
+            "importing": "Đang nhập...",
+            "exportSuccess": "Đã xuất {count} máy chủ thành công",
+            "importSuccess": "Đã nhập {count} máy chủ mới"
         },
         "devtools": {
             "title": "Công cụ phát triển",
@@ -261,7 +279,9 @@
             "syntaxHighlighting": "Tô sáng cú pháp",
             "wordWrap": "Ngắt dòng",
             "lineNumbers": "Số dòng",
-            "minimap": "Bản đồ thu nhỏ"
+            "minimap": "Bản đồ thu nhỏ",
+            "duplicatesSkipped": "[NEEDS TRANSLATION] duplicates skipped",
+            "invalidPassword": "Mật khẩu không hợp lệ"
         },
         "cloud": {
             "title": "AeroCloud",
@@ -603,6 +623,63 @@
         "locking": {
             "lock": "[NEEDS TRANSLATION] Lock File",
             "unlock": "[NEEDS TRANSLATION] Unlock File"
+        },
+        "syncPanel": {
+            "title": "[NEEDS TRANSLATION] Synchronize Files",
+            "local": "[NEEDS TRANSLATION] Local",
+            "remote": "[NEEDS TRANSLATION] Remote",
+            "direction": "[NEEDS TRANSLATION] Direction",
+            "dirRemoteToLocal": "[NEEDS TRANSLATION] Remote → Local",
+            "dirLocalToRemote": "[NEEDS TRANSLATION] Local → Remote",
+            "dirBoth": "[NEEDS TRANSLATION] Both",
+            "descRemoteToLocal": "[NEEDS TRANSLATION] Checks which remote files are newer and downloads them to the local folder.",
+            "descLocalToRemote": "[NEEDS TRANSLATION] Checks which local files are newer and uploads them to the remote server.",
+            "descBidirectional": "[NEEDS TRANSLATION] Checks differences in both directions: downloads newer remote files and uploads newer local files.",
+            "timestamp": "[NEEDS TRANSLATION] Timestamp",
+            "size": "[NEEDS TRANSLATION] Size",
+            "checksum": "[NEEDS TRANSLATION] Checksum (slow)",
+            "comparing": "[NEEDS TRANSLATION] Comparing",
+            "compareNow": "[NEEDS TRANSLATION] Compare Now",
+            "scanning": "[NEEDS TRANSLATION] Scanning directories",
+            "clickCompare": "[NEEDS TRANSLATION] Click \"Compare Now\" to scan for differences",
+            "notConnected": "[NEEDS TRANSLATION] Not connected to server",
+            "colStatus": "[NEEDS TRANSLATION] Status",
+            "colFile": "[NEEDS TRANSLATION] File",
+            "colLocal": "[NEEDS TRANSLATION] Local",
+            "colRemote": "[NEEDS TRANSLATION] Remote",
+            "statusIdentical": "[NEEDS TRANSLATION] Identical",
+            "statusUpload": "[NEEDS TRANSLATION] Upload",
+            "statusDownload": "[NEEDS TRANSLATION] Download",
+            "statusNewLocal": "[NEEDS TRANSLATION] New Local",
+            "statusNewRemote": "[NEEDS TRANSLATION] New Remote",
+            "statusConflict": "[NEEDS TRANSLATION] Conflict",
+            "statusSizeDiffers": "[NEEDS TRANSLATION] Size Differs",
+            "syncing": "[NEEDS TRANSLATION] Syncing",
+            "syncComplete": "[NEEDS TRANSLATION] Synchronization complete",
+            "filesSelected": "[NEEDS TRANSLATION] files selected",
+            "reset": "[NEEDS TRANSLATION] Reset",
+            "deselect": "[NEEDS TRANSLATION] Deselect",
+            "selectAll": "[NEEDS TRANSLATION] Select All",
+            "close": "[NEEDS TRANSLATION] Close",
+            "synchronize": "[NEEDS TRANSLATION] Synchronize",
+            "reportSuccess": "[NEEDS TRANSLATION] Synchronization completed successfully",
+            "reportPartial": "[NEEDS TRANSLATION] Synchronization completed with errors",
+            "reportUploaded": "[NEEDS TRANSLATION] Uploaded",
+            "reportDownloaded": "[NEEDS TRANSLATION] Downloaded",
+            "reportSkipped": "[NEEDS TRANSLATION] Skipped",
+            "reportErrors": "[NEEDS TRANSLATION] Errors",
+            "reportTransferred": "[NEEDS TRANSLATION] Transferred",
+            "reportDuration": "[NEEDS TRANSLATION] Duration",
+            "cancel": "[NEEDS TRANSLATION] Cancel",
+            "filesFound": "[NEEDS TRANSLATION] files found",
+            "scanPhase": {
+                "local": "[NEEDS TRANSLATION] Scanning local files",
+                "remote": "[NEEDS TRANSLATION] Scanning remote files",
+                "comparing": "[NEEDS TRANSLATION] Comparing files"
+            },
+            "reportDirsCreated": "[NEEDS TRANSLATION] Folders created",
+            "indexAvailable": "[NEEDS TRANSLATION] Index cached",
+            "indexAvailableTooltip": "[NEEDS TRANSLATION] A sync index from a previous sync is available — conflict detection is enhanced"
         }
     }
 }

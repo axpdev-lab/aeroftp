@@ -54,13 +54,13 @@
 AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). More FTP options than FileZilla.
 
 ### AeroCloud - Your Personal Cloud
-Turn **any FTP server** into a private personal cloud with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any FTP server** into a private personal cloud with bidirectional sync, tray background sync, share links, and per-project local folders. Sync index cache enables faster re-scans and true conflict detection across all 13 protocols.
 
 ### 51 Languages
 More languages than any other FTP client. RTL support for Arabic, Hebrew, Persian, and Urdu. Automatic browser language detection.
 
 ### Cloud Storage Integration
-13 protocols in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota, file versions, thumbnails, share permissions, and WebDAV locking. Filen provides zero-knowledge end-to-end AES-256-GCM encryption.
+13 protocols in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking. Filen provides zero-knowledge end-to-end AES-256-GCM encryption.
 
 ### Advanced File Management
 - **Smart Overwrite Dialog**: File conflict resolution with comparison view
@@ -101,6 +101,8 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 | Code Editor | Monaco (VS Code) | No | No | Basic |
 | AI Assistant | Yes | No | No | No |
 | Personal Cloud | AeroCloud | No | No | No |
+| Storage Quota | 9 providers | No | Yes | No |
+| Sync Index Cache | Yes | No | No | No |
 | Dark Mode | Yes | No | Yes | No |
 | Archive Encryption | ZIP AES-256, 7z AES-256 | No | No | No |
 | Memory Zeroization | Yes (Rust) | No | No | No |

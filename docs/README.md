@@ -72,8 +72,8 @@ Currently supported: **English** (base), **Italian**
 
 ## 📅 Last Updated
 
-- **Documentation Version**: 1.3.0
-- **Last Update**: 2026-01-28
+- **Documentation Version**: 1.5.3
+- **Last Update**: 2026-02-02
 
 ---
 

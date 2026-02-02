@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.5.0"
+version = "1.5.3"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -35,7 +35,6 @@ chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 portable-pty = "0.8"
 reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
-futures = "0.3"
 notify = { version = "6", default-features = true }
 notify-debouncer-mini = "0.4"
 tauri-plugin-single-instance = "2.3.6"
@@ -60,10 +59,8 @@ http = "1"
 keyring = { version = "3", features = ["linux-native"] }
 open = "5"
 rand = "0.8"
-tokio-util = { version = "0.7", features = ["io"] }
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2.3.3"
-tauri-plugin-aptabase = "1.0"  # Privacy-first analytics (v1.3.0)
 semver = "1.0.27"
 
 # Secure Credential Storage (v1.3.2 hotfix)
@@ -72,11 +69,7 @@ aes-gcm = "0.10"
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.10"
-aes = "0.8"
-cbc = "0.1"
-ctr = "0.9"
 ring = "0.17.14"
-zeroize = "1.8.2"
 
 # Box, pCloud, Azure, Filen providers (v1.4.1)
 pbkdf2 = "0.12"

@@ -21,9 +21,6 @@ import { AudioPlayer } from './viewers/AudioPlayer';
 import { VideoPlayer } from './viewers/VideoPlayer';
 import { PDFViewer } from './viewers/PDFViewer';
 import { TextViewer } from './viewers/TextViewer';
-// Future imports:
-// import { MarkdownViewer } from './viewers/MarkdownViewer';
-// import { TextViewer } from './viewers/TextViewer';
 
 export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     isOpen,
