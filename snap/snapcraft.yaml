@@ -1,38 +1,33 @@
 name: aeroftp
 version: '1.7.0'
-summary: Modern FTP Client - SNAP LIMITED DEMO (Use .deb/.AppImage for full access)
+summary: Multi-Protocol File Client - 13 Protocols, AI, Encryption (Snap = limited FS)
 description: |
-  AeroFTP is a modern, open-source FTP client that combines beauty and functionality.
-  
-  ⚠️  **SNAP VERSION - LIMITED DEMO** ⚠️
-  Due to Snap strict confinement restrictions (classic confinement not granted),
-  this version has LIMITED filesystem access:
-  - Can ONLY access: ~/snap/aeroftp/ and mounted removable media
-  - CANNOT access most system directories (/home, /var, etc.)
-  - Some features may not work as expected
-  
-  🔓 **FOR FULL UNRESTRICTED ACCESS, DOWNLOAD:**
-  - .deb package (Debian/Ubuntu) - RECOMMENDED
-  - .AppImage (Universal Linux) - RECOMMENDED
-  - .dmg (macOS) / .msi (Windows)
-  👉 https://github.com/axpnet/aeroftp/releases
-  
-  **Features (full version):**
-  🌍 Multi-language (EN, IT, ES, FR, ZH)
-  🚀 Fast transfers with real-time progress
-  ☁️ AeroCloud file synchronization
-  🎨 Beautiful dark/light themes
-  📁 Dual-pane file browser
-  🔄 File sync with conflict detection
-  💻 DevTools (Monaco Editor, Terminal, AI Chat)
-  📜 Multi-session tabs
-  🔐 Secure FTPS connections
-  🎵 Media player & image preview
-  
-  Built with Rust (Tauri) + React/TypeScript.
+  AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3,
+  Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
+  13 protocols, 30 presets, one app.
+
+  !! SNAP VERSION - LIMITED FILESYSTEM ACCESS !!
+  Due to Snap strict confinement, this version can only access ~/snap/aeroftp/
+  and mounted removable media. For full unrestricted access, download .deb or
+  .AppImage from: https://github.com/axpnet/aeroftp/releases
+
+  Features:
+  - AeroVault: AES-256-GCM encrypted containers with Argon2id KDF
+  - Cryptomator: Open and browse format 8 vaults (scrypt + AES-SIV + AES-GCM)
+  - AeroAgent AI: 24 tools, 7 providers (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Custom)
+  - Archive browser: Browse ZIP/7z/TAR/RAR contents in-app, selective extraction
+  - Monaco code editor (VS Code engine) for remote file editing
+  - Integrated terminal with SSH remote shell, 8 themes, multiple tabs
+  - Dual-pane file browser with drag & drop, thumbnails, grid/list view
+  - AeroCloud: Turn any FTP into a personal cloud with bidirectional sync
+  - 51 languages with RTL support
+  - Dark/light themes
+  - In-app auto-updater
+
+  Built with Rust (Tauri 2) + React 18 + TypeScript.
   Open source under GPL-3.0 license.
-  
-  Note: This is the same limitation affecting FileZilla and other FTP clients on Snap.
+
+  Note: Snap filesystem limitation also affects FileZilla and other FTP clients.
   See: https://github.com/brlin-tw/filezilla-snap/issues/7
 
 base: core22
@@ -133,7 +128,7 @@ parts:
       cat > $SNAPCRAFT_PART_INSTALL/usr/share/applications/aeroftp.desktop << 'DESKTOP'
       [Desktop Entry]
       Name=AeroFTP
-      Comment=Modern FTP Client (Snap - Limited Access)
+      Comment=Multi-Protocol File Client with AI & Encryption (Snap - Limited FS)
       Exec=aeroftp
       Icon=${SNAP}/usr/share/icons/hicolor/256x256/apps/aeroftp.png
       Terminal=false
