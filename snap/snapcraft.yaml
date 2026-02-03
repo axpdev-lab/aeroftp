@@ -1,5 +1,5 @@
 name: aeroftp
-version: '1.7.0'
+version: '1.7.1'
 summary: Multi-Protocol File Client - 13 Protocols, AI, Encryption (Snap = limited FS)
 description: |
   AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3,

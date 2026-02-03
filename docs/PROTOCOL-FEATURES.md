@@ -344,7 +344,8 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 | Version | Feature |
 |---------|---------|
 | v1.8.0 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
-| v1.9.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
+| v1.9.0 | Master password, 2FA (TOTP), unified encrypted keystore, settings consolidation |
+| v2.0.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 
 ---
 

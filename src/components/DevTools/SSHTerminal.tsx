@@ -12,7 +12,6 @@ import 'xterm/css/xterm.css';
 interface TerminalTheme {
     name: string;
     colors: Record<string, string>;
-    cursorCss: string;
 }
 
 const TERMINAL_THEMES: Record<string, TerminalTheme> = {
@@ -42,7 +41,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#7dcfff',
             brightWhite: '#c0caf5',
         },
-        cursorCss: '#7aa2f7',
     },
     'dracula': {
         name: 'Dracula',
@@ -70,7 +68,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#a4ffff',
             brightWhite: '#ffffff',
         },
-        cursorCss: '#f8f8f2',
     },
     'monokai': {
         name: 'Monokai',
@@ -98,7 +95,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#a1efe4',
             brightWhite: '#f9f8f5',
         },
-        cursorCss: '#f8f8f0',
     },
     'solarized-dark': {
         name: 'Solarized Dark',
@@ -126,7 +122,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#93a1a1',
             brightWhite: '#fdf6e3',
         },
-        cursorCss: '#839496',
     },
     'solarized-light': {
         name: 'Solarized Light',
@@ -154,7 +149,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#93a1a1',
             brightWhite: '#fdf6e3',
         },
-        cursorCss: '#657b83',
     },
     'github-dark': {
         name: 'GitHub Dark',
@@ -182,7 +176,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#56d4dd',
             brightWhite: '#f0f6fc',
         },
-        cursorCss: '#c9d1d9',
     },
     'nord': {
         name: 'Nord',
@@ -210,7 +203,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#8fbcbb',
             brightWhite: '#eceff4',
         },
-        cursorCss: '#d8dee9',
     },
     'catppuccin-mocha': {
         name: 'Catppuccin Mocha',
@@ -238,7 +230,6 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightCyan: '#94e2d5',
             brightWhite: '#a6adc8',
         },
-        cursorCss: '#f5e0dc',
     },
 };
 
@@ -386,21 +377,11 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Get current theme
     const currentTheme = TERMINAL_THEMES[settings.themeName] || TERMINAL_THEMES['tokyo-night'];
 
-    // Inject cursor CSS (updated per theme)
+    // Cleanup legacy cursor CSS if present
     useEffect(() => {
-        let styleEl = document.getElementById('aeroftp-terminal-cursor-css') as HTMLStyleElement | null;
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'aeroftp-terminal-cursor-css';
-            document.head.appendChild(styleEl);
-        }
-        styleEl.textContent = `
-.xterm .xterm-cursor-layer { z-index: 10; }
-.xterm .xterm-cursor { background-color: ${currentTheme.cursorCss} !important; opacity: 1 !important; }
-.xterm .xterm-cursor-block { background-color: ${currentTheme.cursorCss} !important; }
-.xterm .xterm-cursor-outline { outline: 2px solid ${currentTheme.cursorCss} !important; }
-`;
-    }, [currentTheme]);
+        const styleEl = document.getElementById('aeroftp-terminal-cursor-css');
+        if (styleEl) styleEl.remove();
+    }, []);
 
     // Apply theme & font to all xterm instances
     useEffect(() => {
