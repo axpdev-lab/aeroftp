@@ -4,9 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.5.x   | Yes |
-| 1.4.x   | Security fixes only |
-| < 1.4   | No  |
+| 1.7.x   | Yes |
+| 1.6.x   | Security fixes only |
+| 1.5.x   | Security fixes only |
+| < 1.5   | No  |
 
 ## Security Architecture
 
@@ -71,6 +72,27 @@ Additional options:
 - **Automatic refresh** with 5-minute buffer before expiry
 - **Ephemeral callback port**: OS-assigned random port (not a fixed port)
 
+### Client-Side Encryption (v1.7.0)
+
+**AeroVault (.aerovault containers)**
+
+| Parameter | Value |
+| --------- | ----- |
+| Algorithm | AES-256-GCM |
+| Key derivation | Argon2id (64 MB, 3 iterations, 4 threads) |
+| Nonce | 12 bytes random per file entry |
+| Container format | Binary with magic bytes, version header, encrypted entries |
+
+**Cryptomator (format 8 vaults)**
+
+| Component | Algorithm |
+| --------- | --------- |
+| Master key derivation | scrypt (N=2^15, r=8, p=1) |
+| Key wrapping | AES Key Wrap (RFC 3394) |
+| Filename encryption | AES-SIV (deterministic) |
+| Content encryption | AES-GCM (32KB chunks with chunk counter nonce) |
+| Directory ID hashing | SHA-256 truncated to Base32 |
+
 ### Archive Encryption
 
 | Format | Encryption | Backend |
@@ -79,12 +101,16 @@ Additional options:
 | **7z** | AES-256 (read + write) | `sevenz-rust` v0.6 + p7zip sidecar |
 | **RAR** | Password-protected extraction | p7zip CLI |
 
+Archive passwords are wrapped in `secrecy::SecretString` for automatic memory zeroization on drop (SEC-001).
+
 ### Memory Safety
 
 - `zeroize` crate clears passwords and keys from memory after use
 - `secrecy` crate provides zero-on-drop containers for secrets
 - Passwords are never logged or written to disk in plain text
 - Rust ownership model prevents use-after-free and buffer overflows
+- Archive passwords (ZIP/7z/RAR) wrapped in SecretString (v1.5.2)
+- OAuth tokens wrapped in SecretString across all 5 OAuth providers (v1.5.2)
 
 ### File System Hardening
 
@@ -110,6 +136,15 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - A warning banner recommending FTPS or SFTP
 - Fully localized (51 languages)
 
+### AI Tool Security (v1.6.0)
+
+- **Tool name whitelist**: Only 24 allowed tool names accepted by the backend
+- **Path validation**: Null byte rejection, path traversal prevention (`..`), 4096-char length limit
+- **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries
+- **Native function calling**: SEC-002 resolved — structured JSON tool calls replace regex parsing for OpenAI, Anthropic, Gemini
+- **Danger levels**: Safe (auto-execute), Medium (user confirmation), High (explicit approval for delete operations)
+- **Rate limiting**: 20 requests per minute per AI provider, frontend token bucket
+
 ### OAuth Session Security (v1.5.3)
 
 - OAuth credentials resolved from OS keyring on session switch (no plaintext fallback)
@@ -122,10 +157,14 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 | Feature | Description | Why It Matters |
 | ------- | ----------- | -------------- |
+| **AeroVault** | AES-256-GCM containers with Argon2id KDF for encrypting files at rest | No competitor offers client-side encrypted containers |
+| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM | Only Cyberduck also supports this; FileZilla, WinSCP do not |
 | **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF when OS keyring is unavailable | Competitors store credentials in plaintext config files when keyring fails |
 | **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
 | **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
+| **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString | Prevents password leakage in memory dumps |
+| **AI Tool Sandboxing** | Whitelist + path validation + danger levels + rate limiting | AI cannot execute arbitrary commands or access restricted paths |
 | **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS | Full control over encryption level per connection |
 
 ## Known Issues
@@ -133,6 +172,10 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 | ID | Component | Severity | Status | Details |
 | -- | --------- | -------- | ------ | ------- |
 | [CVE-2025-54804](https://github.com/axpnet/aeroftp/security/dependabot/3) | russh (SFTP) | Medium | **Resolved** | Fixed by upgrading to russh v0.57. |
+| SEC-001 | Archive passwords | Medium | **Resolved (v1.5.2)** | ZIP/7z/RAR passwords now wrapped in SecretString |
+| SEC-002 | AI tool parsing | Medium | **Resolved (v1.6.0)** | Native function calling replaces regex-based parsing |
+| SEC-003 | Keep-alive routing | Low | **Resolved (v1.5.1)** | Keep-alive now routes correctly per protocol |
+| SEC-004 | OAuth token exposure | Medium | **Resolved (v1.5.2)** | OAuth tokens wrapped in SecretString |
 
 ## Reporting a Vulnerability
 
@@ -148,4 +191,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.5.3 - February 2026*
+*AeroFTP v1.7.0 - February 2026*

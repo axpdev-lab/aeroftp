@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Code, Terminal, MessageSquare, X, Maximize2, Minimize2, Columns2, Columns3, LayoutList } from 'lucide-react';
 import { PreviewFile } from './types';
 import { CodeEditor } from './CodeEditor';
-import { SSHTerminal } from './SSHTerminal';
+import { SSHTerminal, SshConnectionInfo } from './SSHTerminal';
 import { AIChat } from './AIChat';
 
 interface DevToolsV2Props {
@@ -15,6 +15,22 @@ interface DevToolsV2Props {
     onClearFile?: () => void;
     /** Monaco editor theme: 'vs' (light), 'vs-dark', or 'tokyo-night' */
     editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night';
+    /** SSH connection info for remote shell (when connected to SFTP) */
+    sshConnection?: SshConnectionInfo | null;
+    /** Active protocol type for AI context */
+    providerType?: string;
+    /** Connection status for AI context */
+    isConnected?: boolean;
+    /** Selected files for AI context */
+    selectedFiles?: string[];
+    /** Server hostname */
+    serverHost?: string;
+    /** Server port */
+    serverPort?: number;
+    /** Server username */
+    serverUser?: string;
+    /** Callback when maximize state changes */
+    onMaximizeChange?: (maximized: boolean) => void;
 }
 
 type PanelVisibility = {
@@ -38,6 +54,14 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     onSaveFile,
     onClearFile,
     editorTheme = 'tokyo-night',
+    sshConnection,
+    providerType,
+    isConnected,
+    selectedFiles,
+    serverHost,
+    serverPort,
+    serverUser,
+    onMaximizeChange,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(window.innerWidth);
@@ -64,7 +88,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     // Panel visibility state
     const [panels, setPanels] = useState<PanelVisibility>({
         editor: true,
-        terminal: true,
+        terminal: false,
         chat: true,
     });
 
@@ -167,8 +191,8 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
     const panelWidth = visiblePanels.length > 0 ? `${100 / visiblePanels.length}%` : '100%';
 
-    // Max height: leave space for header/tabs (~110px) and statusbar (~40px)  
-    const maxHeight = 'calc(100vh - 150px)';
+    // Max height: leave space for header (~56px) + statusbar (~32px)
+    const maxHeight = 'calc(100vh - 88px)';
 
     return (
         <div
@@ -231,7 +255,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
                 <div className="flex items-center gap-1">
                     <button
-                        onClick={() => setIsMaximized(!isMaximized)}
+                        onClick={() => { const next = !isMaximized; setIsMaximized(next); onMaximizeChange?.(next); }}
                         className={`p-1 ${theme.buttonHover} rounded transition-colors`}
                         title={isMaximized ? 'Restore' : 'Maximize'}
                     >
@@ -294,7 +318,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                 </div>
                                 <div className="flex-1 overflow-hidden bg-gray-900">
                                     {/* Terminal always stays dark - traditional */}
-                                    <SSHTerminal className="h-full" localPath={localPath} />
+                                    <SSHTerminal className="h-full" localPath={localPath} sshConnection={sshConnection} />
                                 </div>
                             </div>
                         )}
@@ -309,7 +333,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                     <span className={`text-xs ${theme.text}`}>AI Assistant</span>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} />
+                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} />
                                 </div>
                             </div>
                         )}

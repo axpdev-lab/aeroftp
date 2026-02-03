@@ -1,5 +1,11 @@
 # AeroFTP Development Guidelines
 
+## Language
+
+Always respond in **Italian** (italiano). All conversations, explanations, and comments to the user must be in Italian. Code, commit messages, and documentation remain in English.
+
+---
+
 ## Commit Message Standards
 
 This repository follows **Conventional Commits** with a professional, academic style suitable for code review and publication.
@@ -143,7 +149,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v1.5.3
+## Versione corrente: v1.7.0
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -161,7 +167,10 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 | reqwest | 0.13 | HTTP client |
 | quick-xml | 0.39 | WebDAV/Azure XML parsing |
 | keyring | 3 (linux-native) | OS Keyring |
-| oauth2 | 4.4 | OAuth2 PKCE (upgrade a v5 in v1.6.0) |
+| oauth2 | 5 | OAuth2 PKCE |
+| scrypt | 0.11 | Cryptomator KDF |
+| aes-kw | 0.2 | AES Key Wrap (RFC 3394) |
+| aes-siv | 0.7 | AES-SIV filename encryption |
 
 ### Completato in v1.5.2
 
@@ -171,19 +180,60 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 - ~~Codebase audit: rimossi 7 crate, 3 componenti orfani, duplicati crypto~~ Done
 - ~~Fix credential loading al primo avvio (keyring probe fallback)~~ Done
 
-### Prossimi task (v1.5.3+)
+### Completato in v1.5.4
 
-- Test Filen e Box con account reali, promuovere a stable
-- Cross-panel drag & drop (local↔remote upload/download)
+- ~~In-app download con progress bar (%, MB/s, ETA)~~ Done
+- ~~AppImage auto-install (backup → replace → restart)~~ Done
+- ~~Periodic update check ogni 24h~~ Done
+- ~~Terminal empty-start pattern (no tabs al mount)~~ Done
+- ~~Fix tray menu "Check for Updates" handler~~ Done
+- ~~Fix i18n update toast~~ Done
+
+### Completato in v1.6.0
+
+- ~~Native function calling (OpenAI, Anthropic, Gemini) — SEC-002 resolved~~ Done
+- ~~Streaming responses (SSE/NDJSON per tutti i 7 provider)~~ Done
+- ~~Provider-agnostic tools (14 tools via StorageProvider trait)~~ Done
+- ~~Chat history persistence (Tauri plugin-fs, 50 conv / 200 msg)~~ Done
+- ~~Cost tracking (token count + cost per messaggio)~~ Done
+- ~~Context awareness (provider, path, selected files nel system prompt)~~ Done
+- ~~i18n complete (122 nuove chiavi `ai.*`, 51 lingue)~~ Done
+
+### Completato in v1.7.0
+
+- ~~Archive browser (ZIP/7z/TAR/RAR list + selective extraction)~~ Done
+- ~~AeroVault (AES-256 encrypted containers, .aerovault format)~~ Done
+- ~~Cryptomator vault format 8 (scrypt + AES-KW + AES-SIV + AES-GCM)~~ Done
+- ~~CompressDialog (format selection, compression levels, password, file info)~~ Done
+- ~~AeroFile mode (local-only file manager, toggle remoto, preview panel)~~ Done
+- ~~Preview panel ridimensionabile con info file, risoluzione immagini, path~~ Done
+- ~~Colonna Type nelle tabelle file (responsive, sortable)~~ Done
+- ~~Fix 7z password detection (content probe via for_each_entries)~~ Done
+- ~~Icona .aerovault (Shield emerald) in file list~~ Done
+- ~~4 nuovi componenti: ArchiveBrowser, VaultPanel, CryptomatorBrowser, CompressDialog~~ Done
+- ~~5 nuove dipendenze Cargo: scrypt, aes-kw, aes-siv, data-encoding, jsonwebtoken~~ Done
+- ~~i18n: 60+ nuove chiavi (archive, vault, cryptomator, compress), 51 lingue~~ Done
+- ~~AeroAgent personality: system prompt con identity, tone, protocol expertise (13 provider)~~ Done
+- ~~AeroAgent server context: host, port, user nel system prompt dinamico~~ Done
+- ~~AeroAgent local tools: local_mkdir, local_delete, local_write, local_rename, local_search, local_edit~~ Done
+- ~~AeroAgent remote_edit: find & replace in file remoti (download → edit → upload)~~ Done
+- ~~AeroAgent batch transfers: upload_files, download_files (multi-file)~~ Done
+- ~~AeroAgent styled tool display: chip inline con wrench icon, 24 tool labels~~ Done
+- ~~AeroAgent tool count: da 14 a 24 tool provider-agnostic~~ Done
+
+### Prossimi task (v1.8.0)
+
 - Consolidare duplicati `formatBytes`, `getMimeType`, `UpdateInfo` (vedi audit report)
 - Gating console.log dietro debug mode (76 statement in 13 file)
+- CLI Foundation (`aeroftp connect/ls/get/put/sync`)
+- Vision/multimodal per GPT-4o, Gemini, Claude
+- Multi-step autonomous tool calls
 
 ### Roadmap futura
 
-Dettagli completi in `docs/dev/roadmap/ROADMAP.md`:
-- **v1.6.0**: AeroAgent Pro (remote tools, streaming, native function calling) + CLI Foundation + oauth2 v5
-- **v1.7.0**: Terminal Pro (themes, SSH remote, Windows PTY) + AI Intelligence (vision, multi-step)
-- **v1.8.0**: Cryptomator + AeroVault + RAG + Plugin system
+Dettagli completi in `docs/dev/ROADMAP.md`:
+- **v1.8.0**: AeroAgent Intelligence (vision, multi-step) + CLI Foundation
+- **v1.9.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
 
 ---
 

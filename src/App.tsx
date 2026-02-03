@@ -36,6 +36,10 @@ import { CustomTitlebar } from './components/CustomTitlebar';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
+import { VaultPanel } from './components/VaultPanel';
+import { CryptomatorBrowser } from './components/CryptomatorBrowser';
+import { ArchiveBrowser } from './components/ArchiveBrowser';
+import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
@@ -115,6 +119,9 @@ const App: React.FC = () => {
   } = settings;
 
   const [isConnected, setIsConnected] = useState(false);
+  const [showRemotePanel, setShowRemotePanel] = useState(true);
+  const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
+  const previewResizing = useRef(false);
   const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number } | null>(null);
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
@@ -162,6 +169,10 @@ const App: React.FC = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
+  const [showVaultPanel, setShowVaultPanel] = useState(false);
+  const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
+  const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
+  const [compressDialogState, setCompressDialogState] = useState<{ files: { name: string; path: string; size: number; isDir: boolean }[]; defaultName: string; outputDir: string } | null>(null);
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
@@ -202,7 +213,7 @@ const App: React.FC = () => {
     // If syncing right now
     if (cloudSyncing) {
       return (
-        <span title="Syncing...">
+        <span title={t('ui.syncing')}>
           <RefreshCw size={12} className="text-cyan-500 animate-spin ml-1" />
         </span>
       );
@@ -211,7 +222,7 @@ const App: React.FC = () => {
     // If file modified after last sync -> pending
     if (fileTime > lastSyncTime) {
       return (
-        <span title="Pending sync">
+        <span title={t('ui.pendingSync')}>
           <RefreshCw size={12} className="text-yellow-500 ml-1" />
         </span>
       );
@@ -219,7 +230,7 @@ const App: React.FC = () => {
 
     // Otherwise synced
     return (
-      <span title="Synced">
+      <span title={t('common.synced')}>
         <CheckCircle2 size={12} className="text-green-500 ml-1" />
       </span>
     );
@@ -271,6 +282,17 @@ const App: React.FC = () => {
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
+  const [updateDownload, setUpdateDownload] = useState<{
+    downloading: boolean;
+    percentage: number;
+    speed_bps: number;
+    eta_seconds: number;
+    filename: string;
+    downloaded: number;
+    total: number;
+    completedPath?: string;
+    error?: string;
+  } | null>(null);
 
   // AeroCloud state + event listeners (extracted hook)
   const {
@@ -307,11 +329,12 @@ const App: React.FC = () => {
   // Preview: handled by usePreview hook
   const preview = usePreview({ notify, toast });
   const {
-    showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64,
+    showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview,
     universalPreviewOpen, universalPreviewFile, openUniversalPreview, closeUniversalPreview,
     viewMode, setViewMode,
   } = preview;
+  const [devToolsMaximized, setDevToolsMaximized] = useState(false);
 
   // Filtered files (search filter applied)
   const filteredLocalFiles = localFiles.filter(f =>
@@ -515,19 +538,19 @@ const App: React.FC = () => {
         // FTP connection lost - attempt auto-reconnect
         setIsReconnecting(true);
         humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
-        notify.info('Reconnecting...', 'Connection lost, attempting to reconnect');
+        notify.info(t('toast.reconnecting'), t('toast.connectionLost'));
 
         try {
           await invoke('reconnect_ftp');
           humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: connectionParams.server }, 'success');
-          notify.success('Reconnected', 'FTP connection restored');
+          notify.success(t('toast.reconnected'), t('toast.ftpRestored'));
           const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
         } catch (reconnectError) {
           console.error('Auto-reconnect failed:', reconnectError);
           humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
-          notify.error('Connection Lost', 'Could not reconnect. Please reconnect manually.');
+          notify.error(t('toast.connectionLostTitle'), t('toast.connectionLostManual'));
           setIsConnected(false);
         } finally {
           setIsReconnecting(false);
@@ -549,6 +572,11 @@ const App: React.FC = () => {
       let cmp = 0;
       if (field === 'name') cmp = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
       else if (field === 'size') cmp = (a.size || 0) - (b.size || 0);
+      else if (field === 'type') {
+        const extA = a.name.includes('.') ? a.name.split('.').pop()!.toLowerCase() : '';
+        const extB = b.name.includes('.') ? b.name.split('.').pop()!.toLowerCase() : '';
+        cmp = extA.localeCompare(extB);
+      }
       else cmp = (a.modified || '').localeCompare(b.modified || '');
       return order === 'asc' ? cmp : -cmp;
     });
@@ -587,6 +615,40 @@ const App: React.FC = () => {
     return () => clearInterval(checkStuck);
   }, [activeTransfer?.percentage]);
 
+  // Update download progress listener
+  useEffect(() => {
+    const unlisten = listen<{
+      downloaded: number; total: number; percentage: number;
+      speed_bps: number; eta_seconds: number; filename: string;
+    }>('update-download-progress', (event) => {
+      const p = event.payload;
+      setUpdateDownload(prev => ({
+        ...(prev || { downloading: true, error: undefined, completedPath: undefined }),
+        ...p,
+        downloading: p.percentage < 100,
+        completedPath: p.percentage >= 100 ? prev?.completedPath : undefined,
+      }));
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Start update download
+  const startUpdateDownload = useCallback(async () => {
+    if (!updateAvailable?.download_url) return;
+    setUpdateDownload({
+      downloading: true, percentage: 0, speed_bps: 0, eta_seconds: 0,
+      filename: '', downloaded: 0, total: 0,
+    });
+    try {
+      const path = await invoke<string>('download_update', { url: updateAvailable.download_url });
+      setUpdateDownload(prev => prev ? { ...prev, downloading: false, completedPath: path } : null);
+      activityLog.log('INFO', `Update downloaded: ${path}`, 'success');
+    } catch (error) {
+      setUpdateDownload(prev => prev ? { ...prev, downloading: false, error: String(error) } : null);
+      activityLog.log('ERROR', `Update download failed: ${error}`, 'error');
+    }
+  }, [updateAvailable, activityLog]);
+
   // Menu events from native menu
   useEffect(() => {
     const unlisten = listen<string>('menu-event', (event) => {
@@ -621,6 +683,9 @@ const App: React.FC = () => {
         case 'toggle_agent':
           // Emit event for DevToolsV2 to handle
           window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: id.replace('toggle_', '') }));
+          break;
+        case 'check_update':
+          checkForUpdate(true);
           break;
         case 'quit':
           // Will be handled by Tauri
@@ -773,10 +838,13 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drag & Drop
+  // Drag & Drop (cross-panel callback set below after upload/download are defined)
+  const crossPanelDropRef = React.useRef<((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string) => Promise<void>) | null>(null);
+
   const {
-    dragData, dropTargetPath,
+    dragData, dropTargetPath, crossPanelTarget,
     handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDragLeave,
+    handlePanelDragOver, handlePanelDrop, handlePanelDragLeave,
   } = useDragAndDrop({
     notify,
     humanLog,
@@ -787,6 +855,9 @@ const App: React.FC = () => {
     activeSessionId,
     sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
     connectionParams,
+    onCrossPanelDrop: async (files, fromRemote, targetDir) => {
+      await crossPanelDropRef.current?.(files, fromRemote, targetDir);
+    },
   });
 
   // FTP operations
@@ -802,12 +873,12 @@ const App: React.FC = () => {
     if (isOAuth) {
       // OAuth provider is already connected via OAuthConnect component
       // Just switch to file manager view
-      setIsConnected(true);
+      setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
       const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
       const providerName = providerNames[protocol] || protocol;
-      notify.success('Connected', `Connected to ${providerName}`);
+      notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
       // Load remote files for OAuth provider - pass protocol explicitly
       await loadRemoteFiles(protocol);
       // Navigate to initial local directory if specified
@@ -828,11 +899,11 @@ const App: React.FC = () => {
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
       if ((!connectionParams.server && protocol !== 'mega') || !connectionParams.username) {
-        notify.error('Missing Fields', 'Please fill in endpoint and credentials');
+        notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
       if (protocol === 's3' && !connectionParams.options?.bucket) {
-        notify.error('Missing Fields', 'Please fill in bucket name');
+        notify.error(t('toast.missingFields'), t('toast.fillBucket'));
         return;
       }
 
@@ -889,9 +960,9 @@ const App: React.FC = () => {
         console.log('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         await invoke('provider_connect', { params: providerParams });
 
-        setIsConnected(true);
+        setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
         humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
-        notify.success('Connected', `Connected to ${providerName}`);
+        notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
         // Load files using provider API
         console.log('[connectToFtp] Calling provider_list_files for:', protocol);
@@ -945,14 +1016,14 @@ const App: React.FC = () => {
         fetchStorageQuota(protocol);
       } catch (error) {
         humanLog.logError('CONNECT', { server: providerName }, logId);
-        notify.error('Connection Failed', String(error));
+        notify.error(t('connection.connectionFailed'), String(error));
       }
       finally { setLoading(false); }
       return;
     }
 
     // FTP/FTPS/SFTP - use legacy commands
-    if (!connectionParams.server || !connectionParams.username) { notify.error('Missing Fields', 'Please fill in server and username'); return; }
+    if (!connectionParams.server || !connectionParams.username) { notify.error(t('toast.missingFields'), t('toast.fillServerUser')); return; }
     setLoading(true);
     // Reset navigation sync for new connection
     setIsSyncNavigation(false);
@@ -967,10 +1038,10 @@ const App: React.FC = () => {
         // Ignore if not connected to OAuth
       }
       await invoke('connect_ftp', { params: connectionParams });
-      setIsConnected(true);
+      setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       const protocol = (connectionParams.protocol || 'FTP').toUpperCase();
       humanLog.logSuccess('CONNECT', { server: connectionParams.server, protocol }, logId);
-      notify.success('Connected', `Connected to ${connectionParams.server}`);
+      notify.success(t('toast.connected'), t('toast.connectedTo', { server: connectionParams.server }));
       // Navigate to initial remote directory if specified
       if (quickConnectDirs.remoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
@@ -991,7 +1062,7 @@ const App: React.FC = () => {
       );
     } catch (error) {
       humanLog.logError('CONNECT', { server: connectionParams.server }, logId);
-      notify.error('Connection Failed', String(error));
+      notify.error(t('connection.connectionFailed'), String(error));
     }
     finally { setLoading(false); }
   };
@@ -1001,6 +1072,7 @@ const App: React.FC = () => {
     try {
       await invoke('disconnect_ftp');
       setIsConnected(false);
+      setActivePanel('local');
       setRemoteFiles([]);
       setCurrentRemotePath('/');
       // Close all session tabs on disconnect
@@ -1010,10 +1082,10 @@ const App: React.FC = () => {
       setDevToolsOpen(false);
       setDevToolsPreviewFile(null);
       humanLog.logSuccess('DISCONNECT', {}, logId);
-      notify.info('Disconnected', 'Disconnected from server');
+      notify.info(t('toast.disconnectedTitle'), t('toast.disconnectedFrom'));
     } catch (error) {
       humanLog.logError('DISCONNECT', {}, logId);
-      notify.error('Error', `Disconnection failed: ${error}`);
+      notify.error(t('common.error'), t('toast.disconnectFailed', { error: String(error) }));
     }
   };
 
@@ -1366,7 +1438,7 @@ const App: React.FC = () => {
       // Get saved servers from localStorage (needed to check if same server)
       const savedServersStr = localStorage.getItem('aeroftp-saved-servers');
       if (!savedServersStr) {
-        notify.error('No saved servers', 'Please save your server first');
+        notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
         return;
       }
@@ -1375,7 +1447,7 @@ const App: React.FC = () => {
       const cloudServer = savedServers.find((s: { name: string }) => s.name === cloudConfig.server_profile);
 
       if (!cloudServer) {
-        notify.error('Server not found', `Server profile "${cloudConfig.server_profile}" not found`);
+        notify.error(t('toast.serverNotFound'), t('toast.serverProfileNotFound', { name: cloudConfig.server_profile }));
         setShowCloudPanel(true);
         return;
       }
@@ -1384,6 +1456,14 @@ const App: React.FC = () => {
       const cloudServerString = cloudServer.port && cloudServer.port !== 21
         ? `${cloudServer.host}:${cloudServer.port}`
         : cloudServer.host;
+
+      // Load password from OS keyring (localStorage never stores passwords)
+      let cloudPassword = '';
+      try {
+        cloudPassword = await invoke<string>('get_credential', { account: `server_${cloudServer.id}` });
+      } catch (e) {
+        console.warn('Failed to load cloud server credential from keyring:', e);
+      }
 
       // If already connected, check if it's the same server
       if (isConnected) {
@@ -1431,8 +1511,8 @@ const App: React.FC = () => {
           const params = {
             server: cloudServerString,
             username: cloudServer.username || '',
-            password: cloudServer.password || '',
-            protocol: cloudServer.protocol || 'ftp',  // Include protocol from saved server
+            password: cloudPassword,
+            protocol: cloudServer.protocol || 'ftp',
           };
 
           try {
@@ -1489,17 +1569,17 @@ const App: React.FC = () => {
       const params = {
         server: cloudServerString,
         username: cloudServer.username || '',
-        password: cloudServer.password || '',
-        protocol: cloudServer.protocol || 'ftp',  // Include protocol from saved server
+        password: cloudPassword,
+        protocol: cloudServer.protocol || 'ftp',
       };
 
       // Connect
       setLoading(true);
       const logId = humanLog.logStart('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})` });
-      notify.info('Connecting', `Connecting to ${cloudConfig.server_profile}...`);
+      notify.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
 
       await invoke('connect_ftp', { params });
-      setIsConnected(true);
+      setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setConnectionParams(params);
       setShowConnectionScreen(false);  // Hide connection screen to show file browser
 
@@ -1515,18 +1595,18 @@ const App: React.FC = () => {
       setCurrentLocalPath(cloudConfig.local_folder);
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: 'FTP' }, logId);
-      notify.success('Connected', `Connected to AeroCloud (${cloudConfig.server_profile})`);
+      notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));
 
       // Trigger a sync after connecting to cloud
       try {
         await invoke('trigger_cloud_sync');
-        notify.info('Sync Started', 'Syncing cloud files...');
+        notify.info(t('toast.syncStartedTitle'), t('toast.syncingCloudFiles'));
       } catch (e) {
         console.log('Sync trigger error:', e);
       }
 
     } catch (error) {
-      notify.error('Connection Failed', String(error));
+      notify.error(t('connection.connectionFailed'), String(error));
       setShowCloudPanel(true);
     } finally {
       setLoading(false);
@@ -1637,14 +1717,14 @@ const App: React.FC = () => {
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
         }
-        notify.success('Folder Created', syncNavDialog.missingPath);
+        notify.success(t('toast.folderCreated'), syncNavDialog.missingPath);
       } else {
         await invoke('create_local_folder', { path: syncNavDialog.targetPath });
         await loadLocalFiles(syncNavDialog.targetPath);
-        notify.success('Folder Created', syncNavDialog.missingPath);
+        notify.success(t('toast.folderCreated'), syncNavDialog.missingPath);
       }
     } catch (error) {
-      notify.error('Failed to create folder', String(error));
+      notify.error(t('toast.failedCreateFolder'), String(error));
     }
     setSyncNavDialog(null);
   };
@@ -1652,7 +1732,7 @@ const App: React.FC = () => {
   const handleSyncNavDisable = () => {
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
-    notify.info('Navigation Sync Disabled');
+    notify.info(t('toast.navSyncDisabled'));
     setSyncNavDialog(null);
   };
 
@@ -1661,11 +1741,11 @@ const App: React.FC = () => {
     if (!isSyncNavigation) {
       // Enabling sync: save current paths as base
       setSyncBasePaths({ remote: currentRemotePath, local: currentLocalPath });
-      notify.success('Navigation Sync Enabled', `Syncing: ${currentRemotePath} ↔ ${currentLocalPath}`);
+      notify.success(t('toast.navSyncEnabled'), t('toast.syncingPaths', { remote: currentRemotePath, local: currentLocalPath }));
       humanLog.logRaw('activity.nav_sync_enabled', 'NAVIGATE', { remote: currentRemotePath, local: currentLocalPath }, 'success');
     } else {
       setSyncBasePaths(null);
-      notify.info('Navigation Sync Disabled');
+      notify.info(t('toast.navSyncDisabled'));
       humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, 'success');
     }
     setIsSyncNavigation(!isSyncNavigation);
@@ -2026,6 +2106,16 @@ const App: React.FC = () => {
     }
   };
 
+  // Wire cross-panel drag & drop callback now that upload/download are defined
+  crossPanelDropRef.current = async (files, fromRemote, _targetDir) => {
+    if (!isConnected || files.length === 0) return;
+    if (fromRemote) {
+      await downloadMultipleFiles(files.map(f => f.name));
+    } else {
+      await uploadMultipleFiles(files.map(f => f.name));
+    }
+  };
+
   const deleteMultipleRemoteFiles = (filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
@@ -2179,12 +2269,12 @@ const App: React.FC = () => {
           await invoke('delete_remote_file', { path, isDir });
         }
         humanLog.logSuccess('DELETE', { filename: fileName }, logId);
-        notify.success('Deleted', fileName);
+        notify.success(t('toast.deleted'), fileName);
         await loadRemoteFiles();
       }
       catch (error) {
         humanLog.logError('DELETE', { filename: fileName }, logId);
-        notify.error('Delete Failed', String(error));
+        notify.error(t('toast.deleteFail'), String(error));
       }
     };
 
@@ -2210,12 +2300,12 @@ const App: React.FC = () => {
       try {
         await invoke('delete_local_file', { path });
         humanLog.logSuccess('DELETE', { filename: fileName }, logId);
-        notify.success('Deleted', fileName);
+        notify.success(t('toast.deleted'), fileName);
         await loadLocalFiles(currentLocalPath);
       }
       catch (error) {
         humanLog.logError('DELETE', { filename: fileName }, logId);
-        notify.error('Delete Failed', String(error));
+        notify.error(t('toast.deleteFail'), String(error));
       }
     };
 
@@ -2240,17 +2330,17 @@ const App: React.FC = () => {
     try {
       await invoke('delete_local_file', { path });
       humanLog.logSuccess('DELETE', { filename: fileName }, logId);
-      notify.success('Deleted', fileName);
+      notify.success(t('toast.deleted'), fileName);
       await loadLocalFiles(currentLocalPath);
     } catch (error) {
       humanLog.logError('DELETE', { filename: fileName }, logId);
-      notify.error('Delete Failed', String(error));
+      notify.error(t('toast.deleteFail'), String(error));
     }
   };
 
   const renameFile = (path: string, currentName: string, isRemote: boolean) => {
     setInputDialog({
-      title: 'Rename',
+      title: t('common.rename'),
       defaultValue: currentName,
       onConfirm: async (newName: string) => {
         setInputDialog(null);
@@ -2278,10 +2368,10 @@ const App: React.FC = () => {
             await loadLocalFiles(currentLocalPath);
           }
           humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName }, logId);
-          notify.success('Renamed', newName);
+          notify.success(t('toast.renamed'), newName);
         } catch (error) {
           humanLog.logError('RENAME', { oldname: currentName, newname: newName }, logId);
-          notify.error('Rename Failed', String(error));
+          notify.error(t('toast.renameFail'), String(error));
         }
       }
     });
@@ -2337,7 +2427,7 @@ const App: React.FC = () => {
     }
 
     const count = selection.size;
-    const downloadLabel = count > 1 ? `Download (${count})` : 'Download';
+    const downloadLabel = count > 1 ? t('contextMenu.downloadCount', { count }) : t('common.download');
     const filesToUse = Array.from(selection);
 
     // Get protocol from active session as fallback (for context menu operations)
@@ -2349,13 +2439,13 @@ const App: React.FC = () => {
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: 'Preview', icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
-      { label: 'View Source', icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: 'Rename', icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: 'Permissions', icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
+      { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
+      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
       {
-        label: 'Properties', icon: <Info size={14} />, action: () => setPropertiesDialog({
+        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
           name: file.name,
           path: file.path,
           size: file.size,
@@ -2366,19 +2456,19 @@ const App: React.FC = () => {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: 'Delete', icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
-      { label: 'Copy Path', icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success('Path copied'); } },
-      { label: 'Copy Name', icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success('Name copied'); } },
+      { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
+      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
+      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); } },
     ];
 
     // Copy FTP/SFTP URL — only for traditional protocols
     if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || currentProtocol === 'sftp')) {
       const scheme = currentProtocol === 'sftp' ? 'sftp' : 'ftp';
       items.push({
-        label: `Copy ${scheme.toUpperCase()} URL`, icon: <Link2 size={14} />, action: () => {
+        label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
           const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
           navigator.clipboard.writeText(url);
-          notify.success(`${scheme.toUpperCase()} URL copied`);
+          notify.success(t('contextMenu.urlCopied', { scheme: scheme.toUpperCase() }));
         }
       });
     }
@@ -2387,15 +2477,15 @@ const App: React.FC = () => {
     // and the file is within the AeroCloud remote folder
     if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && file.path.startsWith(cloudRemoteFolder)) {
       items.push({
-        label: 'Copy Share Link',
+        label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
         action: async () => {
           try {
             const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path });
-            await navigator.clipboard.writeText(shareUrl);
-            notify.success('Share link copied!', shareUrl);
+            await invoke('copy_to_clipboard', { text: shareUrl });
+            notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {
-            notify.error('Failed to generate share link', String(err));
+            notify.error(t('toast.generateShareLinkFailed'), String(err));
           }
         }
       });
@@ -2417,16 +2507,16 @@ const App: React.FC = () => {
         }
       })();
       items.push({
-        label: 'Create Share Link',
+        label: t('contextMenu.createShareLink'),
         icon: shareIcon,
         action: async () => {
           try {
-            notify.info('Creating share link...', 'This may take a moment');
+            notify.info(t('contextMenu.creatingShareLink'), t('contextMenu.shareLinkMoment'));
             const shareUrl = await invoke<string>('provider_create_share_link', { path: file.path });
-            await navigator.clipboard.writeText(shareUrl);
-            notify.success('Share link copied!', shareUrl);
-          } catch (err) {
-            notify.error('Failed to create share link', String(err));
+            await invoke('copy_to_clipboard', { text: shareUrl });
+            notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+          } catch (err: unknown) {
+            notify.error(t('contextMenu.shareLinkFailed'), String(err));
           }
         }
       });
@@ -2435,19 +2525,19 @@ const App: React.FC = () => {
     // Add Import MEGA Link option (MEGA only)
     if (currentProtocol === 'mega') {
       items.push({
-        label: 'Import MEGA Link',
+        label: t('contextMenu.importMegaLink'),
         icon: <MegaLogo size={14} />,
         action: async () => {
-          const link = window.prompt('Paste a MEGA public link to import:');
+          const link = window.prompt(t('contextMenu.importMegaPrompt'));
           if (!link || !link.trim()) return;
           try {
-            notify.info('Importing link...', 'This may take a moment');
+            notify.info(t('contextMenu.importingLink'), t('contextMenu.shareLinkMoment'));
             const dest = currentRemotePath || '/';
             await invoke('provider_import_link', { link: link.trim(), dest });
-            notify.success('Link imported!', `Imported to ${dest}`);
+            notify.success(t('contextMenu.linkImported'), t('contextMenu.importedTo', { path: dest }));
             loadRemoteFiles();
           } catch (err) {
-            notify.error('Failed to import link', String(err));
+            notify.error(t('contextMenu.importLinkFailed'), String(err));
           }
         }
       });
@@ -2519,7 +2609,7 @@ const App: React.FC = () => {
     }
 
     const count = selection.size;
-    const uploadLabel = count > 1 ? `Upload (${count})` : 'Upload';
+    const uploadLabel = count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload');
     const filesToUpload = Array.from(selection);
 
     const items: ContextMenuItem[] = [
@@ -2530,12 +2620,12 @@ const App: React.FC = () => {
         disabled: !isConnected
       },
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: 'Preview', icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
-      { label: 'View Source', icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: 'Rename', icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1 },
+      { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
+      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1 },
       {
-        label: 'Properties', icon: <Info size={14} />, action: () => setPropertiesDialog({
+        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
           name: file.name,
           path: file.path,
           size: file.size,
@@ -2544,10 +2634,10 @@ const App: React.FC = () => {
           isRemote: false,
         }), disabled: count > 1
       },
-      { label: 'Delete', icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
-      { label: 'Copy Path', icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success('Path copied'); } },
-      { label: 'Copy Name', icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success('Name copied'); }, divider: true },
-      { label: 'Open in File Manager', icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
+      { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
+      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
+      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); }, divider: true },
+      { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
     ];
 
     // Helper: get paths for compression
@@ -2557,142 +2647,17 @@ const App: React.FC = () => {
     });
     const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
 
-    // Compress submenu with all supported formats
+    // Compress — opens CompressDialog with all format options
     items.push({
       label: t('contextMenu.compressSubmenu'),
       icon: <Archive size={14} />,
-      action: () => {},  // Parent item - no direct action
-      children: [
-        {
-          label: 'ZIP',
-          icon: <Archive size={14} />,
-          action: () => {
-            setInputDialog({
-              title: `${t('contextMenu.encryptionOptional')} — ${baseName}.zip`,
-              defaultValue: '',
-              isPassword: true,
-              placeholder: t('contextMenu.encryptionOptionalHint'),
-              onConfirm: async (password: string) => {
-                setInputDialog(null);
-                try {
-                  const outputPath = `${currentLocalPath}/${baseName}.zip`;
-                  notify.info(t('contextMenu.compressing'), `${baseName}.zip`);
-                  const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.zip...`, 'running');
-                  await invoke<string>('compress_files', { paths: getCompressPaths(), outputPath, password: password || null });
-                  const suffix = password ? ' (AES-256)' : '';
-                  activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.zip${suffix} (${count} item${count > 1 ? 's' : ''})` });
-                  notify.success('Compressed!', `Created ${baseName}.zip${suffix}`);
-                  await loadLocalFiles(currentLocalPath);
-                } catch (err) {
-                  activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
-                  notify.error(t('contextMenu.compressionFailed'), String(err));
-                }
-              }
-            });
-          }
-        },
-        {
-          label: '7z',
-          icon: <Archive size={14} />,
-          action: () => {
-            setInputDialog({
-              title: `${t('contextMenu.encryptionOptional')} — ${baseName}.7z`,
-              defaultValue: '',
-              isPassword: true,
-              placeholder: t('contextMenu.encryptionOptionalHint'),
-              onConfirm: async (password: string) => {
-                setInputDialog(null);
-                try {
-                  const outputPath = `${currentLocalPath}/${baseName}.7z`;
-                  notify.info(t('contextMenu.compressing'), `${baseName}.7z`);
-                  const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.7z...`, 'running');
-                  await invoke<string>('compress_7z', { paths: getCompressPaths(), outputPath, password: password || null });
-                  const suffix = password ? ' (AES-256)' : '';
-                  activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.7z${suffix} (${count} item${count > 1 ? 's' : ''})` });
-                  notify.success('Compressed!', `Created ${baseName}.7z${suffix}`);
-                  await loadLocalFiles(currentLocalPath);
-                } catch (err) {
-                  activityLog.log('ERROR', `7z compression failed: ${String(err)}`, 'error');
-                  notify.error(t('contextMenu.compressionFailed'), String(err));
-                }
-              }
-            });
-          }
-        },
-        {
-          label: 'TAR',
-          icon: <Archive size={14} />,
-          divider: true,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.tar`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.tar`);
-              const logId = activityLog.log('INFO', `Archiving ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar...`, 'running');
-              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar' });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Archived!', `Created ${baseName}.tar`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `TAR failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
-          }
-        },
-        {
-          label: 'TAR.GZ',
-          icon: <Archive size={14} />,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.tar.gz`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.tar.gz`);
-              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.gz...`, 'running');
-              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.gz' });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.gz (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Compressed!', `Created ${baseName}.tar.gz`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `TAR.GZ failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
-          }
-        },
-        {
-          label: 'TAR.XZ',
-          icon: <Archive size={14} />,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.tar.xz`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.tar.xz`);
-              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.xz...`, 'running');
-              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.xz' });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.xz (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Compressed!', `Created ${baseName}.tar.xz`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `TAR.XZ failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
-          }
-        },
-        {
-          label: 'TAR.BZ2',
-          icon: <Archive size={14} />,
-          action: async () => {
-            try {
-              const outputPath = `${currentLocalPath}/${baseName}.tar.bz2`;
-              notify.info(t('contextMenu.compressing'), `${baseName}.tar.bz2`);
-              const logId = activityLog.log('INFO', `Compressing ${count} item${count > 1 ? 's' : ''} to ${baseName}.tar.bz2...`, 'running');
-              await invoke<string>('compress_tar', { paths: getCompressPaths(), outputPath, format: 'tar.bz2' });
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${baseName}.tar.bz2 (${count} item${count > 1 ? 's' : ''})` });
-              notify.success('Compressed!', `Created ${baseName}.tar.bz2`);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `TAR.BZ2 failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
-          }
-        },
-      ]
+      action: () => {
+        const compressFiles = filesToUpload.map(name => {
+          const f = sortedLocalFiles.find(lf => lf.name === name);
+          return { name, path: f ? f.path : `${currentLocalPath}/${name}`, size: f?.size ?? 0, isDir: f?.is_dir ?? false };
+        });
+        setCompressDialogState({ files: compressFiles, defaultName: baseName, outputDir: currentLocalPath });
+      }
     });
 
     // Extract option (for archive files - ZIP, 7z, TAR, RAR variants)
@@ -2785,6 +2750,26 @@ const App: React.FC = () => {
           },
         ],
       });
+
+      // Browse Archive option
+      const archType: import('./types').ArchiveType = isZipArchive ? 'zip' : is7zArchive ? '7z' : isRarArchive ? 'rar' : 'tar';
+      items.push({
+        label: t('contextMenu.browseArchive') || 'Browse Archive',
+        icon: <Search size={14} />,
+        action: async () => {
+          let encrypted = false;
+          try {
+            encrypted = is7zArchive
+              ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
+              : isZipArchive
+                ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
+                : isRarArchive
+                  ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
+                  : false;
+          } catch { /* ignore */ }
+          setArchiveBrowserState({ path: file.path, type: archType, encrypted });
+        },
+      });
     }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
@@ -2796,7 +2781,7 @@ const App: React.FC = () => {
         action: async () => {
           try {
             const shareUrl = await invoke<string>('generate_share_link', { localPath: file.path });
-            await navigator.clipboard.writeText(shareUrl);
+            await invoke('copy_to_clipboard', { text: shareUrl });
             notify.success('Share link copied!', shareUrl);
           } catch (err) {
             notify.error('Failed to generate share link', String(err));
@@ -2843,28 +2828,98 @@ const App: React.FC = () => {
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
 
-      {/* Update Available Badge */}
+      {/* Update Available Badge with inline download */}
       {updateAvailable?.has_update && !updateToastDismissed && (
-        <div className="fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-pulse border border-blue-400/30">
-          <div className="flex flex-col">
-            <span className="font-semibold">🚀 AeroFTP v{updateAvailable.latest_version} Available!</span>
-            <span className="text-xs opacity-80">Current: v{updateAvailable.current_version} ({updateAvailable.install_format?.toUpperCase()})</span>
+        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[300px] ${!updateDownload ? 'animate-pulse' : ''}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="font-semibold flex items-center gap-1.5">
+                <Download size={14} />
+                AeroFTP v{updateAvailable.latest_version} {t('statusbar.updateAvailable')}
+              </span>
+              <span className="text-xs opacity-80">
+                {t('ui.currentVersion', { version: updateAvailable.current_version, format: updateAvailable.install_format?.toUpperCase() })}
+              </span>
+            </div>
+            <button
+              onClick={() => { setUpdateToastDismissed(true); setUpdateDownload(null); }}
+              className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
+              title={t('connection.dismiss')}
+            >
+              <X size={16} />
+            </button>
           </div>
-          <a
-            href={updateAvailable.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}
-            className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Download .{updateAvailable.install_format || 'deb'}
-          </a>
-          <button
-            onClick={() => setUpdateToastDismissed(true)}
-            className="text-white/70 hover:text-white ml-1 p-1 hover:bg-white/10 rounded-full transition-colors"
-            title="Dismiss"
-          >
-            <X size={16} />
-          </button>
+
+          {/* Download states */}
+          {!updateDownload && (
+            <button
+              onClick={startUpdateDownload}
+              className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
+            >
+              {t('update.downloadNow')} (.{updateAvailable.install_format || 'deb'})
+            </button>
+          )}
+
+          {updateDownload?.downloading && (
+            <div className="flex flex-col gap-1.5">
+              <div className="w-full bg-blue-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-white h-full rounded-full transition-all duration-200"
+                  style={{ width: `${updateDownload.percentage}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs opacity-80">
+                <span>{updateDownload.percentage}%</span>
+                <span>
+                  {updateDownload.speed_bps > 0
+                    ? `${(updateDownload.speed_bps / 1024 / 1024).toFixed(1)} MB/s`
+                    : t('update.starting')
+                  }
+                  {updateDownload.eta_seconds > 0 && ` — ${updateDownload.eta_seconds}s`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {updateDownload?.completedPath && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-green-200 flex items-center gap-1">
+                <CheckCircle2 size={12} /> {t('update.downloadComplete')}
+              </span>
+              <span className="text-xs opacity-70 truncate" title={updateDownload.completedPath}>
+                {updateDownload.completedPath}
+              </span>
+              {updateAvailable.install_format === 'appimage' ? (
+                <button
+                  onClick={() => invoke('install_appimage_update', { downloadedPath: updateDownload.completedPath })}
+                  className="bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw size={12} /> {t('update.installRestart')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
+                  className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                >
+                  <ExternalLink size={12} /> {t('update.openFolder')}
+                </button>
+              )}
+            </div>
+          )}
+
+          {updateDownload?.error && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-red-200 flex items-center gap-1">
+                <AlertTriangle size={12} /> {updateDownload.error}
+              </span>
+              <button
+                onClick={startUpdateDownload}
+                className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
+              >
+                {t('update.retry')}
+              </button>
+            </div>
+          )}
         </div>
       )}
       <TransferQueue
@@ -2994,6 +3049,48 @@ const App: React.FC = () => {
         isOpen={showCloudPanel}
         onClose={() => setShowCloudPanel(false)}
       />
+      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} />}
+      {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
+      {archiveBrowserState && (
+        <ArchiveBrowser
+          archivePath={archiveBrowserState.path}
+          archiveType={archiveBrowserState.type}
+          isEncrypted={archiveBrowserState.encrypted}
+          onClose={() => setArchiveBrowserState(null)}
+        />
+      )}
+
+      {compressDialogState && (
+        <CompressDialog
+          files={compressDialogState.files}
+          defaultName={compressDialogState.defaultName}
+          outputDir={compressDialogState.outputDir}
+          onClose={() => setCompressDialogState(null)}
+          onConfirm={async (opts: CompressOptions) => {
+            const ext = opts.format === 'tar.gz' ? '.tar.gz' : opts.format === 'tar.xz' ? '.tar.xz' : opts.format === 'tar.bz2' ? '.tar.bz2' : `.${opts.format}`;
+            const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
+            const paths = compressDialogState.files.map(f => f.path);
+            const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
+            try {
+              if (opts.format === 'zip') {
+                await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
+              } else if (opts.format === '7z') {
+                await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
+              } else {
+                await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
+              }
+              const suffix = opts.password ? ' (AES-256)' : '';
+              activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
+              notify.success('Compressed!', `Created ${opts.archiveName}${ext}${suffix}`);
+              setCompressDialogState(null);
+              await loadLocalFiles(currentLocalPath);
+            } catch (err) {
+              activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+              notify.error(t('contextMenu.compressionFailed'), String(err));
+            }
+          }}
+        />
+      )}
 
       {/* Header - can be hidden */}
       {showMenuBar && (
@@ -3021,6 +3118,20 @@ const App: React.FC = () => {
               >
                 <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
               </button>
+              <button
+                onClick={() => setShowVaultPanel(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="AeroVault"
+              >
+                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
+              </button>
+              <button
+                onClick={() => setShowCryptomatorBrowser(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Cryptomator"
+              >
+                <Lock size={18} className="text-emerald-500 dark:text-emerald-400" />
+              </button>
               <ThemeToggle theme={theme} setTheme={setTheme} />
               {/* Settings button - always visible */}
               <button
@@ -3047,7 +3158,7 @@ const App: React.FC = () => {
         </header>
       )}
 
-      <main className="flex-1 p-6 overflow-auto">
+      <main className={`flex-1 min-h-0 p-6 overflow-auto ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
         {!isConnected && showConnectionScreen ? (
           <ConnectionScreen
             connectionParams={connectionParams}
@@ -3070,11 +3181,11 @@ const App: React.FC = () => {
               if (isOAuth) {
                 // OAuth provider is already connected via SavedServers component
                 // Just switch to file manager view
-                setIsConnected(true);
+                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 setShowConnectionScreen(false);
                 const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
                 const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
-                notify.success('Connected', `Connected to ${providerName}`);
+                notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                 // Load remote files for OAuth provider - pass protocol explicitly
                 await loadRemoteFiles(params.protocol);
                 // Navigate to initial local directory if specified
@@ -3143,9 +3254,9 @@ const App: React.FC = () => {
                   console.log('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
                   await invoke('provider_connect', { params: providerParams });
 
-                  setIsConnected(true);
+                  setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
-                  notify.success('Connected', `Connected to ${providerName}`);
+                  notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
                   // Load files using provider API
                   const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
@@ -3179,7 +3290,7 @@ const App: React.FC = () => {
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 } catch (error) {
                   humanLog.logError('CONNECT', { server: providerName }, logId);
-                  notify.error('Connection Failed', String(error));
+                  notify.error(t('connection.connectionFailed'), String(error));
                 } finally {
                   setLoading(false);
                 }
@@ -3198,7 +3309,7 @@ const App: React.FC = () => {
                 try { await invoke('provider_disconnect'); } catch { }
 
                 await invoke('connect_ftp', { params });
-                setIsConnected(true);
+                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
                 notify.success('Connected', `Connected to ${params.server}`);
 
@@ -3231,7 +3342,7 @@ const App: React.FC = () => {
                 setQuickConnectDirs({ remoteDir: '', localDir: '' });
               } catch (error) {
                 humanLog.logError('CONNECT', { server: params.server }, logId);
-                notify.error('Connection Failed', String(error));
+                notify.error(t('connection.connectionFailed'), String(error));
               } finally {
                 setLoading(false);
               }
@@ -3242,7 +3353,7 @@ const App: React.FC = () => {
                 const lastSession = sessions[sessions.length - 1];
                 // Hide connection screen FIRST to avoid flash
                 setShowConnectionScreen(false);
-                setIsConnected(true);
+                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 // Then switch session (async reconnect happens in background)
                 await switchSession(lastSession.id);
               } else {
@@ -3299,7 +3410,7 @@ const App: React.FC = () => {
                   {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
                 </button>
                 {/* Upload / Download dynamic button */}
-                {isConnected && (
+                {isConnected && showRemotePanel && (
                   <button
                     onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
                     disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0}
@@ -3353,7 +3464,7 @@ const App: React.FC = () => {
                 {isConnected && (
                   <div className="w-px h-7 bg-gray-300 dark:bg-gray-600 mx-1" />
                 )}
-                {isConnected && (
+                {isConnected && showRemotePanel && (
                   <>
                     <button
                       onClick={cancelTransfer}
@@ -3389,28 +3500,48 @@ const App: React.FC = () => {
                 )}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                  <Globe size={16} /> {t('browser.remote')}
-                </button>
-                <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                  <HardDrive size={16} /> {t('browser.local')}
-                </button>
-                <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
-                {/* Preview Toggle - hidden on small screens */}
-                <button
-                  onClick={() => setShowLocalPreview(p => !p)}
-                  className={`px-3 py-1.5 rounded-lg text-sm items-center gap-1.5 hidden md:flex ${showLocalPreview ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                  title={t('common.preview')}
-                >
-                  <Eye size={16} /><span className="hidden lg:inline">{t('common.preview')}</span>
-                </button>
+                {isConnected && showRemotePanel && (
+                  <>
+                    <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                      <Globe size={16} /> {t('browser.remote')}
+                    </button>
+                    <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                      <HardDrive size={16} /> {t('browser.local')}
+                    </button>
+                    <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
+                  </>
+                )}
+                {isConnected && (
+                  <button
+                    onClick={() => { setShowRemotePanel(p => { if (p) setActivePanel('local'); else setShowLocalPreview(false); return !p; }); }}
+                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showRemotePanel ? 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500' : 'bg-blue-500 text-white'}`}
+                    title={showRemotePanel ? 'Local only' : 'Show remote'}
+                  >
+                    <HardDrive size={16} />
+                  </button>
+                )}
+                {/* Preview Toggle - only in local-only (AeroFile) mode */}
+                {(!isConnected || !showRemotePanel) && (
+                  <button
+                    onClick={() => setShowLocalPreview(p => !p)}
+                    className={`px-3 py-1.5 rounded-lg text-sm items-center gap-1.5 hidden md:flex ${showLocalPreview ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                    title={t('common.preview')}
+                  >
+                    <Eye size={16} /><span className="hidden lg:inline">{t('common.preview')}</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Dual Panel */}
+            {/* Dual Panel (or single panel when not connected) */}
             <div className="flex h-[calc(100vh-220px)]">
-              {/* Remote */}
-              <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+              {/* Remote — hidden when not connected or local-only mode */}
+              {isConnected && showRemotePanel && <div
+                className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                onDragOver={(e) => handlePanelDragOver(e, true)}
+                onDrop={(e) => handlePanelDrop(e, true)}
+                onDragLeave={handlePanelDragLeave}
+              >
                 <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                   <div className="flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden">
                     {/* Protocol icon inside address bar (like Chrome favicon) */}
@@ -3540,6 +3671,7 @@ const App: React.FC = () => {
                         <tr>
                           <SortableHeader label="Name" field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                           <SortableHeader label="Size" field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
+                          <SortableHeader label="Type" field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Perms</th>
                           <SortableHeader label="Modified" field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                         </tr>
@@ -3555,6 +3687,7 @@ const App: React.FC = () => {
                             <span className="italic">Go up</span>
                           </td>
                           <td className="px-4 py-2 text-xs text-gray-400">—</td>
+                          <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>
                           <td className="px-4 py-2 text-xs text-gray-400">—</td>
                           <td className="px-4 py-2 text-xs text-gray-400">—</td>
                         </tr>
@@ -3612,6 +3745,7 @@ const App: React.FC = () => {
                               {getSyncBadge(file.path, file.modified || undefined, false)}
                             </td>
                             <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>
+                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
                             <td className="px-3 py-2 text-xs text-gray-500 font-mono" title={file.permissions || undefined}>{file.permissions || '-'}</td>
                             <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>
                           </tr>
@@ -3706,10 +3840,15 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
-              {/* Local */}
-              <div className={`${showLocalPreview ? 'w-1/3' : 'w-1/2'} flex flex-col transition-all duration-300`}>
+              {/* Local — full width when remote panel is hidden */}
+              <div
+                className={`${(!isConnected || !showRemotePanel) ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                onDragOver={(e) => handlePanelDragOver(e, false)}
+                onDrop={(e) => handlePanelDrop(e, false)}
+                onDragLeave={handlePanelDragLeave}
+              >
                 <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                   <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                     {/* Local icon inside address bar (like Chrome favicon) */}
@@ -3798,6 +3937,7 @@ const App: React.FC = () => {
                         <tr>
                           <SortableHeader label="Name" field="name" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
                           <SortableHeader label="Size" field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
+                          <SortableHeader label="Type" field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />
                           <SortableHeader label="Modified" field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
                         </tr>
                       </thead>
@@ -3812,6 +3952,7 @@ const App: React.FC = () => {
                             <span className="italic">Go up</span>
                           </td>
                           <td className="px-4 py-2 text-sm text-gray-400">—</td>
+                          <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>
                           <td className="px-4 py-2 text-sm text-gray-400">—</td>
                         </tr>
                         {sortedLocalFiles.map((file, i) => (
@@ -3886,6 +4027,7 @@ const App: React.FC = () => {
                               {getSyncBadge(file.path, file.modified || undefined, true)}
                             </td>
                             <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>
+                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
                             <td className="px-4 py-2 text-xs text-gray-500">{formatDate(file.modified)}</td>
                           </tr>
                         ))}
@@ -3994,15 +4136,36 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Preview Panel */}
-              {showLocalPreview && (
-                <div className="w-1/6 flex flex-col bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 animate-slide-in-right min-w-[200px]">
-                  <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+              {/* Preview Panel - only in local-only (AeroFile) mode */}
+              {showLocalPreview && (!isConnected || !showRemotePanel) && (
+                <div
+                  className="flex flex-col bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 animate-slide-in-right relative"
+                  style={{ width: previewPanelWidth, minWidth: 220, maxWidth: 500, flexShrink: 0 }}
+                >
+                  {/* Resize handle */}
+                  <div
+                    className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 z-10"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      previewResizing.current = true;
+                      const startX = e.clientX;
+                      const startW = previewPanelWidth;
+                      const onMove = (ev: MouseEvent) => {
+                        if (!previewResizing.current) return;
+                        const delta = startX - ev.clientX;
+                        setPreviewPanelWidth(Math.max(220, Math.min(500, startW + delta)));
+                      };
+                      const onUp = () => { previewResizing.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                      window.addEventListener('mousemove', onMove);
+                      window.addEventListener('mouseup', onUp);
+                    }}
+                  />
+                  <div className="px-3 h-[43px] bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                     <Eye size={14} className="text-blue-500" /> File Info
                   </div>
                   <div className="flex-1 overflow-auto p-3">
                     {previewFile ? (
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {/* File Icon/Thumbnail */}
                         <div className="aspect-square bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
                           {previewImageBase64 ? (
@@ -4073,6 +4236,16 @@ const App: React.FC = () => {
                             </span>
                           </div>
 
+                          {/* Image Resolution */}
+                          {previewImageDimensions && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 flex items-center gap-1.5">
+                                <Image size={12} /> Resolution
+                              </span>
+                              <span className="font-medium">{previewImageDimensions.width} × {previewImageDimensions.height}</span>
+                            </div>
+                          )}
+
                           {/* Modified */}
                           <div className="flex items-center justify-between">
                             <span className="text-gray-500 flex items-center gap-1.5">
@@ -4092,6 +4265,14 @@ const App: React.FC = () => {
                               </span>
                             </div>
                           )}
+
+                          {/* Path */}
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-gray-500 flex items-center gap-1.5 shrink-0">
+                              <FolderOpen size={12} /> Path
+                            </span>
+                            <span className="font-medium text-right truncate" title={previewFile.path}>{previewFile.path}</span>
+                          </div>
                         </div>
 
                         {/* Quick Actions */}
@@ -4099,7 +4280,7 @@ const App: React.FC = () => {
                           {/* Open Preview button */}
                           {isMediaPreviewable(previewFile.name) && (
                             <button
-                              onClick={() => openUniversalPreview(previewFile, activePanel === 'remote')}
+                              onClick={() => openUniversalPreview(previewFile, false)}
                               className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
                               <Eye size={14} /> Open Preview
@@ -4109,7 +4290,7 @@ const App: React.FC = () => {
                           {/* View Source - for text/code files */}
                           {/\.(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash|txt|md|log)$/i.test(previewFile.name) && (
                             <button
-                              onClick={() => openUniversalPreview(previewFile, activePanel === 'remote')}
+                              onClick={() => openUniversalPreview(previewFile, false)}
                               className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
                               <Code size={14} /> View Source
@@ -4119,10 +4300,7 @@ const App: React.FC = () => {
                           {/* Copy Path */}
                           <button
                             onClick={() => {
-                              const path = activePanel === 'local'
-                                ? `${currentLocalPath}/${previewFile.name}`
-                                : `${currentRemotePath}/${previewFile.name}`;
-                              navigator.clipboard.writeText(path);
+                              navigator.clipboard.writeText(previewFile.path);
                               notify.success('Copied', 'Path copied to clipboard');
                             }}
                             className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
@@ -4162,9 +4340,24 @@ const App: React.FC = () => {
         previewFile={devToolsPreviewFile}
         localPath={currentLocalPath}
         remotePath={currentRemotePath}
+        onMaximizeChange={setDevToolsMaximized}
         onClose={() => setDevToolsOpen(false)}
         onClearFile={() => setDevToolsPreviewFile(null)}
         editorTheme={getMonacoTheme(theme, isDark)}
+        providerType={connectionParams.protocol}
+        isConnected={isConnected}
+        selectedFiles={Array.from(selectedRemoteFiles)}
+        serverHost={connectionParams.server}
+        serverPort={connectionParams.port}
+        serverUser={connectionParams.username}
+        sshConnection={isConnected && connectionParams.protocol === 'sftp' ? {
+          host: connectionParams.server.split(':')[0],
+          port: connectionParams.port || 22,
+          username: connectionParams.username,
+          password: connectionParams.password || undefined,
+          privateKeyPath: connectionParams.options?.private_key_path,
+          keyPassphrase: connectionParams.options?.key_passphrase,
+        } : null}
         onSaveFile={async (content, file) => {
           const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
           try {

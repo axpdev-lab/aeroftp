@@ -66,14 +66,14 @@ AeroFTP supports multiple languages. See [TRANSLATIONS.md](./TRANSLATIONS.md) fo
 - Translation file structure
 - Contributing translations
 
-Currently supported: **English** (base), **Italian**
+Currently supported: **51 languages** at 100% coverage
 
 ---
 
 ## 📅 Last Updated
 
-- **Documentation Version**: 1.5.3
-- **Last Update**: 2026-02-02
+- **Documentation Version**: 1.7.0
+- **Last Update**: 2026-02-03
 
 ---
 

@@ -5,7 +5,7 @@
 import React from 'react';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
-export type SortField = 'name' | 'size' | 'modified';
+export type SortField = 'name' | 'size' | 'type' | 'modified';
 export type SortOrder = 'asc' | 'desc';
 
 interface SortableHeaderProps {

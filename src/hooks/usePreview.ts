@@ -32,6 +32,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   const [showLocalPreview, setShowLocalPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState<LocalFile | null>(null);
   const [previewImageBase64, setPreviewImageBase64] = useState<string | null>(null);
+  const [previewImageDimensions, setPreviewImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   // DevTools code editor
   const [devToolsOpen, setDevToolsOpen] = useState(false);
@@ -52,6 +53,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     const loadPreview = async () => {
       if (!previewFile) {
         setPreviewImageBase64(null);
+        setPreviewImageDimensions(null);
         return;
       }
       if (/\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name)) {
@@ -63,13 +65,21 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
             gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp', bmp: 'image/bmp'
           };
           const mime = mimeTypes[ext] || 'image/png';
-          setPreviewImageBase64(`data:${mime};base64,${base64}`);
+          const dataUrl = `data:${mime};base64,${base64}`;
+          setPreviewImageBase64(dataUrl);
+          // Extract image dimensions
+          const img = new window.Image();
+          img.onload = () => setPreviewImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+          img.onerror = () => setPreviewImageDimensions(null);
+          img.src = dataUrl;
         } catch (error) {
           console.error('Failed to load preview:', error);
           setPreviewImageBase64(null);
+          setPreviewImageDimensions(null);
         }
       } else {
         setPreviewImageBase64(null);
+        setPreviewImageDimensions(null);
       }
     };
     loadPreview();
@@ -207,6 +217,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     previewFile,
     setPreviewFile,
     previewImageBase64,
+    previewImageDimensions,
 
     // DevTools
     devToolsOpen,

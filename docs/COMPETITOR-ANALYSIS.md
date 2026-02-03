@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 2 February 2026
-> Version: v1.5.3
+> Last Updated: 3 February 2026
+> Version: v1.7.0
 
 ---
 
@@ -63,7 +63,7 @@
 |---------|---------|-----------|-----------|--------|----------|----------|
 | Code Editor | Yes (Monaco) | No | No | Yes (Basic) | No | No |
 | Terminal | Yes | No | No | Yes (PuTTY) | No | No |
-| AI Assistant | Yes | No | No | No | No | No |
+| AI Assistant | **Yes (Pro)** | No | No | No | No | No |
 | Media Player | Yes | No | No | No | No | Quick Look |
 | Activity Log | Yes | Yes | Yes | Yes | No | No |
 | Remote Search | Yes (all 13) | No | Yes | No | No | No |
@@ -86,7 +86,7 @@
 
 | Feature | AeroFTP | FileZilla | Cyberduck | WinSCP | Transmit | ForkLift |
 |---------|---------|-----------|-----------|--------|----------|----------|
-| Cryptomator | Planned (v1.8.0) | No | Yes | No | No | No |
+| Cryptomator | **Yes (v1.7.0)** | No | Yes | No | No | No |
 | Share Links | Yes | No | Yes | No | No | No |
 | Keychain/Keyring | Yes | Yes | Yes | Yes | Yes | Yes |
 | Encrypted Vault (AES-256-GCM) | Yes | No | No | No | No | No |
@@ -100,6 +100,8 @@
 | 7z AES-256 Archives | Yes | No | No | No | No | No |
 | ZIP AES-256 Archives | Yes | No | No | No | No | No |
 | RAR Extraction | Yes | No | No | No | No | No |
+| Archive Browser (in-app) | **Yes (v1.7.0)** | No | No | No | No | No |
+| Selective Archive Extract | **Yes (v1.7.0)** | No | No | No | No | No |
 
 ### Advanced Protocol Features (v1.4.0)
 
@@ -134,7 +136,9 @@
 | **13 Native Protocols + 30 Presets** | FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Filen |
 | **Filen E2E Support** | Only client besides Filen web app with native Filen E2E encryption support |
 | **Monaco Editor** | VS Code engine for remote file editing |
-| **AeroAgent AI** | AI assistant for commands and file analysis |
+| **AeroVault** | AES-256-GCM encrypted containers with Argon2id KDF for secure file storage |
+| **Cryptomator Format 8** | Open, browse, decrypt, encrypt files in Cryptomator vaults (scrypt + AES-SIV + AES-GCM) |
+| **AeroAgent AI Pro** | AI assistant with native function calling, streaming, 24 tools (local+remote edit, batch transfers), protocol expertise, 7 AI providers |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
 | **Tray Background Sync** | Continuous sync without main window |
 | **Sync Index Cache** | Persistent cache for faster re-scans and true conflict detection |
@@ -142,7 +146,9 @@
 | **AES-256-GCM Vault** | Argon2id + AES-256-GCM vault when keyring unavailable |
 | **Ephemeral OAuth Ports** | OS-assigned random port for callback |
 | **Memory Zeroization** | Passwords cleared from memory via zeroize/secrecy |
-| **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) |
+| **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) with compression levels and password protection |
+| **Archive Browser** | Browse archive contents in-app without extracting, selective single-file extraction |
+| **AeroFile Mode** | Local-only file manager with resizable preview panel, image resolution display, and file info sidebar |
 | **Workspace Export** | Auto-export Google Docs/Sheets/Slides to DOCX/XLSX/PPTX |
 | **Change Tracking** | Delta sync foundation via Google Drive changes API |
 | **Cross-Provider Search** | Remote search on all 13 providers (30 connection options with presets) |
@@ -155,7 +161,7 @@
 | Competitor | Strength | Priority for AeroFTP |
 |------------|----------|---------------------|
 | **FileZilla** | SFTP native, 47 languages, stability | CLOSED (51 langs, SFTP done, MLSD done) |
-| **Cyberduck** | Cryptomator encryption | MEDIUM: Cryptomator (v1.8.0). Cloud providers now matched (13 native). |
+| **Cyberduck** | Cryptomator encryption | LOW: Cryptomator matched (v1.7.0). Cloud providers matched (13 native). |
 | **WinSCP** | Scripting/automation, PuTTY integration | MEDIUM: CLI/Scripting (v1.6.0) |
 | **Transmit** | Raw speed, macOS polish | LOW: Already fast |
 | **ForkLift** | Complete file manager | LOW: Different focus |
@@ -189,18 +195,25 @@
 - OAuth session switching with keyring fallback (v1.5.3)
 - FTP transfer retry with exponential backoff (v1.5.3)
 
-### v1.6.0 - Planned
-- AeroAgent Pro (remote tools, streaming, context awareness)
-- CLI/Scripting foundation
-- AeroVault (encrypted virtual location)
-- Additional S3/WebDAV presets (Wasabi, Oracle Cloud, IDrive e2, DigitalOcean Spaces)
+### v1.5.3 - Done
+- Sync index cache, storage quota display, native clipboard, cross-panel drag & drop
+- Terminal themes/tabs/SSH shell, i18n expansion (108 keys), OAuth session fix
 
-### v1.7.0 - Planned
-- AeroAgent streaming + native function calling
-- Terminal Pro (themes, SSH remote, Windows PTY)
+### v1.5.4 - Done
+- In-app auto-updater with download progress, AppImage auto-install
+
+### v1.6.0 - Done
+- AeroAgent Pro: native function calling (SEC-002), streaming responses
+- Provider-agnostic tools (14), chat history, cost tracking, context awareness, 122 i18n keys
+
+### v1.7.0 - Done
+- Encryption Block: AeroVault (AES-256 containers), archive browser (ZIP/7z/TAR/RAR)
+- Selective extraction, Cryptomator format 8 support, CompressDialog with levels
+- AeroFile mode (local-only file manager), resizable preview panel, Type column
 
 ### v1.8.0 - Planned
-- Cryptomator Import/Export
+- AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation
+- Remote vault open/save, Cryptomator vault creation
 
 ---
 
@@ -210,7 +223,7 @@
                     CLOUD INTEGRATION
                           |
          Cyberduck        |        AeroFTP
-                          |        (v1.5.3)
+                          |        (v1.7.0)
     ----------------------+----------------------> PRO FEATURES
          FileZilla        |
                           |

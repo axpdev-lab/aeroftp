@@ -58,14 +58,23 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
     }
   }, [activityLog]);
 
-  // Check on startup (5s delay, once)
+  // Check on startup (5s delay, once) + periodic every 24h
   useEffect(() => {
     if (!updateCheckedRef.current) {
       updateCheckedRef.current = true;
       const timer = setTimeout(() => {
         checkForUpdate(false);
       }, 5000);
-      return () => clearTimeout(timer);
+
+      // Periodic check every 24 hours
+      const interval = setInterval(() => {
+        checkForUpdate(false);
+      }, 24 * 60 * 60 * 1000);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+      };
     }
   }, []);
 

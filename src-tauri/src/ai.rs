@@ -34,6 +34,10 @@ pub struct AIRequest {
     pub messages: Vec<ChatMessage>,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
+    /// Tool definitions for native function calling (optional)
+    pub tools: Option<Vec<AIToolDefinition>>,
+    /// Tool results for multi-turn conversations (optional)
+    pub tool_results: Option<Vec<AIToolResult>>,
 }
 
 // AI Response to frontend
@@ -42,7 +46,34 @@ pub struct AIResponse {
     pub content: String,
     pub model: String,
     pub tokens_used: Option<u32>,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
     pub finish_reason: Option<String>,
+    /// Native tool calls from providers that support function calling
+    pub tool_calls: Option<Vec<AIToolCall>>,
+}
+
+/// Tool definition sent to AI providers that support native function calling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// Tool call returned by AI provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+/// Tool result to send back to the AI for multi-turn tool use
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIToolResult {
+    pub tool_call_id: String,
+    pub content: String,
 }
 
 // Error type
@@ -76,6 +107,21 @@ mod gemini {
         pub contents: Vec<GeminiContent>,
         #[serde(rename = "generationConfig", skip_serializing_if = "Option::is_none")]
         pub generation_config: Option<GeminiGenerationConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<GeminiToolConfig>>,
+    }
+
+    #[derive(Serialize)]
+    pub struct GeminiToolConfig {
+        #[serde(rename = "functionDeclarations")]
+        pub function_declarations: Vec<GeminiFunctionDeclaration>,
+    }
+
+    #[derive(Serialize)]
+    pub struct GeminiFunctionDeclaration {
+        pub name: String,
+        pub description: String,
+        pub parameters: serde_json::Value,
     }
 
     #[derive(Serialize)]
@@ -86,7 +132,24 @@ mod gemini {
 
     #[derive(Serialize)]
     pub struct GeminiPart {
-        pub text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub text: Option<String>,
+        #[serde(rename = "functionCall", skip_serializing_if = "Option::is_none")]
+        pub function_call: Option<GeminiFunctionCallPart>,
+        #[serde(rename = "functionResponse", skip_serializing_if = "Option::is_none")]
+        pub function_response: Option<GeminiFunctionResponsePart>,
+    }
+
+    #[derive(Serialize)]
+    pub struct GeminiFunctionCallPart {
+        pub name: String,
+        pub args: serde_json::Value,
+    }
+
+    #[derive(Serialize)]
+    pub struct GeminiFunctionResponsePart {
+        pub name: String,
+        pub response: serde_json::Value,
     }
 
     #[derive(Serialize)]
@@ -101,6 +164,18 @@ mod gemini {
     pub struct GeminiResponse {
         pub candidates: Option<Vec<GeminiCandidate>>,
         pub error: Option<GeminiError>,
+        #[serde(rename = "usageMetadata")]
+        pub usage_metadata: Option<GeminiUsageMetadata>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct GeminiUsageMetadata {
+        #[serde(rename = "promptTokenCount")]
+        pub prompt_token_count: Option<u32>,
+        #[serde(rename = "candidatesTokenCount")]
+        pub candidates_token_count: Option<u32>,
+        #[serde(rename = "totalTokenCount")]
+        pub total_token_count: Option<u32>,
     }
 
     #[derive(Deserialize)]
@@ -118,7 +193,15 @@ mod gemini {
 
     #[derive(Deserialize)]
     pub struct GeminiPartResponse {
-        pub text: String,
+        pub text: Option<String>,
+        #[serde(rename = "functionCall")]
+        pub function_call: Option<GeminiFunctionCallResponse>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct GeminiFunctionCallResponse {
+        pub name: String,
+        pub args: serde_json::Value,
     }
 
     #[derive(Deserialize)]
@@ -134,15 +217,26 @@ mod gemini {
             request.base_url, request.model, api_key
         );
 
+        let gemini_tools = request.tools.as_ref().map(|tools| {
+            vec![GeminiToolConfig {
+                function_declarations: tools.iter().map(|t| GeminiFunctionDeclaration {
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    parameters: t.parameters.clone(),
+                }).collect(),
+            }]
+        });
+
         let gemini_request = GeminiRequest {
             contents: request.messages.iter().map(|m| GeminiContent {
                 role: if m.role == "user" { "user".to_string() } else { "model".to_string() },
-                parts: vec![GeminiPart { text: m.content.clone() }],
+                parts: vec![GeminiPart { text: Some(m.content.clone()), function_call: None, function_response: None }],
             }).collect(),
             generation_config: Some(GeminiGenerationConfig {
                 max_output_tokens: request.max_tokens,
                 temperature: request.temperature,
             }),
+            tools: gemini_tools,
         };
 
         let response = client
@@ -157,19 +251,44 @@ mod gemini {
             return Err(AIError::Api(error.message));
         }
 
-        let content = gemini_response
+        let candidate = gemini_response
             .candidates
             .and_then(|c| c.into_iter().next())
-            .map(|c| {
-                c.content.parts.iter().map(|p| p.text.clone()).collect::<Vec<_>>().join("")
-            })
-            .ok_or_else(|| AIError::InvalidResponse("No content in response".to_string()))?;
+            .ok_or_else(|| AIError::InvalidResponse("No candidates in response".to_string()))?;
+
+        // Extract text parts
+        let content = candidate.content.parts.iter()
+            .filter_map(|p| p.text.as_ref())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("");
+
+        // Extract function call parts
+        let tool_calls: Option<Vec<AIToolCall>> = {
+            let calls: Vec<AIToolCall> = candidate.content.parts.iter()
+                .filter_map(|p| p.function_call.as_ref())
+                .map(|fc| AIToolCall {
+                    id: format!("gemini_{}", fc.name),
+                    name: fc.name.clone(),
+                    arguments: fc.args.clone(),
+                })
+                .collect();
+            if calls.is_empty() { None } else { Some(calls) }
+        };
+
+        let (input_tokens, output_tokens, total_tokens) = match &gemini_response.usage_metadata {
+            Some(u) => (u.prompt_token_count, u.candidates_token_count, u.total_token_count),
+            None => (None, None, None),
+        };
 
         Ok(AIResponse {
-            content,
+            content: if content.is_empty() { String::new() } else { content },
             model: request.model.clone(),
-            tokens_used: None,
+            tokens_used: total_tokens,
+            input_tokens,
+            output_tokens,
             finish_reason: None,
+            tool_calls,
         })
     }
 }
@@ -186,12 +305,31 @@ mod openai_compat {
         pub max_tokens: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub temperature: Option<f32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<OpenAITool>>,
     }
 
     #[derive(Serialize)]
     pub struct OpenAIMessage {
         pub role: String,
-        pub content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub content: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tool_call_id: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct OpenAITool {
+        #[serde(rename = "type")]
+        pub tool_type: String,
+        pub function: OpenAIFunction,
+    }
+
+    #[derive(Serialize)]
+    pub struct OpenAIFunction {
+        pub name: String,
+        pub description: String,
+        pub parameters: serde_json::Value,
     }
 
     #[derive(Deserialize)]
@@ -210,6 +348,19 @@ mod openai_compat {
     #[derive(Deserialize)]
     pub struct OpenAIMessageResponse {
         pub content: Option<String>,
+        pub tool_calls: Option<Vec<OpenAIToolCallResponse>>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct OpenAIToolCallResponse {
+        pub id: String,
+        pub function: OpenAIFunctionCallResponse,
+    }
+
+    #[derive(Deserialize)]
+    pub struct OpenAIFunctionCallResponse {
+        pub name: String,
+        pub arguments: String,
     }
 
     #[derive(Deserialize)]
@@ -220,6 +371,8 @@ mod openai_compat {
     #[derive(Deserialize)]
     pub struct OpenAIUsage {
         pub total_tokens: Option<u32>,
+        pub prompt_tokens: Option<u32>,
+        pub completion_tokens: Option<u32>,
     }
 
     pub async fn call(client: &Client, request: &AIRequest, endpoint: &str) -> Result<AIResponse, AIError> {
@@ -246,14 +399,42 @@ mod openai_compat {
             );
         }
 
+        // Build messages, including tool results if present
+        let mut messages: Vec<OpenAIMessage> = request.messages.iter().map(|m| OpenAIMessage {
+            role: m.role.clone(),
+            content: Some(m.content.clone()),
+            tool_call_id: None,
+        }).collect();
+
+        // Append tool results as "tool" role messages
+        if let Some(ref results) = request.tool_results {
+            for r in results {
+                messages.push(OpenAIMessage {
+                    role: "tool".to_string(),
+                    content: Some(r.content.clone()),
+                    tool_call_id: Some(r.tool_call_id.clone()),
+                });
+            }
+        }
+
+        // Convert tool definitions
+        let tools = request.tools.as_ref().map(|defs| {
+            defs.iter().map(|d| OpenAITool {
+                tool_type: "function".to_string(),
+                function: OpenAIFunction {
+                    name: d.name.clone(),
+                    description: d.description.clone(),
+                    parameters: d.parameters.clone(),
+                },
+            }).collect()
+        });
+
         let openai_request = OpenAIRequest {
             model: request.model.clone(),
-            messages: request.messages.iter().map(|m| OpenAIMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-            }).collect(),
+            messages,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
+            tools,
         };
 
         let response = client
@@ -274,11 +455,23 @@ mod openai_compat {
             .and_then(|c| c.into_iter().next())
             .ok_or_else(|| AIError::InvalidResponse("No choices in response".to_string()))?;
 
+        // Parse native tool calls if present
+        let tool_calls = choice.message.tool_calls.map(|tcs| {
+            tcs.into_iter().map(|tc| AIToolCall {
+                id: tc.id,
+                name: tc.function.name,
+                arguments: serde_json::from_str(&tc.function.arguments).unwrap_or_default(),
+            }).collect()
+        });
+
         Ok(AIResponse {
             content: choice.message.content.unwrap_or_default(),
             model: request.model.clone(),
-            tokens_used: openai_response.usage.and_then(|u| u.total_tokens),
+            tokens_used: openai_response.usage.as_ref().and_then(|u| u.total_tokens),
+            input_tokens: openai_response.usage.as_ref().and_then(|u| u.prompt_tokens),
+            output_tokens: openai_response.usage.as_ref().and_then(|u| u.completion_tokens),
             finish_reason: choice.finish_reason,
+            tool_calls,
         })
     }
 }
@@ -294,6 +487,8 @@ mod anthropic {
         pub max_tokens: u32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub temperature: Option<f32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tools: Option<Vec<AnthropicToolDef>>,
     }
 
     #[derive(Serialize)]
@@ -302,16 +497,30 @@ mod anthropic {
         pub content: String,
     }
 
+    #[derive(Serialize)]
+    pub struct AnthropicToolDef {
+        pub name: String,
+        pub description: String,
+        pub input_schema: serde_json::Value,
+    }
+
     #[derive(Deserialize)]
     pub struct AnthropicResponse {
         pub content: Option<Vec<AnthropicContent>>,
         pub error: Option<AnthropicError>,
         pub stop_reason: Option<String>,
+        pub usage: Option<AnthropicUsage>,
     }
 
     #[derive(Deserialize)]
     pub struct AnthropicContent {
-        pub text: String,
+        pub text: Option<String>,
+        #[serde(rename = "type")]
+        pub content_type: Option<String>,
+        /// For tool_use blocks
+        pub id: Option<String>,
+        pub name: Option<String>,
+        pub input: Option<serde_json::Value>,
     }
 
     #[derive(Deserialize)]
@@ -319,10 +528,25 @@ mod anthropic {
         pub message: String,
     }
 
+    #[derive(Deserialize)]
+    pub struct AnthropicUsage {
+        pub input_tokens: Option<u32>,
+        pub output_tokens: Option<u32>,
+    }
+
     pub async fn call(client: &Client, request: &AIRequest) -> Result<AIResponse, AIError> {
         let api_key = request.api_key.as_ref().ok_or(AIError::MissingApiKey)?;
         
         let url = format!("{}/messages", request.base_url);
+
+        // Convert tool definitions for Anthropic format
+        let tools = request.tools.as_ref().map(|defs| {
+            defs.iter().map(|d| AnthropicToolDef {
+                name: d.name.clone(),
+                description: d.description.clone(),
+                input_schema: d.parameters.clone(),
+            }).collect()
+        });
 
         let anthropic_request = AnthropicRequest {
             model: request.model.clone(),
@@ -332,6 +556,7 @@ mod anthropic {
             }).collect(),
             max_tokens: request.max_tokens.unwrap_or(4096),
             temperature: request.temperature,
+            tools,
         };
 
         let response = client
@@ -349,17 +574,49 @@ mod anthropic {
             return Err(AIError::Api(error.message));
         }
 
-        let content = anthropic_response
-            .content
-            .and_then(|c| c.into_iter().next())
-            .map(|c| c.text)
-            .ok_or_else(|| AIError::InvalidResponse("No content in response".to_string()))?;
+        let blocks = anthropic_response.content.as_ref();
+
+        // Extract text content
+        let content = blocks
+            .and_then(|b| {
+                b.iter()
+                    .filter(|c| c.content_type.as_deref() == Some("text") || c.content_type.is_none())
+                    .filter_map(|c| c.text.as_ref())
+                    .next()
+            })
+            .cloned()
+            .unwrap_or_default();
+
+        // Extract tool_use blocks
+        let tool_calls: Option<Vec<AIToolCall>> = blocks.and_then(|b| {
+            let calls: Vec<AIToolCall> = b.iter()
+                .filter(|c| c.content_type.as_deref() == Some("tool_use"))
+                .filter_map(|c| {
+                    Some(AIToolCall {
+                        id: c.id.clone()?,
+                        name: c.name.clone()?,
+                        arguments: c.input.clone().unwrap_or_default(),
+                    })
+                })
+                .collect();
+            if calls.is_empty() { None } else { Some(calls) }
+        });
+
+        let input_tokens = anthropic_response.usage.as_ref().and_then(|u| u.input_tokens);
+        let output_tokens = anthropic_response.usage.as_ref().and_then(|u| u.output_tokens);
+        let total = match (input_tokens, output_tokens) {
+            (Some(i), Some(o)) => Some(i + o),
+            _ => None,
+        };
 
         Ok(AIResponse {
             content,
             model: request.model.clone(),
-            tokens_used: None,
+            tokens_used: total,
+            input_tokens,
+            output_tokens,
             finish_reason: anthropic_response.stop_reason,
+            tool_calls,
         })
     }
 }

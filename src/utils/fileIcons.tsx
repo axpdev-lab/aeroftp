@@ -5,7 +5,7 @@
 import React from 'react';
 import {
     Archive, Image, Video, Music, FileCode, Code, Globe,
-    FileType, Database, FileSpreadsheet, FileText
+    FileType, Database, FileSpreadsheet, FileText, Shield
 } from 'lucide-react';
 
 interface FileIconResult {
@@ -21,6 +21,8 @@ export const getFileIcon = (filename: string, size: number = 16): FileIconResult
 
     // Special icons for specific file types
     const iconMap: Record<string, { Icon: React.ElementType; color: string }> = {
+        // Vaults
+        'aerovault': { Icon: Shield, color: 'text-emerald-400' },
         // Archives
         'zip': { Icon: Archive, color: 'text-yellow-600' },
         'rar': { Icon: Archive, color: 'text-yellow-600' },

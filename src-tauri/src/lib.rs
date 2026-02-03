@@ -25,9 +25,16 @@ mod crypto;
 mod credential_store;
 mod profile_export;
 mod pty;
+mod ssh_shell;
+mod ai_tools;
+mod ai_stream;
+mod archive_browse;
+mod aerovault;
+mod cryptomator;
 
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
+use ssh_shell::{create_ssh_shell_state, ssh_shell_open, ssh_shell_write, ssh_shell_resize, ssh_shell_close};
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
 pub struct SpeedLimits {
@@ -57,7 +64,7 @@ pub async fn throttle_transfer(bytes_transferred: u64, elapsed: std::time::Durat
 }
 
 // Shared application state
-struct AppState {
+pub(crate) struct AppState {
     ftp_manager: Mutex<FtpManager>,
     cancel_flag: Mutex<bool>,
     speed_limits: SpeedLimits,
@@ -217,6 +224,16 @@ fn detect_install_format() -> String {
 }
 
 #[tauri::command]
+fn copy_to_clipboard(text: String) -> Result<(), String> {
+    use arboard::SetExtLinux;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| format!("Clipboard init failed: {}", e))?;
+    clipboard.set().wait().text(text)
+        .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn check_update() -> Result<UpdateInfo, String> {
     let current_version = env!("CARGO_PKG_VERSION");
     let install_format = detect_install_format();
@@ -296,6 +313,134 @@ async fn check_update() -> Result<UpdateInfo, String> {
 #[tauri::command]
 fn log_update_detection(version: String) {
     info!("New version detected: v{}", version);
+}
+
+/// Download an update file with progress events
+#[tauri::command]
+async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
+    use tokio::io::AsyncWriteExt;
+
+    info!("Downloading update from: {}", url);
+
+    let client = HttpClient::new();
+    let response = client.get(&url)
+        .header("User-Agent", "AeroFTP")
+        .send()
+        .await
+        .map_err(|e| format!("Download request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let filename = url.rsplit('/').next().unwrap_or("aeroftp-update");
+
+    // Save to Downloads directory or temp
+    let download_dir = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+        .unwrap_or_else(std::env::temp_dir);
+    let dest_path = download_dir.join(filename);
+
+    let mut file = tokio::fs::File::create(&dest_path)
+        .await
+        .map_err(|e| format!("Cannot create file: {}", e))?;
+
+    let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
+    let start = std::time::Instant::now();
+    let mut last_emit = std::time::Instant::now();
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
+        file.write_all(&chunk).await.map_err(|e| format!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        // Emit progress every 100ms to avoid flooding
+        if last_emit.elapsed().as_millis() >= 100 {
+            let elapsed = start.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.0 { downloaded as f64 / elapsed } else { 0.0 };
+            let percentage = if total_size > 0 { (downloaded as f64 / total_size as f64 * 100.0) as u8 } else { 0 };
+            let eta = if speed > 0.0 && total_size > 0 { ((total_size - downloaded) as f64 / speed) as u64 } else { 0 };
+
+            let _ = app.emit("update-download-progress", serde_json::json!({
+                "downloaded": downloaded,
+                "total": total_size,
+                "percentage": percentage,
+                "speed_bps": speed as u64,
+                "eta_seconds": eta,
+                "filename": filename,
+            }));
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("Flush error: {}", e))?;
+
+    // Final 100% emit
+    let _ = app.emit("update-download-progress", serde_json::json!({
+        "downloaded": total_size,
+        "total": total_size,
+        "percentage": 100,
+        "speed_bps": 0,
+        "eta_seconds": 0,
+        "filename": filename,
+    }));
+
+    let path_str = dest_path.to_string_lossy().to_string();
+    info!("Update downloaded to: {}", path_str);
+    Ok(path_str)
+}
+
+/// Replace current AppImage with downloaded update and restart
+#[tauri::command]
+async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Cannot find current exe: {}", e))?;
+
+    let current_str = current_exe.to_string_lossy().to_lowercase();
+    if !current_str.contains("appimage") {
+        return Err("Not running as AppImage — manual install required".to_string());
+    }
+
+    let downloaded = std::path::Path::new(&downloaded_path);
+    if !downloaded.exists() {
+        return Err("Downloaded file not found".to_string());
+    }
+
+    info!("AppImage auto-update: {} -> {}", downloaded_path, current_exe.display());
+
+    // Backup current AppImage
+    let backup = current_exe.with_extension("bak");
+    std::fs::rename(&current_exe, &backup)
+        .map_err(|e| format!("Backup failed: {}", e))?;
+
+    // Move downloaded file to current exe path
+    if let Err(e) = std::fs::copy(downloaded, &current_exe) {
+        // Restore backup on failure
+        let _ = std::fs::rename(&backup, &current_exe);
+        return Err(format!("Replace failed: {}", e));
+    }
+
+    // Make executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&current_exe, std::fs::Permissions::from_mode(0o755));
+    }
+
+    // Remove backup and downloaded file
+    let _ = std::fs::remove_file(&backup);
+    let _ = std::fs::remove_file(downloaded);
+
+    info!("AppImage updated successfully, restarting...");
+
+    // Restart: spawn new process then exit
+    let _ = std::process::Command::new(&current_exe).spawn();
+    app.exit(0);
+
+    Ok(())
 }
 
 // ============ FTP Commands ============
@@ -1998,7 +2143,7 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
 
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
-async fn compress_files(paths: Vec<String>, output_path: String, password: Option<String>) -> Result<String, String> {
+async fn compress_files(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
     use std::fs::File;
     use std::io::{Read, Write};
     use zip::write::SimpleFileOptions;
@@ -2012,9 +2157,11 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
         .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
+    let level = compression_level.unwrap_or(6);
+    let method = if level == 0 { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
     let base_options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .compression_level(Some(6));
+        .compression_method(method)
+        .compression_level(Some(level));
 
     for path in &paths {
         let path = std::path::Path::new(path);
@@ -2158,6 +2305,7 @@ async fn compress_7z(
     paths: Vec<String>,
     output_path: String,
     password: Option<String>,
+    compression_level: Option<i64>,
 ) -> Result<String, String> {
     use sevenz_rust::*;
     use std::fs::File;
@@ -2300,19 +2448,41 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
 
     let reader = BufReader::new(file);
 
-    // Try to read without password - if it fails with password error, it's encrypted
-    match SevenZReader::new(reader, len, Password::empty()) {
-        Ok(_) => Ok(false),
+    // Try to open without password — 7z metadata is often unencrypted even when content is
+    let mut archive = match SevenZReader::new(reader, len, Password::empty()) {
+        Ok(a) => a,
         Err(e) => {
             let err_str = format!("{:?}", e);
             if err_str.contains("password") || err_str.contains("Password") || err_str.contains("encrypted") || err_str.contains("Encrypted") {
-                Ok(true)
-            } else {
-                // Some other error - might still be encrypted
-                Ok(false)
+                return Ok(true);
             }
+            return Ok(false);
         }
+    };
+
+    // Metadata opened fine, but content may still be encrypted.
+    // Try to decompress the first file — if it fails, content is encrypted.
+    let has_files = archive.archive().files.iter().any(|f| f.has_stream());
+    if !has_files {
+        return Ok(false);
     }
+
+    let mut encrypted = false;
+    let result = archive.for_each_entries(|_entry, reader| {
+        let mut buf = [0u8; 1];
+        match reader.read(&mut buf) {
+            Ok(_) => {}
+            Err(_) => { encrypted = true; }
+        }
+        // Stop after first entry
+        Ok(false)
+    });
+
+    if result.is_err() {
+        encrypted = true;
+    }
+
+    Ok(encrypted)
 }
 
 /// Check if a ZIP archive is password protected (AES or ZipCrypto)
@@ -2346,6 +2516,7 @@ async fn compress_tar(
     paths: Vec<String>,
     output_path: String,
     format: String,
+    compression_level: Option<i64>,
 ) -> Result<String, String> {
     use std::fs::File;
     use std::path::Path;
@@ -2389,7 +2560,7 @@ async fn compress_tar(
             archive.finish().map_err(|e| format!("Failed to finalize tar: {}", e))?;
         }
         "tar.gz" => {
-            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::new(compression_level.unwrap_or(6) as u32));
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
                 archive.append_path_with_name(abs_path, rel_path)
@@ -2399,7 +2570,7 @@ async fn compress_tar(
                 .finish().map_err(|e| format!("Failed to finish gz: {}", e))?;
         }
         "tar.xz" => {
-            let xz = xz2::write::XzEncoder::new(file, 6);
+            let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(6) as u32);
             let mut archive = tar::Builder::new(xz);
             for (abs_path, rel_path) in &entries {
                 archive.append_path_with_name(abs_path, rel_path)
@@ -2409,7 +2580,7 @@ async fn compress_tar(
                 .finish().map_err(|e| format!("Failed to finish xz: {}", e))?;
         }
         "tar.bz2" => {
-            let bz = bzip2::write::BzEncoder::new(file, bzip2::Compression::default());
+            let bz = bzip2::write::BzEncoder::new(file, bzip2::Compression::new(compression_level.unwrap_or(6) as u32));
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
                 archive.append_path_with_name(abs_path, rel_path)
@@ -4114,9 +4285,13 @@ pub fn run() {
 
     // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
+    // Add SSH shell state for remote shell sessions
+    let builder = builder.manage(create_ssh_shell_state());
+    let builder = builder.manage(cryptomator::CryptomatorState::new());
 
     builder
         .invoke_handler(tauri::generate_handler![
+            copy_to_clipboard,
             connect_ftp,
             disconnect_ftp,
             check_connection,
@@ -4197,13 +4372,40 @@ pub fn run() {
             get_dependencies,
             check_crate_versions,
             get_system_info,
-            // Updater command
+            // Updater commands
             check_update,
             log_update_detection,
+            download_update,
+            install_appimage_update,
             // AI commands
             ai_chat,
             ai_test_provider,
             ai_execute_tool,
+            ai_tools::execute_ai_tool,
+            // Archive browsing & selective extraction
+            archive_browse::list_zip,
+            archive_browse::list_7z,
+            archive_browse::list_tar,
+            archive_browse::list_rar,
+            archive_browse::extract_zip_entry,
+            archive_browse::extract_7z_entry,
+            archive_browse::extract_tar_entry,
+            archive_browse::extract_rar_entry,
+            // AeroVault encrypted folders
+            aerovault::vault_create,
+            aerovault::vault_list,
+            aerovault::vault_get_meta,
+            aerovault::vault_add_files,
+            aerovault::vault_remove_file,
+            aerovault::vault_extract_entry,
+            aerovault::vault_change_password,
+            // Cryptomator vault support
+            cryptomator::cryptomator_unlock,
+            cryptomator::cryptomator_lock,
+            cryptomator::cryptomator_list,
+            cryptomator::cryptomator_decrypt_file,
+            cryptomator::cryptomator_encrypt_file,
+            ai_stream::ai_chat_stream,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::provider_disconnect,
@@ -4277,7 +4479,11 @@ pub fn run() {
             spawn_shell,
             pty_write,
             pty_resize,
-            pty_close
+            pty_close,
+            ssh_shell_open,
+            ssh_shell_write,
+            ssh_shell_resize,
+            ssh_shell_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

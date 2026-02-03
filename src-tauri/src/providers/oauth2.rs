@@ -158,6 +158,7 @@ impl OAuthConfig {
                 "files.content.read".to_string(),
                 "files.content.write".to_string(),
                 "sharing.read".to_string(),
+                "sharing.write".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
             extra_auth_params: vec![

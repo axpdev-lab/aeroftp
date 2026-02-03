@@ -8,6 +8,7 @@ import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { useTranslation } from '../i18n';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -173,6 +174,7 @@ interface CheckUpdateButtonProps {
 }
 
 const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) => {
+    const t = useTranslation();
     const [isChecking, setIsChecking] = useState(false);
 
     const handleCheck = async () => {
@@ -196,7 +198,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 
                 try {
                     await sendNotification({
-                        title: 'Update Available!',
+                        title: t('settings.updateAvailable'),
                         body: `AeroFTP v${info.latest_version} is ready (.${info.install_format})`
                     });
                 } catch {
@@ -210,8 +212,8 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 
                 try {
                     await sendNotification({
-                        title: 'Up to Date',
-                        body: `Running latest version (v${info.current_version})`
+                        title: t('settings.upToDate'),
+                        body: t('settings.runningLatest', { version: info.current_version })
                     });
                 } catch {
                     alert(`Up to date!\n\nRunning AeroFTP v${info.current_version}`);
@@ -237,7 +239,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
             <svg className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {isChecking ? 'Checking...' : 'Check for Updates'}
+            {isChecking ? t('settings.checking') : t('settings.checkForUpdates')}
         </button>
     );
 };
@@ -391,11 +393,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     <div className="flex-1 p-6 overflow-y-auto">
                         {activeTab === 'general' && (
                             <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">General Settings</h3>
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.generalSettings')}</h3>
 
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Default Local Path</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.defaultLocalPath')}</label>
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
@@ -407,14 +409,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        const selected = await open({ directory: true, multiple: false, title: 'Select Default Local Folder' });
+                                                        const selected = await open({ directory: true, multiple: false, title: t('settings.selectDefaultFolder') });
                                                         if (selected && typeof selected === 'string') {
                                                             updateSetting('defaultLocalPath', selected);
                                                         }
                                                     } catch (e) { console.error('Folder picker error:', e); }
                                                 }}
                                                 className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                                                title="Browse"
+                                                title={t('common.browse')}
                                             >
                                                 <FolderOpen size={16} />
                                             </button>
@@ -636,7 +638,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 {server.name || server.host}
                                                                 {/* MEGA expiry badge */}
                                                                 {isExpired && (
-                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title="Session expired (24h)">
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title={t('ui.sessionExpired')}>
                                                                         <Clock size={10} /> EXP
                                                                     </span>
                                                                 )}
@@ -661,14 +663,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <button
                                                             onClick={() => setEditingServer(server)}
                                                             className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-                                                            title="Edit"
+                                                            title={t('common.edit')}
                                                         >
                                                             <Edit size={14} />
                                                         </button>
                                                         <button
                                                             onClick={() => deleteServer(server.id)}
                                                             className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                                                            title="Delete"
+                                                            title={t('common.delete')}
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -694,19 +696,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     // Protocol options for new server
                                     const protocolOptions = [
-                                        { value: 'ftp', label: 'FTP', port: 21 },
-                                        { value: 'ftps', label: 'FTPS (Secure)', port: 990 },
-                                        { value: 'sftp', label: 'SFTP (SSH)', port: 22 },
-                                        { value: 's3', label: 'S3 / R2 / B2', port: 443 },
-                                        { value: 'webdav', label: 'WebDAV', port: 443 },
-                                        { value: 'mega', label: 'MEGA', port: 443 },
-                                        { value: 'filen', label: 'Filen (E2E)', port: 443 },
-                                        { value: 'googledrive', label: 'Google Drive', port: 443 },
-                                        { value: 'dropbox', label: 'Dropbox', port: 443 },
-                                        { value: 'onedrive', label: 'OneDrive', port: 443 },
-                                        { value: 'box', label: 'Box', port: 443 },
-                                        { value: 'pcloud', label: 'pCloud', port: 443 },
-                                        { value: 'azure', label: 'Azure Blob', port: 443 },
+                                        { value: 'ftp', label: t('settings.protocolFtp'), port: 21 },
+                                        { value: 'ftps', label: t('settings.protocolFtps'), port: 990 },
+                                        { value: 'sftp', label: t('settings.protocolSftp'), port: 22 },
+                                        { value: 's3', label: t('settings.protocolS3'), port: 443 },
+                                        { value: 'webdav', label: t('settings.protocolWebdav'), port: 443 },
+                                        { value: 'mega', label: t('settings.protocolMega'), port: 443 },
+                                        { value: 'filen', label: t('settings.protocolFilen'), port: 443 },
+                                        { value: 'googledrive', label: t('settings.protocolGdrive'), port: 443 },
+                                        { value: 'dropbox', label: t('settings.protocolDropbox'), port: 443 },
+                                        { value: 'onedrive', label: t('settings.protocolOnedrive'), port: 443 },
+                                        { value: 'box', label: t('settings.protocolBox'), port: 443 },
+                                        { value: 'pcloud', label: t('settings.protocolPcloud'), port: 443 },
+                                        { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                     ];
 
                                     const handleProtocolChange = (newProtocol: string) => {
@@ -739,7 +741,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         );
                                                     })()}
                                                     <div>
-                                                        <h3 className="text-lg font-semibold">{isNewServer ? 'Add Server' : 'Edit Server'}</h3>
+                                                        <h3 className="text-lg font-semibold">{isNewServer ? t('settings.addServer') : t('settings.editServerTitle')}</h3>
                                                         <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                                             {protocol}
                                                         </span>
@@ -750,7 +752,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {/* Protocol Selector - only for new servers */}
                                                     {isNewServer && (
                                                         <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Protocol</label>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.protocol')}</label>
                                                             <select
                                                                 value={protocol}
                                                                 onChange={e => handleProtocolChange(e.target.value)}
@@ -831,7 +833,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <div className="flex gap-2">
                                                             <div className="flex-1">
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                    {isS3 ? 'Endpoint URL' : 'Host'}
+                                                                    {isS3 ? t('settings.endpointUrl') : t('settings.host')}
                                                                 </label>
                                                                 <input
                                                                     type="text"
@@ -842,7 +844,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 />
                                                             </div>
                                                             <div className="w-24">
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Port</label>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.port')}</label>
                                                                 <input
                                                                     type="number"
                                                                     placeholder="21"
@@ -858,7 +860,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {needsHostPort && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                {isS3 ? 'Access Key ID' : 'Username'}
+                                                                {isS3 ? t('settings.accessKeyId') : t('settings.username')}
                                                             </label>
                                                             <input
                                                                 type="text"
@@ -874,7 +876,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {needsPassword && !isMega && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                {isS3 ? 'Secret Access Key' : 'Password'}
+                                                                {isS3 ? t('settings.secretAccessKey') : t('settings.password')}
                                                             </label>
                                                             <input
                                                                 type="password"
@@ -890,7 +892,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {isS3 && (
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Bucket</label>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
                                                                 <input
                                                                     type="text"
                                                                     placeholder="my-bucket"
@@ -903,7 +905,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 />
                                                             </div>
                                                             <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">Region</label>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
                                                                 <input
                                                                     type="text"
                                                                     placeholder="us-east-1"
@@ -920,7 +922,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                     {/* Paths - common for all */}
                                                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Remote Path (optional)</label>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.remotePath')}</label>
                                                         <input
                                                             type="text"
                                                             placeholder="/home/user or /my-folder"
@@ -931,7 +933,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </div>
                                                     <div className="flex gap-2">
                                                         <div className="flex-1">
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Local Path (optional)</label>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.localPath')}</label>
                                                             <input
                                                                 type="text"
                                                                 placeholder="/home/user/downloads"
@@ -944,14 +946,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             type="button"
                                                             onClick={async () => {
                                                                 try {
-                                                                    const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
+                                                                    const selected = await open({ directory: true, multiple: false, title: t('settings.selectLocalFolder') });
                                                                     if (selected && typeof selected === 'string') {
                                                                         setEditingServer({ ...editingServer, localInitialPath: selected });
                                                                     }
                                                                 } catch (e) { console.error('Folder picker error:', e); }
                                                             }}
                                                             className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                            title="Browse"
+                                                            title={t('common.browse')}
                                                         >
                                                             <FolderOpen size={16} />
                                                         </button>
@@ -962,7 +964,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         onClick={() => setEditingServer(null)}
                                                         className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
                                                     >
-                                                        Cancel
+                                                        {t('common.cancel')}
                                                     </button>
                                                     <button
                                                         onClick={() => {
@@ -981,7 +983,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         }}
                                                         className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
                                                     >
-                                                        Save
+                                                        {t('common.save')}
                                                     </button>
                                                 </div>
                                             </div>

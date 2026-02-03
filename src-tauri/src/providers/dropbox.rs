@@ -746,6 +746,11 @@ impl StorageProvider for DropboxProvider {
         }
 
         if !status.is_success() {
+            if text.contains("missing_scope") {
+                return Err(ProviderError::AuthenticationFailed(
+                    "Dropbox token missing 'sharing.write' scope. Please disconnect and reconnect Dropbox to refresh permissions.".to_string()
+                ));
+            }
             return Err(ProviderError::Other(format!("Failed to create share link: {} - {}", status, text)));
         }
 

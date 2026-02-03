@@ -1,104 +1,454 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Terminal as TerminalIcon, Play, Square, RotateCcw } from 'lucide-react';
+import { Terminal as TerminalIcon, Play, Square, RotateCcw, Plus, X, Palette, ZoomIn, ZoomOut, ChevronDown, Globe } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import 'xterm/css/xterm.css';
 
-// Custom terminal styles (Tokyo Night theme)
-const terminalStyles = `
-.xterm .xterm-cursor-layer {
-    z-index: 10;
+// ============ Terminal Themes ============
+
+interface TerminalTheme {
+    name: string;
+    colors: Record<string, string>;
+    cursorCss: string;
 }
-.xterm .xterm-cursor {
-    background-color: #7aa2f7 !important;
-    opacity: 1 !important;
+
+const TERMINAL_THEMES: Record<string, TerminalTheme> = {
+    'tokyo-night': {
+        name: 'Tokyo Night',
+        colors: {
+            background: '#1a1b26',
+            foreground: '#c0caf5',
+            cursor: '#7aa2f7',
+            cursorAccent: '#1a1b26',
+            selectionBackground: '#33467c',
+            selectionForeground: '#c0caf5',
+            black: '#15161e',
+            red: '#f7768e',
+            green: '#9ece6a',
+            yellow: '#e0af68',
+            blue: '#7aa2f7',
+            magenta: '#bb9af7',
+            cyan: '#7dcfff',
+            white: '#a9b1d6',
+            brightBlack: '#414868',
+            brightRed: '#f7768e',
+            brightGreen: '#9ece6a',
+            brightYellow: '#e0af68',
+            brightBlue: '#7aa2f7',
+            brightMagenta: '#bb9af7',
+            brightCyan: '#7dcfff',
+            brightWhite: '#c0caf5',
+        },
+        cursorCss: '#7aa2f7',
+    },
+    'dracula': {
+        name: 'Dracula',
+        colors: {
+            background: '#282a36',
+            foreground: '#f8f8f2',
+            cursor: '#f8f8f2',
+            cursorAccent: '#282a36',
+            selectionBackground: '#44475a',
+            selectionForeground: '#f8f8f2',
+            black: '#21222c',
+            red: '#ff5555',
+            green: '#50fa7b',
+            yellow: '#f1fa8c',
+            blue: '#bd93f9',
+            magenta: '#ff79c6',
+            cyan: '#8be9fd',
+            white: '#f8f8f2',
+            brightBlack: '#6272a4',
+            brightRed: '#ff6e6e',
+            brightGreen: '#69ff94',
+            brightYellow: '#ffffa5',
+            brightBlue: '#d6acff',
+            brightMagenta: '#ff92df',
+            brightCyan: '#a4ffff',
+            brightWhite: '#ffffff',
+        },
+        cursorCss: '#f8f8f2',
+    },
+    'monokai': {
+        name: 'Monokai',
+        colors: {
+            background: '#272822',
+            foreground: '#f8f8f2',
+            cursor: '#f8f8f0',
+            cursorAccent: '#272822',
+            selectionBackground: '#49483e',
+            selectionForeground: '#f8f8f2',
+            black: '#272822',
+            red: '#f92672',
+            green: '#a6e22e',
+            yellow: '#f4bf75',
+            blue: '#66d9ef',
+            magenta: '#ae81ff',
+            cyan: '#a1efe4',
+            white: '#f8f8f2',
+            brightBlack: '#75715e',
+            brightRed: '#f92672',
+            brightGreen: '#a6e22e',
+            brightYellow: '#f4bf75',
+            brightBlue: '#66d9ef',
+            brightMagenta: '#ae81ff',
+            brightCyan: '#a1efe4',
+            brightWhite: '#f9f8f5',
+        },
+        cursorCss: '#f8f8f0',
+    },
+    'solarized-dark': {
+        name: 'Solarized Dark',
+        colors: {
+            background: '#002b36',
+            foreground: '#839496',
+            cursor: '#839496',
+            cursorAccent: '#002b36',
+            selectionBackground: '#073642',
+            selectionForeground: '#93a1a1',
+            black: '#073642',
+            red: '#dc322f',
+            green: '#859900',
+            yellow: '#b58900',
+            blue: '#268bd2',
+            magenta: '#d33682',
+            cyan: '#2aa198',
+            white: '#eee8d5',
+            brightBlack: '#586e75',
+            brightRed: '#cb4b16',
+            brightGreen: '#586e75',
+            brightYellow: '#657b83',
+            brightBlue: '#839496',
+            brightMagenta: '#6c71c4',
+            brightCyan: '#93a1a1',
+            brightWhite: '#fdf6e3',
+        },
+        cursorCss: '#839496',
+    },
+    'solarized-light': {
+        name: 'Solarized Light',
+        colors: {
+            background: '#fdf6e3',
+            foreground: '#657b83',
+            cursor: '#657b83',
+            cursorAccent: '#fdf6e3',
+            selectionBackground: '#eee8d5',
+            selectionForeground: '#586e75',
+            black: '#073642',
+            red: '#dc322f',
+            green: '#859900',
+            yellow: '#b58900',
+            blue: '#268bd2',
+            magenta: '#d33682',
+            cyan: '#2aa198',
+            white: '#eee8d5',
+            brightBlack: '#586e75',
+            brightRed: '#cb4b16',
+            brightGreen: '#586e75',
+            brightYellow: '#657b83',
+            brightBlue: '#839496',
+            brightMagenta: '#6c71c4',
+            brightCyan: '#93a1a1',
+            brightWhite: '#fdf6e3',
+        },
+        cursorCss: '#657b83',
+    },
+    'github-dark': {
+        name: 'GitHub Dark',
+        colors: {
+            background: '#0d1117',
+            foreground: '#c9d1d9',
+            cursor: '#c9d1d9',
+            cursorAccent: '#0d1117',
+            selectionBackground: '#264f78',
+            selectionForeground: '#ffffff',
+            black: '#484f58',
+            red: '#ff7b72',
+            green: '#3fb950',
+            yellow: '#d29922',
+            blue: '#58a6ff',
+            magenta: '#bc8cff',
+            cyan: '#39c5cf',
+            white: '#b1bac4',
+            brightBlack: '#6e7681',
+            brightRed: '#ffa198',
+            brightGreen: '#56d364',
+            brightYellow: '#e3b341',
+            brightBlue: '#79c0ff',
+            brightMagenta: '#d2a8ff',
+            brightCyan: '#56d4dd',
+            brightWhite: '#f0f6fc',
+        },
+        cursorCss: '#c9d1d9',
+    },
+    'nord': {
+        name: 'Nord',
+        colors: {
+            background: '#2e3440',
+            foreground: '#d8dee9',
+            cursor: '#d8dee9',
+            cursorAccent: '#2e3440',
+            selectionBackground: '#434c5e',
+            selectionForeground: '#d8dee9',
+            black: '#3b4252',
+            red: '#bf616a',
+            green: '#a3be8c',
+            yellow: '#ebcb8b',
+            blue: '#81a1c1',
+            magenta: '#b48ead',
+            cyan: '#88c0d0',
+            white: '#e5e9f0',
+            brightBlack: '#4c566a',
+            brightRed: '#bf616a',
+            brightGreen: '#a3be8c',
+            brightYellow: '#ebcb8b',
+            brightBlue: '#81a1c1',
+            brightMagenta: '#b48ead',
+            brightCyan: '#8fbcbb',
+            brightWhite: '#eceff4',
+        },
+        cursorCss: '#d8dee9',
+    },
+    'catppuccin-mocha': {
+        name: 'Catppuccin Mocha',
+        colors: {
+            background: '#1e1e2e',
+            foreground: '#cdd6f4',
+            cursor: '#f5e0dc',
+            cursorAccent: '#1e1e2e',
+            selectionBackground: '#45475a',
+            selectionForeground: '#cdd6f4',
+            black: '#45475a',
+            red: '#f38ba8',
+            green: '#a6e3a1',
+            yellow: '#f9e2af',
+            blue: '#89b4fa',
+            magenta: '#f5c2e7',
+            cyan: '#94e2d5',
+            white: '#bac2de',
+            brightBlack: '#585b70',
+            brightRed: '#f38ba8',
+            brightGreen: '#a6e3a1',
+            brightYellow: '#f9e2af',
+            brightBlue: '#89b4fa',
+            brightMagenta: '#f5c2e7',
+            brightCyan: '#94e2d5',
+            brightWhite: '#a6adc8',
+        },
+        cursorCss: '#f5e0dc',
+    },
+};
+
+const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light'];
+
+// ============ Tab State ============
+
+interface TerminalTab {
+    id: string;
+    label: string;
+    isConnected: boolean;
+    isConnecting: boolean;
+    type: 'local' | 'ssh';  // local PTY or SSH remote shell
 }
-.xterm .xterm-cursor-block {
-    background-color: #7aa2f7 !important;
+
+let tabIdCounter = 0;
+function nextTabId(): string {
+    return `term-${++tabIdCounter}`;
 }
-.xterm .xterm-cursor-outline {
-    outline: 2px solid #7aa2f7 !important;
+
+// ============ Settings Persistence ============
+
+const SETTINGS_KEY = 'aeroftp-terminal-settings';
+const SCROLLBACK_KEY = 'aeroftp-terminal-scrollback';
+
+interface TerminalSettings {
+    themeName: string;
+    fontSize: number;
 }
-`;
+
+function loadSettings(): TerminalSettings {
+    try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return { themeName: 'tokyo-night', fontSize: 14 };
+}
+
+function saveSettings(s: TerminalSettings) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+// Scrollback persistence — save/restore terminal buffer text per tab
+function saveScrollback(tabId: string, xterm: XTerm) {
+    try {
+        const buf = xterm.buffer.active;
+        const lines: string[] = [];
+        for (let i = 0; i < buf.length; i++) {
+            const line = buf.getLine(i);
+            if (line) lines.push(line.translateToString(true));
+        }
+        // Trim trailing empty lines
+        while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+        if (lines.length === 0) return;
+        const allScrollbacks = JSON.parse(localStorage.getItem(SCROLLBACK_KEY) || '{}');
+        allScrollbacks[tabId] = lines.join('\n');
+        // Keep max 5 tabs worth of scrollback
+        const keys = Object.keys(allScrollbacks);
+        if (keys.length > 5) {
+            delete allScrollbacks[keys[0]];
+        }
+        localStorage.setItem(SCROLLBACK_KEY, JSON.stringify(allScrollbacks));
+    } catch { /* quota exceeded or other error */ }
+}
+
+function loadScrollback(tabId: string): string | null {
+    try {
+        const allScrollbacks = JSON.parse(localStorage.getItem(SCROLLBACK_KEY) || '{}');
+        return allScrollbacks[tabId] || null;
+    } catch { return null; }
+}
+
+function clearScrollback(tabId: string) {
+    try {
+        const allScrollbacks = JSON.parse(localStorage.getItem(SCROLLBACK_KEY) || '{}');
+        delete allScrollbacks[tabId];
+        localStorage.setItem(SCROLLBACK_KEY, JSON.stringify(allScrollbacks));
+    } catch { /* ignore */ }
+}
+
+// ============ Component ============
+
+export interface SshConnectionInfo {
+    host: string;
+    port: number;
+    username: string;
+    password?: string;
+    privateKeyPath?: string;
+    keyPassphrase?: string;
+}
 
 interface SSHTerminalProps {
     className?: string;
     localPath?: string;
+    sshConnection?: SshConnectionInfo | null;
 }
 
 export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     className = '',
     localPath = '~',
+    sshConnection,
 }) => {
+    // Settings
+    const [settings, setSettings] = useState<TerminalSettings>(loadSettings);
+    const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const themeMenuRef = useRef<HTMLDivElement>(null);
+
+    // Tabs — start empty, user clicks "+" to create first tab
+    const [tabs, setTabs] = useState<TerminalTab[]>([]);
+    const [activeTabId, setActiveTabId] = useState<string>('');
+
+    // Per-tab refs
+    const xtermInstances = useRef<Map<string, XTerm>>(new Map());
+    const fitAddons = useRef<Map<string, FitAddon>>(new Map());
+    const unlistenFns = useRef<Map<string, UnlistenFn>>(new Map());
+    const connectedTabs = useRef<Set<string>>(new Set());
+    // Map tabId → pty session id (backend)
+    const ptySessionIds = useRef<Map<string, string>>(new Map());
+
     const terminalRef = useRef<HTMLDivElement>(null);
-    const xtermRef = useRef<XTerm | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const [isConnecting, setIsConnecting] = useState(false);
-    const unlistenRef = useRef<UnlistenFn | null>(null);
-    const isConnectedRef = useRef(false); // Ref to track connection state in callbacks
     const styleInjectedRef = useRef(false);
 
-    // Inject custom styles once
-    useEffect(() => {
-        if (!styleInjectedRef.current) {
-            const styleElement = document.createElement('style');
-            styleElement.textContent = terminalStyles;
-            document.head.appendChild(styleElement);
-            styleInjectedRef.current = true;
-        }
+    const activeTab = tabs.find(t => t.id === activeTabId) || null;
+
+    // Persist settings
+    const updateSettings = useCallback((patch: Partial<TerminalSettings>) => {
+        setSettings(prev => {
+            const next = { ...prev, ...patch };
+            saveSettings(next);
+            return next;
+        });
     }, []);
 
-    // Initialize xterm.js
+    // Close theme menu on outside click
     useEffect(() => {
-        if (!terminalRef.current) return;
+        const handler = (e: MouseEvent) => {
+            if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+                setShowThemeMenu(false);
+            }
+        };
+        if (showThemeMenu) document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showThemeMenu]);
 
-        // Cleanup previous instance if exists
-        if (xtermRef.current) {
-            xtermRef.current.dispose();
-            xtermRef.current = null;
+    // Get current theme
+    const currentTheme = TERMINAL_THEMES[settings.themeName] || TERMINAL_THEMES['tokyo-night'];
+
+    // Inject cursor CSS (updated per theme)
+    useEffect(() => {
+        let styleEl = document.getElementById('aeroftp-terminal-cursor-css') as HTMLStyleElement | null;
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'aeroftp-terminal-cursor-css';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = `
+.xterm .xterm-cursor-layer { z-index: 10; }
+.xterm .xterm-cursor { background-color: ${currentTheme.cursorCss} !important; opacity: 1 !important; }
+.xterm .xterm-cursor-block { background-color: ${currentTheme.cursorCss} !important; }
+.xterm .xterm-cursor-outline { outline: 2px solid ${currentTheme.cursorCss} !important; }
+`;
+    }, [currentTheme]);
+
+    // Apply theme & font to all xterm instances
+    useEffect(() => {
+        xtermInstances.current.forEach((xterm) => {
+            xterm.options.theme = currentTheme.colors;
+            xterm.options.fontSize = settings.fontSize;
+            xterm.refresh(0, xterm.rows - 1);
+        });
+        // Re-fit after font change
+        fitAddons.current.forEach((fa) => {
+            try { fa.fit(); } catch { /* container may not be visible */ }
+        });
+    }, [settings.themeName, settings.fontSize, currentTheme]);
+
+    // Initialize / dispose xterm for each tab
+    useEffect(() => {
+        if (!terminalRef.current || !activeTabId) return;
+
+        const tabId = activeTabId;
+        // Already initialized?
+        if (xtermInstances.current.has(tabId)) {
+            // Re-attach to DOM
+            const xterm = xtermInstances.current.get(tabId)!;
+            const container = terminalRef.current;
+            // Clear container, re-open
+            container.innerHTML = '';
+            xterm.open(container);
+            xterm.focus();
+            const fa = fitAddons.current.get(tabId);
+            setTimeout(() => fa?.fit(), 50);
+            return;
         }
 
+        // Create new xterm
         const xterm = new XTerm({
             cols: 80,
             rows: 24,
-            theme: {
-                background: '#1a1b26',      // Tokyo Night background
-                foreground: '#c0caf5',      // Light lavender text
-                cursor: '#7aa2f7',          // Blue cursor (visible)
-                cursorAccent: '#1a1b26',
-                selectionBackground: '#33467c',
-                selectionForeground: '#c0caf5',
-                black: '#15161e',
-                red: '#f7768e',
-                green: '#9ece6a',
-                yellow: '#e0af68',
-                blue: '#7aa2f7',
-                magenta: '#bb9af7',
-                cyan: '#7dcfff',
-                white: '#a9b1d6',
-                brightBlack: '#414868',
-                brightRed: '#f7768e',
-                brightGreen: '#9ece6a',
-                brightYellow: '#e0af68',
-                brightBlue: '#7aa2f7',
-                brightMagenta: '#bb9af7',
-                brightCyan: '#7dcfff',
-                brightWhite: '#c0caf5',
-            },
+            theme: currentTheme.colors,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
-            fontSize: 14,
+            fontSize: settings.fontSize,
             fontWeight: '400',
             fontWeightBold: '600',
             letterSpacing: 0,
             lineHeight: 1.2,
             cursorBlink: true,
-            cursorStyle: 'block',           // Block cursor for visibility
-            cursorInactiveStyle: 'block',   // Keep block even when not focused
-            scrollback: 5000,
+            cursorStyle: 'block',
+            cursorInactiveStyle: 'block',
+            scrollback: 10000,
             allowProposedApi: true,
             convertEol: true,
             scrollOnUserInput: true,
@@ -106,249 +456,460 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
         const fitAddon = new FitAddon();
         const webLinksAddon = new WebLinksAddon();
-
         xterm.loadAddon(fitAddon);
         xterm.loadAddon(webLinksAddon);
-        xterm.open(terminalRef.current);
 
-        // Focus immediately to show cursor
+        terminalRef.current.innerHTML = '';
+        xterm.open(terminalRef.current);
         xterm.focus();
-        
-        // Force re-apply theme after open (fixes WebKit rendering issues)
+
         setTimeout(() => {
-            xterm.options.theme = {
-                background: '#1a1b26',
-                foreground: '#c0caf5',
-                cursor: '#7aa2f7',
-                cursorAccent: '#1a1b26',
-                selectionBackground: '#33467c',
-                selectionForeground: '#c0caf5',
-                black: '#15161e',
-                red: '#f7768e',
-                green: '#9ece6a',
-                yellow: '#e0af68',
-                blue: '#7aa2f7',
-                magenta: '#bb9af7',
-                cyan: '#7dcfff',
-                white: '#a9b1d6',
-                brightBlack: '#414868',
-                brightRed: '#f7768e',
-                brightGreen: '#9ece6a',
-                brightYellow: '#e0af68',
-                brightBlue: '#7aa2f7',
-                brightMagenta: '#bb9af7',
-                brightCyan: '#7dcfff',
-                brightWhite: '#c0caf5',
-            };
+            xterm.options.theme = currentTheme.colors;
             xterm.refresh(0, xterm.rows - 1);
         }, 50);
+        xtermInstances.current.set(tabId, xterm);
+        fitAddons.current.set(tabId, fitAddon);
 
-        // IMPORTANT: Fit must be called after a slight delay to ensure container is rendered
-        setTimeout(() => {
+        // Wait for container to have actual dimensions before fitting + writing welcome
+        // On first tab the DevTools panel is still laying out, so setTimeout alone is unreliable
+        const writeWelcome = () => {
             fitAddon.fit();
-            console.log('PTY: Initial fit complete');
-        }, 100);
-
-        xtermRef.current = xterm;
-        fitAddonRef.current = fitAddon;
-
-        // Welcome message
-        xterm.writeln('\x1b[1;35m╔════════════════════════════════════════╗\x1b[0m');
-        xterm.writeln('\x1b[1;35m║\x1b[0m   \x1b[1;36mAeroFTP Terminal\x1b[0m                     \x1b[1;35m║\x1b[0m');
-        xterm.writeln('\x1b[1;35m╚════════════════════════════════════════╝\x1b[0m');
-        xterm.writeln('');
-        xterm.writeln('\x1b[90mClick "Start" to launch your shell.\x1b[0m');
-        xterm.writeln('');
-
-        // Handle keystrokes - send to PTY
-        xterm.onData(async (data) => {
-            console.log('PTY: onData fired, connected:', isConnectedRef.current, 'data:', JSON.stringify(data));
-            if (isConnectedRef.current) {
-                try {
-                    await invoke('pty_write', { data });
-                    console.log('PTY: write success');
-                } catch (e) {
-                    console.error('PTY write error:', e);
-                }
+            const currentTab = tabs.find(t => t.id === tabId);
+            if (currentTab?.type === 'ssh') {
+                xterm.writeln('\x1b[1;36m╔════════════════════════════════════════╗\x1b[0m');
+                xterm.writeln('\x1b[1;36m║\x1b[0m   \x1b[1;33mSSH Remote Shell\x1b[0m                     \x1b[1;36m║\x1b[0m');
+                xterm.writeln('\x1b[1;36m╚════════════════════════════════════════╝\x1b[0m');
+                xterm.writeln('');
+                xterm.writeln(`\x1b[90mClick "Start" to connect to ${sshConnection?.host || 'remote server'}.\x1b[0m`);
             } else {
-                console.warn('PTY: Not connected, ignoring keystroke');
+                xterm.writeln('\x1b[1;35m╔════════════════════════════════════════╗\x1b[0m');
+                xterm.writeln('\x1b[1;35m║\x1b[0m   \x1b[1;36mAeroFTP Terminal\x1b[0m                     \x1b[1;35m║\x1b[0m');
+                xterm.writeln('\x1b[1;35m╚════════════════════════════════════════╝\x1b[0m');
+                xterm.writeln('');
+                xterm.writeln('\x1b[90mClick "Start" to launch your shell.\x1b[0m');
+            }
+            xterm.writeln('');
+        };
+
+        const container = terminalRef.current!;
+        if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+            // Container already has dimensions (subsequent tabs)
+            setTimeout(writeWelcome, 50);
+        } else {
+            // First tab: wait for layout via ResizeObserver
+            const ro = new ResizeObserver((entries) => {
+                const entry = entries[0];
+                if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+                    ro.disconnect();
+                    setTimeout(writeWelcome, 30);
+                }
+            });
+            ro.observe(container);
+        }
+
+        // Handle keystrokes — route to PTY or SSH shell based on tab type
+        xterm.onData(async (data) => {
+            if (connectedTabs.current.has(tabId)) {
+                try {
+                    const sessionId = ptySessionIds.current.get(tabId);
+                    const tab = tabs.find(t => t.id === tabId);
+                    if (tab?.type === 'ssh' && sessionId) {
+                        await invoke('ssh_shell_write', { sessionId, data });
+                    } else {
+                        await invoke('pty_write', { data, sessionId: sessionId || null });
+                    }
+                } catch (e) {
+                    console.error('Terminal write error:', e);
+                }
             }
         });
 
-        // Handle resize with ResizeObserver (detects container size changes, not just window)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTabId]);
+
+    // Resize observer
+    useEffect(() => {
+        if (!terminalRef.current || !activeTabId) return;
         let resizeTimeout: number;
         const handleResize = () => {
             if (resizeTimeout) window.clearTimeout(resizeTimeout);
             resizeTimeout = window.setTimeout(() => {
-                if (fitAddonRef.current && xtermRef.current) {
-                    fitAddonRef.current.fit();
-                    const dims = fitAddonRef.current.proposeDimensions();
+                const fa = fitAddons.current.get(activeTabId);
+                const xterm = xtermInstances.current.get(activeTabId);
+                if (fa && xterm) {
+                    fa.fit();
+                    const dims = fa.proposeDimensions();
                     if (dims) {
-                        console.log('PTY: Resizing to', dims);
-                        invoke('pty_resize', { rows: dims.rows, cols: dims.cols }).catch(console.error);
+                        const sessionId = ptySessionIds.current.get(activeTabId);
+                        const tab = tabs.find(t => t.id === activeTabId);
+                        if (tab?.type === 'ssh' && sessionId) {
+                            invoke('ssh_shell_resize', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
+                        } else {
+                            invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId: sessionId || null }).catch(() => {});
+                        }
                     }
                 }
             }, 100);
         };
 
-        // Use ResizeObserver to detect when the terminal container resizes
-        const resizeObserver = new ResizeObserver(() => {
-            handleResize();
-        });
-
-        if (terminalRef.current) {
-            resizeObserver.observe(terminalRef.current);
-        }
-
-        // Also listen to window resize as fallback
+        const observer = new ResizeObserver(() => handleResize());
+        observer.observe(terminalRef.current);
         window.addEventListener('resize', handleResize);
 
         return () => {
+            observer.disconnect();
             window.removeEventListener('resize', handleResize);
-            resizeObserver.disconnect();
-            if (unlistenRef.current) {
-                unlistenRef.current();
-            }
-            xterm.dispose();
-            xtermRef.current = null;
         };
-    }, []); // Only run once on mount (removed isConnected dep to avoid re-init)
+    }, [activeTabId]);
 
-    // Setup event listener for PTY output
-    const setupListener = async () => {
-        if (unlistenRef.current) {
-            unlistenRef.current();
-        }
+    // Ctrl+/- font size (on the terminal container)
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+                e.preventDefault();
+                updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) });
+            } else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+                e.preventDefault();
+                updateSettings({ fontSize: Math.max(8, settings.fontSize - 1) });
+            } else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+                e.preventDefault();
+                updateSettings({ fontSize: 14 });
+            }
+        };
+        const container = terminalRef.current;
+        container?.addEventListener('keydown', handler);
+        return () => container?.removeEventListener('keydown', handler);
+    }, [settings.fontSize, updateSettings]);
 
-        try {
-            unlistenRef.current = await listen<string>('pty-output', (event) => {
-                if (xtermRef.current) {
-                    xtermRef.current.write(event.payload);
+    // Setup PTY listener for a tab
+    const setupListener = useCallback(async (tabId: string) => {
+        // Clean previous
+        const prev = unlistenFns.current.get(tabId);
+        if (prev) prev();
+
+        const sessionId = ptySessionIds.current.get(tabId);
+        const eventName = sessionId ? `pty-output-${sessionId}` : 'pty-output';
+
+        const unlisten = await listen<string>(eventName, (event) => {
+            const xterm = xtermInstances.current.get(tabId);
+            if (xterm) xterm.write(event.payload);
+        });
+
+        // Listen for SSH shell close events
+        if (sessionId?.startsWith('ssh-shell-')) {
+            const closeUnlisten = await listen<string>(`ssh-shell-closed-${sessionId}`, () => {
+                connectedTabs.current.delete(tabId);
+                ptySessionIds.current.delete(tabId);
+                setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnected: false, isConnecting: false } : t));
+                const xterm = xtermInstances.current.get(tabId);
+                if (xterm) {
+                    xterm.writeln('');
+                    xterm.writeln('\x1b[33mSSH connection closed.\x1b[0m');
                 }
             });
-        } catch (e) {
-            console.error('PTY: Failed to setup listener:', e);
-        }
-    };
-
-    // Start shell
-    const startShell = async () => {
-        if (isConnecting || isConnected) return;
-
-        setIsConnecting(true);
-        console.log('PTY: Starting shell in:', localPath);
-
-        try {
-            await setupListener();
-
-            // Pass localPath as cwd to the backend
-            // If localPath is '~' or empty, backend will use default
-            const cwdToUse = (localPath && localPath !== '~') ? localPath : null;
-
-            const result = await invoke<string>('spawn_shell', { cwd: cwdToUse });
-            console.log('PTY: Shell spawned:', result);
-            setIsConnected(true);
-            isConnectedRef.current = true; // Update ref for callbacks
-
-            if (xtermRef.current) {
-                xtermRef.current.clear();
-                xtermRef.current.writeln('');
-            }
-
-            // Notify PTY of initial size
-            if (fitAddonRef.current) {
-                const dims = fitAddonRef.current.proposeDimensions();
-                if (dims) {
-                    await invoke('pty_resize', { rows: dims.rows, cols: dims.cols });
-                }
-            }
-
-            // Focus terminal
-            xtermRef.current?.focus();
-
-            // Send custom PS1 after a short delay to override .bashrc
-            setTimeout(async () => {
-                try {
-                    // Set colorful prompt: green user@host, blue path
-                    const ps1Command = `export PS1='\\[\\e[1;32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ' && clear\n`;
-                    await invoke('pty_write', { data: ps1Command });
-                } catch (e) {
-                    console.error('Failed to set PS1:', e);
-                }
-            }, 300);
-
-        } catch (e) {
-            if (xtermRef.current) {
-                xtermRef.current.writeln(`\x1b[31m✗ Error: ${e}\x1b[0m`);
-            }
-        } finally {
-            setIsConnecting(false);
-        }
-    };
-
-    // Stop shell
-    const stopShell = async () => {
-        if (unlistenRef.current) {
-            unlistenRef.current();
-            unlistenRef.current = null;
-        }
-
-        try {
-            await invoke('pty_close');
-        } catch (e) {
-            console.error('PTY close error:', e);
-        }
-
-        setIsConnected(false);
-        isConnectedRef.current = false; // Update ref for callbacks
-
-        if (xtermRef.current) {
-            xtermRef.current.writeln('');
-            xtermRef.current.writeln('\x1b[33mTerminal closed.\x1b[0m');
-            xtermRef.current.writeln('\x1b[90mClick "Start" to launch a new shell.\x1b[0m');
-        }
-    };
-
-    // Restart shell
-    const restartShell = async () => {
-        await stopShell();
-        setTimeout(startShell, 500); // Give a bit more time for cleanup
-    };
-
-    // Re-fit on visibility
-    useEffect(() => {
-        if (fitAddonRef.current) {
-            setTimeout(() => fitAddonRef.current?.fit(), 50);
+            const origUnlisten = unlisten;
+            unlistenFns.current.set(tabId, () => { origUnlisten(); closeUnlisten(); });
+        } else {
+            unlistenFns.current.set(tabId, unlisten);
         }
     }, []);
 
+    // Start shell for active tab (local PTY or SSH remote)
+    const startShell = useCallback(async () => {
+        const tabId = activeTabId;
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab || tab.isConnecting || tab.isConnected) return;
+
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnecting: true } : t));
+
+        try {
+            let sessionId: string | undefined;
+
+            if (tab.type === 'ssh' && sshConnection) {
+                // Open SSH remote shell
+                const result = await invoke<string>('ssh_shell_open', {
+                    host: sshConnection.host,
+                    port: sshConnection.port,
+                    username: sshConnection.username,
+                    password: sshConnection.password || null,
+                    privateKeyPath: sshConnection.privateKeyPath || null,
+                    keyPassphrase: sshConnection.keyPassphrase || null,
+                });
+                const match = result.match(/\[session:([^\]]+)\]/);
+                sessionId = match ? match[1] : undefined;
+            } else {
+                // Spawn local PTY shell
+                const cwdToUse = (localPath && localPath !== '~') ? localPath : null;
+                const result = await invoke<string>('spawn_shell', { cwd: cwdToUse });
+                const match = result.match(/\[session:([^\]]+)\]/);
+                sessionId = match ? match[1] : undefined;
+            }
+
+            if (sessionId) {
+                ptySessionIds.current.set(tabId, sessionId);
+            }
+
+            await setupListener(tabId);
+
+            connectedTabs.current.add(tabId);
+            setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnected: true, isConnecting: false } : t));
+
+            const xterm = xtermInstances.current.get(tabId);
+            if (xterm) {
+                xterm.clear();
+                xterm.writeln('');
+            }
+
+            // Resize (local PTY only — SSH shell resize is a no-op currently)
+            if (tab.type !== 'ssh') {
+                const fa = fitAddons.current.get(tabId);
+                if (fa) {
+                    const dims = fa.proposeDimensions();
+                    if (dims) {
+                        await invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId: sessionId || null });
+                    }
+                }
+            }
+
+            xtermInstances.current.get(tabId)?.focus();
+
+            // Set PS1 for local shell only
+            if (tab.type !== 'ssh') {
+                setTimeout(async () => {
+                    try {
+                        const ps1Command = `export PS1='\\[\\e[1;32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ' && clear\n`;
+                        await invoke('pty_write', { data: ps1Command, sessionId: sessionId || null });
+                    } catch { /* ignore */ }
+                }, 300);
+            }
+
+        } catch (e) {
+            const xterm = xtermInstances.current.get(tabId);
+            if (xterm) xterm.writeln(`\x1b[31mError: ${e}\x1b[0m`);
+            setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnecting: false } : t));
+        }
+    }, [activeTabId, tabs, localPath, sshConnection, setupListener]);
+
+    // Stop shell for active tab
+    const stopShell = useCallback(async () => {
+        const tabId = activeTabId;
+        const tab = tabs.find(t => t.id === tabId);
+        const unlisten = unlistenFns.current.get(tabId);
+        if (unlisten) { unlisten(); unlistenFns.current.delete(tabId); }
+
+        try {
+            const sessionId = ptySessionIds.current.get(tabId);
+            if (tab?.type === 'ssh' && sessionId) {
+                await invoke('ssh_shell_close', { sessionId });
+            } else {
+                await invoke('pty_close', { sessionId: sessionId || null });
+            }
+        } catch { /* ignore */ }
+
+        connectedTabs.current.delete(tabId);
+        ptySessionIds.current.delete(tabId);
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnected: false, isConnecting: false } : t));
+
+        const xterm = xtermInstances.current.get(tabId);
+        if (xterm) {
+            xterm.writeln('');
+            xterm.writeln('\x1b[33mTerminal closed.\x1b[0m');
+            xterm.writeln('\x1b[90mClick "Start" to launch a new shell.\x1b[0m');
+        }
+    }, [activeTabId, tabs]);
+
+    const restartShell = useCallback(async () => {
+        await stopShell();
+        setTimeout(startShell, 500);
+    }, [stopShell, startShell]);
+
+    // Add local tab
+    const addTab = useCallback(() => {
+        const id = nextTabId();
+        const num = tabs.length + 1;
+        setTabs(prev => [...prev, { id, label: `Terminal ${num}`, isConnected: false, isConnecting: false, type: 'local' }]);
+        setActiveTabId(id);
+    }, [tabs.length]);
+
+    // Add SSH shell tab
+    const addSshTab = useCallback(() => {
+        if (!sshConnection) return;
+        const id = nextTabId();
+        const label = `SSH ${sshConnection.host}`;
+        setTabs(prev => [...prev, { id, label, isConnected: false, isConnecting: false, type: 'ssh' }]);
+        setActiveTabId(id);
+    }, [sshConnection]);
+
+    // Close tab
+    const closeTab = useCallback((tabId: string) => {
+        // Clean up resources
+        const unlisten = unlistenFns.current.get(tabId);
+        if (unlisten) { unlisten(); unlistenFns.current.delete(tabId); }
+        const sessionId = ptySessionIds.current.get(tabId);
+        const tab = tabs.find(t => t.id === tabId);
+        if (connectedTabs.current.has(tabId)) {
+            if (tab?.type === 'ssh' && sessionId) {
+                invoke('ssh_shell_close', { sessionId }).catch(() => {});
+            } else {
+                invoke('pty_close', { sessionId: sessionId || null }).catch(() => {});
+            }
+        }
+        connectedTabs.current.delete(tabId);
+        ptySessionIds.current.delete(tabId);
+        const xterm = xtermInstances.current.get(tabId);
+        if (xterm) {
+            saveScrollback(tabId, xterm);
+            xterm.dispose();
+        }
+        xtermInstances.current.delete(tabId);
+        fitAddons.current.delete(tabId);
+
+        setTabs(prev => {
+            const remaining = prev.filter(t => t.id !== tabId);
+            if (remaining.length === 0) {
+                setActiveTabId('');
+            } else if (activeTabId === tabId) {
+                setActiveTabId(remaining[remaining.length - 1].id);
+            }
+            return remaining;
+        });
+    }, [activeTabId]);
+
+    // Cleanup on unmount — save scrollback for all tabs
+    useEffect(() => {
+        return () => {
+            xtermInstances.current.forEach((xterm, tabId) => {
+                saveScrollback(tabId, xterm);
+                xterm.dispose();
+            });
+            unlistenFns.current.forEach((fn) => fn());
+            connectedTabs.current.forEach((tabId) => {
+                const sessionId = ptySessionIds.current.get(tabId);
+                invoke('pty_close', { sessionId: sessionId || null }).catch(() => {});
+            });
+        };
+    }, []);
+
     return (
-        <div className={`flex flex-col h-full bg-[#0d1117] ${className}`}>
-            <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-                <div className="flex items-center gap-2 text-sm text-gray-300">
-                    <TerminalIcon size={14} className={isConnected ? 'text-green-400' : 'text-gray-400'} />
-                    <span className="font-medium font-mono">Terminal</span>
-                    <span className={`text-xs font-mono ${isConnected ? 'text-green-400' : 'text-gray-500'}`}>
-                        {isConnected ? '● Connected' : '○ Disconnected'}
-                    </span>
+        <div className={`flex flex-col h-full ${className}`} style={{ backgroundColor: currentTheme.colors.background }}>
+            {/* Toolbar: tabs + controls */}
+            <div className="flex items-center justify-between px-2 py-1 bg-[#161b22] border-b border-[#30363d] flex-shrink-0">
+                {/* Tabs */}
+                <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
+                    {tabs.map(tab => (
+                        <div
+                            key={tab.id}
+                            className={`flex items-center gap-1 px-2 py-1 text-xs rounded-t cursor-pointer border-b-2 transition-colors ${
+                                tab.id === activeTabId
+                                    ? 'bg-[#1a1b26] text-gray-200 border-green-400'
+                                    : 'bg-transparent text-gray-500 border-transparent hover:text-gray-300 hover:bg-[#1a1b26]/50'
+                            }`}
+                            onClick={() => setActiveTabId(tab.id)}
+                        >
+                            {tab.type === 'ssh'
+                                ? <Globe size={10} className={tab.isConnected ? 'text-cyan-400' : 'text-gray-500'} />
+                                : <TerminalIcon size={10} className={tab.isConnected ? 'text-green-400' : 'text-gray-500'} />
+                            }
+                            <span className="font-mono whitespace-nowrap">{tab.label}</span>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                                className="ml-0.5 text-gray-500 hover:text-red-400 transition-colors"
+                            >
+                                <X size={10} />
+                            </button>
+                        </div>
+                    ))}
+                    <button
+                        onClick={addTab}
+                        className="flex items-center px-1.5 py-1 text-gray-500 hover:text-gray-300 transition-colors"
+                        title="New terminal tab"
+                    >
+                        <Plus size={12} />
+                    </button>
+                    {sshConnection && (
+                        <button
+                            onClick={addSshTab}
+                            className="flex items-center gap-0.5 px-1.5 py-1 text-gray-500 hover:text-cyan-300 transition-colors"
+                            title={`SSH shell to ${sshConnection.host}`}
+                        >
+                            <Globe size={12} />
+                            <span className="text-[10px]">SSH</span>
+                        </button>
+                    )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {!isConnected ? (
+                {/* Controls */}
+                <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    {/* Theme selector */}
+                    <div className="relative" ref={themeMenuRef}>
+                        <button
+                            onClick={() => setShowThemeMenu(!showThemeMenu)}
+                            className="flex items-center gap-1 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                            title="Terminal theme"
+                        >
+                            <Palette size={12} />
+                            <ChevronDown size={10} />
+                        </button>
+                        {showThemeMenu && (
+                            <div className="absolute right-0 top-full mt-1 bg-[#1e1e2e] border border-gray-600 rounded shadow-xl z-50 min-w-[160px]">
+                                {THEME_ORDER.map(key => {
+                                    const t = TERMINAL_THEMES[key];
+                                    return (
+                                        <button
+                                            key={key}
+                                            onClick={() => { updateSettings({ themeName: key }); setShowThemeMenu(false); }}
+                                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors flex items-center gap-2 ${
+                                                settings.themeName === key ? 'text-green-400' : 'text-gray-300'
+                                            }`}
+                                        >
+                                            <span
+                                                className="w-3 h-3 rounded-sm border border-gray-600 flex-shrink-0"
+                                                style={{ backgroundColor: t.colors.background }}
+                                            />
+                                            {t.name}
+                                            {settings.themeName === key && <span className="ml-auto text-green-400">●</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Font size */}
+                    <button
+                        onClick={() => updateSettings({ fontSize: Math.max(8, settings.fontSize - 1) })}
+                        className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
+                        title="Decrease font size (Ctrl+-)"
+                    >
+                        <ZoomOut size={12} />
+                    </button>
+                    <span className="text-[10px] text-gray-500 font-mono w-5 text-center">{settings.fontSize}</span>
+                    <button
+                        onClick={() => updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) })}
+                        className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
+                        title="Increase font size (Ctrl+=)"
+                    >
+                        <ZoomIn size={12} />
+                    </button>
+
+                    <div className="w-px h-4 bg-gray-700 mx-1" />
+
+                    {/* Shell controls */}
+                    {activeTab && !activeTab.isConnected ? (
                         <button
                             onClick={startShell}
-                            disabled={isConnecting}
+                            disabled={activeTab.isConnecting}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white rounded transition-colors"
                             title="Start shell"
                         >
                             <Play size={12} />
-                            {isConnecting ? 'Starting...' : 'Start'}
+                            {activeTab.isConnecting ? 'Starting...' : 'Start'}
                         </button>
-                    ) : (
+                    ) : activeTab?.isConnected ? (
                         <>
                             <button
                                 onClick={restartShell}
-                                className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-600 hover:bg-yellow-500 text-white rounded transition-colors"
+                                className="flex items-center gap-1 px-1.5 py-1 text-xs bg-yellow-600 hover:bg-yellow-500 text-white rounded transition-colors"
                                 title="Restart shell"
                             >
                                 <RotateCcw size={12} />
@@ -362,14 +923,30 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                                 Stop
                             </button>
                         </>
-                    )}
+                    ) : null}
                 </div>
             </div>
-            <div 
-                ref={terminalRef} 
-                className="flex-1 p-1 overflow-hidden cursor-text bg-[#0d1117]" 
-                onClick={() => xtermRef.current?.focus()}
-            />
+
+            {/* Terminal area */}
+            {tabs.length === 0 ? (
+                <div
+                    className="flex-1 flex flex-col items-center justify-center gap-3"
+                    style={{ backgroundColor: currentTheme.colors.background }}
+                >
+                    <TerminalIcon size={32} className="text-gray-600" />
+                    <span className="text-gray-500 text-sm">Click <strong>+</strong> to open a terminal</span>
+                    {sshConnection && (
+                        <span className="text-gray-600 text-xs">or <strong>SSH</strong> for remote shell to {sshConnection.host}</span>
+                    )}
+                </div>
+            ) : (
+                <div
+                    ref={terminalRef}
+                    className="flex-1 p-1 overflow-hidden cursor-text"
+                    style={{ backgroundColor: currentTheme.colors.background }}
+                    onClick={() => xtermInstances.current.get(activeTabId)?.focus()}
+                />
+            )}
         </div>
     );
 };

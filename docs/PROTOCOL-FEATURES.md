@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 2 February 2026
-> Version: v1.5.3 (Sync Index Cache + Storage Quota + FTP Retry)
+> Last Updated: 3 February 2026
+> Version: v1.7.0 (Encryption Block — AeroVault + Archive Browser + Cryptomator + AeroAgent 24 Tools)
 
 ---
 
@@ -98,17 +98,21 @@
 
 ---
 
-## Archive Support Matrix (v1.4.0)
+## Archive Support Matrix (v1.7.0)
 
-| Format | Compress | Extract | Encryption | Backend |
-|--------|----------|---------|------------|---------|
-| **ZIP** | Yes | Yes | AES-256 (read+write) | `zip` v7.2 |
-| **7z** | Yes | Yes | AES-256 (read+write) | `sevenz-rust` v0.6 |
-| **TAR** | Yes | Yes | No | `tar` v0.4 |
-| **TAR.GZ** | Yes | Yes | No | `tar` + `flate2` v1.0 |
-| **TAR.XZ** | Yes | Yes | No | `tar` + `xz2` v0.1 |
-| **TAR.BZ2** | Yes | Yes | No | `tar` + `bzip2` v0.6 |
-| **RAR** | No | Yes | Password support | `unrar` v0.5 |
+| Format | Compress | Extract | Browse | Selective Extract | Encryption | Levels | Backend |
+|--------|----------|---------|--------|-------------------|------------|--------|---------|
+| **ZIP** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Store/Fast/Normal/Max | `zip` v7.2 |
+| **7z** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Fast/Normal/Max | `sevenz-rust` v0.6 |
+| **TAR** | Yes | Yes | Yes | Yes | No | — | `tar` v0.4 |
+| **TAR.GZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `flate2` v1.0 |
+| **TAR.XZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `xz2` v0.1 |
+| **TAR.BZ2** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `bzip2` v0.6 |
+| **RAR** | No | Yes | Yes | Yes | Password support | — | `unrar` v0.5 |
+
+**Archive Browser** (v1.7.0): Browse archive contents in-app without extracting. Password dialog for encrypted ZIP/7z/RAR. Selective extraction of individual files.
+
+**CompressDialog** (v1.7.0): Unified compression UI with format selection, compression levels, editable archive name, password protection (ZIP/7z), and file info display.
 
 ---
 
@@ -229,6 +233,67 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ---
 
+## AeroAgent AI (v1.6.0)
+
+### AI Provider Support
+
+| Provider | Native Tools | Streaming | Token Counting | Auth |
+|----------|-------------|-----------|----------------|------|
+| **Google Gemini** | Yes (`functionDeclarations`) | Yes (SSE) | Yes (`usageMetadata`) | API Key |
+| **OpenAI** | Yes (`tools[]`) | Yes (SSE) | Yes (`usage`) | API Key |
+| **Anthropic** | Yes (`tool_use`) | Yes (`content_block_delta`) | Yes (`usage`) | API Key |
+| **xAI (Grok)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **OpenRouter** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Ollama** | No (text fallback) | Yes (NDJSON) | Yes (`eval_count`) | None |
+| **Custom** | No (text fallback) | Yes (SSE) | Varies | API Key |
+
+### AI Tool Support by Protocol
+
+All 24 tools work identically across all 13 protocols via the `StorageProvider` trait:
+
+| Tool | Danger | Description |
+|------|--------|-------------|
+| `remote_list` | Safe | List directory contents |
+| `remote_read` | Safe | Read file content (5KB limit) |
+| `remote_info` | Safe | Get file metadata |
+| `remote_search` | Safe | Search files by pattern |
+| `local_list` | Safe | List local directory |
+| `local_read` | Safe | Read local file (5KB limit) |
+| `local_search` | Safe | Search local files by pattern |
+| `local_mkdir` | Medium | Create local directory |
+| `local_write` | Medium | Write local text file |
+| `local_rename` | Medium | Rename/move local file |
+| `local_edit` | Medium | Find & replace in local file |
+| `remote_edit` | Medium | Find & replace in remote file |
+| `remote_download` | Medium | Download file to local |
+| `remote_upload` | Medium | Upload file to remote |
+| `upload_files` | Medium | Upload multiple files |
+| `download_files` | Medium | Download multiple files |
+| `remote_mkdir` | Medium | Create remote directory |
+| `remote_rename` | Medium | Rename remote file |
+| `sync_preview` | Medium | Preview directory sync |
+| `archive_create` | Medium | Create archive |
+| `archive_extract` | Medium | Extract archive |
+| `remote_delete` | High | Delete remote file |
+| `local_delete` | High | Delete local file/directory |
+
+### AI Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Native function calling | Done (v1.6.0) | OpenAI, Anthropic, Gemini; text fallback for Ollama |
+| Streaming responses | Done (v1.6.0) | Incremental rendering via Tauri events |
+| Chat history | Done (v1.6.0) | 50 conversations, 200 msgs each, persisted to disk |
+| Cost tracking | Done (v1.6.0) | Per-message token count + cost estimate |
+| Context awareness | Done (v1.7.0) | Provider, server host/port/user, path, selected files |
+| Protocol expertise | Done (v1.7.0) | System prompt with all 13 provider configs, ports, auth |
+| Styled tool display | Done (v1.7.0) | Inline chips with wrench icon replace raw TOOL/ARGS |
+| Auto-routing | Done (v1.4.0) | Task-type detection routes to optimal model |
+| Rate limiting | Done (v1.4.0) | 20 RPM per provider, frontend token bucket |
+| Speech input | Done (v1.4.0) | Web Speech API |
+
+---
+
 ## Credential Storage Architecture (v1.3.2+)
 
 ### Storage Layers
@@ -270,14 +335,16 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 | v1.5.1 | WebDAV directory fix, provider keep-alive, drag-to-reorder tabs/servers, 4 new presets (30 total), provider logos | Done |
 | v1.5.2 | Multi-protocol sync, codebase audit, credential fix, SEC-001/SEC-004 fixes | Done |
 | v1.5.3 | Sync index cache, storage quota display, OAuth session switching fix, FTP retry with backoff | Done |
+| v1.5.4 | In-app auto-updater, download progress, AppImage auto-install, terminal empty-start | Done |
+| v1.6.0 | AeroAgent Pro: native function calling (SEC-002), streaming, provider-agnostic tools, chat history, cost tracking, context awareness, 122 i18n keys | Done |
+| v1.7.0 | Encryption Block: AeroVault, archive browser + selective extraction, Cryptomator format 8, CompressDialog, AeroFile mode, preview panel, Type column, 7z password fix | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v1.6.0 | AeroAgent Pro, CLI/Scripting, AeroVault, oauth2 v5 |
-| v1.7.0 | AeroAgent Intelligence, Terminal Pro |
-| v1.8.0 | Cryptomator Import/Export |
+| v1.8.0 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
+| v1.9.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 
 ---
 

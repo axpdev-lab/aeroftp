@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <strong>Modern. Fast. Multi-protocol. AI-powered.</strong>
+  <strong>Modern. Fast. Multi-protocol. AI-powered. Encrypted.</strong>
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols in one app. Turn any FTP server into your personal cloud with AeroCloud.
+  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 24 tools.
 </p>
 
 <p align="center">
@@ -18,6 +18,7 @@
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202%20%2B%20React%2018-purple?style=for-the-badge" alt="Built with">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Languages-51-blue?style=for-the-badge" alt="Languages">
+  <img src="https://img.shields.io/badge/Protocols-13-teal?style=for-the-badge" alt="Protocols">
 </p>
 
 <p align="center">
@@ -35,14 +36,14 @@
 | **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
 | **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
 | **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA |
-| **WebDAV** | HTTPS | Nextcloud, ownCloud, Synology, DriveHQ. File locking (RFC 4918) |
-| **S3** | HTTPS | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2. Multipart upload |
-| **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share permissions |
+| **WebDAV** | HTTPS | Nextcloud, ownCloud, Koofr, Jianguoyun, InfiniCLOUD. File locking (RFC 4918) |
+| **S3** | HTTPS | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
+| **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share permissions, workspace export |
 | **Dropbox** | OAuth2 PKCE | File versions, thumbnails, native sharing |
 | **OneDrive** | OAuth2 PKCE | Resumable upload, file versions, share permissions |
 | **MEGA.nz** | Client-side AES | 20GB free, end-to-end encrypted, zero-knowledge |
 | **Box** | OAuth2 PKCE | 10GB free, enterprise-grade, file versions, share links |
-| **pCloud** | OAuth2 | 10GB free, US/EU regions, path-based API |
+| **pCloud** | OAuth2 | 10GB free, US/EU regions, file versions, share links |
 | **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
 | **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, PBKDF2 |
 
@@ -60,33 +61,55 @@ Turn **any FTP server** into a private personal cloud with bidirectional sync, t
 More languages than any other FTP client. RTL support for Arabic, Hebrew, Persian, and Urdu. Automatic browser language detection.
 
 ### Cloud Storage Integration
-13 protocols in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking. Filen provides zero-knowledge end-to-end AES-256-GCM encryption.
+13 protocols, 30 presets in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking.
+
+### Encryption and Vaults (v1.7.0)
+- **AeroVault**: Create AES-256-GCM encrypted container files (.aerovault) with Argon2id key derivation. Add, remove, extract files with password protection
+- **Cryptomator**: Open and browse Cryptomator format 8 vaults. Decrypt and encrypt files with full scrypt + AES-SIV + AES-GCM support
+- **Archive Browser**: Browse contents of ZIP, 7z, TAR, and RAR archives in-app without extracting. Selective single-file extraction
+- **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
+
+### AeroAgent AI (v1.7.0)
+AI-powered assistant with **24 provider-agnostic tools** that work across all 13 protocols:
+- **7 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom
+- **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
+- **Streaming responses**: Real-time incremental rendering for all providers
+- **File operations**: List, read, search, create, edit, rename, delete (local + remote)
+- **Batch transfers**: Multi-file upload/download, sync preview
+- **Find and replace**: Edit text in local and remote files directly from chat
+- **Context-aware**: Knows your connected server, current paths, selected files, and protocol
+- **Chat history**: Persistent conversations with cost tracking per message
 
 ### Advanced File Management
+- **AeroFile Mode**: Local-only file manager with resizable preview panel showing image thumbnails, file info, and dimensions
+- **CompressDialog**: Unified compression UI with format selection, compression levels, password, and file info
 - **Smart Overwrite Dialog**: File conflict resolution with comparison view
-- **Properties Dialog**: Detailed metadata with checksum calculation
-- **Archives**: ZIP, 7z with optional AES-256 encryption, TAR, TAR.GZ, TAR.XZ, TAR.BZ2, RAR extraction
-- **Keyboard Shortcuts**: F2 rename, Delete, Ctrl+C/V, Ctrl+A
-- **Drag and Drop**, **List/Grid view** with thumbnails, **media player**
+- **Properties Dialog**: Detailed metadata with checksum calculation (MD5/SHA-256)
+- **Keyboard Shortcuts**: 11 shortcuts including F2 rename, Delete, Ctrl+C/V, Tab panel switch
+- **Drag and Drop**: Cross-panel drag for upload/download, intra-panel drag for move
+- **List/Grid view** with thumbnails, sortable columns (name, size, type, date), **media player**
 
 ### DevTools Panel
-- **Monaco Editor** (VS Code engine) for remote file editing
-- Integrated **terminal** with Tokyo Night theme
-- **AeroAgent**: AI assistant for commands and file analysis
+- **Monaco Editor** (VS Code engine) for remote file editing with syntax highlighting
+- Integrated **terminal** with 8 themes, multiple tabs, SSH remote shell, font size control
+- **AeroAgent** AI assistant panel with tool approval workflow
 
 ### Security
 - **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager
+- **AeroVault**: AES-256-GCM encrypted containers with Argon2id key derivation
+- **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM)
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
-- **Encrypted vault fallback**: AES-256-GCM with Argon2id key derivation
+- **Encrypted vault fallback**: AES-256-GCM with Argon2id when keyring unavailable
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random port for callbacks (no fixed port exposure)
 - **FTP insecure warning**: Visual banner when using unencrypted FTP
 - **Memory zeroization**: Credentials cleared via `secrecy` + `zeroize`
+- **Archive passwords**: ZIP/7z passwords wrapped in SecretString, zeroed on drop
 
-### Debug & Developer Tools
-- **Debug Mode**: Toggle via File menu (Ctrl+Shift+F12)
-- **Dependencies Panel**: Live crate version checking against crates.io
-- **Debug Panel**: Connection, network, system, logs, and frontend diagnostics
+### Auto-Updater
+- In-app update download with progress bar showing speed and ETA
+- AppImage auto-install with "Install & Restart" button
+- Periodic background check every 24 hours + tray menu manual check
 
 ---
 
@@ -99,7 +122,10 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 | Languages | **51** | 47 | ~10 | ~15 |
 | FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
 | Code Editor | Monaco (VS Code) | No | No | Basic |
-| AI Assistant | Yes | No | No | No |
+| AI Assistant | **24 tools, 7 providers** | No | No | No |
+| Cryptomator | **Yes (format 8)** | No | Yes | No |
+| Encrypted Vaults | **AeroVault (AES-256-GCM)** | No | No | No |
+| Archive Browser | **ZIP/7z/TAR/RAR** | No | No | No |
 | Personal Cloud | AeroCloud | No | No | No |
 | Storage Quota | 9 providers | No | Yes | No |
 | Sync Index Cache | Yes | No | No | No |

@@ -254,3 +254,23 @@ export interface SyncIndex {
   remote_path: string;
   files: Record<string, SyncIndexEntry>;
 }
+
+// Archive browsing types
+export interface ArchiveEntry {
+  name: string;
+  size: number;
+  compressedSize: number;
+  isDir: boolean;
+  isEncrypted: boolean;
+  modified: string | null;
+}
+
+export type ArchiveType = 'zip' | '7z' | 'tar' | 'rar';
+
+export interface AeroVaultMeta {
+  version: number;
+  created: string;
+  modified: string;
+  description: string | null;
+  fileCount: number;
+}

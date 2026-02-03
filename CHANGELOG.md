@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-03
+
+### Encryption Block — AeroVault, Archive Browser, Cryptomator, AeroFile
+
+Client-side encryption features, in-app archive browsing, encrypted vault containers, Cryptomator vault compatibility, and a new local-only file manager mode.
+
+#### Added
+- **Archive browser**: List contents of ZIP, 7z, TAR (gz/xz/bz2), and RAR archives without extracting
+- **Selective extraction**: Extract individual files from any supported archive format
+- **AeroVault**: AES-256 encrypted container files (.aerovault) for secure file storage
+- **AeroVault operations**: Create, add files, remove files, extract, change password
+- **Cryptomator vault support**: Unlock, browse, decrypt, and encrypt files in Cryptomator format 8 vaults
+- **Cryptomator crypto**: scrypt KDF, AES Key Wrap, AES-SIV filename encryption, AES-GCM content chunks
+- **CompressDialog**: Unified compression dialog with format selection (ZIP/7z/TAR/GZ/XZ/BZ2), compression levels (Store/Fast/Normal/Maximum), password protection (ZIP/7z), editable archive name, and file info display
+- **AeroFile mode**: Local-only file manager mode — remote panel hides when not connected, toolbar toggle to switch between dual-panel and local-only even when connected
+- **Preview panel**: Resizable sidebar preview in AeroFile mode with image thumbnail, file info (size, type, resolution, modified, extension, path), and quick actions (Open Preview, View Source, Copy Path)
+- **Image resolution display**: Automatic width × height detection for image files in preview panel
+- **Type column**: Sortable file type column in both local and remote file lists, responsive (hidden below xl breakpoint)
+- **AeroVault file icon**: Shield icon in emerald green for `.aerovault` files in file lists
+- **i18n**: 60+ new keys for archive, vault, Cryptomator, and compress UI across 51 languages
+- **AeroAgent personality**: Enhanced system prompt with identity, tone, protocol expertise for all 13 providers, and behavior rules
+- **AeroAgent server context**: Dynamic injection of connected server host, port, and user into AI context
+- **AeroAgent local tools**: `local_mkdir`, `local_delete`, `local_write`, `local_rename`, `local_search` for full local file management
+- **AeroAgent edit tools**: `local_edit` and `remote_edit` for find & replace text operations in local and remote files
+- **AeroAgent batch transfers**: `upload_files` and `download_files` for multi-file upload/download operations
+- **AeroAgent tool display**: Styled inline chips with wrench icon replace raw TOOL/ARGS text blocks in chat
+- **AeroAgent tool count**: Expanded from 14 to 24 provider-agnostic tools
+
+#### Fixed
+- **7z password detection**: Fixed encrypted 7z archives opening without password prompt — now probes content decryption via `for_each_entries` since 7z metadata is unencrypted even when content is encrypted
+- **Compression levels**: ZIP, 7z, TAR.GZ, TAR.XZ, TAR.BZ2 now accept `compression_level` parameter from frontend
+
+#### Changed
+- **New Rust modules**: `archive_browse.rs`, `aerovault.rs`, `cryptomator.rs` (modular architecture)
+- **AeroAgent tools module**: `ai_tools.rs` expanded with 10 new tool handlers (24 total)
+- **20+ new Tauri commands**: 8 archive browsing, 7 AeroVault, 5 Cryptomator
+- **New frontend components**: `ArchiveBrowser.tsx`, `VaultPanel.tsx`, `CryptomatorBrowser.tsx`, `CompressDialog.tsx`
+- **Compress submenu replaced**: 6 separate context menu items (~130 lines) replaced with single "Compress" action opening CompressDialog
+- **Preview panel exclusive to AeroFile**: Preview button and panel only visible in local-only mode, auto-hidden when connecting
+- **5 new Cargo dependencies**: scrypt, aes-kw, aes-siv, data-encoding, jsonwebtoken
+
+---
+
+## [1.6.0] - 2026-02-02
+
+### AeroAgent Pro — AI Evolution
+
+Complete overhaul of AeroAgent with native function calling, streaming responses, provider-agnostic tool execution, persistent chat history, cost tracking, and context awareness across all 13 protocols.
+
+#### Added
+- **Native function calling**: OpenAI `tools[]`, Anthropic `tool_use`, and Gemini `functionDeclarations` replace fragile regex-based tool parsing (SEC-002). Text-based fallback retained for Ollama and custom endpoints
+- **Streaming responses**: Real-time incremental rendering for all 7 provider types — OpenAI SSE, Anthropic `content_block_delta`, Gemini `streamGenerateContent`, Ollama NDJSON. New `ai_stream.rs` backend module with Tauri event emission
+- **Provider-agnostic tools**: 14 tools via unified `execute_ai_tool` command routing through `StorageProvider` trait — works identically across FTP, SFTP, WebDAV, S3, and all 8 cloud providers. New `ai_tools.rs` module
+- **Remote tools**: `remote_list`, `remote_read`, `remote_upload`, `remote_download`, `remote_delete`, `remote_rename`, `remote_mkdir`, `remote_search`, `remote_info` — all protocol-agnostic
+- **Local tools**: `local_list`, `local_read` for filesystem operations within AI context
+- **Advanced tools**: `sync_preview`, `archive_create`, `archive_extract` integrated into AI tool system
+- **Chat history persistence**: Conversations saved to `appConfigDir()/ai_history.json` via Tauri plugin-fs with 50-conversation, 200-message-per-conversation limits. Sidebar with conversation switching, deletion, and new chat creation
+- **Cost tracking**: Per-message token count and cost display (input/output tokens, calculated from model pricing). Parsed from OpenAI `usage`, Anthropic `usage`, and Gemini `usageMetadata`
+- **Context awareness**: Dynamic system prompt injection with active provider type, connection status, current remote/local paths, and selected files
+- **AI i18n**: 122 new translation keys in `ai.*` namespace covering AIChat, ToolApproval, and AISettingsPanel — synced to all 51 languages
+- **Tool JSON Schema**: `toJSONSchema()` and `toNativeDefinitions()` helpers convert tool definitions to provider-native format
+
+#### Changed
+- **Tool names**: Renamed from FTP-specific (`list_files`, `read_file`) to provider-agnostic (`remote_list`, `remote_read`). `FTP_TOOLS` aliased to `AGENT_TOOLS` for backwards compatibility
+- **Tool execution**: Single `invoke('execute_ai_tool')` replaces protocol-specific routing through multiple Tauri commands
+- **AI request/response types**: `AIRequest` gains `tools` and `tool_results` fields; `AIResponse` gains `tool_calls`, `input_tokens`, `output_tokens` fields
+- **Gemini types**: `GeminiPart.text` now `Option<String>` to support `functionCall` parts; response parsing extracts both text and function call blocks
+- **Anthropic types**: `AnthropicContent.text` now `Option<String>` with `content_type`, `id`, `name`, `input` fields for `tool_use` block parsing
+- **OpenAI types**: `OpenAIMessage.content` now `Option<String>` with `tool_call_id` for tool result messages
+
+#### Security
+- **SEC-002 resolved**: Native function calling replaces regex-based tool call parsing for OpenAI, Anthropic, and Gemini providers
+- **Tool path validation**: Null byte rejection, path traversal prevention, length limits, and tool name whitelist enforcement in `ai_tools.rs`
+- **Content size limits**: Remote file reads capped at 5KB, directory listings capped at 50 entries for AI context window safety
+
+---
+
+## [1.5.4] - 2026-02-02
+
+### In-App Auto-Updater + Terminal Polish
+
+Full in-app update download experience with progress bar, AppImage auto-install, and terminal first-tab rendering fix.
+
+#### Added
+- **Auto-updater periodic check**: Background update check every 24 hours in addition to startup check, plus tray menu "Check for Updates" handler
+- **In-app update download**: Download updates directly from the notification toast with real-time progress bar showing percentage, speed (MB/s), and ETA. Completed downloads show file path with "Open in File Manager" button
+- **AppImage auto-install**: AppImage format receives an "Install & Restart" button that replaces the current executable, sets permissions, and relaunches the app automatically — no manual file management required
+- **Terminal empty-start pattern**: Terminal opens with no tabs, user clicks "+" to create first tab — avoids xterm.js FitAddon race condition with container layout timing
+
+#### Fixed
+- **Terminal first-tab rendering**: Fixed broken box art on initial terminal tab caused by xterm FitAddon running before container had dimensions; resolved with empty-start pattern and ResizeObserver fallback
+- **Update toast i18n**: Fixed raw key `settings.currentVersion` displayed instead of translated text; corrected to `ui.currentVersion` with proper interpolation
+- **Tray menu update check**: "Check for Updates" tray menu item was not wired to any handler; now triggers manual update check
+
+#### Changed
+- **Update toast redesign**: Replaced external download link with inline download flow — 4-state toast (notify → progress → complete → error) with Lucide icons replacing emoji
+- **New dependency**: `futures-util` 0.3 for reqwest stream consumption in update download
+
+---
+
 ## [1.5.3] - 2026-02-02
 
 ### Sync Index + Storage Quota + FTP Retry + Session Fix
@@ -18,8 +118,18 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Sync panel editable paths**: Local and remote paths in sync panel are now editable input fields, independent from main file browser navigation
 - **Empty directory sync**: Standalone empty directories are now created during sync operations, with directory count shown in completion report
 - **Sync index UI indicator**: "Index cached" badge with Zap icon appears next to scan button when a sync index exists for the current path pair
+- **Native clipboard command**: `copy_to_clipboard` Rust command using `arboard` crate, bypassing WebView clipboard restrictions for all copy operations after async calls
+- **i18n coverage expansion**: 108 new translation keys added — context menus, notifications, tooltips, settings labels, and server dialog fields now fully internationalized across all 51 languages
+- **Cross-panel drag & drop**: Drag files from the local panel to the remote panel to upload, or from remote to local to download. Visual feedback with blue ring highlight on the target panel, `copy` cursor to distinguish from intra-panel moves, and support for multi-file drag transfers via the existing transfer queue
+- **Terminal themes**: 8 built-in themes — Tokyo Night, Dracula, Monokai, Nord, Catppuccin Mocha, GitHub Dark, Solarized Dark, and Solarized Light — with theme selector dropdown and persistent preference
+- **Terminal font size control**: Configurable font size (8-28px) via Ctrl+/- zoom, Ctrl+0 reset, and toolbar buttons with persisted preference
+- **Multiple terminal tabs**: Support for multiple concurrent terminal sessions with tab bar, individual start/stop controls, and per-tab PTY session management
+- **SSH remote shell**: Interactive SSH shell sessions to active SFTP servers directly from the terminal panel, using russh for independent SSH connections with password and key-based authentication
+- **Terminal session persistence**: Scrollback buffer saved to localStorage on tab close or component unmount, restored with "Session restored" indicator on next open
 
 #### Fixed
+- **Share link clipboard on Linux/WebView**: Fixed share link not copying to clipboard after async invoke by replacing `navigator.clipboard.writeText()` (fails when user gesture context is lost after await) with native `arboard` clipboard via Rust command, using `SetExtLinux::wait()` for reliable X11 clipboard manager handoff
+- **Dropbox share link scope**: Added `sharing.write` OAuth scope for Dropbox, enabling share link creation; added `missing_scope` error detection with actionable message
 - **OAuth session switching**: Fixed "OAuth credentials not found" error when switching between provider tabs by adding OS keyring fallback for credential lookup in `switchSession`
 - **Storage quota not updating on tab switch**: Fixed quota display showing stale data or disappearing when switching sessions, by fetching quota directly after reconnection instead of relying on React effect timing
 - **Google Drive keyring key mismatch**: Fixed credential lookup using wrong keyring key format (`google_drive` vs `googledrive`) during session reconnection
@@ -27,6 +137,7 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Dropbox `download_to_bytes` HTTP check**: Added missing HTTP status check — error responses were previously returned as file content
 - **Dropbox `remove_share_link`**: Implemented missing backend method using `sharing/revoke_shared_link` API
 - **FTP inter-transfer delay**: Increased from 150ms to 350ms to reduce "Data connection already open" errors on rapid sequential transfers
+- **Hardcoded English in CJK/Arabic UI**: Replaced ~113 hardcoded English strings in App.tsx and SettingsPanel.tsx with i18n `t()` calls — context menu labels, notification messages, settings fields, and tooltips now respect the selected language
 
 #### Changed
 - **Status bar quota format**: Changed from "X free" to "used / total" format with color-coded progress bar (purple < 70%, amber < 90%, red > 90%)
