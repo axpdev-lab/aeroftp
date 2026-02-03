@@ -225,11 +225,19 @@ fn detect_install_format() -> String {
 
 #[tauri::command]
 fn copy_to_clipboard(text: String) -> Result<(), String> {
-    use arboard::SetExtLinux;
     let mut clipboard = arboard::Clipboard::new()
         .map_err(|e| format!("Clipboard init failed: {}", e))?;
-    clipboard.set().wait().text(text)
-        .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    #[cfg(target_os = "linux")]
+    {
+        use arboard::SetExtLinux;
+        clipboard.set().wait().text(text)
+            .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        clipboard.set_text(text)
+            .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    }
     Ok(())
 }
 
@@ -2305,7 +2313,7 @@ async fn compress_7z(
     paths: Vec<String>,
     output_path: String,
     password: Option<String>,
-    compression_level: Option<i64>,
+    _compression_level: Option<i64>,
 ) -> Result<String, String> {
     use sevenz_rust::*;
     use std::fs::File;
@@ -2870,8 +2878,8 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
 // ============ Sync Commands ============
 
 use sync::{
-    CompareOptions, FileComparison, FileInfo, SyncIndex, SyncIndexEntry,
-    build_comparison_results, build_comparison_results_with_index, should_exclude,
+    CompareOptions, FileComparison, FileInfo, SyncIndex,
+    build_comparison_results_with_index, should_exclude,
     load_sync_index, save_sync_index,
 };
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
