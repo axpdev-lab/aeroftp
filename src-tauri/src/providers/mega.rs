@@ -33,16 +33,39 @@ impl MegaProvider {
         tracing::debug!(target: "mega", "{}", msg);
     }
 
+    /// Resolve MEGAcmd executable path (checks PATH and common install locations on Windows)
+    fn resolve_mega_cmd(cmd: &str) -> String {
+        #[cfg(windows)]
+        {
+            // Check common MEGAcmd install paths on Windows
+            let program_files = std::env::var("ProgramFiles")
+                .unwrap_or_else(|_| r"C:\Program Files".to_string());
+            let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            let candidates = [
+                format!(r"{}\MEGAcmd\{}.bat", program_files, cmd),
+                format!(r"{}\MEGAcmd\{}.exe", program_files, cmd),
+                format!(r"{}\MEGAcmd\{}.bat", local_appdata, cmd),
+            ];
+            for candidate in &candidates {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.clone();
+                }
+            }
+        }
+        cmd.to_string()
+    }
+
     /// Helper to run mega-* commands
     async fn run_mega_cmd(&self, cmd: &str, args: &[&str]) -> Result<String, String> {
         self.log_debug(&format!("[CMD] {} {:?}", cmd, args));
-        
-        let output = Command::new(cmd)
+        let resolved_cmd = Self::resolve_mega_cmd(cmd);
+
+        let output = Command::new(&resolved_cmd)
             .args(args)
             .output()
             .await
             .map_err(|e| {
-                let err = format!("Failed to execute {}: {}", cmd, e);
+                let err = format!("Failed to execute {} (resolved: {}): {}", cmd, resolved_cmd, e);
                 self.log_debug(&format!("[CMD ERROR] {}", err));
                 err
             })?;

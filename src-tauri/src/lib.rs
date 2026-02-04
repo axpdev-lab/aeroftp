@@ -33,6 +33,7 @@ mod aerovault;
 mod aerovault_v2;
 mod cryptomator;
 mod master_password;
+mod windows_acl;
 
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
@@ -211,10 +212,15 @@ fn detect_install_format() -> String {
             "deb".to_string()
         }
         "windows" => {
-            // Check if installed via MSI (usually in Program Files)
+            // Check if installed via MSI (in Program Files or Program Files (x86))
             if let Ok(exe_path) = std::env::current_exe() {
                 let path_str = exe_path.to_string_lossy().to_lowercase();
-                if path_str.contains("program files") {
+                // Check against env-provided Program Files paths (more reliable than hardcoded)
+                let pf = std::env::var("ProgramFiles").unwrap_or_default().to_lowercase();
+                let pf86 = std::env::var("ProgramFiles(x86)").unwrap_or_default().to_lowercase();
+                if (!pf.is_empty() && path_str.starts_with(&pf))
+                    || (!pf86.is_empty() && path_str.starts_with(&pf86))
+                    || path_str.contains("program files") {
                     return "msi".to_string();
                 }
             }
@@ -246,7 +252,20 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
         clipboard.set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, spawn clipboard write in a separate thread to avoid
+        // potential UI freeze when Credential Manager or Windows Hello is active
+        let text_clone = text.clone();
+        std::thread::spawn(move || {
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                let _ = cb.set_text(text_clone);
+            }
+        });
+        clipboard.set_text(text)
+            .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
     {
         clipboard.set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
@@ -1614,7 +1633,7 @@ async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<
 
         files.push(LocalFileInfo {
             name: file_name,
-            path: entry.path().to_string_lossy().to_string(),
+            path: entry.path().to_string_lossy().replace('\\', "/"),
             size,
             is_dir,
             modified,
@@ -1645,10 +1664,20 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
     
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        // Use /select, for files or plain path for directories
+        let normalized = path.replace('/', "\\");
+        let metadata = std::fs::metadata(&normalized);
+        if metadata.map(|m| m.is_file()).unwrap_or(false) {
+            std::process::Command::new("explorer")
+                .args(["/select,", &normalized])
+                .spawn()
+                .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        } else {
+            std::process::Command::new("explorer")
+                .arg(&normalized)
+                .spawn()
+                .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        }
     }
     
     #[cfg(target_os = "macos")]
@@ -2091,10 +2120,22 @@ async fn chmod_remote_file(state: State<'_, AppState>, path: String, mode: Strin
 
 #[tauri::command]
 async fn rename_local_file(from: String, to: String) -> Result<(), String> {
+    // Check for Windows reserved filenames
+    #[cfg(windows)]
+    {
+        let dest_name = std::path::Path::new(&to)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if let Some(reserved) = windows_acl::check_windows_reserved(&dest_name) {
+            return Err(format!("'{}' is a reserved Windows filename and cannot be used", reserved));
+        }
+    }
+
     tokio::fs::rename(&from, &to)
         .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
-    
+
     Ok(())
 }
 

@@ -270,7 +270,7 @@ const App: React.FC = () => {
 
     // Check if local path contains ANY known server pattern that doesn't match
     // Look for patterns like "www.something.it" or "something.it" in path
-    const pathParts = currentLocalPath.split('/');
+    const pathParts = currentLocalPath.split(/[\\/]/);
     for (const part of pathParts) {
       // Check for domain-like patterns (e.g., www.example.it, example.com)
       if (/^(www\.)?[a-z0-9-]+\.(it|com|org|net|io|dev|local)$/i.test(part)) {
@@ -447,7 +447,7 @@ const App: React.FC = () => {
       if (activePanel === 'remote') {
         if (currentRemotePath !== '/') changeRemoteDirectory('..');
       } else {
-        if (currentLocalPath !== '/') changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/');
+        if (currentLocalPath !== '/') changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/');
       }
     },
 
@@ -2316,7 +2316,7 @@ const App: React.FC = () => {
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean) => {
-    const fileName = path.split('/').pop() || path;
+    const fileName = path.split(/[\\/]/).pop() || path;
 
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: fileName });
@@ -2360,7 +2360,7 @@ const App: React.FC = () => {
   };
 
   const deleteLocalFile = (path: string) => {
-    const fileName = path.split('/').pop() || path;
+    const fileName = path.split(/[\\/]/).pop() || path;
 
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: fileName });
@@ -2392,7 +2392,7 @@ const App: React.FC = () => {
 
   // Legacy wrapper to maintain compatibility - removed duplicate error handling
   const deleteLocalFileInternal = async (path: string) => {
-    const fileName = path.split('/').pop() || path;
+    const fileName = path.split(/[\\/]/).pop() || path;
     const logId = humanLog.logStart('DELETE', { filename: fileName });
     try {
       await invoke('delete_local_file', { path });
@@ -3649,7 +3649,7 @@ const App: React.FC = () => {
             {/* Toolbar */}
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
-                <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
+                <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
                   <FolderUp size={16} /> {t('common.up')}
                 </button>
                 <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
@@ -4253,7 +4253,7 @@ const App: React.FC = () => {
                         {/* Go Up Row - always visible, disabled at root */}
                         <tr
                           className={`${currentLocalPath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                          onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/')}
+                          onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
                         >
                           <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                             <FolderUp size={16} />
@@ -4370,7 +4370,7 @@ const App: React.FC = () => {
                       {/* Go Up Item - always visible, disabled at root */}
                       <div
                         className={`file-grid-item file-grid-go-up ${currentLocalPath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split('/').slice(0, -1).join('/') || '/')}
+                        onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
                       >
                         <div className="file-grid-icon">
                           <FolderUp size={32} className="text-gray-400" />

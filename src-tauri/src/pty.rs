@@ -65,7 +65,17 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
 
     #[cfg(windows)]
-    let shell = "powershell.exe".to_string();
+    let shell = {
+        // Prefer PowerShell, fall back to cmd.exe
+        let ps = std::env::var("SystemRoot")
+            .map(|sr| format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", sr))
+            .unwrap_or_else(|_| "powershell.exe".to_string());
+        if std::path::Path::new(&ps).exists() {
+            ps
+        } else {
+            std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+        }
+    };
 
     let mut cmd = CommandBuilder::new(&shell);
 

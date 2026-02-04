@@ -316,16 +316,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             for (const item of selectedComparisons) {
                 const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') &&
                     (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
-                if (shouldUpload && item.relative_path.includes('/')) {
+                if (shouldUpload && /[\\/]/.test(item.relative_path)) {
                     // Collect all parent directories
-                    const parts = item.relative_path.split('/');
+                    const parts = item.relative_path.split(/[\\/]/);
                     for (let i = 1; i < parts.length; i++) {
                         dirsToCreate.add(parts.slice(0, i).join('/'));
                     }
                 }
             }
             // Sort by depth (shortest first) so parents are created before children
-            const sortedDirs = [...dirsToCreate].sort((a, b) => a.split('/').length - b.split('/').length);
+            const sortedDirs = [...dirsToCreate].sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length);
             const remoteBase = editRemotePath.replace(/\/+$/, '');
             for (const dir of sortedDirs) {
                 const remoteDirPath = `${remoteBase}/${dir}`;
@@ -347,15 +347,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             for (const item of selectedComparisons) {
                 const shouldDownload = (item.status === 'remote_newer' || item.status === 'remote_only') &&
                     (options.direction === 'remote_to_local' || options.direction === 'bidirectional');
-                if (shouldDownload && item.relative_path.includes('/')) {
-                    const parts = item.relative_path.split('/');
+                if (shouldDownload && /[\\/]/.test(item.relative_path)) {
+                    const parts = item.relative_path.split(/[\\/]/);
                     for (let i = 1; i < parts.length; i++) {
                         dirsToCreate.add(parts.slice(0, i).join('/'));
                     }
                 }
             }
             const localBase = editLocalPath.replace(/\/+$/, '');
-            for (const dir of [...dirsToCreate].sort((a, b) => a.split('/').length - b.split('/').length)) {
+            for (const dir of [...dirsToCreate].sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length)) {
                 try {
                     await invoke('create_local_folder', { path: `${localBase}/${dir}` });
                 } catch {

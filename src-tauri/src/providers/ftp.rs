@@ -358,11 +358,12 @@ impl StorageProvider for FtpProvider {
             Err(_) => false,
         };
 
-        // Get current directory
+        // Get current directory (normalize Windows backslashes from FTP servers)
         self.current_path = stream
             .pwd()
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?
+            .replace('\\', "/");
 
         self.stream = Some(stream);
         Ok(())
@@ -425,7 +426,8 @@ impl StorageProvider for FtpProvider {
         let path = stream
             .pwd()
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?
+            .replace('\\', "/");
         self.current_path = path.clone();
         Ok(path)
     }
@@ -440,11 +442,12 @@ impl StorageProvider for FtpProvider {
         self.current_path = stream
             .pwd()
             .await
-            .unwrap_or_else(|_| path.to_string());
-        
+            .unwrap_or_else(|_| path.to_string())
+            .replace('\\', "/");
+
         Ok(())
     }
-    
+
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -455,11 +458,12 @@ impl StorageProvider for FtpProvider {
         self.current_path = stream
             .pwd()
             .await
-            .unwrap_or_else(|_| "/".to_string());
-        
+            .unwrap_or_else(|_| "/".to_string())
+            .replace('\\', "/");
+
         Ok(())
     }
-    
+
     async fn download(
         &mut self,
         remote_path: &str,

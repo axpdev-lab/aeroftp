@@ -32,7 +32,7 @@ function buildTree(entries: ArchiveEntry[]): TreeNode {
     };
 
     for (const entry of entries) {
-        const parts = entry.name.split('/').filter(Boolean);
+        const parts = entry.name.split(/[\\/]/).filter(Boolean);
         let current = root;
 
         for (let i = 0; i < parts.length; i++) {
@@ -209,9 +209,10 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         // Extract to temp and open with system preview
         setExtracting(entryName);
         try {
-            const tempDir = await invoke<string>('get_system_info').then(() => '/tmp').catch(() => '/tmp');
-            const fileName = entryName.split('/').pop() || 'preview';
-            const tempPath = `${tempDir}/aeroftp_preview_${Date.now()}_${fileName}`;
+            const { tempDir: getTempDir } = await import('@tauri-apps/api/path');
+            const tempDirPath = await getTempDir();
+            const fileName = entryName.split(/[\\/]/).pop() || 'preview';
+            const tempPath = `${tempDirPath}aeroftp_preview_${Date.now()}_${fileName}`;
             const cmd = `extract_${archiveType}_entry`;
             const args: Record<string, unknown> = {
                 archivePath,

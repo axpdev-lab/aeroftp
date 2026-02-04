@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-02-04
+
+### Windows Compatibility
+
+Comprehensive Windows audit and fix pass covering 15 platform-specific issues across all severity levels. AeroFTP now runs correctly on Windows 7 through 11.
+
+#### Fixed
+- **Local path navigation broken on Windows**: All `.split('/')` calls replaced with cross-platform `split(/[\\/]/)` regex across App.tsx (8 occurrences), SyncPanel, ArchiveBrowser, VaultPanel, and ConnectionScreen
+- **Hardcoded `/tmp` path crashes on Windows**: Replaced with `std::env::temp_dir()` (Rust) and `@tauri-apps/api/path` `tempDir()` (frontend) in AI remote_edit and archive preview
+- **Keyring probe too aggressive on Windows**: `PlatformFailure` during probe no longer blocks Credential Manager access (transient Windows Hello / lock screen issues)
+- **Terminal sends bash commands to PowerShell**: Detect platform and send PowerShell `function prompt` instead of `export PS1` on Windows
+- **FTP path backslash mixing**: All `pwd()` results normalized with `.replace('\\', "/")` in connect, cd, cd_up, and pwd operations
+- **SFTP private key path uses wrong separator**: Replaced `format!("{}/{}",...)` with `PathBuf::join()` for cross-platform tilde expansion
+- **Explorer fails with spaced paths**: Uses `/select,` flag for files and normalizes forward slashes to backslashes on Windows
+- **Clipboard potential freeze on Windows**: Clipboard write spawned in separate thread (matching Linux fix)
+
+#### Added
+- **Windows ACL file protection**: New `windows_acl` module applies `icacls` restrictions on credential vault and master password files (equivalent to Unix `chmod 0o600`)
+- **MEGAcmd path resolution**: Searches `%ProgramFiles%\MEGAcmd\` and `%LOCALAPPDATA%\MEGAcmd\` on Windows when command is not in PATH
+- **PowerShell fallback**: Terminal falls back to `%COMSPEC%`/`cmd.exe` if PowerShell is not available (Windows Server minimal installs)
+- **Reserved filename validation**: Rejects Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9) in local file rename operations
+- **Firefox scrollbar support**: Added `scrollbar-width: thin` for cross-browser scrollbar styling
+- **Windows font fallback**: Added `Courier New` and `Cascadia Code` to terminal and code editor font stacks
+
+#### Changed
+- **Install format detection**: Uses `%ProgramFiles%` and `%ProgramFiles(x86)%` environment variables instead of hardcoded string matching
+
+---
+
 ## [1.8.3] - 2026-02-04
 
 ### Critical Clipboard Fix

@@ -241,7 +241,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                     onChange={handleChange}
                     options={{
                         fontSize: 13,
-                        fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Courier New', monospace",
                         minimap: { enabled: true, scale: 0.8 },
                         scrollBeyondLastLine: false,
                         wordWrap: 'on',

@@ -103,6 +103,11 @@ body {
 }
 
 /* Scrollbar Styling - Main window nearly invisible */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.15) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

@@ -367,6 +367,10 @@ fn master_file_path() -> Result<PathBuf, MasterPasswordError> {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
         }
+        #[cfg(windows)]
+        {
+            crate::windows_acl::restrict_to_owner(&dir);
+        }
     }
     Ok(dir.join(MASTER_FILENAME))
 }
@@ -428,6 +432,10 @@ pub async fn setup_master_password(
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(windows)]
+    {
+        crate::windows_acl::restrict_to_owner(&path);
     }
 
     // Unlock state
@@ -498,6 +506,10 @@ pub async fn change_master_password(
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(windows)]
+    {
+        crate::windows_acl::restrict_to_owner(&temp_path);
     }
 
     tokio::fs::rename(&temp_path, &path).await?;

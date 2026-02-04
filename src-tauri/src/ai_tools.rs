@@ -533,7 +533,10 @@ pub async fn execute_ai_tool(
             };
 
             // Write back via temp file + upload
-            let tmp_path = format!("/tmp/aeroftp_edit_{}", std::process::id());
+            let tmp_path = std::env::temp_dir()
+                .join(format!("aeroftp_edit_{}", std::process::id()))
+                .to_string_lossy()
+                .to_string();
             std::fs::write(&tmp_path, &new_content)
                 .map_err(|e| format!("Failed to write temp file: {}", e))?;
 

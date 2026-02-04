@@ -175,10 +175,10 @@ impl SftpProvider {
         let key_path = self.config.private_key_path.as_ref()
             .ok_or_else(|| ProviderError::AuthenticationFailed("No private key path specified".to_string()))?;
 
-        // Expand ~ in path
+        // Expand ~ in path (cross-platform: uses PathBuf for correct separator)
         let expanded_path = if key_path.starts_with("~/") {
             if let Some(home) = dirs::home_dir() {
-                format!("{}/{}", home.display(), &key_path[2..])
+                home.join(&key_path[2..]).to_string_lossy().to_string()
             } else {
                 key_path.clone()
             }

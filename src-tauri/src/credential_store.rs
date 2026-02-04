@@ -79,7 +79,17 @@ impl CredentialStore {
             Ok(_) => {},
             Err(keyring::Error::NoEntry) => {},
             Err(keyring::Error::NoStorageAccess(_)) => return None,
-            Err(keyring::Error::PlatformFailure(_)) => return None,
+            Err(keyring::Error::PlatformFailure(_)) => {
+                // On Windows, PlatformFailure during probe may be transient
+                // (Credential Manager locked, pending Windows Hello, etc.)
+                // Allow keyring backend — actual credential access may still work
+                #[cfg(windows)]
+                {
+                    warn!("Keyring probe returned PlatformFailure, proceeding anyway (Windows transient)");
+                }
+                #[cfg(not(windows))]
+                return None;
+            },
             Err(_) => {},
         }
         Some(Self { backend: Backend::OsKeyring })
@@ -93,6 +103,9 @@ impl CredentialStore {
         };
         match entry.get_password() {
             Ok(_) | Err(keyring::Error::NoEntry) => true,
+            // On Windows, PlatformFailure may be transient — report as available
+            #[cfg(windows)]
+            Err(keyring::Error::PlatformFailure(_)) => true,
             _ => false,
         }
     }
@@ -328,13 +341,17 @@ impl CredentialStore {
 
 // ============ Permission Hardening ============
 
-/// Ensure secure file/directory permissions (0o600 files, 0o700 dirs)
+/// Ensure secure file/directory permissions (0o600 files, 0o700 dirs on Unix; ACL on Windows)
 pub fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = if path.is_dir() { 0o700 } else { 0o600 };
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    }
+    #[cfg(windows)]
+    {
+        crate::windows_acl::restrict_to_owner(path);
     }
     Ok(())
 }

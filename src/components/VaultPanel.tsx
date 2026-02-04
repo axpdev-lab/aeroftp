@@ -320,7 +320,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
     };
 
     const handleExtract = async (entryName: string) => {
-        const savePath = await save({ defaultPath: entryName.split('/').pop() || entryName });
+        const savePath = await save({ defaultPath: entryName.split(/[\\/]/).pop() || entryName });
         if (!savePath) return;
 
         setLoading(true);
@@ -373,7 +373,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         }
     };
 
-    const vaultName = vaultPath.split('/').pop() || vaultPath.split('\\').pop() || 'Vault';
+    const vaultName = vaultPath.split(/[\\/]/).pop() || 'Vault';
     const currentLevelConfig = vaultSecurity ? securityLevels[vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || Shield;
 

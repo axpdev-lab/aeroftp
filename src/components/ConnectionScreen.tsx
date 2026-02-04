@@ -419,7 +419,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <Folder size={12} /> {t('connection.localFolder')}
                                                 </div>
                                                 <p className="truncate text-xs font-medium" title={aeroCloudConfig.local_folder}>
-                                                    {aeroCloudConfig.local_folder.split('/').pop() || aeroCloudConfig.local_folder}
+                                                    {aeroCloudConfig.local_folder.split(/[\\/]/).pop() || aeroCloudConfig.local_folder}
                                                 </p>
                                             </div>
                                             <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
