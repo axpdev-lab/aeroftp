@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-02-04
+
+### Security UX Improvements
+
+Quick polish release with security indicator and credential info display.
+
+#### Added
+- **Security indicator**: Lock icon in header toolbar shows master password status
+  - Green locked icon when protection is enabled
+  - Gray unlocked icon when not configured
+  - Click to open Settings → Security directly
+- **Credential security info**: Connection screen now displays security details
+  - OS Keyring storage (libsecret/Keychain/Credential Manager)
+  - AES-256-GCM + Argon2id encryption specifications
+  - Privacy assurance (no cloud sync, no telemetry)
+  - TLS 1.3 / SSH encryption indicator
+
+---
+
 ## [1.8.1] - 2026-02-04
 
 ### Master Password Protection

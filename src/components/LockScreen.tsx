@@ -127,7 +127,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
 
                 {/* Version badge */}
                 <div className="mt-4 text-center">
-                    <span className="text-xs text-gray-500">AeroFTP v1.8.1</span>
+                    <span className="text-xs text-gray-500">AeroFTP v1.8.2</span>
                 </div>
             </div>
         </div>
