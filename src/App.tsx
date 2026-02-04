@@ -43,6 +43,7 @@ import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
+import { LockScreen } from './components/LockScreen';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
@@ -118,6 +119,10 @@ const App: React.FC = () => {
     setShowHiddenFiles, debugMode, setDebugMode,
     SETTINGS_KEY,
   } = settings;
+
+  // === Master Password / App Lock State ===
+  const [isAppLocked, setIsAppLocked] = useState(false);
+  const [masterPasswordSet, setMasterPasswordSet] = useState(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [showRemotePanel, setShowRemotePanel] = useState(true);
@@ -278,6 +283,60 @@ const App: React.FC = () => {
     return true;
   }, [isConnected, connectionParams.server, currentLocalPath]);
 
+
+  // === Master Password / Auto-Lock ===
+  // Check if master password is set on app load
+  useEffect(() => {
+    const checkMasterPassword = async () => {
+      try {
+        const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
+        setMasterPasswordSet(status.is_set);
+        if (status.is_set && status.is_locked) {
+          setIsAppLocked(true);
+        }
+      } catch (err) {
+        console.error('Failed to check master password status:', err);
+      }
+    };
+    checkMasterPassword();
+  }, []);
+
+  // Auto-lock timer: check every 30 seconds if timeout has expired
+  useEffect(() => {
+    if (!masterPasswordSet || isAppLocked) return;
+
+    const checkAutoLock = async () => {
+      try {
+        const shouldLock = await invoke<boolean>('app_master_password_check_timeout');
+        if (shouldLock) {
+          await invoke('app_master_password_lock');
+          setIsAppLocked(true);
+        }
+      } catch (err) {
+        console.error('Auto-lock check failed:', err);
+      }
+    };
+
+    const interval = setInterval(checkAutoLock, 30000); // Check every 30 seconds
+    return () => clearInterval(interval);
+  }, [masterPasswordSet, isAppLocked]);
+
+  // Update activity timestamp on user interaction
+  useEffect(() => {
+    if (!masterPasswordSet || isAppLocked) return;
+
+    const updateActivity = () => {
+      invoke('app_master_password_update_activity').catch(() => {});
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, updateActivity, { passive: true }));
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, updateActivity));
+    };
+  }, [masterPasswordSet, isAppLocked]);
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
@@ -2998,7 +3057,13 @@ const App: React.FC = () => {
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
 
   return (
-    <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
+    <>
+      {/* Lock Screen - shown when app is locked with master password */}
+      {isAppLocked && masterPasswordSet && (
+        <LockScreen onUnlock={() => setIsAppLocked(false)} />
+      )}
+
+      <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
@@ -4731,6 +4796,7 @@ const App: React.FC = () => {
         onClose={() => setShowDependenciesPanel(false)}
       />
     </div>
+    </>
   );
 };
 

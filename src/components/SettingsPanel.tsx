@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield } from 'lucide-react';
+import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -166,7 +166,7 @@ const defaultSettings: AppSettings = {
     analyticsEnabled: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'privacy';
+type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'privacy' | 'security';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -253,6 +253,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [showExportImport, setShowExportImport] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
+    // Master Password state
+    const [masterPasswordStatus, setMasterPasswordStatus] = useState<{
+        is_set: boolean;
+        is_locked: boolean;
+        timeout_seconds: number;
+    } | null>(null);
+    const [newMasterPassword, setNewMasterPassword] = useState('');
+    const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
+    const [currentMasterPassword, setCurrentMasterPassword] = useState('');
+    const [autoLockTimeout, setAutoLockTimeout] = useState(5); // minutes
+    const [showMasterPassword, setShowMasterPassword] = useState(false);
+    const [masterPasswordError, setMasterPasswordError] = useState('');
+    const [masterPasswordSuccess, setMasterPasswordSuccess] = useState('');
+    const [isSettingPassword, setIsSettingPassword] = useState(false);
+    const [isSavingTimeout, setIsSavingTimeout] = useState(false);
+
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
 
@@ -289,6 +305,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (savedAnalytics !== null) {
                     setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
                 }
+                // Load master password status
+                invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status')
+                    .then(status => {
+                        setMasterPasswordStatus(status);
+                        if (status.timeout_seconds > 0) {
+                            setAutoLockTimeout(Math.floor(status.timeout_seconds / 60));
+                        }
+                    })
+                    .catch(console.error);
             } catch { }
         }
     }, [isOpen]);
@@ -338,6 +363,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'transfers', label: t('settings.transfers'), icon: <Upload size={16} /> },
         { id: 'filehandling', label: t('settings.fileHandling'), icon: <FileCheck size={16} /> },
         { id: 'ui', label: t('settings.appearance'), icon: <Palette size={16} /> },
+        { id: 'security', label: t('settings.security'), icon: <Lock size={16} /> },
         { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
     ];
 
@@ -1440,6 +1466,331 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
                                         </div>
                                     </label>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'security' && (
+                            <div className="space-y-6">
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.security')}</h3>
+
+                                {/* Master Password Section */}
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                                            <ShieldCheck size={24} />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-base">{t('settings.masterPassword')}</h4>
+                                            <p className="text-sm text-gray-500 mt-1">{t('settings.masterPasswordDesc')}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Status Badge */}
+                                    <div className="flex items-center gap-2">
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                            masterPasswordStatus?.is_set
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
+                                            {masterPasswordStatus?.is_set ? (
+                                                <>
+                                                    <ShieldCheck size={12} />
+                                                    {t('settings.masterPasswordEnabled')}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Shield size={12} />
+                                                    {t('settings.masterPasswordDisabled')}
+                                                </>
+                                            )}
+                                        </span>
+                                        {masterPasswordStatus?.is_set && masterPasswordStatus.timeout_seconds > 0 && (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                <Clock size={12} />
+                                                {t('settings.autoLockEnabled', { minutes: Math.floor(masterPasswordStatus.timeout_seconds / 60) })}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Error/Success Messages */}
+                                    {masterPasswordError && (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+                                            {masterPasswordError}
+                                        </div>
+                                    )}
+                                    {masterPasswordSuccess && (
+                                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-600 dark:text-emerald-400 text-sm">
+                                            {masterPasswordSuccess}
+                                        </div>
+                                    )}
+
+                                    {/* Set/Change Master Password Form */}
+                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                                        {masterPasswordStatus?.is_set && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    {t('settings.currentPassword')}
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type={showMasterPassword ? 'text' : 'password'}
+                                                        value={currentMasterPassword}
+                                                        onChange={e => setCurrentMasterPassword(e.target.value)}
+                                                        className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder="••••••••"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowMasterPassword(!showMasterPassword)}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                    >
+                                                        {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                {masterPasswordStatus?.is_set ? t('settings.newPassword') : t('settings.setPassword')}
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showMasterPassword ? 'text' : 'password'}
+                                                    value={newMasterPassword}
+                                                    onChange={e => setNewMasterPassword(e.target.value)}
+                                                    className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('settings.passwordPlaceholder')}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowMasterPassword(!showMasterPassword)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                </button>
+                                            </div>
+                                            <p className="mt-1 text-xs text-gray-500">{t('settings.passwordRequirements')}</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                {t('settings.confirmPassword')}
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showMasterPassword ? 'text' : 'password'}
+                                                    value={confirmMasterPassword}
+                                                    onChange={e => setConfirmMasterPassword(e.target.value)}
+                                                    className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('settings.confirmPasswordPlaceholder')}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowMasterPassword(!showMasterPassword)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Auto-lock Timeout */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                {t('settings.autoLockTimeout')}
+                                            </label>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="60"
+                                                    step="5"
+                                                    value={autoLockTimeout}
+                                                    onChange={e => setAutoLockTimeout(parseInt(e.target.value))}
+                                                    className="flex-1 accent-emerald-500"
+                                                />
+                                                <span className="w-20 text-sm font-medium text-gray-700 dark:text-gray-300 text-right">
+                                                    {autoLockTimeout === 0 ? t('settings.autoLockDisabled') : `${autoLockTimeout} min`}
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 text-xs text-gray-500">{t('settings.autoLockDesc')}</p>
+                                            {/* Save Timeout Only - when password is already set */}
+                                            {masterPasswordStatus?.is_set && (
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!currentMasterPassword) {
+                                                            setMasterPasswordError(t('settings.enterCurrentPassword'));
+                                                            return;
+                                                        }
+                                                        setIsSavingTimeout(true);
+                                                        setMasterPasswordError('');
+                                                        try {
+                                                            await invoke('app_master_password_change', {
+                                                                oldPassword: currentMasterPassword,
+                                                                newPassword: currentMasterPassword,
+                                                                newTimeout: autoLockTimeout * 60
+                                                            });
+                                                            const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
+                                                            setMasterPasswordStatus(status);
+                                                            setMasterPasswordSuccess(t('settings.timeoutSaved'));
+                                                        } catch (err) {
+                                                            setMasterPasswordError(String(err));
+                                                        } finally {
+                                                            setIsSavingTimeout(false);
+                                                        }
+                                                    }}
+                                                    disabled={isSavingTimeout}
+                                                    className="mt-2 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    {isSavingTimeout ? (
+                                                        <>
+                                                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                            {t('common.loading')}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Clock size={12} />
+                                                            {t('settings.saveTimeout')}
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-3 pt-2">
+                                            <button
+                                                onClick={async () => {
+                                                    setMasterPasswordError('');
+                                                    setMasterPasswordSuccess('');
+
+                                                    // Validation
+                                                    if (newMasterPassword.length < 8) {
+                                                        setMasterPasswordError(t('settings.passwordTooShort'));
+                                                        return;
+                                                    }
+                                                    if (newMasterPassword !== confirmMasterPassword) {
+                                                        setMasterPasswordError(t('settings.passwordMismatch'));
+                                                        return;
+                                                    }
+
+                                                    setIsSettingPassword(true);
+                                                    try {
+                                                        const timeoutSeconds = autoLockTimeout * 60;
+                                                        if (masterPasswordStatus?.is_set) {
+                                                            // Change password
+                                                            await invoke('app_master_password_change', {
+                                                                oldPassword: currentMasterPassword,
+                                                                newPassword: newMasterPassword,
+                                                                newTimeout: timeoutSeconds
+                                                            });
+                                                            setMasterPasswordSuccess(t('settings.passwordChanged'));
+                                                        } else {
+                                                            // Set new password
+                                                            await invoke('app_master_password_set', {
+                                                                password: newMasterPassword,
+                                                                timeoutSeconds
+                                                            });
+                                                            setMasterPasswordSuccess(t('settings.passwordSet'));
+                                                        }
+                                                        // Refresh status
+                                                        const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
+                                                        setMasterPasswordStatus(status);
+                                                        // Clear form
+                                                        setNewMasterPassword('');
+                                                        setConfirmMasterPassword('');
+                                                        setCurrentMasterPassword('');
+                                                    } catch (err) {
+                                                        setMasterPasswordError(String(err));
+                                                    } finally {
+                                                        setIsSettingPassword(false);
+                                                    }
+                                                }}
+                                                disabled={isSettingPassword}
+                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                            >
+                                                {isSettingPassword ? (
+                                                    <>
+                                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                        {t('settings.encrypting')}
+                                                    </>
+                                                ) : (
+                                                    masterPasswordStatus?.is_set ? t('settings.changePassword') : t('settings.setPassword')
+                                                )}
+                                            </button>
+
+                                            {masterPasswordStatus?.is_set && (
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!currentMasterPassword) {
+                                                            setMasterPasswordError(t('settings.enterCurrentPassword'));
+                                                            return;
+                                                        }
+                                                        if (confirm(t('settings.confirmRemovePassword'))) {
+                                                            try {
+                                                                await invoke('app_master_password_remove', { password: currentMasterPassword });
+                                                                const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
+                                                                setMasterPasswordStatus(status);
+                                                                setCurrentMasterPassword('');
+                                                                setMasterPasswordSuccess(t('settings.passwordRemoved'));
+                                                            } catch (err) {
+                                                                setMasterPasswordError(String(err));
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 rounded-lg text-sm font-medium transition-colors"
+                                                >
+                                                    {t('settings.removePassword')}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Security Info */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <h4 className="font-medium flex items-center gap-2 text-sm">
+                                            <Key size={14} className="text-gray-500" />
+                                            {t('settings.encryptionDetails')}
+                                        </h4>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityArgon2')}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityAES')}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityHMAC')}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                                <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityZeroize')}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}

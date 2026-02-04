@@ -32,6 +32,7 @@ mod archive_browse;
 mod aerovault;
 mod aerovault_v2;
 mod cryptomator;
+mod master_password;
 
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
@@ -4019,6 +4020,82 @@ async fn migrate_plaintext_credentials() -> Result<credential_store::MigrationRe
     Ok(result)
 }
 
+// ============ App Master Password Commands ============
+// App-level security with Argon2id 128 MiB + AES-256-GCM + Auto-lock
+
+#[tauri::command]
+async fn app_master_password_set(
+    password: String,
+    timeout_seconds: u32,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    master_password::setup_master_password(&password, timeout_seconds, &state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn app_master_password_unlock(
+    password: String,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    state.unlock(&password)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn app_master_password_lock(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    state.lock().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn app_master_password_change(
+    old_password: String,
+    new_password: String,
+    new_timeout: Option<u32>,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    master_password::change_master_password(&old_password, &new_password, new_timeout, &state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn app_master_password_remove(
+    password: String,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    master_password::remove_master_password(&password, &state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn app_master_password_status(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<master_password::MasterPasswordStatus, String> {
+    Ok(master_password::MasterPasswordStatus::new(&state))
+}
+
+#[tauri::command]
+async fn app_master_password_update_activity(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    state.update_activity();
+    Ok(())
+}
+
+#[tauri::command]
+async fn app_master_password_check_timeout(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<bool, String> {
+    Ok(state.check_timeout())
+}
+
 /// Helper to get an active credential store (keyring preferred, vault fallback)
 fn get_credential_store() -> Result<credential_store::CredentialStore, String> {
     // Try OS keyring first
@@ -4297,6 +4374,8 @@ pub fn run() {
     // Add SSH shell state for remote shell sessions
     let builder = builder.manage(create_ssh_shell_state());
     let builder = builder.manage(cryptomator::CryptomatorState::new());
+    // Master Password state for app-level security
+    let builder = builder.manage(master_password::MasterPasswordState::new());
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -4377,6 +4456,15 @@ pub fn run() {
             setup_master_password,
             unlock_vault,
             migrate_plaintext_credentials,
+            // App Master Password (security)
+            app_master_password_set,
+            app_master_password_unlock,
+            app_master_password_lock,
+            app_master_password_change,
+            app_master_password_remove,
+            app_master_password_status,
+            app_master_password_update_activity,
+            app_master_password_check_timeout,
             // Debug & dependencies commands
             get_dependencies,
             check_crate_versions,

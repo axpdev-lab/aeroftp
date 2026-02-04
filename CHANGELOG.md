@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-02-04
+
+### Master Password Protection
+
+App-wide master password protection with military-grade cryptography for securing access to AeroFTP.
+
+#### Added
+- **Master Password protection**: Secure the entire app with a master password
+  - *Argon2id KDF*: 128 MiB memory, 4 iterations, 4-way parallelism (OWASP 2024 high-security)
+  - *AES-256-GCM*: Authenticated encryption for password verification
+  - *HMAC-SHA512*: Integrity verification with timing-safe comparison
+  - *Secure zeroization*: Automatic memory clearing on lock
+- **Security tab**: New Settings → Security panel for master password management
+  - Set, change, or remove master password
+  - View encryption details (algorithm specifications)
+  - Configure auto-lock timeout
+- **Auto-lock timeout**: Automatically lock the app after configurable inactivity period (0-60 minutes)
+  - Activity tracking (mouse, keyboard, scroll events)
+  - Persistent timeout setting across sessions
+- **Lock Screen**: Full-screen overlay with password input when app is locked
+  - Gradient background with pattern
+  - Show/hide password toggle
+  - Loading state during unlock
+
+#### Fixed
+- **CVE-2026-25537**: Updated jsonwebtoken to 10.3 (Cryptomator JWT parsing security fix)
+
+---
+
 ## [1.8.0] - 2026-02-04
 
 ### Smart Sync & AeroVault v2 Military-Grade Encryption

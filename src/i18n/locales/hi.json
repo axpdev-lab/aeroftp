@@ -321,7 +321,37 @@
             "disabled": "[NEEDS TRANSLATION] Disabled",
             "attemptsCount": "[NEEDS TRANSLATION] {n} attempts",
             "noRetries": "[NEEDS TRANSLATION] No retries",
-            "retriesCount": "[NEEDS TRANSLATION] {n} retries"
+            "retriesCount": "[NEEDS TRANSLATION] {n} retries",
+            "security": "[NEEDS TRANSLATION] Security",
+            "masterPassword": "[NEEDS TRANSLATION] Master Password",
+            "masterPasswordDesc": "[NEEDS TRANSLATION] Protect AeroFTP with a master password. The app will lock after inactivity and require your password to unlock.",
+            "masterPasswordEnabled": "[NEEDS TRANSLATION] Protected",
+            "masterPasswordDisabled": "[NEEDS TRANSLATION] Not Protected",
+            "autoLockEnabled": "[NEEDS TRANSLATION] Auto-lock: {minutes} min",
+            "autoLockTimeout": "[NEEDS TRANSLATION] Auto-lock Timeout",
+            "autoLockDisabled": "[NEEDS TRANSLATION] Disabled",
+            "autoLockDesc": "[NEEDS TRANSLATION] Lock the app automatically after this period of inactivity (0 = disabled)",
+            "currentPassword": "[NEEDS TRANSLATION] Current Password",
+            "newPassword": "[NEEDS TRANSLATION] New Password",
+            "setPassword": "[NEEDS TRANSLATION] Set Password",
+            "changePassword": "[NEEDS TRANSLATION] Change Password",
+            "removePassword": "[NEEDS TRANSLATION] Remove Protection",
+            "passwordPlaceholder": "[NEEDS TRANSLATION] Enter a strong password",
+            "confirmPasswordPlaceholder": "[NEEDS TRANSLATION] Re-enter password",
+            "passwordRequirements": "[NEEDS TRANSLATION] Minimum 8 characters. Use a mix of letters, numbers, and symbols for best security.",
+            "passwordChanged": "[NEEDS TRANSLATION] Master password changed successfully",
+            "passwordSet": "[NEEDS TRANSLATION] Master password protection enabled",
+            "passwordRemoved": "[NEEDS TRANSLATION] Master password protection removed",
+            "enterCurrentPassword": "[NEEDS TRANSLATION] Please enter your current password",
+            "confirmRemovePassword": "[NEEDS TRANSLATION] Are you sure you want to remove master password protection? Your credentials will still be stored securely, but the app will no longer require a password to open.",
+            "encryptionDetails": "[NEEDS TRANSLATION] Encryption Details",
+            "securityArgon2": "[NEEDS TRANSLATION] Argon2id key derivation (128 MiB memory, 4 iterations)",
+            "securityAES": "[NEEDS TRANSLATION] AES-256-GCM authenticated encryption",
+            "securityHMAC": "[NEEDS TRANSLATION] HMAC-SHA512 integrity verification",
+            "securityZeroize": "[NEEDS TRANSLATION] Automatic memory zeroization on lock",
+            "encrypting": "[NEEDS TRANSLATION] Encrypting...",
+            "saveTimeout": "[NEEDS TRANSLATION] Save Timeout",
+            "timeoutSaved": "[NEEDS TRANSLATION] Auto-lock timeout saved"
         },
         "devtools": {
             "title": "डेवलपर टूल्स",
@@ -1034,6 +1064,14 @@
             "noChange": "[NEEDS TRANSLATION] (no change)",
             "conflictWarning": "[NEEDS TRANSLATION] Some files would have the same name. Please adjust the pattern.",
             "apply": "[NEEDS TRANSLATION] Apply"
+        },
+        "lockScreen": {
+            "locked": "[NEEDS TRANSLATION] App Locked",
+            "enterPassword": "[NEEDS TRANSLATION] Enter your master password",
+            "unlock": "[NEEDS TRANSLATION] Unlock",
+            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
+            "invalidPassword": "[NEEDS TRANSLATION] Invalid password. Please try again.",
+            "securityNote": "[NEEDS TRANSLATION] Your data is protected with AES-256-GCM encryption"
         }
     }
 }
