@@ -96,7 +96,7 @@ scrypt = "0.11"                                                        # Cryptom
 aes-kw = "0.2"                                                         # AES Key Wrap (RFC 3394)
 aes-siv = "0.7"                                                        # AES-SIV filename encryption
 data-encoding = "2"                                                    # Base32/Base64 encoding
-jsonwebtoken = "9"                                                     # JWT parsing for vault.cryptomator
+jsonwebtoken = "10.3"                                                   # JWT parsing for vault.cryptomator (CVE-2026-25537 fix)
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 for cascade mode
