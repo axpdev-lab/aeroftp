@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-02-04
+
+### Critical Clipboard Fix
+
+Emergency fix for application freeze on Linux when using Share Link functionality.
+
+#### Fixed
+- **Linux clipboard freeze**: Fixed application hang when clicking "Create Share Link" on Linux/X11
+  - The `arboard` clipboard `.wait()` method blocked indefinitely waiting for a clipboard manager
+  - Moved clipboard persistence to a detached thread with immediate fallback
+  - Affected all providers: S3 pre-signed URLs, OAuth share links (Google Drive, Dropbox, OneDrive, Box, pCloud, Filen)
+
+---
+
 ## [1.8.2] - 2026-02-04
 
 ### Security UX Improvements

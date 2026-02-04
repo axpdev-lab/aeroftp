@@ -231,8 +231,19 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
         .map_err(|e| format!("Clipboard init failed: {}", e))?;
     #[cfg(target_os = "linux")]
     {
+        // On Linux/X11, spawn the clipboard operation in a separate thread.
+        // Using .wait() blocks until a clipboard manager reads the content,
+        // which can hang indefinitely if no manager is active.
+        // We spawn a detached thread to handle this without blocking the UI.
         use arboard::SetExtLinux;
-        clipboard.set().wait().text(text)
+        let text_clone = text.clone();
+        std::thread::spawn(move || {
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                let _ = cb.set().wait().text(text_clone);
+            }
+        });
+        // Also set without wait as immediate fallback
+        clipboard.set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
     }
     #[cfg(not(target_os = "linux"))]

@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "1.8.2"
+version = "1.8.3"
 dependencies = [
  "aes-gcm",
  "aes-gcm-siv",
