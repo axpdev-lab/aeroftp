@@ -2,6 +2,9 @@
 // Equivalent to Unix chmod 0o600/0o700
 #![allow(dead_code)]
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 /// Restrict file/directory access to the current user using icacls.
 /// Silently ignores errors (best-effort hardening).
 #[cfg(windows)]

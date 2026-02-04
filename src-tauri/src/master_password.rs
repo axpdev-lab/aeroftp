@@ -569,9 +569,7 @@ pub async fn update_timeout(
     let mut file = MasterPasswordState::read_master_file(password).await?;
     file.timeout_seconds = timeout_seconds;
 
-    // Get current keys
-    let master_key = state.master_key.lock().await
-        .ok_or(MasterPasswordError::Locked)?;
+    // Get HMAC key for writing
     let hmac_key = state.hmac_key.lock().await
         .ok_or(MasterPasswordError::Locked)?;
 
