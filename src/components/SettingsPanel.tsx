@@ -88,6 +88,7 @@ interface SettingsPanelProps {
     onClose: () => void;
     onOpenCloudPanel?: () => void;
     onActivityLog?: ActivityLogCallback;
+    initialTab?: TabId;
 }
 
 // Settings storage key
@@ -244,8 +245,15 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog }) => {
-    const [activeTab, setActiveTab] = useState<TabId>('general');
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab }) => {
+    const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
+
+    // Reset to initialTab when panel opens with a specific tab
+    useEffect(() => {
+        if (isOpen && initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [isOpen, initialTab]);
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);

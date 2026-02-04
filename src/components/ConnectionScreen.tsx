@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -356,9 +356,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                         {/* Show form only when protocol is selected AND selector is closed */}
                         {!protocol || isProtocolSelectorOpen ? (
-                            /* No protocol selected or selector is open - show selection prompt */
-                            <div className="py-8 text-center text-gray-500 dark:text-gray-400">
-                                <p className="text-sm">{t('connection.selectProtocolPrompt')}</p>
+                            /* No protocol selected or selector is open - show selection prompt + security info */
+                            <div className="py-6 space-y-6">
+                                <p className="text-sm text-center text-gray-500 dark:text-gray-400">{t('connection.selectProtocolPrompt')}</p>
+
+                                {/* Security Info Box */}
+                                <div className="mx-auto max-w-md p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                        <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 text-sm">{t('connection.securityTitle')}</h4>
+                                    </div>
+                                    <ul className="space-y-2 text-xs text-emerald-700 dark:text-emerald-300">
+                                        <li className="flex items-start gap-2">
+                                            <KeyRound size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                            <span>{t('connection.securityKeyring')}</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <Lock size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                            <span>{t('connection.securityEncryption')}</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <Check size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                            <span>{t('connection.securityNoSend')}</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <Check size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                            <span>{t('connection.securityTLS')}</span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         ) : isAeroCloudProvider(protocol) ? (
                             /* AeroCloud - show status or setup */

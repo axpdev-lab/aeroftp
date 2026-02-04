@@ -123,6 +123,7 @@ const App: React.FC = () => {
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
   const [isConnected, setIsConnected] = useState(false);
   const [showRemotePanel, setShowRemotePanel] = useState(true);
@@ -3271,9 +3272,10 @@ const App: React.FC = () => {
       <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
       <SettingsPanel
         isOpen={showSettingsPanel}
-        onClose={() => setShowSettingsPanel(false)}
+        onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); }}
         onOpenCloudPanel={() => setShowCloudPanel(true)}
         onActivityLog={{ logRaw: humanLog.logRaw }}
+        initialTab={settingsInitialTab}
       />
 
       {/* Universal Preview Modal for Media Files */}
@@ -3381,6 +3383,18 @@ const App: React.FC = () => {
               </button>
               {/* Theme toggle */}
               <ThemeToggle theme={theme} setTheme={setTheme} />
+              {/* Master Password indicator */}
+              <button
+                onClick={() => { setSettingsInitialTab('security'); setShowSettingsPanel(true); }}
+                className={`p-2 rounded-lg transition-colors ${masterPasswordSet ? 'hover:bg-emerald-100 dark:hover:bg-emerald-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                title={masterPasswordSet ? t('settings.masterPasswordEnabled') : t('settings.masterPasswordDisabled')}
+              >
+                {masterPasswordSet ? (
+                  <Lock size={18} className="text-emerald-500" />
+                ) : (
+                  <Unlock size={18} className="text-gray-400 dark:text-gray-500" />
+                )}
+              </button>
               {/* Settings button */}
               <button
                 onClick={() => setShowSettingsPanel(true)}
