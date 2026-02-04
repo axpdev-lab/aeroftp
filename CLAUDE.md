@@ -149,7 +149,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v1.7.0
+## Versione corrente: v1.8.0
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -171,6 +171,8 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 | scrypt | 0.11 | Cryptomator KDF |
 | aes-kw | 0.2 | AES Key Wrap (RFC 3394) |
 | aes-siv | 0.7 | AES-SIV filename encryption |
+| aes-gcm-siv | 0.11 | AeroVault v2 nonce-misuse resistant (RFC 8452) |
+| chacha20poly1305 | 0.10 | AeroVault v2 cascade mode |
 
 ### Completato in v1.5.2
 
@@ -221,7 +223,29 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 - ~~AeroAgent styled tool display: chip inline con wrench icon, 24 tool labels~~ Done
 - ~~AeroAgent tool count: da 14 a 24 tool provider-agnostic~~ Done
 
-### Prossimi task (v1.8.0)
+### Completato in v1.8.0
+
+- ~~Smart Sync: 3 modalità intelligenti (overwrite_if_newer, overwrite_if_different, skip_if_identical)~~ Done
+- ~~Batch Rename dialog con 4 modalità (Find/Replace, Prefix, Suffix, Sequential) + live preview~~ Done
+- ~~Inline Rename: F2 o click su filename selezionato, entrambi i pannelli~~ Done
+- ~~Unified date format: `Intl.DateTimeFormat` per tutte le 51 lingue~~ Done
+- ~~Colonna PERMS responsive (hidden sotto xl breakpoint, no wrapping)~~ Done
+- ~~Toolbar reorganization con separatori visivi~~ Done
+- ~~Disconnect icon: X → LogOut per UX clarity~~ Done
+- ~~**AeroVault v2**: Military-grade encryption che supera Cryptomator~~ Done
+  - AES-256-GCM-SIV (RFC 8452) — nonce misuse-resistant content encryption
+  - AES-256-KW (RFC 3394) — key wrapping per master key protection
+  - AES-256-SIV — deterministic filename encryption
+  - Argon2id — 128 MiB / t=4 / p=4 (supera OWASP 2024)
+  - HMAC-SHA512 — header integrity verification
+  - ChaCha20-Poly1305 — optional cascade mode per defense-in-depth
+  - 64KB chunks — optimal balance security/performance
+- ~~Cryptomator spostato da toolbar a context menu (legacy support)~~ Done
+- ~~VaultPanel security badges (AES-256-GCM-SIV, Argon2id, AES-KW, HMAC-SHA512)~~ Done
+- ~~2 nuove dipendenze Cargo: aes-gcm-siv 0.11, chacha20poly1305 0.10~~ Done
+- ~~Audit completo AeroVault v2 in docs/dev/AEROVAULT-V2-AUDIT.md~~ Done
+
+### Prossimi task (v1.9.0)
 
 - Consolidare duplicati `formatBytes`, `getMimeType`, `UpdateInfo` (vedi audit report)
 - Gating console.log dietro debug mode (76 statement in 13 file)
@@ -232,8 +256,9 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 ### Roadmap futura
 
 Dettagli completi in `docs/dev/ROADMAP.md`:
-- **v1.8.0**: AeroAgent Intelligence (vision, multi-step) + CLI Foundation
-- **v1.9.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
+- **v1.9.0**: AeroAgent Intelligence (vision, multi-step) + CLI Foundation
+- **v2.0.0**: Master Password + Unified Keystore + Settings Consolidation
+- **v2.1.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
 
 ---
 

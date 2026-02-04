@@ -98,6 +98,11 @@ aes-siv = "0.7"                                                        # AES-SIV
 data-encoding = "2"                                                    # Base32/Base64 encoding
 jsonwebtoken = "9"                                                     # JWT parsing for vault.cryptomator
 
+# AeroVault v2 - Military-Grade Encryption (v1.8.0)
+chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 for cascade mode
+aes-gcm-siv = "0.11"                                                   # AES-GCM-SIV nonce-misuse resistant (RFC 8452)
+hkdf = "0.12"                                                          # HKDF key derivation (RFC 5869)
+
 [dev-dependencies]
 tempfile = "3"
 

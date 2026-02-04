@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 3 February 2026
-> Version: v1.7.0 (Encryption Block — AeroVault + Archive Browser + Cryptomator + AeroAgent 24 Tools)
+> Last Updated: 4 February 2026
+> Version: v1.8.0 (Smart Sync & AeroVault v2 — Intelligent conflict resolution, Batch Rename, Inline Rename, Military-grade encryption)
 
 ---
 
@@ -113,6 +113,44 @@
 **Archive Browser** (v1.7.0): Browse archive contents in-app without extracting. Password dialog for encrypted ZIP/7z/RAR. Selective extraction of individual files.
 
 **CompressDialog** (v1.7.0): Unified compression UI with format selection, compression levels, editable archive name, password protection (ZIP/7z), and file info display.
+
+---
+
+## Client-Side Encryption (v1.8.0)
+
+### AeroVault v2 — Military-Grade Containers
+
+| Component | Algorithm | RFC/Standard | Notes |
+|-----------|-----------|--------------|-------|
+| **Content encryption** | AES-256-GCM-SIV | RFC 8452 | Nonce misuse-resistant AEAD |
+| **Key wrapping** | AES-256-KW | RFC 3394 | Integrity-protected key encapsulation |
+| **Filename encryption** | AES-256-SIV | RFC 5297 | Deterministic, hides file names |
+| **Key derivation** | Argon2id | IETF draft | 128 MiB / 4 iterations / 4 parallelism |
+| **Header integrity** | HMAC-SHA512 | RFC 2104 | 512-bit MAC, detects tampering |
+| **Cascade mode** | ChaCha20-Poly1305 | RFC 8439 | Optional double encryption |
+| **Chunk size** | 64 KB | — | Per-chunk nonce + auth tag |
+
+### AeroVault v2 vs Cryptomator
+
+| Feature | AeroVault v2 | Cryptomator |
+|---------|--------------|-------------|
+| **Nonce misuse resistance** | Yes (GCM-SIV) | No (GCM) |
+| **KDF memory** | 128 MiB | 64-128 MiB |
+| **KDF algorithm** | Argon2id | scrypt |
+| **Header integrity** | SHA-512 | SHA-256 |
+| **Cascade encryption** | Optional | No |
+| **Chunk size** | 64 KB | 32 KB |
+
+### Cryptomator (Format 8) — Legacy Support
+
+Accessible via folder context menu "Open as Cryptomator Vault":
+
+| Component | Algorithm |
+|-----------|-----------|
+| Master key derivation | scrypt (N=2^15, r=8, p=1) |
+| Key wrapping | AES-256-KW (RFC 3394) |
+| Filename encryption | AES-SIV |
+| Content encryption | AES-256-GCM (32KB chunks) |
 
 ---
 
@@ -337,15 +375,16 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 | v1.5.3 | Sync index cache, storage quota display, OAuth session switching fix, FTP retry with backoff | Done |
 | v1.5.4 | In-app auto-updater, download progress, AppImage auto-install, terminal empty-start | Done |
 | v1.6.0 | AeroAgent Pro: native function calling (SEC-002), streaming, provider-agnostic tools, chat history, cost tracking, context awareness, 122 i18n keys | Done |
-| v1.7.0 | Encryption Block: AeroVault, archive browser + selective extraction, Cryptomator format 8, CompressDialog, AeroFile mode, preview panel, Type column, 7z password fix | Done |
+| v1.7.0 | Encryption Block: AeroVault v1, archive browser + selective extraction, Cryptomator format 8, CompressDialog, AeroFile mode, preview panel, Type column, 7z password fix | Done |
+| v1.8.0 | Smart Sync (3 intelligent modes), Batch Rename (4 modes), Inline Rename, **AeroVault v2** (AES-256-GCM-SIV + AES-KW + AES-SIV + Argon2id 128MiB + HMAC-SHA512 + ChaCha20 cascade) | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v1.8.0 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
-| v1.9.0 | Master password, 2FA (TOTP), unified encrypted keystore, settings consolidation |
-| v2.0.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
+| v1.9.0 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
+| v2.0.0 | Master password, 2FA (TOTP), unified encrypted keystore, settings consolidation |
+| v2.1.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 
 ---
 

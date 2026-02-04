@@ -194,7 +194,8 @@
             "importedTo": "[NEEDS TRANSLATION] Imported to {path}",
             "importLinkFailed": "[NEEDS TRANSLATION] Failed to import link",
             "downloadCount": "[NEEDS TRANSLATION] Download ({count})",
-            "uploadCount": "[NEEDS TRANSLATION] Upload ({count})"
+            "uploadCount": "[NEEDS TRANSLATION] Upload ({count})",
+            "browseArchive": "[NEEDS TRANSLATION] Browse Archive"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -453,7 +454,9 @@
             "navSyncEnabled": "[NEEDS TRANSLATION] Navigation Sync Enabled",
             "syncingPaths": "[NEEDS TRANSLATION] Syncing: {remote} ↔ {local}",
             "failedCreateFolder": "[NEEDS TRANSLATION] Failed to create folder",
-            "generateShareLinkFailed": "[NEEDS TRANSLATION] Failed to generate share link"
+            "generateShareLinkFailed": "[NEEDS TRANSLATION] Failed to generate share link",
+            "batchRenameSuccess": "[NEEDS TRANSLATION] Batch rename complete",
+            "batchRenamePartial": "[NEEDS TRANSLATION] Batch rename completed with errors"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -925,7 +928,8 @@
                 "maxResponseHelp": "[NEEDS TRANSLATION] Higher values allow longer responses but use more API credits.",
                 "providersEnabled": "[NEEDS TRANSLATION] {{count}} provider(s) enabled",
                 "done": "[NEEDS TRANSLATION] Done"
-            }
+            },
+            "copy": "[NEEDS TRANSLATION] Copy"
         },
         "archive": {
             "passwordRequired": "[NEEDS TRANSLATION] This archive is password protected",
@@ -963,7 +967,16 @@
             "fileName": "[NEEDS TRANSLATION] Name",
             "fileSize": "[NEEDS TRANSLATION] Size",
             "fileActions": "[NEEDS TRANSLATION] Actions",
-            "files": "[NEEDS TRANSLATION] files"
+            "files": "[NEEDS TRANSLATION] files",
+            "descriptionV2": "[NEEDS TRANSLATION] AeroVault v2 provides military-grade encryption with nonce misuse-resistant AES-256-GCM-SIV and optional cascade encryption.",
+            "securityLevel": "[NEEDS TRANSLATION] Security Level",
+            "securityStandard": "[NEEDS TRANSLATION] Standard",
+            "securityAdvanced": "[NEEDS TRANSLATION] Advanced",
+            "securityParanoid": "[NEEDS TRANSLATION] Paranoid",
+            "securityRecommended": "[NEEDS TRANSLATION] Recommended",
+            "v1Standard": "[NEEDS TRANSLATION] AeroVault v1 (Standard)",
+            "v2Advanced": "[NEEDS TRANSLATION] AeroVault v2 (Advanced Security)",
+            "modified": "[NEEDS TRANSLATION] Modified"
         },
         "cryptomator": {
             "title": "[NEEDS TRANSLATION] Cryptomator Vault",
@@ -976,7 +989,51 @@
             "empty": "[NEEDS TRANSLATION] Directory is empty",
             "name": "[NEEDS TRANSLATION] Name",
             "size": "[NEEDS TRANSLATION] Size",
-            "items": "[NEEDS TRANSLATION] items"
+            "items": "[NEEDS TRANSLATION] items",
+            "readOnly": "[NEEDS TRANSLATION] Read-only mode — vault creation coming in v2.1",
+            "openAsVault": "[NEEDS TRANSLATION] Open as Cryptomator Vault"
+        },
+        "compress": {
+            "title": "[NEEDS TRANSLATION] Compress Files",
+            "archiveName": "[NEEDS TRANSLATION] Archive Name",
+            "format": "[NEEDS TRANSLATION] Format",
+            "level": "[NEEDS TRANSLATION] Compression Level",
+            "password": "[NEEDS TRANSLATION] Password (optional, AES-256)",
+            "passwordHint": "[NEEDS TRANSLATION] Leave empty for no encryption",
+            "files": "[NEEDS TRANSLATION] files",
+            "folders": "[NEEDS TRANSLATION] folders",
+            "compress": "[NEEDS TRANSLATION] Compress",
+            "store": "[NEEDS TRANSLATION] Store (no compression)",
+            "fast": "[NEEDS TRANSLATION] Fast",
+            "normal": "[NEEDS TRANSLATION] Normal",
+            "maximum": "[NEEDS TRANSLATION] Maximum"
+        },
+        "batchRename": {
+            "title": "[NEEDS TRANSLATION] Batch Rename",
+            "mode": "[NEEDS TRANSLATION] Rename Mode",
+            "findReplace": "[NEEDS TRANSLATION] Find & Replace",
+            "addPrefix": "[NEEDS TRANSLATION] Add Prefix",
+            "addSuffix": "[NEEDS TRANSLATION] Add Suffix",
+            "sequential": "[NEEDS TRANSLATION] Sequential",
+            "find": "[NEEDS TRANSLATION] Find",
+            "findPlaceholder": "[NEEDS TRANSLATION] Text to find...",
+            "replaceWith": "[NEEDS TRANSLATION] Replace with",
+            "replacePlaceholder": "[NEEDS TRANSLATION] Replacement text...",
+            "caseSensitive": "[NEEDS TRANSLATION] Case sensitive",
+            "prefix": "[NEEDS TRANSLATION] Prefix",
+            "prefixPlaceholder": "[NEEDS TRANSLATION] e.g., backup_",
+            "suffix": "[NEEDS TRANSLATION] Suffix (before extension)",
+            "suffixPlaceholder": "[NEEDS TRANSLATION] e.g., _v2",
+            "baseName": "[NEEDS TRANSLATION] Base name",
+            "startNumber": "[NEEDS TRANSLATION] Start at",
+            "padding": "[NEEDS TRANSLATION] Padding",
+            "preview": "[NEEDS TRANSLATION] Preview",
+            "previewChanges": "[NEEDS TRANSLATION] Preview Changes",
+            "oldName": "[NEEDS TRANSLATION] Old Name",
+            "newName": "[NEEDS TRANSLATION] New Name",
+            "noChange": "[NEEDS TRANSLATION] (no change)",
+            "conflictWarning": "[NEEDS TRANSLATION] Some files would have the same name. Please adjust the pattern.",
+            "apply": "[NEEDS TRANSLATION] Apply"
         }
     }
 }

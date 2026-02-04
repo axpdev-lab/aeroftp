@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 interface CryptomatorBrowserProps {
@@ -189,10 +189,46 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
 
                 {/* Unlock form */}
                 {!vaultInfo && (
-                    <div className="p-6 flex flex-col items-center gap-4">
-                        <Shield size={48} className="text-emerald-400" />
-                        <p className="text-gray-400 text-center text-sm max-w-md">
-                            {t('cryptomator.description') || 'Open a Cryptomator vault (format 8) to browse and decrypt files.'}
+                    <div className="p-6 flex flex-col items-center gap-5">
+                        {/* Security badge */}
+                        <div className="relative">
+                            <Shield size={56} className="text-emerald-400" />
+                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1">
+                                <Lock size={12} className="text-white" />
+                            </div>
+                        </div>
+
+                        <div className="text-center">
+                            <p className="text-gray-300 text-sm max-w-md">
+                                {t('cryptomator.description') || 'Open a Cryptomator vault (format 8) to browse and decrypt files.'}
+                            </p>
+                            <p className="text-gray-500 text-xs mt-1">
+                                {t('cryptomator.readOnly') || 'Read-only mode — vault creation coming in v2.1'}
+                            </p>
+                        </div>
+
+                        {/* Security features */}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-400 max-w-sm">
+                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
+                                <Lock size={12} className="text-emerald-400" />
+                                <span>AES-GCM content</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
+                                <Shield size={12} className="text-emerald-400" />
+                                <span>scrypt KDF</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
+                                <File size={12} className="text-emerald-400" />
+                                <span>AES-SIV names</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
+                                <Key size={12} className="text-emerald-400" />
+                                <span>AES Key Wrap</span>
+                            </div>
+                        </div>
+
+                        <p className="text-emerald-400/70 text-xs flex items-center gap-1">
+                            <Shield size={10} /> Compatible with Cryptomator app
                         </p>
 
                         <button onClick={handleSelectVault} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">

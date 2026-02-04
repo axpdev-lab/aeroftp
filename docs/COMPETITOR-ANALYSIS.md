@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 3 February 2026
-> Version: v1.7.0
+> Last Updated: 4 February 2026
+> Version: v1.8.0
 
 ---
 
@@ -69,6 +69,8 @@
 | Remote Search | Yes (all 13) | No | Yes | No | No | No |
 | File Versions | Yes (5 providers) | No | Yes | No | No | No |
 | File Locking | Yes (WebDAV) | No | Yes | No | No | No |
+| Batch Rename | **Yes (v1.8.0)** | No | No | Yes | Yes | Yes |
+| Inline Rename (F2) | **Yes (v1.8.0)** | Yes | Yes | Yes | Yes | Yes |
 
 ### Sync & Automation
 
@@ -77,6 +79,7 @@
 | Personal Cloud | Yes (AeroCloud) | No | No | No | No | No |
 | Background Sync | Yes (Tray) | No | No | No | No | No |
 | Folder Sync | Yes (all 13 protocols) | Yes | No | Yes | Yes | Yes |
+| Smart Sync | **Yes (v1.8.0)** | No | No | Yes | Yes | No |
 | Sync Index Cache | Yes | No | No | No | No | No |
 | Storage Quota | Yes (9 providers) | No | Yes | No | Yes | No |
 | Scripting | Planned | No | No | Yes | No | No |
@@ -211,7 +214,11 @@
 - Selective extraction, Cryptomator format 8 support, CompressDialog with levels
 - AeroFile mode (local-only file manager), resizable preview panel, Type column
 
-### v1.8.0 - Planned
+### v1.8.0 - Done
+- Smart Sync (3 intelligent modes), Batch Rename (4 modes), Inline Rename
+- AeroVault v2 (AES-256-GCM-SIV + AES-KW + AES-SIV + Argon2id 128MiB + HMAC-SHA512 + ChaCha20 cascade)
+
+### v1.9.0 - Planned
 - AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation
 - Remote vault open/save, Cryptomator vault creation
 

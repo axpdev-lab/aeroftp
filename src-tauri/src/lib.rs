@@ -30,6 +30,7 @@ mod ai_tools;
 mod ai_stream;
 mod archive_browse;
 mod aerovault;
+mod aerovault_v2;
 mod cryptomator;
 
 use ftp::{FtpManager, RemoteFile};
@@ -4407,6 +4408,17 @@ pub fn run() {
             aerovault::vault_remove_file,
             aerovault::vault_extract_entry,
             aerovault::vault_change_password,
+            // AeroVault v2 - Military-Grade Encryption
+            aerovault_v2::vault_v2_create,
+            aerovault_v2::vault_v2_open,
+            aerovault_v2::is_vault_v2,
+            aerovault_v2::vault_v2_peek,
+            aerovault_v2::vault_v2_security_info,
+            aerovault_v2::vault_v2_add_files,
+            aerovault_v2::vault_v2_extract_entry,
+            aerovault_v2::vault_v2_extract_all,
+            aerovault_v2::vault_v2_change_password,
+            aerovault_v2::vault_v2_delete_entry,
             // Cryptomator vault support
             cryptomator::cryptomator_unlock,
             cryptomator::cryptomator_lock,

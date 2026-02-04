@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-02-04
+
+### Smart Sync & AeroVault v2 Military-Grade Encryption
+
+Intelligent file conflict resolution, batch rename with live preview, and a completely redesigned AeroVault format with military-grade cryptography.
+
+#### Added
+- **AeroVault v2**: Military-grade encrypted containers with enhanced security stack:
+  - *AES-256-GCM-SIV* (RFC 8452): Nonce misuse-resistant content encryption
+  - *AES-256-KW* (RFC 3394): Key wrapping for master key protection
+  - *AES-256-SIV*: Deterministic filename encryption (hides file names)
+  - *Argon2id KDF*: 128 MiB memory, 4 iterations, 4-way parallelism (exceeds OWASP 2024)
+  - *HMAC-SHA512*: Header integrity verification
+  - *ChaCha20-Poly1305*: Optional cascade mode for defense-in-depth
+  - *64 KB chunks*: Optimal balance of security and performance
+- **Cryptomator to context menu**: Legacy format support moved from toolbar to folder context menu
+- **Smart Sync options**: Three new intelligent conflict resolution modes in Settings → File Handling:
+  - *Overwrite if source is newer*: Transfers only when source file has more recent timestamp (1s tolerance)
+  - *Overwrite if date or size differs*: Syncs files when either attribute changes
+  - *Skip if identical*: Skips transfer when both date and size match
+- **Batch Rename dialog**: Rename multiple files at once with four modes:
+  - Find & Replace (with case-sensitive option)
+  - Add Prefix
+  - Add Suffix (before extension)
+  - Sequential numbering (customizable base name, start number, padding)
+  - Live preview with conflict detection
+- **Inline Rename**: Click directly on filename (when selected) or press F2 to rename in place — works on both local and remote panels
+- **AeroVault v2 change password**: Re-wraps master key and MAC key with new KEK derived from new password — generates new salt for fresh cryptographic state
+- **AeroVault v2 delete file**: Remove individual files from v2 vaults via manifest update — data section remains until future compaction
+
+#### Changed
+- **Unified date format**: Both panels now use `Intl.DateTimeFormat` for locale-aware dates — automatically adapts to user's browser language (IT: "03 feb 2026, 14:30", US: "Feb 03, 2026, 2:30 PM")
+- **Responsive PERMS column**: Hidden below 1280px viewport width, no text wrapping
+- **Toolbar reorganization**: Cleaner layout with visual separators — Donate | AeroVault | Menu toggle, Theme, Settings (Cryptomator moved to context menu)
+- **Disconnect button icon**: Changed from X to LogOut for better UX clarity
+- **AeroVault v2 security badges**: VaultPanel now displays cryptographic primitives (AES-256-GCM-SIV, Argon2id, AES-KW, HMAC-SHA512)
+
+#### Fixed
+- **Date column wrapping**: Added `whitespace-nowrap` to prevent date text breaking across lines
+- **Inconsistent date display**: Remote panel showed raw FTP format while local showed localized dates — now unified
+- **AeroVault v2 creation failure**: Fixed `WRAPPED_KEY_SIZE` constant (48 → 40 bytes) that caused "Key wrap failed: InvalidOutputSize { expected: 40 }" error when creating Advanced/Paranoid vaults
+- **Security level detection**: New `vault_v2_peek` command reads header without password — UI now correctly shows "Paranoid" vs "Advanced" before unlocking
+- **VaultPanel security display**: Dialog now shows correct security level badge with icon and color (blue/emerald/purple) matching vault type
+
+---
+
 ## [1.7.1] - 2026-02-03
 
 ### Italian i18n + Terminal Cursor Fix

@@ -128,7 +128,7 @@ interface AppSettings {
     maxConcurrentTransfers: number;
     retryCount: number;
     // File Handling
-    fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume';
+    fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
     preserveTimestamps: boolean;
     transferMode: 'auto' | 'ascii' | 'binary';
     // UI
@@ -1001,7 +1001,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <label className="block text-sm font-medium mb-1">When file exists on destination</label>
                                         <select
                                             value={settings.fileExistsAction}
-                                            onChange={e => updateSetting('fileExistsAction', e.target.value as 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume')}
+                                            onChange={e => updateSetting('fileExistsAction', e.target.value as AppSettings['fileExistsAction'])}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
                                             <option value="ask">Ask each time</option>
@@ -1009,6 +1009,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <option value="skip">Skip</option>
                                             <option value="rename">Rename (add number)</option>
                                             <option value="resume">Resume if possible</option>
+                                            <option disabled>── Smart Sync ──</option>
+                                            <option value="overwrite_if_newer">Overwrite if source is newer</option>
+                                            <option value="overwrite_if_different">Overwrite if date or size differs</option>
+                                            <option value="skip_if_identical">Skip if identical (date &amp; size)</option>
                                         </select>
                                     </div>
 

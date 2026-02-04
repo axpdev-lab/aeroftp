@@ -241,7 +241,8 @@
             "importedTo": "Importato in {path}",
             "importLinkFailed": "Impossibile importare il link",
             "downloadCount": "Scarica ({count})",
-            "uploadCount": "Carica ({count})"
+            "uploadCount": "Carica ({count})",
+            "browseArchive": "[NEEDS TRANSLATION] Browse Archive"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -538,7 +539,9 @@
             "navSyncEnabled": "Sincronizzazione Navigazione Attivata",
             "syncingPaths": "Sincronizzazione: {remote} ↔ {local}",
             "failedCreateFolder": "Impossibile creare la cartella",
-            "generateShareLinkFailed": "Impossibile generare il link di condivisione"
+            "generateShareLinkFailed": "Impossibile generare il link di condivisione",
+            "batchRenameSuccess": "Rinomina multipla completata",
+            "batchRenamePartial": "Rinomina multipla completata con errori"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -925,7 +928,8 @@
                 "maxResponseHelp": "Valori più alti permettono risposte più lunghe ma usano più crediti API.",
                 "providersEnabled": "{{count}} provider abilitati",
                 "done": "Fatto"
-            }
+            },
+            "copy": "[NEEDS TRANSLATION] Copy"
         },
         "archive": {
             "passwordRequired": "Questo archivio è protetto da password",
@@ -942,6 +946,14 @@
         "vault": {
             "title": "AeroVault",
             "description": "AeroVault ti permette di creare contenitori crittografati AES-256 per archiviare i tuoi file in sicurezza.",
+            "descriptionV2": "AeroVault v2 offre crittografia di livello militare con AES-256-GCM-SIV resistente al riuso del nonce e crittografia a cascata opzionale.",
+            "securityLevel": "Livello di Sicurezza",
+            "securityStandard": "Standard",
+            "securityAdvanced": "Avanzato",
+            "securityParanoid": "Paranoico",
+            "securityRecommended": "Consigliato",
+            "v1Standard": "AeroVault v1 (Standard)",
+            "v2Advanced": "AeroVault v2 (Sicurezza Avanzata)",
             "createNew": "Crea Vault",
             "openExisting": "Apri Vault",
             "description_label": "Descrizione (opzionale)",
@@ -963,11 +975,14 @@
             "fileName": "Nome",
             "fileSize": "Dimensione",
             "fileActions": "Azioni",
-            "files": "file"
+            "files": "file",
+            "modified": "Modificato"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
             "description": "Apri un vault Cryptomator (formato 8) per sfogliare e decrittografare i file.",
+            "readOnly": "Modalità sola lettura — creazione vault in arrivo v2.1",
+            "openAsVault": "Apri come Vault Cryptomator",
             "selectFolder": "Seleziona Cartella Vault...",
             "password": "Password Vault",
             "unlock": "Sblocca Vault",
@@ -977,6 +992,48 @@
             "name": "Nome",
             "size": "Dimensione",
             "items": "elementi"
+        },
+        "batchRename": {
+            "title": "Rinomina Multipla",
+            "mode": "Modalità Rinomina",
+            "findReplace": "Trova e Sostituisci",
+            "addPrefix": "Aggiungi Prefisso",
+            "addSuffix": "Aggiungi Suffisso",
+            "sequential": "Sequenziale",
+            "find": "Trova",
+            "findPlaceholder": "Testo da cercare...",
+            "replaceWith": "Sostituisci con",
+            "replacePlaceholder": "Testo sostitutivo...",
+            "caseSensitive": "Maiuscole/minuscole",
+            "prefix": "Prefisso",
+            "prefixPlaceholder": "es. backup_",
+            "suffix": "Suffisso (prima dell'estensione)",
+            "suffixPlaceholder": "es. _v2",
+            "baseName": "Nome base",
+            "startNumber": "Inizia da",
+            "padding": "Cifre",
+            "preview": "Anteprima",
+            "previewChanges": "Anteprima Modifiche",
+            "oldName": "Nome Attuale",
+            "newName": "Nuovo Nome",
+            "noChange": "(nessuna modifica)",
+            "conflictWarning": "Alcuni file avrebbero lo stesso nome. Modifica il pattern.",
+            "apply": "Applica"
+        },
+        "compress": {
+            "title": "[NEEDS TRANSLATION] Compress Files",
+            "archiveName": "[NEEDS TRANSLATION] Archive Name",
+            "format": "[NEEDS TRANSLATION] Format",
+            "level": "[NEEDS TRANSLATION] Compression Level",
+            "password": "[NEEDS TRANSLATION] Password (optional, AES-256)",
+            "passwordHint": "[NEEDS TRANSLATION] Leave empty for no encryption",
+            "files": "[NEEDS TRANSLATION] files",
+            "folders": "[NEEDS TRANSLATION] folders",
+            "compress": "[NEEDS TRANSLATION] Compress",
+            "store": "[NEEDS TRANSLATION] Store (no compression)",
+            "fast": "[NEEDS TRANSLATION] Fast",
+            "normal": "[NEEDS TRANSLATION] Normal",
+            "maximum": "[NEEDS TRANSLATION] Maximum"
         }
     }
 }

@@ -98,6 +98,40 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles }: UseOverwriteCheck
             }
             return { action: 'rename', newName };
           }
+
+          // === SMART SYNC OPTIONS ===
+          // Compare timestamps and sizes for intelligent conflict resolution
+          const destDate = destFile.modified ? new Date(destFile.modified).getTime() : 0;
+          const sourceDate = sourceModified?.getTime() || 0;
+          const TOLERANCE_MS = 1000; // 1 second tolerance for timestamp comparison
+
+          if (fileExistsAction === 'overwrite_if_newer') {
+            // Overwrite only if source file is more recent (with tolerance)
+            if (sourceDate > destDate + TOLERANCE_MS) {
+              return { action: 'overwrite' };
+            }
+            return { action: 'skip' };
+          }
+
+          if (fileExistsAction === 'overwrite_if_different') {
+            // Overwrite if either date OR size differs
+            const dateDiffers = Math.abs(sourceDate - destDate) > TOLERANCE_MS;
+            const sizeDiffers = sourceSize !== (destFile.size || 0);
+            if (dateDiffers || sizeDiffers) {
+              return { action: 'overwrite' };
+            }
+            return { action: 'skip' };
+          }
+
+          if (fileExistsAction === 'skip_if_identical') {
+            // Skip only if BOTH date and size are the same (within tolerance)
+            const dateSame = Math.abs(sourceDate - destDate) <= TOLERANCE_MS;
+            const sizeSame = sourceSize === (destFile.size || 0);
+            if (dateSame && sizeSame) {
+              return { action: 'skip' };
+            }
+            return { action: 'overwrite' };
+          }
         }
       }
     } catch (e) {

@@ -42,6 +42,7 @@ import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
+import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
@@ -51,7 +52,7 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, Unlock, Server, XCircle, History, Users, FolderSync
+  Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut
 } from 'lucide-react';
 
 // Utilities
@@ -159,6 +160,12 @@ const App: React.FC = () => {
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean } | null>(null);
+  // Inline rename state: tracks which file is being renamed directly in the list
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
+  const [inlineRenameValue, setInlineRenameValue] = useState('');
+  const inlineRenameRef = useRef<HTMLInputElement>(null);
+  const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
@@ -389,16 +396,16 @@ const App: React.FC = () => {
       setActivePanel(p => p === 'remote' ? 'local' : 'remote');
     },
 
-    // F2: rename selected file
+    // F2: rename selected file (inline)
     'F2': () => {
       if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
         const name = Array.from(selectedRemoteFiles)[0];
         const file = remoteFiles.find(f => f.name === name);
-        if (file) renameFile(file.path, file.name, true);
+        if (file && file.name !== '..') startInlineRename(file.path, file.name, true);
       } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
         const name = Array.from(selectedLocalFiles)[0];
         const file = localFiles.find(f => f.name === name);
-        if (file) renameFile(file.path, file.name, false);
+        if (file && file.name !== '..') startInlineRename(file.path, file.name, false);
       }
     },
 
@@ -2377,6 +2384,144 @@ const App: React.FC = () => {
     });
   };
 
+  // Inline rename: start editing directly in the file list
+  const startInlineRename = (path: string, name: string, isRemote: boolean) => {
+    if (name === '..') return;
+    setInlineRename({ path, name, isRemote });
+    setInlineRenameValue(name);
+    // Focus input after render
+    setTimeout(() => {
+      if (inlineRenameRef.current) {
+        inlineRenameRef.current.focus();
+        // Select filename without extension
+        const dotIndex = name.lastIndexOf('.');
+        if (dotIndex > 0) {
+          inlineRenameRef.current.setSelectionRange(0, dotIndex);
+        } else {
+          inlineRenameRef.current.select();
+        }
+      }
+    }, 10);
+  };
+
+  // Inline rename: commit the rename
+  const commitInlineRename = async () => {
+    if (!inlineRename) return;
+    const { path, name, isRemote } = inlineRename;
+    const newName = inlineRenameValue.trim();
+
+    // Cancel if empty or unchanged
+    if (!newName || newName === name) {
+      setInlineRename(null);
+      return;
+    }
+
+    const logId = humanLog.logStart('RENAME', { oldname: name, newname: newName });
+    try {
+      const parentDir = path.substring(0, path.lastIndexOf('/'));
+      const newPath = parentDir + '/' + newName;
+
+      if (isRemote) {
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const isProvider = !!protocol && isNonFtpProvider(protocol);
+
+        if (isProvider) {
+          await invoke('provider_rename', { from: path, to: newPath });
+        } else {
+          await invoke('rename_remote_file', { from: path, to: newPath });
+        }
+        await loadRemoteFiles();
+      } else {
+        await invoke('rename_local_file', { from: path, to: newPath });
+        await loadLocalFiles(currentLocalPath);
+      }
+      humanLog.logSuccess('RENAME', { oldname: name, newname: newName }, logId);
+      notify.success(t('toast.renamed'), newName);
+    } catch (error) {
+      humanLog.logError('RENAME', { oldname: name, newname: newName }, logId);
+      notify.error(t('toast.renameFail'), String(error));
+    }
+    setInlineRename(null);
+  };
+
+  // Inline rename: cancel and close
+  const cancelInlineRename = () => {
+    setInlineRename(null);
+  };
+
+  // Inline rename: handle keyboard
+  const handleInlineRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitInlineRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelInlineRename();
+    }
+  };
+
+  // Batch rename handler for multiple selected files
+  const handleBatchRename = async (renames: Map<string, string>) => {
+    const isRemote = batchRenameDialog?.isRemote ?? true;
+    const logId = humanLog.logStart('RENAME', {
+      count: renames.size,
+      message: `Batch rename (${isRemote ? 'remote' : 'local'})`
+    });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const [oldPath, newName] of renames) {
+      try {
+        const parentDir = oldPath.substring(0, oldPath.lastIndexOf('/'));
+        const newPath = parentDir + '/' + newName;
+
+        if (isRemote) {
+          const activeSession = sessions.find(s => s.id === activeSessionId);
+          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+          const isProvider = !!protocol && isNonFtpProvider(protocol);
+
+          if (isProvider) {
+            await invoke('provider_rename', { from: oldPath, to: newPath });
+          } else {
+            await invoke('rename_remote_file', { from: oldPath, to: newPath });
+          }
+        } else {
+          await invoke('rename_local_file', { from: oldPath, to: newPath });
+        }
+        successCount++;
+      } catch (error) {
+        console.error(`[BatchRename] Failed to rename ${oldPath}:`, error);
+        errorCount++;
+      }
+    }
+
+    // Refresh file list
+    if (isRemote) {
+      await loadRemoteFiles();
+    } else {
+      await loadLocalFiles(currentLocalPath);
+    }
+
+    // Log and notify
+    if (errorCount === 0) {
+      humanLog.logSuccess('RENAME', { count: successCount }, logId);
+      notify.success(
+        t('toast.batchRenameSuccess') || 'Batch rename complete',
+        `${successCount} ${t('browser.files') || 'files'}`
+      );
+    } else {
+      humanLog.logError('RENAME', { count: successCount, message: `${errorCount} failed` }, logId);
+      notify.warning(
+        t('toast.batchRenamePartial') || 'Batch rename completed with errors',
+        `${successCount} renamed, ${errorCount} failed`
+      );
+    }
+
+    setBatchRenameDialog(null);
+  };
+
   const createFolder = (isRemote: boolean) => {
     setInputDialog({
       title: 'New Folder',
@@ -2443,6 +2588,16 @@ const App: React.FC = () => {
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
+      ...(count > 1 ? [{
+        label: t('batchRename.title') || 'Batch Rename',
+        icon: <Replace size={14} />,
+        action: () => {
+          const selectedFiles = remoteFiles
+            .filter(f => selection.has(f.name))
+            .map(f => ({ name: f.name, path: f.path, isDir: f.is_dir }));
+          setBatchRenameDialog({ files: selectedFiles, isRemote: true });
+        }
+      }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
@@ -2624,6 +2779,16 @@ const App: React.FC = () => {
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1 },
+      ...(count > 1 ? [{
+        label: t('batchRename.title') || 'Batch Rename',
+        icon: <Replace size={14} />,
+        action: () => {
+          const selectedFiles = localFiles
+            .filter(f => selection.has(f.name))
+            .map(f => ({ name: f.name, path: f.path, isDir: f.is_dir }));
+          setBatchRenameDialog({ files: selectedFiles, isRemote: false });
+        }
+      }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
           name: file.name,
@@ -2790,6 +2955,16 @@ const App: React.FC = () => {
       });
     }
 
+    // Cryptomator vault option for folders (legacy format support)
+    if (file.is_dir && count === 1) {
+      items.push({
+        label: t('cryptomator.openAsVault') || 'Open as Cryptomator Vault',
+        icon: <Lock size={14} className="text-emerald-500" />,
+        action: () => setShowCryptomatorBrowser(true),
+        divider: true
+      });
+    }
+
     contextMenu.show(e, items);
   };
 
@@ -2932,6 +3107,15 @@ const App: React.FC = () => {
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(null)} />}
       {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
+      {batchRenameDialog && (
+        <BatchRenameDialog
+          isOpen={true}
+          files={batchRenameDialog.files}
+          isRemote={batchRenameDialog.isRemote}
+          onConfirm={handleBatchRename}
+          onClose={() => setBatchRenameDialog(null)}
+        />
+      )}
       {propertiesDialog && (
         <PropertiesDialog
           file={propertiesDialog}
@@ -3106,6 +3290,18 @@ const App: React.FC = () => {
               >
                 <Heart size={18} className="fill-current" />
               </button>
+              {/* Separator */}
+              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+              {/* AeroVault */}
+              <button
+                onClick={() => setShowVaultPanel(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="AeroVault - Military-Grade Encryption"
+              >
+                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
+              </button>
+              {/* Separator */}
+              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
               {/* Quick System Menu Bar Toggle */}
               <button
                 onClick={async () => {
@@ -3118,22 +3314,9 @@ const App: React.FC = () => {
               >
                 <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
               </button>
-              <button
-                onClick={() => setShowVaultPanel(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="AeroVault"
-              >
-                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
-              </button>
-              <button
-                onClick={() => setShowCryptomatorBrowser(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="Cryptomator"
-              >
-                <Lock size={18} className="text-emerald-500 dark:text-emerald-400" />
-              </button>
+              {/* Theme toggle */}
               <ThemeToggle theme={theme} setTheme={setTheme} />
-              {/* Settings button - always visible */}
+              {/* Settings button */}
               <button
                 onClick={() => setShowSettingsPanel(true)}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -3143,7 +3326,7 @@ const App: React.FC = () => {
               </button>
               {isConnected ? (
                 <button onClick={disconnectFromFtp} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm hover:shadow-md flex items-center gap-2">
-                  <X size={16} /> {t('common.disconnect')}
+                  <LogOut size={16} /> {t('common.disconnect')}
                 </button>
               ) : !showConnectionScreen && (
                 <button
@@ -3672,7 +3855,7 @@ const App: React.FC = () => {
                           <SortableHeader label="Name" field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                           <SortableHeader label="Size" field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                           <SortableHeader label="Type" field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Perms</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Perms</th>
                           <SortableHeader label="Modified" field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                         </tr>
                       </thead>
@@ -3688,7 +3871,7 @@ const App: React.FC = () => {
                           </td>
                           <td className="px-4 py-2 text-xs text-gray-400">—</td>
                           <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>
-                          <td className="px-4 py-2 text-xs text-gray-400">—</td>
+                          <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>
                           <td className="px-4 py-2 text-xs text-gray-400">—</td>
                         </tr>
                         {sortedRemoteFiles.map((file, i) => (
@@ -3740,13 +3923,36 @@ const App: React.FC = () => {
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
                               {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
-                              {file.name}
+                              {inlineRename?.path === file.path && inlineRename?.isRemote ? (
+                                <input
+                                  ref={inlineRenameRef}
+                                  type="text"
+                                  value={inlineRenameValue}
+                                  onChange={(e) => setInlineRenameValue(e.target.value)}
+                                  onKeyDown={handleInlineRenameKeyDown}
+                                  onBlur={commitInlineRename}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="px-1 py-0.5 text-sm bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none min-w-[120px]"
+                                />
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onClick={(e) => {
+                                    if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
+                                      e.stopPropagation();
+                                      startInlineRename(file.path, file.name, true);
+                                    }
+                                  }}
+                                >
+                                  {file.name}
+                                </span>
+                              )}
                               {lockedFiles.has(file.path) && <span title="Locked"><Lock size={12} className="text-orange-500" /></span>}
                               {getSyncBadge(file.path, file.modified || undefined, false)}
                             </td>
                             <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>
                             <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
-                            <td className="px-3 py-2 text-xs text-gray-500 font-mono" title={file.permissions || undefined}>{file.permissions || '-'}</td>
+                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>
                             <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>
                           </tr>
                         ))}
@@ -3831,7 +4037,30 @@ const App: React.FC = () => {
                               {getFileIcon(file.name).icon}
                             </div>
                           )}
-                          <span className="file-grid-name">{file.name}</span>
+                          {inlineRename?.path === file.path && inlineRename?.isRemote ? (
+                            <input
+                              ref={inlineRenameRef}
+                              type="text"
+                              value={inlineRenameValue}
+                              onChange={(e) => setInlineRenameValue(e.target.value)}
+                              onKeyDown={handleInlineRenameKeyDown}
+                              onBlur={commitInlineRename}
+                              onClick={(e) => e.stopPropagation()}
+                              className="file-grid-name px-1 bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none text-center"
+                            />
+                          ) : (
+                            <span
+                              className="file-grid-name cursor-text"
+                              onClick={(e) => {
+                                if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
+                                  e.stopPropagation();
+                                  startInlineRename(file.path, file.name, true);
+                                }
+                              }}
+                            >
+                              {file.name}
+                            </span>
+                          )}
                           {!file.is_dir && file.size && (
                             <span className="file-grid-size">{formatBytes(file.size)}</span>
                           )}
@@ -4023,12 +4252,35 @@ const App: React.FC = () => {
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
                               {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
-                              {file.name}
+                              {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
+                                <input
+                                  ref={inlineRenameRef}
+                                  type="text"
+                                  value={inlineRenameValue}
+                                  onChange={(e) => setInlineRenameValue(e.target.value)}
+                                  onKeyDown={handleInlineRenameKeyDown}
+                                  onBlur={commitInlineRename}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="px-1 py-0.5 text-sm bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none min-w-[120px]"
+                                />
+                              ) : (
+                                <span
+                                  className="cursor-text"
+                                  onClick={(e) => {
+                                    if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name) && file.name !== '..') {
+                                      e.stopPropagation();
+                                      startInlineRename(file.path, file.name, false);
+                                    }
+                                  }}
+                                >
+                                  {file.name}
+                                </span>
+                              )}
                               {getSyncBadge(file.path, file.modified || undefined, true)}
                             </td>
                             <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>
                             <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
-                            <td className="px-4 py-2 text-xs text-gray-500">{formatDate(file.modified)}</td>
+                            <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -4125,7 +4377,30 @@ const App: React.FC = () => {
                               {getFileIcon(file.name).icon}
                             </div>
                           )}
-                          <span className="file-grid-name">{file.name}</span>
+                          {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
+                            <input
+                              ref={inlineRenameRef}
+                              type="text"
+                              value={inlineRenameValue}
+                              onChange={(e) => setInlineRenameValue(e.target.value)}
+                              onKeyDown={handleInlineRenameKeyDown}
+                              onBlur={commitInlineRename}
+                              onClick={(e) => e.stopPropagation()}
+                              className="file-grid-name px-1 bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none text-center"
+                            />
+                          ) : (
+                            <span
+                              className="file-grid-name cursor-text"
+                              onClick={(e) => {
+                                if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name) && file.name !== '..') {
+                                  e.stopPropagation();
+                                  startInlineRename(file.path, file.name, false);
+                                }
+                              }}
+                            >
+                              {file.name}
+                            </span>
+                          )}
                           {!file.is_dir && file.size !== null && (
                             <span className="file-grid-size">{formatBytes(file.size)}</span>
                           )}

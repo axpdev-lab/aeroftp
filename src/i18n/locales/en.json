@@ -560,7 +560,9 @@
             "navSyncEnabled": "Navigation Sync Enabled",
             "syncingPaths": "Syncing: {remote} ↔ {local}",
             "failedCreateFolder": "Failed to create folder",
-            "generateShareLinkFailed": "Failed to generate share link"
+            "generateShareLinkFailed": "Failed to generate share link",
+            "batchRenameSuccess": "Batch rename complete",
+            "batchRenamePartial": "Batch rename completed with errors"
         },
         "about": {
             "tagline": "More than FTP. A complete developer toolkit.",
@@ -960,6 +962,14 @@
         "vault": {
             "title": "AeroVault",
             "description": "AeroVault lets you create AES-256 encrypted containers to securely store your files.",
+            "descriptionV2": "AeroVault v2 provides military-grade encryption with nonce misuse-resistant AES-256-GCM-SIV and optional cascade encryption.",
+            "securityLevel": "Security Level",
+            "securityStandard": "Standard",
+            "securityAdvanced": "Advanced",
+            "securityParanoid": "Paranoid",
+            "securityRecommended": "Recommended",
+            "v1Standard": "AeroVault v1 (Standard)",
+            "v2Advanced": "AeroVault v2 (Advanced Security)",
             "createNew": "Create Vault",
             "openExisting": "Open Vault",
             "description_label": "Description (optional)",
@@ -981,11 +991,14 @@
             "fileName": "Name",
             "fileSize": "Size",
             "fileActions": "Actions",
-            "files": "files"
+            "files": "files",
+            "modified": "Modified"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
             "description": "Open a Cryptomator vault (format 8) to browse and decrypt files.",
+            "readOnly": "Read-only mode — vault creation coming in v2.1",
+            "openAsVault": "Open as Cryptomator Vault",
             "selectFolder": "Select Vault Folder...",
             "password": "Vault Password",
             "unlock": "Unlock Vault",
@@ -995,6 +1008,33 @@
             "name": "Name",
             "size": "Size",
             "items": "items"
+        },
+        "batchRename": {
+            "title": "Batch Rename",
+            "mode": "Rename Mode",
+            "findReplace": "Find & Replace",
+            "addPrefix": "Add Prefix",
+            "addSuffix": "Add Suffix",
+            "sequential": "Sequential",
+            "find": "Find",
+            "findPlaceholder": "Text to find...",
+            "replaceWith": "Replace with",
+            "replacePlaceholder": "Replacement text...",
+            "caseSensitive": "Case sensitive",
+            "prefix": "Prefix",
+            "prefixPlaceholder": "e.g., backup_",
+            "suffix": "Suffix (before extension)",
+            "suffixPlaceholder": "e.g., _v2",
+            "baseName": "Base name",
+            "startNumber": "Start at",
+            "padding": "Padding",
+            "preview": "Preview",
+            "previewChanges": "Preview Changes",
+            "oldName": "Old Name",
+            "newName": "New Name",
+            "noChange": "(no change)",
+            "conflictWarning": "Some files would have the same name. Please adjust the pattern.",
+            "apply": "Apply"
         }
     }
 }

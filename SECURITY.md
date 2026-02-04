@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.7.x   | Yes |
+| 1.8.x   | Yes |
+| 1.7.x   | Security fixes only |
 | 1.6.x   | Security fixes only |
-| 1.5.x   | Security fixes only |
-| < 1.5   | No  |
+| < 1.6   | No  |
 
 ## Security Architecture
 
@@ -72,18 +72,44 @@ Additional options:
 - **Automatic refresh** with 5-minute buffer before expiry
 - **Ephemeral callback port**: OS-assigned random port (not a fixed port)
 
-### Client-Side Encryption (v1.7.0)
+### Client-Side Encryption (v1.8.0)
 
-**AeroVault (.aerovault containers)**
+**AeroVault v2 (.aerovault containers) — Military-Grade Encryption**
+
+AeroVault v2 implements a state-of-the-art encryption stack:
+
+| Component | Algorithm | Notes |
+| --------- | --------- | ----- |
+| **Content encryption** | AES-256-GCM-SIV (RFC 8452) | Nonce misuse-resistant — even nonce reuse doesn't compromise confidentiality |
+| **Key wrapping** | AES-256-KW (RFC 3394) | Built-in integrity check on unwrap |
+| **Filename encryption** | AES-256-SIV | Deterministic, hides file names |
+| **Key derivation** | Argon2id | 128 MiB memory, 4 iterations, 4 parallelism |
+| **Header integrity** | HMAC-SHA512 | 512-bit MAC, quantum-resistance margin |
+| **Cascade mode** | ChaCha20-Poly1305 | Optional double encryption layer |
+| **Chunk size** | 64 KB | Per-chunk random nonce + auth tag |
+| **Container format** | Binary | 512-byte header, encrypted manifest, chunked data |
+
+**Security advantages over Cryptomator:**
+
+| Feature | AeroVault v2 | Cryptomator |
+| ------- | ------------ | ----------- |
+| Nonce misuse resistance | Yes (GCM-SIV) | No (GCM) |
+| KDF memory | 128 MiB | 64-128 MiB |
+| KDF algorithm | Argon2id | scrypt |
+| Header integrity hash | SHA-512 | SHA-256 |
+| Cascade encryption | Optional | No |
+
+**AeroVault v1 (legacy)**
 
 | Parameter | Value |
 | --------- | ----- |
 | Algorithm | AES-256-GCM |
 | Key derivation | Argon2id (64 MB, 3 iterations, 4 threads) |
 | Nonce | 12 bytes random per file entry |
-| Container format | Binary with magic bytes, version header, encrypted entries |
 
-**Cryptomator (format 8 vaults)**
+**Cryptomator (format 8 vaults) — Legacy Support**
+
+Accessible via folder context menu "Open as Cryptomator Vault":
 
 | Component | Algorithm |
 | --------- | --------- |
@@ -157,8 +183,8 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 | Feature | Description | Why It Matters |
 | ------- | ----------- | -------------- |
-| **AeroVault** | AES-256-GCM containers with Argon2id KDF for encrypting files at rest | No competitor offers client-side encrypted containers |
-| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM | Only Cyberduck also supports this; FileZilla, WinSCP do not |
+| **AeroVault v2** | Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade | Advanced encryption with nonce misuse resistance and cascade mode |
+| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) | Only Cyberduck also supports this; FileZilla, WinSCP do not |
 | **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF when OS keyring is unavailable | Competitors store credentials in plaintext config files when keyring fails |
 | **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
 | **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
@@ -191,4 +217,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.7.0 - February 2026*
+*AeroFTP v1.8.0 - 4 February 2026*

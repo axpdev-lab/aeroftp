@@ -63,9 +63,16 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 ### Cloud Storage Integration
 13 protocols, 30 presets in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking.
 
-### Encryption and Vaults (v1.7.0)
-- **AeroVault**: Create AES-256-GCM encrypted container files (.aerovault) with Argon2id key derivation. Add, remove, extract files with password protection
-- **Cryptomator**: Open and browse Cryptomator format 8 vaults. Decrypt and encrypt files with full scrypt + AES-SIV + AES-GCM support
+### Encryption and Vaults (v1.8.0)
+- **AeroVault v2**: Military-grade encrypted containers (.aerovault) with advanced security stack:
+  - *AES-256-GCM-SIV* (RFC 8452): Nonce misuse-resistant content encryption — even nonce reuse doesn't compromise security
+  - *AES-256-KW* (RFC 3394): Key wrapping for master key protection with built-in integrity
+  - *AES-256-SIV*: Deterministic filename encryption — file names are hidden, not just content
+  - *Argon2id KDF*: 128 MiB memory / 4 iterations / 4 parallelism — exceeds OWASP 2024 high-security recommendations
+  - *HMAC-SHA512*: Header integrity verification — detects tampering before decryption
+  - *ChaCha20-Poly1305*: Optional cascade mode for defense-in-depth (double encryption)
+  - *64 KB chunks*: Optimal streaming performance with per-chunk authentication
+- **Cryptomator**: Open and browse Cryptomator format 8 vaults (legacy support via context menu). Decrypt and encrypt files with scrypt + AES-SIV + AES-GCM
 - **Archive Browser**: Browse contents of ZIP, 7z, TAR, and RAR archives in-app without extracting. Selective single-file extraction
 - **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
 
@@ -83,9 +90,12 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 ### Advanced File Management
 - **AeroFile Mode**: Local-only file manager with resizable preview panel showing image thumbnails, file info, and dimensions
 - **CompressDialog**: Unified compression UI with format selection, compression levels, password, and file info
+- **Smart Sync** (v1.8.0): Intelligent conflict resolution — overwrite if newer, overwrite if different, skip if identical (timestamp tolerance 1s)
+- **Batch Rename** (v1.8.0): Rename multiple files with Find/Replace, Add Prefix, Add Suffix, or Sequential numbering — live preview with conflict detection
+- **Inline Rename** (v1.8.0): Click on filename or press F2 to rename directly in file list
 - **Smart Overwrite Dialog**: File conflict resolution with comparison view
 - **Properties Dialog**: Detailed metadata with checksum calculation (MD5/SHA-256)
-- **Keyboard Shortcuts**: 11 shortcuts including F2 rename, Delete, Ctrl+C/V, Tab panel switch
+- **Keyboard Shortcuts**: 12 shortcuts including F2 inline rename, Delete, Ctrl+C/V, Tab panel switch
 - **Drag and Drop**: Cross-panel drag for upload/download, intra-panel drag for move
 - **List/Grid view** with thumbnails, sortable columns (name, size, type, date), **media player**
 
@@ -95,9 +105,9 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 - **AeroAgent** AI assistant panel with tool approval workflow
 
 ### Security
+- **AeroVault v2**: Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-256-KW key wrapping, AES-SIV filename encryption, Argon2id (128 MiB), HMAC-SHA512 header integrity, optional ChaCha20 cascade
 - **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager
-- **AeroVault**: AES-256-GCM encrypted containers with Argon2id key derivation
-- **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM)
+- **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
 - **Encrypted vault fallback**: AES-256-GCM with Argon2id when keyring unavailable
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
