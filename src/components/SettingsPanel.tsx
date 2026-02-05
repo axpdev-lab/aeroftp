@@ -10,6 +10,7 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { useTranslation } from '../i18n';
+import { logger } from '../utils/logger';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -66,14 +67,7 @@ const getServerDisplayInfo = (server: ServerProfile) => {
     return `${server.username}@${server.host}:${server.port}`;
 };
 
-interface UpdateInfo {
-    has_update: boolean;
-    latest_version: string | null;
-    download_url: string | null;
-    current_version: string;
-    install_format: string;
-}
-
+import type { UpdateInfo } from '../hooks/useAutoUpdate';
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 
@@ -180,16 +174,16 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     const [isChecking, setIsChecking] = useState(false);
 
     const handleCheck = async () => {
-        console.log('[CheckUpdateButton] handleCheck called');
+        logger.debug('[CheckUpdateButton] handleCheck called');
         setIsChecking(true);
 
         // Log start of update check to Activity Log
         onActivityLog?.logRaw('activity.update_checking', 'UPDATE', { action: 'manual_check' }, 'running');
 
         try {
-            console.log('[CheckUpdateButton] Invoking check_update...');
+            logger.debug('[CheckUpdateButton] Invoking check_update...');
             const info = await invoke<UpdateInfo>('check_update');
-            console.log('[CheckUpdateButton] Result:', info);
+            logger.debug('[CheckUpdateButton] Result:', info);
 
             if (info.has_update) {
                 // Log update available to Activity Log

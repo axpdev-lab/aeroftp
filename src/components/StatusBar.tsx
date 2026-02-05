@@ -1,14 +1,8 @@
 import * as React from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug } from 'lucide-react';
 import { useTranslation } from '../i18n';
-
-interface UpdateInfo {
-    has_update: boolean;
-    latest_version?: string;
-    current_version?: string;
-    download_url?: string;
-    install_format?: string;
-}
+import { formatBytes } from '../utils/formatters';
+import type { UpdateInfo } from '../hooks/useAutoUpdate';
 
 interface StorageQuota {
     used: number;
@@ -68,14 +62,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleActivityLog,
 }) => {
     const t = useTranslation();
-
-    const formatBytes = (bytes: number): string => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-    };
 
     return (
         <div className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">

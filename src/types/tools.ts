@@ -68,7 +68,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'path', type: 'string', description: 'Local directory path', required: true },
         ],
-        dangerLevel: 'safe',
+        dangerLevel: 'medium',
     },
     {
         name: 'local_read',
@@ -76,7 +76,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'path', type: 'string', description: 'Local file path', required: true },
         ],
-        dangerLevel: 'safe',
+        dangerLevel: 'medium',
     },
     {
         name: 'local_search',
@@ -85,7 +85,7 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'path', type: 'string', description: 'Directory to search', required: true },
             { name: 'pattern', type: 'string', description: 'Search pattern (e.g. "*.txt")', required: true },
         ],
-        dangerLevel: 'safe',
+        dangerLevel: 'medium',
     },
 
     // Medium — requires confirmation
@@ -239,7 +239,7 @@ ${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}
   Parameters: ${t.parameters.map(p => `${p.name} (${p.type}${p.required ? ', required' : ''})`).join(', ')}`).join('\n\n')}
 
 RULES:
-1. Safe tools (remote_list, remote_read, remote_info, remote_search, local_list, local_read, local_search) execute automatically.
+1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically. Local filesystem tools require user confirmation.
 2. Medium/high risk tools require user confirmation. Always explain what you'll do first.
 3. Never delete files without explicit user request.
 

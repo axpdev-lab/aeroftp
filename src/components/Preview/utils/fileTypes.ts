@@ -6,6 +6,7 @@
  */
 
 import { PreviewCategory } from '../types';
+import { formatBytes } from '../../../utils/formatters';
 
 // File extension mappings
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'];
@@ -92,25 +93,38 @@ export function getMimeType(filename: string): string {
         mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
         avi: 'video/x-msvideo', mov: 'video/quicktime',
         // Documents
-        pdf: 'application/pdf',
-        // Text
+        pdf: 'application/pdf', doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xls: 'application/vnd.ms-excel',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ppt: 'application/vnd.ms-powerpoint',
+        pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        rtf: 'application/rtf', csv: 'text/csv',
+        // Text / Code
         txt: 'text/plain', md: 'text/markdown', html: 'text/html',
-        css: 'text/css', js: 'text/javascript', json: 'application/json',
+        css: 'text/css', js: 'application/javascript', ts: 'application/typescript',
+        json: 'application/json', xml: 'application/xml',
+        yaml: 'application/yaml', yml: 'application/yaml',
+        py: 'text/x-python', rb: 'text/x-ruby', php: 'application/x-php',
+        java: 'text/x-java', c: 'text/x-c', cpp: 'text/x-c++',
+        h: 'text/x-c', rs: 'text/x-rust', go: 'text/x-go',
+        sh: 'application/x-sh', bash: 'application/x-sh',
+        // Archives
+        zip: 'application/zip', rar: 'application/x-rar-compressed',
+        tar: 'application/x-tar', gz: 'application/gzip',
+        '7z': 'application/x-7z-compressed', bz2: 'application/x-bzip2',
+        // Packages
+        exe: 'application/x-msdownload', dmg: 'application/x-apple-diskimage',
+        deb: 'application/x-deb', rpm: 'application/x-rpm',
     };
 
     return mimeMap[ext] || 'application/octet-stream';
 }
 
 /**
- * Format file size for display
+ * Format file size for display (delegates to shared formatBytes)
  */
-export function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+export const formatFileSize = formatBytes;
 
 /**
  * Format duration (seconds) for display

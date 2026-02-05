@@ -8,6 +8,7 @@ import {
     AIProvider, AIModel, AISettings, AIProviderType,
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
 } from '../../types/ai';
+import { logger } from '../../utils/logger';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -241,7 +242,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         providers: parsed.providers.map((p: AIProvider) => ({ ...p, apiKey: undefined })),
                     };
                     localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
-                    console.log('[AI Settings] Migrated API keys from localStorage to OS Keyring');
+                    logger.debug('[AI Settings] Migrated API keys from localStorage to OS Keyring');
                 }
             } catch (e) {
                 console.error('Failed to parse AI settings:', e);

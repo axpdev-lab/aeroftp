@@ -534,7 +534,7 @@ pub async fn execute_ai_tool(
 
             // Write back via temp file + upload
             let tmp_path = std::env::temp_dir()
-                .join(format!("aeroftp_edit_{}", std::process::id()))
+                .join(format!("aeroftp_{}", uuid::Uuid::new_v4()))
                 .to_string_lossy()
                 .to_string();
             std::fs::write(&tmp_path, &new_content)

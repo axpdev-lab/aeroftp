@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.8] - 2026-02-05
+
+### Security Hardening, Vision AI & Agent Intelligence
+
+Full security audit remediation (6 findings, all fixed), vision/multimodal AI, autonomous panel refresh, and code quality improvements.
+
+#### Security
+
+- **XSS prevention**: AI chat content is now HTML-escaped before markdown rendering — pipeline is `escapeHtml -> renderMarkdown -> formatToolCallDisplay(escapeChipHtml)`. No raw AI HTML reaches the DOM
+- **CSP hardened**: Removed `unsafe-inline` and `unsafe-eval` from `script-src` in Content Security Policy
+- **ZIP Slip fixed**: ZIP extraction now rejects entries containing `..` path traversal, absolute paths, and Windows drive prefixes
+- **AI tool auto-execution restricted**: `local_read`, `local_list`, `local_search` changed from `safe` to `medium` — now require user confirmation before reading local files
+- **Asset protocol scope narrowed**: Reduced from `/**` (entire filesystem) to `$HOME/**`, `$APPDATA/**`, `$TEMP/**`
+- **OAuth token fallback secured**: When vault is locked, tokens stored in memory only (never written to disk unencrypted). Vault auto-initializes on first OAuth login. `delete_tokens()` clears vault, memory cache, and all legacy files
+- **Predictable temp file fixed**: `remote_edit` temp files now use UUID v4 names instead of PID-based patterns
+- **Tool chip injection fixed**: Dynamic values in AI tool chip HTML are escaped via `escapeChipHtml()` before interpolation. Tool chips use Tailwind classes instead of inline styles, Unicode instead of inline SVG
+
+#### Added
+
+- **Vision/Multimodal AI**: Attach images to AI chat messages for analysis by vision-capable models (GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, Ollama llava)
+  - **Image picker**: Select JPEG, PNG, GIF, WebP images from filesystem via native dialog
+  - **Clipboard paste**: Paste screenshots or copied images directly into chat
+  - **Preview strip**: Attached images shown as thumbnails above the input area with remove buttons
+  - **Auto-resize**: Images larger than 2048px automatically downscaled to reduce token cost
+  - **Validation**: Maximum 5 images per message, 20 MB per image, supported types enforced
+  - **Provider-specific formats**: OpenAI image_url, Anthropic base64 source, Gemini inlineData, Ollama images array
+  - **Backwards-compatible**: Text-only messages work identically; images field is optional (serde skip_serializing_if)
+  - **No persistence bloat**: Images are not saved in chat history — only displayed during the current session
+- **Agent panel refresh**: File panels automatically refresh after AeroAgent executes mutation tools (create, delete, rename, upload, download, edit, archive) — no more manual Ctrl+R needed
+  - **15 mutation tools mapped**: remote_delete, remote_rename, remote_mkdir, remote_upload, remote_edit, upload_files, download_files, remote_download, local_write, local_delete, local_rename, local_mkdir, local_edit, archive_create, archive_extract
+  - **Target-aware**: Remote mutations refresh remote panel, local mutations refresh local panel, archive operations refresh both
+  - **300ms debounce**: Small delay ensures filesystem operations complete before refresh
+
+#### Changed
+
+- **Console.log gating**: 131 console.log statements across 11 files replaced with debug-gated `logger` utility — debug/info are no-ops in production builds, warn/error always active
+- **Duplicate consolidation**: Unified `formatBytes` (12 implementations → 1), `formatSize` (6 → 1), `getMimeType` (2 → 1), `UpdateInfo` (3 → 1), `getFileExtension` (2 → 1) into shared utility modules
+- **ChatMessage struct**: Extended with optional `images: Vec<ImageAttachment>` field for vision support (Rust backend)
+- **AI streaming**: All 4 streaming functions (OpenAI, Anthropic, Gemini, Ollama) use shared helper methods for vision-aware message serialization
+
+---
+
 ## [1.8.7] - 2026-02-05
 
 ### Ubuntu Verification, UX Polish & macOS Audit

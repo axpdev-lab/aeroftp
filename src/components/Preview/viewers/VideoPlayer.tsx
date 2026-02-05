@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ViewerBaseProps, PlaybackState } from '../types';
 import { formatDuration } from '../utils/fileTypes';
+import { logger } from '../../../utils/logger';
 
 interface VideoPlayerProps extends ViewerBaseProps {
     className?: string;
@@ -53,7 +54,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // Video source URL
     const videoSrc = file.blobUrl || file.content as string || '';
-    console.log('[VideoPlayer] Source URL:', videoSrc, 'blobUrl:', file.blobUrl);
+    logger.debug('[VideoPlayer] Source URL:', videoSrc, 'blobUrl:', file.blobUrl);
 
     // Auto-hide controls after 3 seconds of inactivity
     const resetControlsTimeout = useCallback(() => {

@@ -31,6 +31,8 @@ interface DevToolsV2Props {
     serverUser?: string;
     /** Callback when maximize state changes */
     onMaximizeChange?: (maximized: boolean) => void;
+    /** Callback to refresh file panels after AI tool mutations */
+    onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
 }
 
 type PanelVisibility = {
@@ -62,6 +64,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     serverPort,
     serverUser,
     onMaximizeChange,
+    onFileMutation,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(window.innerWidth);
@@ -333,7 +336,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                     <span className={`text-xs ${theme.text}`}>AI Assistant</span>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} />
+                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} onFileMutation={onFileMutation} />
                                 </div>
                             </div>
                         )}

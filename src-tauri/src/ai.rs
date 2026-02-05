@@ -17,11 +17,23 @@ pub enum AIProviderType {
     Custom,
 }
 
+// Image attachment for vision models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageAttachment {
+    /// Base64-encoded image data (no data URI prefix)
+    pub data: String,
+    /// MIME type: "image/jpeg", "image/png", "image/gif", "image/webp"
+    pub media_type: String,
+}
+
 // Chat message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    /// Optional image attachments for vision-capable models
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<ImageAttachment>>,
 }
 
 // AI Request from frontend
@@ -74,6 +86,77 @@ pub struct AIToolCall {
 pub struct AIToolResult {
     pub tool_call_id: String,
     pub content: String,
+}
+
+/// Helper methods for provider-specific message serialization (vision support)
+impl ChatMessage {
+    /// OpenAI-compatible content: string or array with image_url blocks
+    pub fn to_openai_content(&self) -> serde_json::Value {
+        match &self.images {
+            Some(images) if !images.is_empty() => {
+                let mut parts = vec![serde_json::json!({"type": "text", "text": self.content})];
+                for img in images {
+                    parts.push(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", img.media_type, img.data)
+                        }
+                    }));
+                }
+                serde_json::Value::Array(parts)
+            }
+            _ => serde_json::Value::String(self.content.clone()),
+        }
+    }
+
+    /// Anthropic content: string or array with image + text blocks
+    pub fn to_anthropic_content(&self) -> serde_json::Value {
+        match &self.images {
+            Some(images) if !images.is_empty() => {
+                let mut blocks: Vec<serde_json::Value> = images.iter().map(|img| {
+                    serde_json::json!({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img.media_type,
+                            "data": img.data,
+                        }
+                    })
+                }).collect();
+                blocks.push(serde_json::json!({"type": "text", "text": self.content}));
+                serde_json::Value::Array(blocks)
+            }
+            _ => serde_json::Value::String(self.content.clone()),
+        }
+    }
+
+    /// Gemini parts: text + inlineData parts
+    pub fn to_gemini_parts(&self) -> Vec<serde_json::Value> {
+        let mut parts = vec![serde_json::json!({"text": self.content})];
+        if let Some(images) = &self.images {
+            for img in images {
+                parts.push(serde_json::json!({
+                    "inlineData": {
+                        "mimeType": img.media_type,
+                        "data": img.data,
+                    }
+                }));
+            }
+        }
+        parts
+    }
+
+    /// Ollama message: content + optional images array
+    pub fn to_ollama_json(&self) -> serde_json::Value {
+        let mut msg = serde_json::json!({"role": self.role, "content": self.content});
+        if let Some(images) = &self.images {
+            if !images.is_empty() {
+                let b64_list: Vec<&str> = images.iter().map(|img| img.data.as_str()).collect();
+                msg["images"] = serde_json::json!(b64_list);
+            }
+        }
+        msg
+    }
 }
 
 // Error type
@@ -134,10 +217,19 @@ mod gemini {
     pub struct GeminiPart {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub text: Option<String>,
+        #[serde(rename = "inlineData", skip_serializing_if = "Option::is_none")]
+        pub inline_data: Option<GeminiInlineData>,
         #[serde(rename = "functionCall", skip_serializing_if = "Option::is_none")]
         pub function_call: Option<GeminiFunctionCallPart>,
         #[serde(rename = "functionResponse", skip_serializing_if = "Option::is_none")]
         pub function_response: Option<GeminiFunctionResponsePart>,
+    }
+
+    #[derive(Serialize)]
+    pub struct GeminiInlineData {
+        #[serde(rename = "mimeType")]
+        pub mime_type: String,
+        pub data: String,
     }
 
     #[derive(Serialize)]
@@ -228,9 +320,30 @@ mod gemini {
         });
 
         let gemini_request = GeminiRequest {
-            contents: request.messages.iter().map(|m| GeminiContent {
-                role: if m.role == "user" { "user".to_string() } else { "model".to_string() },
-                parts: vec![GeminiPart { text: Some(m.content.clone()), function_call: None, function_response: None }],
+            contents: request.messages.iter().map(|m| {
+                let mut parts = vec![GeminiPart {
+                    text: Some(m.content.clone()),
+                    inline_data: None,
+                    function_call: None,
+                    function_response: None,
+                }];
+                if let Some(images) = &m.images {
+                    for img in images {
+                        parts.push(GeminiPart {
+                            text: None,
+                            inline_data: Some(GeminiInlineData {
+                                mime_type: img.media_type.clone(),
+                                data: img.data.clone(),
+                            }),
+                            function_call: None,
+                            function_response: None,
+                        });
+                    }
+                }
+                GeminiContent {
+                    role: if m.role == "user" { "user".to_string() } else { "model".to_string() },
+                    parts,
+                }
             }).collect(),
             generation_config: Some(GeminiGenerationConfig {
                 max_output_tokens: request.max_tokens,
@@ -312,8 +425,8 @@ mod openai_compat {
     #[derive(Serialize)]
     pub struct OpenAIMessage {
         pub role: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub content: Option<String>,
+        /// String for text-only, Array for multimodal (vision)
+        pub content: serde_json::Value,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub tool_call_id: Option<String>,
     }
@@ -399,10 +512,10 @@ mod openai_compat {
             );
         }
 
-        // Build messages, including tool results if present
+        // Build messages with vision support
         let mut messages: Vec<OpenAIMessage> = request.messages.iter().map(|m| OpenAIMessage {
             role: m.role.clone(),
-            content: Some(m.content.clone()),
+            content: m.to_openai_content(),
             tool_call_id: None,
         }).collect();
 
@@ -411,7 +524,7 @@ mod openai_compat {
             for r in results {
                 messages.push(OpenAIMessage {
                     role: "tool".to_string(),
-                    content: Some(r.content.clone()),
+                    content: serde_json::Value::String(r.content.clone()),
                     tool_call_id: Some(r.tool_call_id.clone()),
                 });
             }
@@ -494,7 +607,8 @@ mod anthropic {
     #[derive(Serialize)]
     pub struct AnthropicMessage {
         pub role: String,
-        pub content: String,
+        /// String for text-only, Array for multimodal (vision)
+        pub content: serde_json::Value,
     }
 
     #[derive(Serialize)]
@@ -552,7 +666,7 @@ mod anthropic {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| AnthropicMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: m.to_anthropic_content(),
             }).collect(),
             max_tokens: request.max_tokens.unwrap_or(4096),
             temperature: request.temperature,

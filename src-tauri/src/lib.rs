@@ -2569,9 +2569,18 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
                 .map_err(|e| format!("Failed to read file from archive: {}", e))?
         };
 
-        let outpath = std::path::Path::new(&actual_output).join(file.name());
+        // ZIP Slip protection: reject entries with traversal or absolute paths
+        let entry_name = file.name().to_string();
+        if entry_name.split('/').chain(entry_name.split('\\')).any(|c| c == "..")
+            || entry_name.starts_with('/')
+            || entry_name.starts_with('\\')
+            || (entry_name.len() > 2 && entry_name.as_bytes().get(1) == Some(&b':'))
+        {
+            continue;
+        }
+        let outpath = std::path::Path::new(&actual_output).join(&entry_name);
 
-        if file.name().ends_with('/') {
+        if entry_name.ends_with('/') {
             // Directory
             fs::create_dir_all(&outpath)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;

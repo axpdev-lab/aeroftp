@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Sparkles, Settings2, Mic, MicOff, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeftOpen, Copy, Check } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Settings2, Mic, MicOff, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeftOpen, Copy, Check, ImageIcon, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType, TaskType } from '../../types/ai';
@@ -10,11 +12,24 @@ import { ToolApproval } from './ToolApproval';
 import { Conversation, ConversationMessage, loadHistory, saveConversation, deleteConversation, createConversation } from '../../utils/chatHistory';
 import { useTranslation } from '../../i18n';
 
+// Vision constants
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_IMAGES = 5;
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const MAX_DIMENSION = 2048;
+
+interface VisionImage {
+    data: string;       // base64 (no data URI prefix)
+    mediaType: string;  // "image/jpeg" etc.
+    preview: string;    // "data:image/jpeg;base64,..." for local display
+}
+
 interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    images?: VisionImage[];
     modelInfo?: {
         modelName: string;
         providerName: string;
@@ -46,6 +61,8 @@ interface AIChatProps {
     serverPort?: number;
     /** Username for connection context */
     serverUser?: string;
+    /** Callback to refresh file panels after AI tool mutations */
+    onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
 }
 
 // Get provider icon based on type
@@ -124,7 +141,17 @@ interface SelectedModel {
     displayName: string;
 }
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser }) => {
+// Tool names that mutate the filesystem and should trigger a panel refresh
+const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
+    remote_delete: 'remote', remote_rename: 'remote', remote_mkdir: 'remote',
+    remote_upload: 'remote', remote_edit: 'remote', upload_files: 'remote',
+    download_files: 'local', remote_download: 'local',
+    local_write: 'local', local_delete: 'local', local_rename: 'local',
+    local_mkdir: 'local', local_edit: 'local',
+    archive_create: 'both', archive_extract: 'both',
+};
+
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation }) => {
     const t = useTranslation();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -140,12 +167,102 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
+    const [attachedImages, setAttachedImages] = useState<VisionImage[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const historyLoadedRef = useRef(false);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    // Resize image to max dimension using canvas
+    const resizeImage = (dataUrl: string, maxDim: number): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                if (img.width <= maxDim && img.height <= maxDim) {
+                    resolve(dataUrl);
+                    return;
+                }
+                const scale = Math.min(maxDim / img.width, maxDim / img.height);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                const ctx = canvas.getContext('2d')!;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.85));
+            };
+            img.src = dataUrl;
+        });
+    };
+
+    // Add an image from a data URL
+    const addImage = async (dataUrl: string, mediaType: string) => {
+        if (attachedImages.length >= MAX_IMAGES) return;
+
+        // Resize if needed
+        const resized = await resizeImage(dataUrl, MAX_DIMENSION);
+        const base64 = resized.split(',')[1] || resized;
+        const finalMediaType = resized.startsWith('data:image/jpeg') ? 'image/jpeg' : mediaType;
+
+        // Check size
+        const sizeBytes = Math.round(base64.length * 0.75);
+        if (sizeBytes > MAX_IMAGE_SIZE) return;
+
+        setAttachedImages(prev => [...prev, {
+            data: base64,
+            mediaType: finalMediaType,
+            preview: resized.startsWith('data:') ? resized : `data:${finalMediaType};base64,${base64}`,
+        }]);
+    };
+
+    // Pick image from filesystem
+    const handleImagePick = async () => {
+        if (attachedImages.length >= MAX_IMAGES) return;
+        try {
+            const selected = await open({
+                multiple: true,
+                filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
+            });
+            if (!selected) return;
+            const paths = Array.isArray(selected) ? selected : [selected];
+            for (const filePath of paths.slice(0, MAX_IMAGES - attachedImages.length)) {
+                const bytes = await readFile(filePath);
+                const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+                const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+                const mediaType = mimeMap[ext] || 'image/png';
+
+                // Convert Uint8Array to base64
+                let binary = '';
+                const len = bytes.length;
+                for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+                const base64 = btoa(binary);
+                const dataUrl = `data:${mediaType};base64,${base64}`;
+                await addImage(dataUrl, mediaType);
+            }
+        } catch { /* dialog cancelled */ }
+    };
+
+    // Handle clipboard paste for images
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/') && SUPPORTED_IMAGE_TYPES.includes(item.type)) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                if (!blob) continue;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result as string;
+                    const mediaType = item.type;
+                    addImage(dataUrl, mediaType);
+                };
+                reader.readAsDataURL(blob);
+                return; // Only handle first image
+            }
+        }
     };
 
     // Friendly tool labels for display
@@ -176,29 +293,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         archive_extract: 'Extracting archive',
     };
 
-    // Replace raw TOOL/ARGS blocks with styled chip (inline HTML)
-    const formatToolCallDisplay = (text: string): string => {
-        return text.replace(
-            /TOOL:\s*(\w+)\s*\n\s*ARGS:\s*(\{[^}]*\})/gi,
-            (_match, toolName: string, argsJson: string) => {
-                const label = toolLabels[toolName] || toolName;
-                let detail = '';
-                try {
-                    const args = JSON.parse(argsJson);
-                    const path = args.path || args.remote_path || args.local_path || '';
-                    if (path) detail = `<span style="opacity:0.7;margin-left:6px">${path}</span>`;
-                    if (args.local_path && args.remote_path) {
-                        detail = `<span style="opacity:0.7;margin-left:6px">${args.local_path} ↔ ${args.remote_path}</span>`;
-                    }
-                } catch { /* ignore */ }
-                return `<div style="display:inline-flex;align-items:center;gap:6px;background:#374151;border-radius:6px;padding:3px 10px;margin:4px 0;font-size:12px;border-left:3px solid #8b5cf6"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg><strong>${label}</strong>${detail}</div>`;
-            }
-        );
-    };
-
-    // Simple markdown renderer
+    // Simple markdown renderer with strict HTML sanitization.
+    // DOMPurify strips ALL raw HTML from AI responses, then markdown syntax is safe.
     const renderMarkdown = (text: string): string => {
-        return text
+        // Escape raw HTML first to prevent XSS from AI content
+        const escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        return escaped
             // Code blocks (```...```)
             .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="bg-gray-900 rounded p-2 my-2 overflow-x-auto text-xs"><code>$2</code></pre>')
             // Inline code (`...`)
@@ -209,6 +312,39 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
             // Line breaks
             .replace(/\n/g, '<br/>');
+    };
+
+    // Escape dynamic values before inserting into tool chip HTML
+    const escapeChipHtml = (value: string): string =>
+        value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+    // Replace raw TOOL/ARGS blocks with styled chip using Tailwind classes.
+    // Runs AFTER renderMarkdown so tool chip HTML is trusted (never sanitized).
+    const formatToolCallDisplay = (text: string): string => {
+        return text.replace(
+            /TOOL:\s*(\w+)\s*(?:<br\s*\/?>)\s*ARGS:\s*(\{[^}]*\})/gi,
+            (_match, toolName: string, argsJson: string) => {
+                const label = toolLabels[toolName] || toolName;
+                let detail = '';
+                try {
+                    const decoded = argsJson.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+                    const args = JSON.parse(decoded);
+                    const path = args.path || args.remote_path || args.local_path || '';
+                    if (path) detail = `<span class="opacity-70 ml-1.5">${escapeChipHtml(String(path))}</span>`;
+                    if (args.local_path && args.remote_path) {
+                        const left = escapeChipHtml(String(args.local_path));
+                        const right = escapeChipHtml(String(args.remote_path));
+                        detail = `<span class="opacity-70 ml-1.5">${left} &#8596; ${right}</span>`;
+                    }
+                } catch { /* ignore */ }
+                return `<div class="inline-flex items-center gap-1.5 bg-gray-700 rounded-md px-2.5 py-0.5 my-1 text-xs border-l-[3px] border-purple-500"><span class="text-purple-400">&#9881;</span><strong>${label}</strong>${detail}</div>`;
+            }
+        );
     };
 
     useEffect(() => {
@@ -547,6 +683,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 timestamp: new Date(),
             };
             setMessages(prev => [...prev, resultMessage]);
+
+            // Refresh file panels after mutation tools
+            const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+            if (mutationTarget && onFileMutation) {
+                onFileMutation(mutationTarget);
+            }
         } catch (error: any) {
             const errorMessage: Message = {
                 id: Date.now().toString(),
@@ -560,17 +702,22 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     };
 
     const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+        if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
+
+        // Capture attached images before clearing
+        const messageImages = attachedImages.length > 0 ? [...attachedImages] : undefined;
 
         const userMessage: Message = {
             id: Date.now().toString(),
             role: 'user',
-            content: input,
+            content: input || (messageImages ? 'Analyze this image' : ''),
             timestamp: new Date(),
+            images: messageImages,
         };
 
         setMessages(prev => [...prev, userMessage]);
         setInput('');
+        setAttachedImages([]);
         setIsLoading(true);
 
         let streamingMsgId: string | null = null;
@@ -742,14 +889,24 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - For configuration help: list required fields, then optional fields, with examples.
 - Keep responses under 500 words unless the user asks for detail.${contextBlock}`;
 
-            // Build message history
+            // Build message history (images only on the current user message)
+            const currentUserMsg: Record<string, unknown> = {
+                role: 'user',
+                content: userMessage.content,
+            };
+            if (messageImages && messageImages.length > 0) {
+                currentUserMsg.images = messageImages.map(img => ({
+                    data: img.data,
+                    media_type: img.mediaType,
+                }));
+            }
             const messageHistory = [
                 { role: 'system', content: systemPrompt },
                 ...messages.slice(-10).map(m => ({
                     role: m.role === 'user' ? 'user' : 'assistant',
                     content: m.content,
                 })),
-                { role: 'user', content: input }
+                currentUserMsg,
             ];
 
             // Rate limit check
@@ -1117,9 +1274,17 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                         : 'bg-gray-800 text-gray-200'
                                         }`}
                                 >
+                                    {/* Image thumbnails for vision messages */}
+                                    {message.images && message.images.length > 0 && (
+                                        <div className="flex gap-1.5 mb-2 flex-wrap">
+                                            {message.images.map((img, i) => (
+                                                <img key={i} src={img.preview} alt="" className="h-16 w-16 object-cover rounded border border-white/20" />
+                                            ))}
+                                        </div>
+                                    )}
                                     <div
                                         className="select-text prose prose-invert prose-sm max-w-none"
-                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(formatToolCallDisplay(message.content)) }}
+                                        dangerouslySetInnerHTML={{ __html: formatToolCallDisplay(renderMarkdown(message.content)) }}
                                     />
                                     <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
                                         <span>{message.timestamp.toLocaleTimeString()}</span>
@@ -1199,6 +1364,23 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
             {/* Input Area - Antigravity Style - All inside one box */}
             <div className="p-3">
                 <div className="bg-gray-800 border border-gray-600 rounded-lg focus-within:border-purple-500 transition-colors">
+                    {/* Attached Images Preview Strip */}
+                    {attachedImages.length > 0 && (
+                        <div className="flex gap-2 px-3 py-2 border-b border-gray-700/50 overflow-x-auto">
+                            {attachedImages.map((img, i) => (
+                                <div key={i} className="relative group shrink-0">
+                                    <img src={img.preview} alt="" className="h-12 w-12 object-cover rounded border border-gray-600" />
+                                    <button
+                                        onClick={() => setAttachedImages(prev => prev.filter((_, j) => j !== i))}
+                                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title={t('ai.removeImage')}
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     {/* Input Row */}
                     <div className="flex gap-2 items-start px-3 py-2">
                         <textarea
@@ -1216,10 +1398,23 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                     handleSend();
                                 }
                             }}
+                            onPaste={handlePaste}
                             placeholder={t('ai.askPlaceholder')}
                             className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none resize-none min-h-[24px] max-h-[120px]"
                             rows={1}
                         />
+                        <button
+                            onClick={handleImagePick}
+                            disabled={attachedImages.length >= MAX_IMAGES}
+                            className={`p-1.5 rounded transition-colors ${
+                                attachedImages.length >= MAX_IMAGES
+                                    ? 'text-gray-600 cursor-not-allowed'
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                            }`}
+                            title={attachedImages.length >= MAX_IMAGES ? t('ai.imageLimitReached') : t('ai.attachImage')}
+                        >
+                            <ImageIcon size={16} />
+                        </button>
                         <button
                             onClick={toggleListening}
                             className={`p-1.5 rounded transition-colors ${isListening
@@ -1231,7 +1426,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                         </button>
                         <button
                             onClick={handleSend}
-                            disabled={!input.trim() || isLoading}
+                            disabled={(!input.trim() && attachedImages.length === 0) || isLoading}
                             className="p-1.5 text-purple-400 hover:text-purple-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
                         >
                             <Send size={16} />

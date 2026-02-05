@@ -3,14 +3,26 @@
  */
 
 /**
- * Format bytes to human-readable string
+ * Format bytes to human-readable string (supports up to TB)
  */
-export const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
+export const formatBytes = (bytes: number | null): string => {
+    if (bytes === null || bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+/**
+ * Format bytes for display — returns em-dash for zero (vault/archive/crypto panels)
+ */
+export const formatSize = (bytes: number): string => {
+    if (bytes === 0) return '\u2014';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+    return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 };
 
 /**

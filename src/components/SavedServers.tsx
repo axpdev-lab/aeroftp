@@ -7,6 +7,7 @@ import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '
 import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
+import { logger } from '../utils/logger';
 
 // OAuth settings storage key (same as SettingsPanel)
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
@@ -260,10 +261,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
                 if (!hasTokens) {
                     // No tokens - need full auth flow (opens browser)
-                    console.log('[SavedServers] No OAuth tokens, starting full auth...');
+                    logger.debug('[SavedServers] No OAuth tokens, starting full auth...');
                     await invoke('oauth2_full_auth', { params });
                 } else {
-                    console.log('[SavedServers] OAuth tokens found, skipping auth flow');
+                    logger.debug('[SavedServers] OAuth tokens found, skipping auth flow');
                 }
 
                 // Connect using stored tokens; if expired without refresh token, re-auth
@@ -273,7 +274,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 } catch (connectErr) {
                     const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
                     if (errMsg.includes('Token expired') || errMsg.includes('token') && errMsg.includes('refresh')) {
-                        console.log('[SavedServers] Token expired, re-authenticating...');
+                        logger.debug('[SavedServers] Token expired, re-authenticating...');
                         await invoke('oauth2_full_auth', { params });
                         result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
                     } else {

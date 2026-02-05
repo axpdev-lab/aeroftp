@@ -83,7 +83,7 @@ async fn stream_openai(
     }
 
     let messages: Vec<serde_json::Value> = request.messages.iter().map(|m| {
-        serde_json::json!({ "role": m.role, "content": m.content })
+        serde_json::json!({ "role": m.role, "content": m.to_openai_content() })
     }).collect();
 
     let tools = request.tools.as_ref().map(|defs| {
@@ -208,7 +208,7 @@ async fn stream_anthropic(
         "model": request.model,
         "messages": request.messages.iter().map(|m| serde_json::json!({
             "role": m.role,
-            "content": m.content,
+            "content": m.to_anthropic_content(),
         })).collect::<Vec<_>>(),
         "max_tokens": request.max_tokens.unwrap_or(4096),
         "temperature": request.temperature,
@@ -353,7 +353,7 @@ async fn stream_gemini(
     let body = serde_json::json!({
         "contents": request.messages.iter().map(|m| serde_json::json!({
             "role": if m.role == "user" { "user" } else { "model" },
-            "parts": [{ "text": m.content }],
+            "parts": m.to_gemini_parts(),
         })).collect::<Vec<_>>(),
         "generationConfig": {
             "maxOutputTokens": request.max_tokens,
@@ -442,10 +442,7 @@ async fn stream_ollama(
 
     let body = serde_json::json!({
         "model": request.model,
-        "messages": request.messages.iter().map(|m| serde_json::json!({
-            "role": m.role,
-            "content": m.content,
-        })).collect::<Vec<_>>(),
+        "messages": request.messages.iter().map(|m| m.to_ollama_json()).collect::<Vec<_>>(),
         "stream": true,
         "options": {
             "num_predict": request.max_tokens,

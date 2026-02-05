@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
 import { useTranslation } from '../i18n';
+import { logger } from '../utils/logger';
 import './CloudPanel.css';
 
 // TypeScript interfaces matching Rust structs
@@ -116,7 +117,7 @@ const SetupWizard: React.FC<{
                         username: selectedServer.username,
                         password,
                     });
-                    console.log('Server credentials saved for background sync');
+                    logger.debug('Server credentials saved for background sync');
                 }
             }
 
@@ -545,11 +546,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         const unlistenComplete = listen<SyncResult>('cloud_sync_complete', (event) => {
             const result = event.payload;
             if (result.errors.length > 0) {
-                console.log(`Sync completed with ${result.errors.length} errors`, 'error');
+                logger.debug(`Sync completed with ${result.errors.length} errors`);
             } else {
-                console.log(
-                    `Synced: ↑${result.uploaded} ↓${result.downloaded} files`,
-                    'success'
+                logger.debug(
+                    `Synced: ↑${result.uploaded} ↓${result.downloaded} files`
                 );
             }
         });
@@ -583,11 +583,11 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         setStatus({ type: 'idle' });
         // Notify parent that cloud is now active
         emit('cloud-sync-status', { status: 'active', message: 'AeroCloud enabled' });
-        console.log('AeroCloud enabled successfully!', 'success');
+        logger.debug('AeroCloud enabled successfully!');
     };
 
     const handleSyncNow = async () => {
-        console.log('Starting sync...');
+        logger.debug('Starting sync...');
         setStatus({ type: 'syncing', current_file: 'Scanning...', progress: 0 });
         try {
             // Start background sync if not already running
@@ -595,7 +595,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                 await startBackgroundSync();
             }
             const result = await invoke<string>('trigger_cloud_sync');
-            console.log('Sync result:', result);
+            logger.debug('Sync result:', result);
             setStatus({ type: 'idle' });
             // Reload config to update last_sync
             loadConfig();
@@ -609,7 +609,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         try {
             await stopBackgroundSync();
             setStatus({ type: 'paused' });
-            console.log('Sync paused', 'info');
+            logger.debug('Sync paused');
         } catch (error) {
             console.error('Failed to pause sync:', error);
         }
@@ -619,7 +619,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         try {
             await startBackgroundSync();
             setStatus({ type: 'idle', last_sync: config?.last_sync || undefined });
-            console.log('Sync resumed', 'info');
+            logger.debug('Sync resumed');
         } catch (error) {
             console.error('Failed to resume sync:', error);
         }
@@ -633,9 +633,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
             setStatus({ type: 'not_configured' });
             // Notify parent that cloud is now disabled
             emit('cloud-sync-status', { status: 'disabled', message: 'AeroCloud disabled' });
-            console.log('AeroCloud disabled', 'info');
+            logger.debug('AeroCloud disabled');
         } catch (error) {
-            console.log(`Failed to disable: ${error}`, 'error');
+            logger.error('Failed to disable:', error);
         }
     };
 
@@ -644,7 +644,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
             try {
                 await invoke('open_in_file_manager', { path: config.local_folder });
             } catch (error) {
-                console.log(`Failed to open folder: ${error}`, 'error');
+                logger.error('Failed to open folder:', error);
             }
         }
     };
@@ -786,7 +786,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                                         try {
                                             await invoke('save_cloud_config_cmd', { config });
                                             setShowSettings(false);
-                                            console.log('Settings saved!');
+                                            logger.debug('Settings saved!');
                                         } catch (e) {
                                             console.error('Failed to save settings:', e);
                                         }

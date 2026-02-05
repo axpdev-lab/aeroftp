@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Upload, Check, X, Clock, Loader2 } from 'lucide-react';
+import { formatBytes } from '../utils/formatters';
 
 export type UploadStatus = 'pending' | 'uploading' | 'completed' | 'error';
 
@@ -34,14 +35,6 @@ const StatusIcon: React.FC<{ status: UploadStatus }> = ({ status }) => {
         case 'error':
             return <X size={12} className="text-red-400" />;
     }
-};
-
-const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
 const formatTime = (ms: number): string => {

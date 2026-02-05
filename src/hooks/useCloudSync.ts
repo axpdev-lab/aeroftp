@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { logger } from '../utils/logger';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface UseCloudSyncOptions {
@@ -65,12 +66,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
         // Auto-start background sync if cloud is enabled
         if (config.enabled) {
-          console.log('Cloud enabled, starting background sync...');
+          logger.debug('Cloud enabled, starting background sync...');
           try {
             await invoke('start_background_sync');
-            console.log('Background sync started');
+            logger.debug('Background sync started');
           } catch (syncError) {
-            console.log('Background sync start error (may already be running):', syncError);
+            logger.debug('Background sync start error (may already be running):', syncError);
           }
         }
       } catch (e) {
@@ -88,7 +89,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     const unlistenStatus = listen<{ status: string; message: string }>('cloud-sync-status', (event) => {
       const { status, message } = event.payload;
       const { activityLog: al, humanLog: hl, t: tr, cloudServerName: csn } = callbacksRef.current;
-      console.log('Cloud status:', status, message);
+      logger.debug('Cloud status:', status, message);
 
       const now = Date.now();
       if (status === lastCloudLogStatus && now - lastCloudLogTime < 500) return;
@@ -135,7 +136,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     const unlistenMenu = listen<string>('menu-event', async (event) => {
       const action = event.payload;
       const { activityLog: al, checkForUpdate: cfu } = callbacksRef.current;
-      console.log('Tray menu action:', action);
+      logger.debug('Tray menu action:', action);
 
       if (action === 'cloud_sync_now') {
         try {
@@ -147,7 +148,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       } else if (action === 'cloud_pause') {
         try {
           await invoke('stop_background_sync');
-          console.log('Background sync paused from tray');
+          logger.debug('Background sync paused from tray');
         } catch (e) {
           console.error('Failed to pause sync:', e);
         }

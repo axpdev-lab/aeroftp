@@ -61,6 +61,7 @@ import {
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
+import { logger } from './utils/logger';
 import { useTranslation } from './i18n';
 
 // Components
@@ -839,14 +840,14 @@ const App: React.FC = () => {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = !!protocol && isNonFtpProvider(protocol);
-      console.log('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
+      logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
       if (isProvider) {
         // Use provider API
-        console.log('[loadRemoteFiles] Calling provider_list_files...');
+        logger.debug('[loadRemoteFiles] Calling provider_list_files...');
         response = await invoke('provider_list_files', { path: null });
-        console.log('[loadRemoteFiles] Provider response:', {
+        logger.debug('[loadRemoteFiles] Provider response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
           files: response.files?.slice(0, 5) // Log first 5 files
@@ -989,11 +990,11 @@ const App: React.FC = () => {
   const connectToFtp = async () => {
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = connectionParams.protocol;
-    console.log('[connectToFtp] connectionParams:', connectionParams);
-    console.log('[connectToFtp] protocol:', protocol);
+    logger.debug('[connectToFtp] connectionParams:', connectionParams);
+    logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && isOAuthProvider(protocol);
     const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
-    console.log('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
+    logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
       // OAuth provider is already connected via OAuthConnect component
@@ -1082,7 +1083,7 @@ const App: React.FC = () => {
         };
 
 
-        console.log('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+        logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         await invoke('provider_connect', { params: providerParams });
 
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -1090,11 +1091,11 @@ const App: React.FC = () => {
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
         // Load files using provider API
-        console.log('[connectToFtp] Calling provider_list_files for:', protocol);
+        logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
           path: quickConnectDirs.remoteDir || null
         });
-        console.log('[connectToFtp] provider_list_files response:', {
+        logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
           rawFiles: response.files
@@ -1109,7 +1110,7 @@ const App: React.FC = () => {
           modified: f.modified,
           permissions: f.permissions,
         }));
-        console.log('[connectToFtp] Converted files:', files.length);
+        logger.debug('[connectToFtp] Converted files:', files.length);
         setRemoteFiles(files);
         setCurrentRemotePath(response.current_path);
 
@@ -1304,7 +1305,7 @@ const App: React.FC = () => {
 
       if (isOAuth) {
         // OAuth providers - need to reconnect because ProviderState may have a different provider
-        console.log('[switchSession] OAuth provider, reconnecting...');
+        logger.debug('[switchSession] OAuth provider, reconnecting...');
 
         // First disconnect any existing provider to avoid conflicts
         try {
@@ -1377,7 +1378,7 @@ const App: React.FC = () => {
         // Now navigate to the session's path
         response = await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
       } else if (isS3OrWebDAV) {
-        console.log('[switchSession] Provider (S3/WebDAV), reconnecting...');
+        logger.debug('[switchSession] Provider (S3/WebDAV), reconnecting...');
 
         let connectParams = targetSession.connectionParams;
         // Safety check: recover missing S3 options
@@ -1391,7 +1392,7 @@ const App: React.FC = () => {
                 (s.host === connectParams.server && s.username === connectParams.username)
               );
               if (found && found.options && found.options.bucket) {
-                console.log('[switchSession] Auto-recovered missing S3 options');
+                logger.debug('[switchSession] Auto-recovered missing S3 options');
                 connectParams = { ...connectParams, options: found.options };
               }
             }
@@ -1421,7 +1422,7 @@ const App: React.FC = () => {
           verify_cert: connectParams.options?.verifyCert !== undefined ? connectParams.options.verifyCert : true,
         };
 
-        console.log('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
+        logger.debug('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
         await invoke('provider_connect', { params: providerParams });
         if (targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
@@ -1429,7 +1430,7 @@ const App: React.FC = () => {
         response = await invoke('provider_list_files', { path: null });
       } else {
         // FTP/FTPS - reconnect and navigate
-        console.log('[switchSession] FTP provider, reconnecting...');
+        logger.debug('[switchSession] FTP provider, reconnecting...');
         // First disconnect any active OAuth provider to avoid conflicts
         try {
           await invoke('provider_disconnect');
@@ -1479,7 +1480,7 @@ const App: React.FC = () => {
       setCurrentLocalPath(targetSession.localPath);
 
     } catch (e) {
-      console.log('Reconnect error:', e);
+      logger.error('Reconnect error:', e);
       activityLog.updateEntry(reconnectLogId, {
         status: 'error',
         message: t('activity.reconnect_error', { server: targetSession.serverName })
@@ -1542,7 +1543,7 @@ const App: React.FC = () => {
 
   // Handle click on Cloud Tab - auto-connect to cloud server profile
   const handleCloudTabClick = async () => {
-    console.log('Cloud Tab clicked');
+    logger.debug('Cloud Tab clicked');
 
     try {
       // Get cloud config to know which server profile and folders
@@ -1553,7 +1554,7 @@ const App: React.FC = () => {
         server_profile: string;
       }>('get_cloud_config');
 
-      console.log('Cloud config:', cloudConfig);
+      logger.debug('Cloud config:', cloudConfig);
 
       if (!cloudConfig.enabled) {
         setShowCloudPanel(true);
@@ -1592,13 +1593,13 @@ const App: React.FC = () => {
 
       // If already connected, check if it's the same server
       if (isConnected) {
-        console.log('Already connected, checking if same server...');
+        logger.debug('Already connected, checking if same server...');
 
         // Compare current connection with cloud server
         const currentServer = connectionParams.server;
         const isSameServer = currentServer === cloudServerString;
 
-        console.log(`Current server: ${currentServer}, Cloud server: ${cloudServerString}, Same: ${isSameServer}`);
+        logger.debug(`Current server: ${currentServer}, Cloud server: ${cloudServerString}, Same: ${isSameServer}`);
 
         // IMPORTANT: Save current session state before navigating to cloud
         // Capture current state values for the closure
@@ -1632,7 +1633,7 @@ const App: React.FC = () => {
 
         // If different server, we need to reconnect to the cloud server
         if (!isSameServer) {
-          console.log('Different server, reconnecting to cloud server...');
+          logger.debug('Different server, reconnecting to cloud server...');
           const params = {
             server: cloudServerString,
             username: cloudServer.username || '',
@@ -1646,7 +1647,7 @@ const App: React.FC = () => {
             setConnectionParams(params);
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: params.protocol?.toUpperCase() || 'FTP' }, 'success');
           } catch (connError) {
-            console.log('Failed to connect to cloud server:', connError);
+            logger.error('Failed to connect to cloud server:', connError);
             notify.error('Connection Failed', `Failed to connect to cloud server: ${connError}`);
             // Restore previous session
             if (capturedSessionId) {
@@ -1678,14 +1679,14 @@ const App: React.FC = () => {
 
           humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: connectionParams.protocol || 'FTP' }, 'success');
         } catch (navError) {
-          console.log('Navigation error:', navError);
+          logger.error('Navigation error:', navError);
         }
 
         // Trigger sync
         try {
           await invoke('trigger_cloud_sync');
         } catch (syncError) {
-          console.log('Sync error:', syncError);
+          logger.error('Sync error:', syncError);
         }
         return;
       }
@@ -1727,7 +1728,7 @@ const App: React.FC = () => {
         await invoke('trigger_cloud_sync');
         notify.info(t('toast.syncStartedTitle'), t('toast.syncingCloudFiles'));
       } catch (e) {
-        console.log('Sync trigger error:', e);
+        logger.error('Sync trigger error:', e);
       }
 
     } catch (error) {
@@ -3863,8 +3864,8 @@ const App: React.FC = () => {
 
               // Check if this is an OAuth provider
               const isOAuth = params.protocol && isOAuthProvider(params.protocol);
-              console.log('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
-              console.log('[onSavedServerConnect] isOAuth:', isOAuth);
+              logger.debug('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
+              logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
 
               if (isOAuth) {
                 // OAuth provider is already connected via SavedServers component
@@ -3939,7 +3940,7 @@ const App: React.FC = () => {
                     verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
                   };
 
-                  console.log('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+                  logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
                   await invoke('provider_connect', { params: providerParams });
 
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -5151,6 +5152,16 @@ const App: React.FC = () => {
           privateKeyPath: connectionParams.options?.private_key_path,
           keyPassphrase: connectionParams.options?.key_passphrase,
         } : null}
+        onFileMutation={(target) => {
+          setTimeout(() => {
+            if (target === 'remote' || target === 'both') {
+              if (isConnected) loadRemoteFiles();
+            }
+            if (target === 'local' || target === 'both') {
+              loadLocalFiles(currentLocalPath);
+            }
+          }, 300);
+        }}
         onSaveFile={async (content, file) => {
           const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
           try {

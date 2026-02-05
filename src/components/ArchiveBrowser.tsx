@@ -5,6 +5,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { Archive, File, Folder, Lock, Download, Eye, X, ChevronRight, ChevronDown, EyeOff, Loader2 } from 'lucide-react';
 import { ArchiveEntry, ArchiveType } from '../types';
 import { useTranslation } from '../i18n';
+import { formatSize } from '../utils/formatters';
 
 interface ArchiveBrowserProps {
     archivePath: string;
@@ -57,15 +58,6 @@ function buildTree(entries: ArchiveEntry[]): TreeNode {
     }
 
     return root;
-}
-
-function formatSize(bytes: number): string {
-    if (bytes === 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    let size = bytes;
-    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-    return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 const TreeRow: React.FC<{

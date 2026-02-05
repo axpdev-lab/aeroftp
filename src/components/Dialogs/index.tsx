@@ -7,54 +7,8 @@ import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
 import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock } from 'lucide-react';
-
-// ============ Helper Functions ============
-const formatBytes = (bytes: number | null): string => {
-    if (bytes === null || bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-};
-
-const getFileExtension = (name: string): string | null => {
-    const lastDot = name.lastIndexOf('.');
-    if (lastDot === -1 || lastDot === 0) return null;
-    return name.substring(lastDot + 1).toLowerCase();
-};
-
-const getMimeType = (name: string): string => {
-    const ext = getFileExtension(name);
-    if (!ext) return 'application/octet-stream';
-
-    const mimeTypes: Record<string, string> = {
-        // Images
-        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
-        'svg': 'image/svg+xml', 'webp': 'image/webp', 'ico': 'image/x-icon', 'bmp': 'image/bmp',
-        // Documents
-        'pdf': 'application/pdf', 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'ppt': 'application/vnd.ms-powerpoint', 'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'txt': 'text/plain', 'rtf': 'application/rtf', 'csv': 'text/csv',
-        // Code
-        'html': 'text/html', 'css': 'text/css', 'js': 'application/javascript', 'ts': 'application/typescript',
-        'json': 'application/json', 'xml': 'application/xml', 'yaml': 'application/yaml', 'yml': 'application/yaml',
-        'md': 'text/markdown', 'py': 'text/x-python', 'rb': 'text/x-ruby', 'php': 'application/x-php',
-        'java': 'text/x-java', 'c': 'text/x-c', 'cpp': 'text/x-c++', 'h': 'text/x-c', 'rs': 'text/x-rust',
-        'go': 'text/x-go', 'sh': 'application/x-sh', 'bash': 'application/x-sh',
-        // Archives
-        'zip': 'application/zip', 'rar': 'application/x-rar-compressed', 'tar': 'application/x-tar',
-        'gz': 'application/gzip', '7z': 'application/x-7z-compressed', 'bz2': 'application/x-bzip2',
-        // Media
-        'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'ogg': 'audio/ogg', 'flac': 'audio/flac',
-        'mp4': 'video/mp4', 'webm': 'video/webm', 'avi': 'video/x-msvideo', 'mkv': 'video/x-matroska',
-        // Other
-        'exe': 'application/x-msdownload', 'dmg': 'application/x-apple-diskimage',
-        'deb': 'application/x-deb', 'rpm': 'application/x-rpm',
-    };
-
-    return mimeTypes[ext] || 'application/octet-stream';
-};
+import { formatBytes } from '../../utils/formatters';
+import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {

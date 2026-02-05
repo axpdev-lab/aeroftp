@@ -979,7 +979,10 @@
                 "providersEnabled": "[NEEDS TRANSLATION] {{count}} provider(s) enabled",
                 "done": "[NEEDS TRANSLATION] Done"
             },
-            "copy": "[NEEDS TRANSLATION] Copy"
+            "copy": "[NEEDS TRANSLATION] Copy",
+            "attachImage": "[NEEDS TRANSLATION] Attach image",
+            "removeImage": "[NEEDS TRANSLATION] Remove image",
+            "imageLimitReached": "[NEEDS TRANSLATION] Maximum 5 images per message"
         },
         "archive": {
             "passwordRequired": "[NEEDS TRANSLATION] This archive is password protected",

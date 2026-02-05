@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatSize } from '../utils/formatters';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -25,15 +26,6 @@ interface VaultInfo {
 interface BreadcrumbItem {
     name: string;
     dirId: string;
-}
-
-function formatSize(bytes: number): string {
-    if (bytes === 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    let size = bytes;
-    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-    return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose }) => {

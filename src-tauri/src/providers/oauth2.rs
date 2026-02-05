@@ -12,6 +12,11 @@ use oauth2::{
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
+
+/// In-memory token cache for when vault is locked (master mode).
+/// Tokens survive the session but are NOT persisted to disk.
+static MEMORY_TOKEN_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
 type ConfiguredClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
@@ -441,13 +446,23 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // Vault not open — fallback to file with secure permissions
-        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        std::fs::write(&token_path, &json)
-            .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
-        let _ = crate::credential_store::ensure_secure_permissions(&token_path);
+        // Vault not open — try auto-initializing vault first
+        if let Ok(_) = crate::credential_store::CredentialStore::init() {
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                store.store(&account, &json)
+                    .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+                info!("Tokens stored in auto-initialized vault for {:?}", provider);
+                return Ok(());
+            }
+        }
 
-        info!("Tokens stored in file for {:?} (vault not open)", provider);
+        // Vault requires master password — store in memory only (never on disk unencrypted)
+        if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
+            let map = cache.get_or_insert_with(HashMap::new);
+            map.insert(account, json);
+        }
+
+        info!("Tokens stored in memory for {:?} (vault locked)", provider);
         Ok(())
     }
 
@@ -463,16 +478,26 @@ impl OAuth2Manager {
             }
         }
 
-        // Fallback: try legacy file
-        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        let json = std::fs::read_to_string(&token_path)
+        // Fallback: try in-memory cache
+        if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
+            if let Some(map) = cache.as_ref() {
+                if let Some(json) = map.get(&account) {
+                    return serde_json::from_str(json)
+                        .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                }
+            }
+        }
+
+        // Legacy: try plaintext file (migrate to vault on next store)
+        let legacy_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        let json = std::fs::read_to_string(&legacy_path)
             .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
 
         serde_json::from_str(&json)
             .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))
     }
 
-    /// Delete tokens from credential vault and legacy file
+    /// Delete tokens from credential vault, memory cache, and legacy files
     pub fn delete_tokens(&self, provider: OAuthProvider) -> Result<(), ProviderError> {
         let account = format!("oauth_{:?}", provider).to_lowercase();
 
@@ -481,10 +506,23 @@ impl OAuth2Manager {
             let _ = store.delete(&account);
         }
 
-        // Also delete legacy file if exists
-        let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        if token_path.exists() {
-            let _ = crate::credential_store::secure_delete(&token_path);
+        // Delete from in-memory cache
+        if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
+            if let Some(map) = cache.as_mut() {
+                map.remove(&account);
+            }
+        }
+
+        // Delete legacy .json file if exists
+        let json_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        if json_path.exists() {
+            let _ = crate::credential_store::secure_delete(&json_path);
+        }
+
+        // Delete legacy .enc file if exists
+        let enc_path = Self::token_dir()?.join(format!("oauth2_{:?}.enc", provider).to_lowercase());
+        if enc_path.exists() {
+            let _ = crate::credential_store::secure_delete(&enc_path);
         }
 
         info!("Tokens deleted for {:?}", provider);

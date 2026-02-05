@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown } from 'lucide-react';
+import { formatBytes } from '../utils/formatters';
 
 export type TransferStatus = 'pending' | 'transferring' | 'completed' | 'error';
 export type TransferType = 'upload' | 'download';
@@ -44,14 +45,6 @@ const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
         case 'error':
             return <X size={12} className="text-red-400" />;
     }
-};
-
-const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
 const formatTime = (ms: number): string => {

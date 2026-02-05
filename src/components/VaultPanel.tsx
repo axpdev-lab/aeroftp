@@ -5,7 +5,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../types';
 import { useTranslation } from '../i18n';
-import { formatDate } from '../utils/formatters';
+import { formatDate, formatSize } from '../utils/formatters';
 
 interface VaultPanelProps {
     onClose: () => void;
@@ -32,15 +32,6 @@ interface VaultV2Info {
     description: string | null;
     file_count: number;
     files: { name: string; size: number; is_dir: boolean; modified: string }[];
-}
-
-function formatSize(bytes: number): string {
-    if (bytes === 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    let size = bytes;
-    while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
-    return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 // Security level configuration

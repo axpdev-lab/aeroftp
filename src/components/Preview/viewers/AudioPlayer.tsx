@@ -21,6 +21,7 @@ import { ViewerBaseProps, PlaybackState, EqualizerState, MediaMetadata } from '.
 import { formatDuration } from '../utils/fileTypes';
 import { AudioVisualizer, VisualizerMode } from '../controls/AudioVisualizer';
 import { AudioMixer, EQ_BANDS } from '../controls/AudioMixer';
+import { logger } from '../../../utils/logger';
 
 interface AudioPlayerProps extends ViewerBaseProps {
     className?: string;
@@ -111,7 +112,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         const fileSizeBytes = file.size || 0;
         const isLargeFile = fileSizeBytes > 10_000_000; // 10MB threshold
 
-        console.log(`Audio: ${file.name}, Size: ${(fileSizeBytes / 1024 / 1024).toFixed(1)}MB, Mode: ${isLargeFile ? 'HTML5 Streaming' : 'Web Audio API'}`);
+        logger.debug(`Audio: ${file.name}, Size: ${(fileSizeBytes / 1024 / 1024).toFixed(1)}MB, Mode: ${isLargeFile ? 'HTML5 Streaming' : 'Web Audio API'}`);
 
         const howl = new Howl({
             src: [audioSrc],
@@ -150,7 +151,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                     // Reuse existing analyser from previous connection
                                     analyserRef.current = existingConnection.analyser;
                                     sourceNodeRef.current = existingConnection.source;
-                                    console.log('Reusing existing MediaElementSource connection for visualizer');
+                                    logger.debug('Reusing existing MediaElementSource connection for visualizer');
                                 } else {
                                     // Create new connection
                                     const analyser = ctx.createAnalyser();
@@ -168,7 +169,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                         analyserRef.current = analyser;
                                         sourceNodeRef.current = source;
                                         connectedElementRef.current = audioElement;
-                                        console.log('Visualizer connected via MediaElementSource (HTML5 streaming mode)');
+                                        logger.debug('Visualizer connected via MediaElementSource (HTML5 streaming mode)');
                                     } catch (sourceErr: any) {
                                         if (sourceErr.name === 'InvalidStateError') {
                                             // Element was connected outside our tracking, no visualizer possible
@@ -192,7 +193,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
                                 Howler.masterGain.connect(analyser);
                                 analyser.connect(ctx.destination);
-                                console.log('Visualizer connected via masterGain (Web Audio mode)');
+                                logger.debug('Visualizer connected via masterGain (Web Audio mode)');
                             }
                         }
                     }
@@ -205,7 +206,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
                 // Auto-retry logic for intermittent failures
                 if (retryCount < maxRetries) {
-                    console.log(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
+                    logger.debug(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
                     setRetryCount(prev => prev + 1);
                     // Delay retry slightly to allow blob URL to stabilize
                     setTimeout(() => {

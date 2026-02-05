@@ -11,6 +11,7 @@ import {
     Clock, SkipForward, StopCircle
 } from 'lucide-react';
 import './SyncPanel.css';
+import { formatSize } from '../utils/formatters';
 
 interface SyncPanelProps {
     isOpen: boolean;
@@ -215,14 +216,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             newSelection.add(path);
         }
         setSelectedPaths(newSelection);
-    };
-
-    const formatSize = (bytes: number): string => {
-        if (bytes === 0) return '\u2014';
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     };
 
     const formatSpeed = (bps: number): string => {

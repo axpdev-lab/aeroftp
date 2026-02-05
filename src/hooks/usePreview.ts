@@ -16,6 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { LocalFile, RemoteFile } from '../types';
 import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
+import { logger } from '../utils/logger';
 
 interface UsePreviewProps {
   notify: {
@@ -141,7 +142,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         if (category === 'text' || category === 'markdown') {
           content = await invoke<string>('read_local_file', { path: filePath });
         } else if (category === 'audio' || category === 'video') {
-          console.log(`[Preview] Loading ${category} file as blob...`);
+          logger.debug(`[Preview] Loading ${category} file as blob...`);
           const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
           const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
           const byteCharacters = atob(base64);
@@ -152,7 +153,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
           const byteArray = new Uint8Array(byteNumbers);
           const blob = new Blob([byteArray], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
-          console.log(`[Preview] Created blob URL for ${category}`);
+          logger.debug(`[Preview] Created blob URL for ${category}`);
         } else {
           const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
           const mimeType = mimeMap[ext] || 'application/octet-stream';

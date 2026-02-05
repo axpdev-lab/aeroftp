@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 24 tools.
+  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 24 tools and vision.
 </p>
 
 <p align="center">
@@ -96,9 +96,11 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 - **Archive Browser**: Browse contents of ZIP, 7z, TAR, and RAR archives in-app without extracting. Selective single-file extraction
 - **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
 
-### AeroAgent AI (v1.7.0)
+### AeroAgent AI (v1.7.0+)
 AI-powered assistant with **24 provider-agnostic tools** that work across all 13 protocols:
 - **7 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom
+- **Vision/Multimodal** (v1.9.0): Attach images for analysis — supports GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, Ollama llava. File picker, clipboard paste, auto-resize, up to 5 images per message
+- **Auto panel refresh** (v1.9.0): File panels automatically update after AI tool mutations (create, delete, rename, upload, download) — no manual refresh needed
 - **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
 - **Streaming responses**: Real-time incremental rendering for all providers
 - **File operations**: List, read, search, create, edit, rename, delete (local + remote)
@@ -130,6 +132,9 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 - **Master Password** (optional): Argon2id (128 MiB, t=4, p=4) encrypted passphrase with auto-lock timeout
 - **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
+- **XSS-hardened AI chat** (v1.8.8): Source-level HTML escaping before markdown rendering; strict CSP with no `unsafe-eval`
+- **AI tool confirmation** (v1.8.8): Local filesystem tools require explicit user approval — no silent file reads
+- **OAuth token protection** (v1.8.8): Tokens never written to disk unencrypted; vault auto-init or in-memory-only storage
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random port for callbacks (no fixed port exposure)
 - **FTP insecure warning**: Visual banner when using unencrypted FTP
@@ -152,7 +157,7 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 | Languages | **51** | 47 | ~10 | ~15 |
 | FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
 | Code Editor | Monaco (VS Code) | No | No | Basic |
-| AI Assistant | **24 tools, 7 providers** | No | No | No |
+| AI Assistant | **24 tools, 7 providers, vision** | No | No | No |
 | Cryptomator | **Yes (format 8)** | No | Yes | No |
 | Encrypted Vaults | **AeroVault (AES-256-GCM-SIV)** | No | No | No |
 | Folder Conflict Resolution | **Per-file comparison** | Basic overwrite | No | Timestamp-based |

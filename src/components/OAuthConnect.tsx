@@ -10,6 +10,7 @@ import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, Folde
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { logger } from '../utils/logger';
 
 interface OAuthConnectProps {
   provider: 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud';
@@ -210,8 +211,8 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       return;
     }
 
-    console.log('[OAuthConnect] handleQuickConnect called for', oauthProvider);
-    console.log('[OAuthConnect] clientId:', clientId?.slice(0, 20) + '...');
+    logger.debug('[OAuthConnect] handleQuickConnect called for', oauthProvider);
+    logger.debug('[OAuthConnect] clientId:', clientId?.slice(0, 20) + '...');
     
     try {
       const params = {
@@ -219,9 +220,9 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         client_id: clientId,
         client_secret: clientSecret,
       };
-      console.log('[OAuthConnect] Calling oauth2_connect...');
+      logger.debug('[OAuthConnect] Calling oauth2_connect...');
       const displayName = await connect(params);
-      console.log('[OAuthConnect] Connected, displayName:', displayName);
+      logger.debug('[OAuthConnect] Connected, displayName:', displayName);
       onConnected(displayName);
     } catch (e) {
       console.error('[OAuthConnect] Quick connect error:', e);

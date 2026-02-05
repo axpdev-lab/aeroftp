@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { X, Download, RotateCcw, History, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatBytes } from '../utils/formatters';
 
 interface FileVersion {
   id: string;
@@ -16,14 +17,6 @@ interface Props {
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: Props) {

@@ -1008,7 +1008,10 @@
                 "providersEnabled": "{{count}} provider abilitati",
                 "done": "Fatto"
             },
-            "copy": "[NEEDS TRANSLATION] Copy"
+            "copy": "[NEEDS TRANSLATION] Copy",
+            "attachImage": "[NEEDS TRANSLATION] Attach image",
+            "removeImage": "[NEEDS TRANSLATION] Remove image",
+            "imageLimitReached": "[NEEDS TRANSLATION] Maximum 5 images per message"
         },
         "archive": {
             "passwordRequired": "Questo archivio è protetto da password",

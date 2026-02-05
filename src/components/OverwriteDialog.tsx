@@ -8,6 +8,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatBytes } from '../utils/formatters';
 
 export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'cancel';
 
@@ -26,15 +27,6 @@ export interface OverwriteDialogProps {
     onDecision: (action: OverwriteAction, applyToAll: boolean, newName?: string) => void;
     onCancel: () => void;
 }
-
-// Format bytes to human readable
-const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
 
 // Format date
 const formatDate = (date: Date | string | number | undefined): string => {
