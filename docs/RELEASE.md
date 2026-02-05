@@ -149,4 +149,4 @@ snapcraft release aeroftp <revision> stable
 
 ---
 
-*Last updated: January 2026*
+*Last updated: February 2026*

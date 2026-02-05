@@ -4,14 +4,13 @@
 //! Uses OAuth2 for authentication. Supports US and EU regions.
 
 use async_trait::async_trait;
-use reqwest::header::{HeaderValue, AUTHORIZATION};
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
-    oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    oauth2::{OAuth2Manager, OAuthConfig},
 };
 use super::types::PCloudConfig;
 

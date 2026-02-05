@@ -130,10 +130,6 @@
             "megaEmailPlaceholder": "la-tua-email@mega.nz",
             "megaPasswordPlaceholder": "La tua password MEGA",
             "dismiss": "Chiudi",
-            "credentialLoadFailed": "Impossibile caricare la password salvata. Il portachiavi del sistema potrebbe essere bloccato. Reinserisci la password.",
-            "keyringFailed": "Archiviazione password non disponibile. Configura una Master Password in Impostazioni > Sicurezza per salvare le password in modo sicuro.",
-            "vaultLockedTitle": "Vault Bloccato",
-            "vaultLocked": "Inserisci la Master Password per accedere alle credenziali salvate.",
             "authenticating": "Autenticazione...",
             "oauth2Connection": "Connessione OAuth2"
         },
@@ -276,7 +272,10 @@
             "importLinkFailed": "Impossibile importare il link",
             "downloadCount": "Scarica ({count})",
             "uploadCount": "Carica ({count})",
-            "browseArchive": "[NEEDS TRANSLATION] Browse Archive"
+            "browseArchive": "Esplora Archivio",
+            "newFolder": "Nuova Cartella",
+            "refresh": "Aggiorna",
+            "selectAll": "Seleziona Tutto"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -751,16 +750,10 @@
         },
         "masterPassword": {
             "setupTitle": "Set Master Password",
-            "unlockTitle": "Unlock Credential Vault",
-            "setupDesc": "Your OS keychain is not available. Set a master password to encrypt your credential vault locally.",
-            "unlockDesc": "Enter your master password to unlock the credential vault.",
-            "noRecovery": "There is no password recovery. If you forget this password, your stored credentials cannot be recovered.",
             "password": "Master password",
-            "confirm": "Confirm password",
             "tooShort": "Minimum 8 characters",
             "mismatch": "Passwords do not match",
             "processing": "Processing...",
-            "create": "Create Vault",
             "unlock": "Unlock",
             "cancel": "Cancel",
             "setupDescription": "[NEEDS TRANSLATION] Protect your saved credentials",

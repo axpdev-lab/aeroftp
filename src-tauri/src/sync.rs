@@ -337,6 +337,7 @@ pub struct SyncIndex {
 }
 
 impl SyncIndex {
+    #[allow(dead_code)]
     pub fn new(local_path: String, remote_path: String) -> Self {
         Self {
             version: 1,

@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "1.8.6",
+    "version": "1.8.7",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -55,6 +55,10 @@
         "copyright": "Copyright © 2025 axpdev",
         "license": "MIT",
         "licenseFile": "../LICENSE",
+        "macOS": {
+            "minimumSystemVersion": "10.13",
+            "entitlements": "entitlements.plist"
+        },
         "windows": {
             "wix": {
                 "bannerPath": "installer/banner.bmp",

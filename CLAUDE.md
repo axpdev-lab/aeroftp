@@ -149,7 +149,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v1.8.6
+## Versione corrente: v1.8.7
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -259,66 +259,6 @@ Dettagli completi in `docs/dev/ROADMAP.md`:
 - **v1.9.0**: AeroAgent Intelligence (vision, multi-step) + CLI Foundation
 - **v2.0.0**: Master Password + Unified Keystore + Settings Consolidation
 - **v2.1.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
-
----
-
-## Release Notes for Next Session (v1.8.6)
-
-**Status**: Commit `e4994dc` + tag `v1.8.6` creati localmente su Windows. **NON pushato**. Il push va fatto solo dopo i test su Ubuntu.
-
-### Cosa testare su Ubuntu
-
-1. **Build**: `cargo build` + `npm run build` devono compilare senza errori
-2. **Transfer Queue**: upload e download di cartella con sottocartelle → contatore file (es. 10/10) visibile sia in upload che download
-3. **Cut/Copy/Paste**: Ctrl+X/C/V e context menu su entrambi i pannelli locale/remoto
-4. **Drag & Drop**: verificare che il drag & drop HTML5 funzioni ancora su Linux (su Windows era rotto, fix: `dragDropEnabled: false` in tauri.conf.json)
-5. **Universal Vault**: credenziali salvate e caricate correttamente al riavvio
-6. **FolderOverwriteDialog**: quando "When file exists" = "Ask", scaricare/caricare cartella esistente → appare dialog con opzioni merge
-
-### Struttura test per queue counter
-
-```
-test-counter/
-├── file-root-1.txt
-├── file-root-2.txt
-├── sub-A/
-│   ├── file-A1.txt
-│   ├── file-A2.txt
-│   └── sub-A1/
-│       ├── file-A1-deep.txt
-│       └── file-A1-deeper.txt
-├── sub-B/
-│   └── file-B1.txt
-└── sub-C/
-    ├── file-C1.txt
-    ├── file-C2.txt
-    └── file-C3.txt
-```
-
-Risultato atteso: **10/10** (solo file, non cartelle). Verificato OK su Windows.
-
-### File chiave modificati in v1.8.6
-
-| Area | File | Cosa |
-|------|------|------|
-| Credential Vault | `src-tauri/src/credential_store.rs` | Riscrittura completa: Universal Vault |
-| Credential Vault | `src-tauri/src/master_password.rs` | Semplificato per vault-only |
-| Folder Conflicts | `src-tauri/src/lib.rs` | `file_exists_action`, `should_skip_file`, folder progress events |
-| Folder Conflicts | `src-tauri/src/provider_commands.rs` | Transfer events per provider_download_folder |
-| Folder Dialog | `src/components/FolderOverwriteDialog.tsx` | Nuovo componente |
-| Transfer Queue | `src/components/TransferQueue.tsx` | Context menu, retry, remove, header actions, copy button |
-| Transfer Events | `src/hooks/useTransferEvents.ts` | File tracking in queue, race condition fix |
-| Cut/Copy/Paste | `src/App.tsx` | Clipboard state, functions, context menu, shortcuts |
-| Cut/Copy/Paste | `src-tauri/src/lib.rs` | `copy_local_file` command |
-| Windows DnD | `src-tauri/tauri.conf.json` | `dragDropEnabled: false` |
-
-### Quando tutto OK su Ubuntu
-
-```bash
-git push origin main --tags
-```
-
-Questo triggera GitHub Actions → build per Linux/Windows/macOS → pubblicazione su GitHub Releases + Snap Store.
 
 ---
 

@@ -63,18 +63,25 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 ### Cloud Storage Integration
 13 protocols, 30 presets in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking.
 
-### Universal Credential Vault (v1.8.6)
+### Universal Credential Vault (v1.8.6+)
 
 - **Single encrypted backend**: `vault.key` + `vault.db` (AES-256-GCM) — no OS keyring dependency, works identically on all platforms
 - **Auto mode** (default): CSPRNG passphrase in `vault.key` with OS file permissions. Zero user interaction on startup
-- **Master mode** (optional): Passphrase encrypted with Argon2id (128 MiB, t=4, p=4). Requires master password on app start
+- **Master mode** (optional): Passphrase encrypted with Argon2id (128 MiB, t=4, p=4). Requires master password on app start, removable from Settings
 - **HKDF-SHA256**: 512-bit passphrase derived to 256-bit vault key via RFC 5869
+- **Animated unlock**: Cryptographic step visualization (Argon2id derivation, decryption, HKDF expansion, integrity verification)
 
-### Smart Folder Transfers (v1.8.6)
+### Smart Folder Transfers (v1.8.6+)
 
 - **Folder conflict resolution**: Per-file comparison (size + date) during folder uploads/downloads — skip unchanged files automatically
 - **FolderOverwriteDialog**: Merge strategies for "Ask" mode — Overwrite all, Skip identical, Overwrite if newer, Skip folder
 - **Transfer Queue**: Context menu, retry failed items, remove individual items, error tooltips, header actions (Clear completed / Stop all / Clear all)
+
+### File Clipboard (v1.8.7)
+
+- **Cut/Copy/Paste**: Right-click context menu on files and on empty panel background
+- **Cross-panel paste**: Copy from local, paste to remote (and vice versa) using stored full paths
+- **Same-panel paste**: Move (cut) or copy files within the same panel, with "(copy)" suffix for duplicates
 
 ### Encryption and Vaults (v1.8.0)
 - **AeroVault v2**: Military-grade encrypted containers (.aerovault) with advanced security stack:
@@ -119,7 +126,7 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 
 ### Security
 - **AeroVault v2**: Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-256-KW key wrapping, AES-SIV filename encryption, Argon2id (128 MiB), HMAC-SHA512 header integrity, optional ChaCha20 cascade
-- **Universal Vault** (v1.8.6): Single `vault.key` + `vault.db` backend (AES-256-GCM, Argon2id, HKDF-SHA256) — no OS keyring dependency
+- **Universal Vault** (v1.8.6+): Single `vault.key` + `vault.db` backend (AES-256-GCM, Argon2id, HKDF-SHA256) — no OS keyring dependency
 - **Master Password** (optional): Argon2id (128 MiB, t=4, p=4) encrypted passphrase with auto-lock timeout
 - **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage

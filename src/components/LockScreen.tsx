@@ -83,23 +83,27 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
         t('lockScreen.stepLoading'),       // "Loading credentials..."
     ];
 
+    // Step durations: longer pauses for crypto steps, short for final loading
+    const stepDurations = [1300, 1300, 1300, 1300, 600];
+
     useEffect(() => {
         if (isLoading) {
             setUnlockStep(0);
-            stepTimer.current = setInterval(() => {
-                setUnlockStep(prev => {
-                    if (prev >= unlockSteps.length - 1) {
-                        if (stepTimer.current) clearInterval(stepTimer.current);
-                        return prev;
-                    }
-                    return prev + 1;
-                });
-            }, 900);
+            let currentStep = 0;
+            const scheduleNext = () => {
+                if (currentStep >= unlockSteps.length - 1) return;
+                stepTimer.current = setTimeout(() => {
+                    currentStep++;
+                    setUnlockStep(currentStep);
+                    scheduleNext();
+                }, stepDurations[currentStep]);
+            };
+            scheduleNext();
         } else {
-            if (stepTimer.current) clearInterval(stepTimer.current);
+            if (stepTimer.current) clearTimeout(stepTimer.current);
             stepTimer.current = null;
         }
-        return () => { if (stepTimer.current) clearInterval(stepTimer.current); };
+        return () => { if (stepTimer.current) clearTimeout(stepTimer.current); };
     }, [isLoading]);
 
     // Read pattern preference
@@ -237,7 +241,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
 
                 {/* Version badge */}
                 <div className="mt-3 text-center">
-                    <span className="text-xs text-gray-600">AeroFTP v1.8.6</span>
+                    <span className="text-xs text-gray-600">AeroFTP v1.8.7</span>
                 </div>
             </div>
         </div>

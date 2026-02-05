@@ -272,7 +272,10 @@
             "paste": "Paste",
             "copied": "Copied",
             "moved": "Moved",
-            "delete": "Delete"
+            "delete": "Delete",
+            "newFolder": "New Folder",
+            "refresh": "Refresh",
+            "selectAll": "Select All"
         },
         "transfer": {
             "transferring": "Transferring...",

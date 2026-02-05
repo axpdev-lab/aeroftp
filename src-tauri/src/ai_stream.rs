@@ -1,7 +1,7 @@
 // AI Streaming Module for AeroFTP
 // SSE/chunked streaming for OpenAI, Anthropic, Gemini, Ollama
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 use futures_util::StreamExt;

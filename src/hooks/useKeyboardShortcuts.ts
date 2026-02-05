@@ -21,10 +21,10 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: any[] = []) =
             }
 
             const keys: string[] = [];
-            if (event.ctrlKey) keys.push('Ctrl');
+            // Normalize Meta (Cmd on macOS) to Ctrl for cross-platform shortcut matching
+            if (event.ctrlKey || event.metaKey) keys.push('Ctrl');
             if (event.altKey) keys.push('Alt');
             if (event.shiftKey) keys.push('Shift');
-            if (event.metaKey) keys.push('Meta');
 
             let key = event.key;
 

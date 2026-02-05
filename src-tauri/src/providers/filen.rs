@@ -8,13 +8,13 @@ use async_trait::async_trait;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::Aead;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use secrecy::ExposeSecret;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Sha512, Digest};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 /// Debug logging through tracing infrastructure (no file I/O)
 fn filen_log(msg: &str) {
@@ -114,6 +114,7 @@ struct FileMetadata {
 
 /// Filen user info response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct UserInfoResponse {
     status: bool,
     data: Option<UserInfoData>,
@@ -137,6 +138,7 @@ struct GenericResponse {
 
 /// Filen link status response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct LinkStatusResponse {
     status: bool,
     data: Option<LinkStatusData>,
@@ -158,6 +160,7 @@ struct LinkEditResponse {
 
 /// Filen create folder response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct CreateFolderResponse {
     status: bool,
     data: Option<CreateFolderData>,
@@ -165,12 +168,14 @@ struct CreateFolderResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct CreateFolderData {
     uuid: String,
 }
 
 /// Directory info in our cache
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct DirInfo {
     uuid: String,
     name: String,

@@ -6,33 +6,36 @@
   <key>com.apple.security.app-sandbox</key>
   <true/>
 
-  <!-- Network Client Permission - Required for FTP connections -->
+  <!-- Hardened Runtime: Deny unsigned executable memory -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <false/>
+
+  <!-- Hardened Runtime: Deny DYLD environment variables -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <false/>
+
+  <!-- Network Client Permission - Required for FTP/SFTP/WebDAV/cloud connections -->
   <key>com.apple.security.network.client</key>
   <true/>
 
-  <!-- Network Server Permission - May be needed for some FTP operations -->
+  <!-- Network Server Permission - Required for OAuth2 callback listener and FTP PASV -->
   <key>com.apple.security.network.server</key>
   <true/>
 
-  <!-- File System Access - User selected files (Downloads/Documents) -->
+  <!-- Outgoing Network Connections (for all remote servers) -->
+  <key>com.apple.security.network.outgoing</key>
+  <true/>
+
+  <!-- File System Access - User selected files -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 
-  <!-- Optional: Allow reading specific directories -->
-  <!-- Uncomment if you want to grant access to Downloads folder -->
-  <!--
+  <!-- File System Access - Downloads folder (auto-update, AeroCloud sync) -->
   <key>com.apple.security.files.downloads.read-write</key>
   <true/>
-  -->
 
-  <!-- Optional: Allow reading documents -->
-  <!--
+  <!-- File System Access - Documents folder (AeroCloud default sync target) -->
   <key>com.apple.security.files.documents.read-write</key>
-  <true/>
-  -->
-
-  <!-- Outgoing Network Connections (for all remote servers) -->
-  <key>com.apple.security.network.outgoing</key>
   <true/>
 </dict>
 </plist>

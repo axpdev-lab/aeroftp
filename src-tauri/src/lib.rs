@@ -1867,10 +1867,19 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
     
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        let metadata = std::fs::metadata(&path);
+        if metadata.map(|m| m.is_file()).unwrap_or(false) {
+            // Use -R to reveal file in Finder (selects it)
+            std::process::Command::new("open")
+                .args(["-R", &path])
+                .spawn()
+                .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        } else {
+            std::process::Command::new("open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        }
     }
     
     Ok(())
@@ -3286,87 +3295,6 @@ pub async fn get_local_files_recursive(
     Ok(files)
 }
 
-/// Scan remote directory iteratively and build file info map
-async fn get_remote_files_recursive(
-    ftp_manager: &mut ftp::FtpManager,
-    base_path: &str,
-    _current_path: &str,
-    exclude_patterns: &[String],
-) -> Result<HashMap<String, FileInfo>, String> {
-    let mut files = HashMap::new();
-    
-    // Use a stack for iterative traversal
-    let mut dirs_to_process = vec![base_path.to_string()];
-    
-    while let Some(current_dir) = dirs_to_process.pop() {
-        // Change to the directory
-        if let Err(e) = ftp_manager.change_dir(&current_dir).await {
-            info!("Warning: Could not change to directory {}: {}", current_dir, e);
-            continue;
-        }
-        
-        // List files
-        let entries = match ftp_manager.list_files().await {
-            Ok(e) => e,
-            Err(e) => {
-                info!("Warning: Could not list files in {}: {}", current_dir, e);
-                continue;
-            }
-        };
-        
-        for entry in entries {
-            // Skip . and ..
-            if entry.name == "." || entry.name == ".." {
-                continue;
-            }
-            
-            // Calculate relative path
-            let relative_path = if current_dir == base_path {
-                entry.name.clone()
-            } else {
-                let rel_dir = current_dir.strip_prefix(base_path).unwrap_or(&current_dir);
-                let rel_dir = rel_dir.trim_start_matches('/');
-                if rel_dir.is_empty() {
-                    entry.name.clone()
-                } else {
-                    format!("{}/{}", rel_dir, entry.name)
-                }
-            };
-            
-            // Skip excluded paths
-            if should_exclude(&relative_path, exclude_patterns) {
-                continue;
-            }
-            
-            let file_info = FileInfo {
-                name: entry.name.clone(),
-                path: format!("{}/{}", current_dir, entry.name),
-                size: entry.size.unwrap_or(0),
-                modified: entry.modified.and_then(|s| {
-                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
-                        .ok()
-                        .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
-                }),
-                is_dir: entry.is_dir,
-                checksum: None,
-            };
-            
-            files.insert(relative_path, file_info);
-            
-            // Add subdirectories to process
-            if entry.is_dir {
-                let sub_path = format!("{}/{}", current_dir, entry.name);
-                dirs_to_process.push(sub_path);
-            }
-        }
-    }
-    
-    // Return to base path
-    let _ = ftp_manager.change_dir(base_path).await;
-
-    Ok(files)
-}
-
 /// Scan remote directory with progress events
 async fn get_remote_files_recursive_with_progress(
     app: &AppHandle,
@@ -4434,10 +4362,17 @@ pub fn run() {
                 "Edit",
                 true,
                 &[
-                    &MenuItem::with_id(app, "rename", "Rename", true, Some("F2"))?,
-                    &MenuItem::with_id(app, "delete", "Delete", true, Some("Delete"))?,
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::select_all(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "rename", "Rename", true, Some("F2"))?,
+                    &MenuItem::with_id(app, "delete", "Delete", true, Some("Delete"))?,
                 ],
             )?;
             

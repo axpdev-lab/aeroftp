@@ -106,15 +106,11 @@
             "dismiss": "Dismiss",
             "authenticating": "Authenticating...",
             "oauth2Connection": "OAuth2 Connection",
-            "credentialLoadFailed": "[NEEDS TRANSLATION] Could not load saved password. OS keyring may be locked. Please re-enter your password.",
             "securityTitle": "[NEEDS TRANSLATION] Your credentials are secure",
             "securityKeyring": "[NEEDS TRANSLATION] OS Keyring storage (libsecret on Linux, Keychain on macOS, Credential Manager on Windows)",
             "securityEncryption": "[NEEDS TRANSLATION] AES-256-GCM encryption with Argon2id key derivation for local storage",
             "securityNoSend": "[NEEDS TRANSLATION] Credentials never leave your device — no cloud sync, no telemetry",
-            "securityTLS": "[NEEDS TRANSLATION] All connections use TLS 1.3 / SSH encryption when available",
-            "keyringFailed": "[NEEDS TRANSLATION] Password storage unavailable. Set up a Master Password in Settings > Security to save passwords securely.",
-            "vaultLocked": "[NEEDS TRANSLATION] Enter your Master Password to access saved credentials.",
-            "vaultLockedTitle": "[NEEDS TRANSLATION] Vault Locked"
+            "securityTLS": "[NEEDS TRANSLATION] All connections use TLS 1.3 / SSH encryption when available"
         },
         "browser": {
             "remote": "रिमोट",
@@ -208,7 +204,10 @@
             "copy": "[NEEDS TRANSLATION] Copy",
             "paste": "[NEEDS TRANSLATION] Paste",
             "copied": "[NEEDS TRANSLATION] Copied",
-            "moved": "[NEEDS TRANSLATION] Moved"
+            "moved": "[NEEDS TRANSLATION] Moved",
+            "newFolder": "[NEEDS TRANSLATION] New Folder",
+            "refresh": "[NEEDS TRANSLATION] Refresh",
+            "selectAll": "[NEEDS TRANSLATION] Select All"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -722,16 +721,10 @@
         },
         "masterPassword": {
             "setupTitle": "Set Master Password",
-            "unlockTitle": "Unlock Credential Vault",
-            "setupDesc": "Your OS keychain is not available. Set a master password to encrypt your credential vault locally.",
-            "unlockDesc": "Enter your master password to unlock the credential vault.",
-            "noRecovery": "There is no password recovery. If you forget this password, your stored credentials cannot be recovered.",
             "password": "Master password",
-            "confirm": "Confirm password",
             "tooShort": "Minimum 8 characters",
             "mismatch": "Passwords do not match",
             "processing": "Processing...",
-            "create": "Create Vault",
             "unlock": "Unlock",
             "cancel": "Cancel",
             "setupDescription": "[NEEDS TRANSLATION] Protect your saved credentials",

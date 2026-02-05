@@ -1,24 +1,24 @@
-# 📚 AeroFTP Documentation
+# AeroFTP Documentation
 
-Welcome to the AeroFTP documentation folder. This contains all technical documentation, release plans, and guides.
-
----
-
-## 📋 Table of Contents
-
-| Document                                             | Description                                                |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| **[RELEASE.md](./RELEASE.md)**                       | Complete release process and CI/CD automation              |
-| **[TRANSLATIONS.md](./TRANSLATIONS.md)**             | Internationalization (i18n) guide for adding new languages |
-| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)**   | Protocol feature comparison matrix                         |
-| **[COMPETITOR-ANALYSIS.md](./COMPETITOR-ANALYSIS.md)**| Market and competitor analysis                             |
-| **[MACOS_RELEASE_PLAN.md](./MACOS_RELEASE_PLAN.md)** | Complete macOS release and distribution guide              |
-| **[MACOS_QUICKSTART.md](./MACOS_QUICKSTART.md)**     | Quick start guide for macOS builds                         |
-| **[FLATHUB_SUBMISSION.md](./FLATHUB_SUBMISSION.md)** | Linux Flatpak packaging and distribution                   |
+Welcome to the AeroFTP documentation folder. This contains all technical documentation, compatibility audits, and guides.
 
 ---
 
-## 🚀 Quick Links
+## Table of Contents
+
+| Document | Description |
+| -------- | ----------- |
+| **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
+| **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
+| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (13 protocols) |
+| **[COMPETITOR-ANALYSIS.md](./COMPETITOR-ANALYSIS.md)** | Market and competitor analysis |
+| **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture |
+| **[UBUNTU-COMPATIBILITY.md](./UBUNTU-COMPATIBILITY.md)** | Ubuntu 22.04/24.04 LTS compatibility audit |
+| **[WINDOWS-COMPATIBILITY.md](./WINDOWS-COMPATIBILITY.md)** | Windows 10/11 compatibility audit |
+
+---
+
+## Quick Links
 
 ### Release Process
 See **[RELEASE.md](./RELEASE.md)** for complete CI/CD documentation.
@@ -39,14 +39,9 @@ git push origin main --tags
 | Windows | `.msi`, `.exe` | GitHub Releases |
 | macOS | `.dmg` | GitHub Releases |
 
-### Platform-Specific Guides
-- **Linux**: [FLATHUB_SUBMISSION.md](./FLATHUB_SUBMISSION.md) (Flatpak)
-- **macOS**: [MACOS_RELEASE_PLAN.md](./MACOS_RELEASE_PLAN.md)
-- **Snap Store**: Automatic via CI (see [RELEASE.md](./RELEASE.md))
-
 ---
 
-## 📝 Version Files
+## Version Files
 
 Update version in these 4 files before release:
 
@@ -59,7 +54,7 @@ Update version in these 4 files before release:
 
 ---
 
-## 🌍 Translations
+## Translations
 
 AeroFTP supports multiple languages. See [TRANSLATIONS.md](./TRANSLATIONS.md) for:
 - Adding a new language
@@ -70,12 +65,10 @@ Currently supported: **51 languages** at 100% coverage
 
 ---
 
-## 📅 Last Updated
-
-- **Documentation Version**: 1.8.6
+- **Documentation Version**: 1.8.7
 - **Last Update**: 2026-02-05
 
 ---
 
-**Maintainer**: axpnet  
+**Maintainer**: axpnet
 **Project**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)

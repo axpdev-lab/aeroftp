@@ -138,7 +138,6 @@ impl WebDavProvider {
 
                 let is_self_reference = clean_path == base_clean
                     || clean_path == url_clean
-                    || (base_clean == "/" && clean_path == url_clean)
                     || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
                     || (!base_clean.is_empty() && clean_path.ends_with(&format!("/{}", base_clean.trim_start_matches('/'))))
                     || (!base_clean.is_empty() && base_clean != "/" && url_clean.ends_with(clean_path))

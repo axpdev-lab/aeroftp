@@ -2091,14 +2091,28 @@ const App: React.FC = () => {
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
 
-    // Cross-panel paste → upload or download
+    // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
       if (sourceIsRemote) {
-        // Remote → Local: download
-        await downloadMultipleFiles(files.map(f => f.name));
+        // Remote → Local: download each file using stored path (not current listing)
+        for (const file of files) {
+          try {
+            await downloadFile(file.path, file.name, currentLocalPath, file.is_dir);
+          } catch (e) {
+            notify.error(`Failed to download ${file.name}`, String(e));
+          }
+        }
+        loadLocalFiles(currentLocalPath);
       } else {
-        // Local → Remote: upload
-        await uploadMultipleFiles(files.map(f => f.name));
+        // Local → Remote: upload each file using stored path (not current listing)
+        for (const file of files) {
+          try {
+            await uploadFile(file.path, file.name, file.is_dir);
+          } catch (e) {
+            notify.error(`Failed to upload ${file.name}`, String(e));
+          }
+        }
+        loadRemoteFiles();
       }
       if (operation === 'cut') {
         // Delete source after successful transfer
@@ -3336,6 +3350,66 @@ const App: React.FC = () => {
     contextMenu.show(e, items);
   };
 
+  // Empty-area context menu for remote panel (right-click on background)
+  const showRemoteEmptyContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedRemoteFiles(new Set());
+
+    const items: ContextMenuItem[] = [
+      {
+        label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
+        action: () => clipboardPaste(true, currentRemotePath),
+        disabled: !hasClipboard,
+      },
+      {
+        label: t('contextMenu.newFolder') || 'New Folder', icon: <FolderPlus size={14} />,
+        action: () => createFolder(true),
+        divider: true,
+      },
+      {
+        label: t('contextMenu.refresh') || 'Refresh', icon: <RefreshCw size={14} />,
+        action: () => loadRemoteFiles(),
+      },
+      {
+        label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
+        action: () => setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name))),
+        disabled: remoteFiles.length === 0,
+      },
+    ];
+    contextMenu.show(e, items);
+  };
+
+  // Empty-area context menu for local panel (right-click on background)
+  const showLocalEmptyContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedLocalFiles(new Set());
+
+    const items: ContextMenuItem[] = [
+      {
+        label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
+        action: () => clipboardPaste(false, currentLocalPath),
+        disabled: !hasClipboard,
+      },
+      {
+        label: t('contextMenu.newFolder') || 'New Folder', icon: <FolderPlus size={14} />,
+        action: () => createFolder(false),
+        divider: true,
+      },
+      {
+        label: t('contextMenu.refresh') || 'Refresh', icon: <RefreshCw size={14} />,
+        action: () => loadLocalFiles(currentLocalPath),
+      },
+      {
+        label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
+        action: () => setSelectedLocalFiles(new Set(localFiles.map(f => f.name))),
+        disabled: localFiles.length === 0,
+      },
+    ];
+    contextMenu.show(e, items);
+  };
+
   const handleRemoteFileAction = async (file: RemoteFile) => {
     if (file.is_dir) {
       // Use file.path for providers (WebDAV/S3) that need absolute paths
@@ -4266,7 +4340,12 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                  // Only show empty-area menu if click target is the container itself or table background
+                  const target = e.target as HTMLElement;
+                  const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
+                  if (!isFileRow && isConnected) showRemoteEmptyContextMenu(e);
+                }}>
                   {!isConnected ? (
                     <div className="flex flex-col items-center justify-center h-full text-gray-400">
                       <Cloud size={64} className="mb-4 opacity-30" />
@@ -4308,6 +4387,7 @@ const App: React.FC = () => {
                         {sortedRemoteFiles.map((file, i) => (
                           <tr
                             key={file.name}
+                            data-file-row
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
@@ -4405,6 +4485,7 @@ const App: React.FC = () => {
                       {sortedRemoteFiles.map((file, i) => (
                         <div
                           key={file.name}
+                          data-file-card
                           draggable={file.name !== '..'}
                           onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                           onDragEnd={handleDragEnd}
@@ -4590,7 +4671,11 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                  const target = e.target as HTMLElement;
+                  const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
+                  if (!isFileRow) showLocalEmptyContextMenu(e);
+                }}>
                   {viewMode === 'list' ? (
                     <table className="w-full">
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
@@ -4618,6 +4703,7 @@ const App: React.FC = () => {
                         {sortedLocalFiles.map((file, i) => (
                           <tr
                             key={file.name}
+                            data-file-row
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
                             onDragEnd={handleDragEnd}
@@ -4732,6 +4818,7 @@ const App: React.FC = () => {
                       {sortedLocalFiles.map((file, i) => (
                         <div
                           key={file.name}
+                          data-file-card
                           draggable={file.name !== '..'}
                           onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
                           onDragEnd={handleDragEnd}

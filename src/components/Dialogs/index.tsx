@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock } from 'lucide-react';
 
 // ============ Helper Functions ============
 const formatBytes = (bytes: number | null): string => {
@@ -600,25 +600,29 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white/20 rounded-lg">
-                            <Lock size={20} className="text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-white">{t('masterPassword.setupTitle')}</h2>
-                            <p className="text-emerald-100 text-sm">{t('masterPassword.setupDescription')}</p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="text-white/70 hover:text-white p-1">
-                        <X size={20} />
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden">
+                {/* Header — matches LockScreen / AeroVault style */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{t('masterPassword.setupTitle')}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{t('masterPassword.setupDescription')}</span>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 ml-2">
+                        <X size={16} />
                     </button>
                 </div>
 
+                {/* Shield icon */}
+                <div className="flex justify-center pt-5 pb-2">
+                    <div className="relative">
+                        <Shield size={48} className="text-emerald-500 dark:text-emerald-400" />
+                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1">
+                            <Lock size={10} className="text-white" />
+                        </div>
+                    </div>
+                </div>
+
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="p-5 pt-3 space-y-4">
                     {error && (
                         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
                             <AlertTriangle size={16} />
@@ -636,9 +640,10 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 dark:text-gray-100"
                                 placeholder="••••••••"
                                 autoFocus
+                                disabled={isLoading}
                             />
                             <button
                                 type="button"
@@ -657,13 +662,24 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             {t('masterPassword.confirmPassword')}
                         </label>
-                        <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={confirmPassword}
-                            onChange={e => setConfirmPassword(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                            placeholder="••••••••"
-                        />
+                        <div className="relative">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={confirmPassword}
+                                onChange={e => setConfirmPassword(e.target.value)}
+                                className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 dark:text-gray-100"
+                                placeholder="••••••••"
+                                disabled={isLoading}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                tabIndex={-1}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Auto-lock Timeout */}
@@ -680,45 +696,66 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                                 value={timeoutMinutes}
                                 onChange={e => setTimeoutMinutes(parseInt(e.target.value))}
                                 className="flex-1 accent-emerald-500"
+                                disabled={isLoading}
                             />
-                            <span className="text-sm font-medium w-16 text-right">
+                            <span className="text-sm font-medium w-16 text-right text-gray-700 dark:text-gray-300">
                                 {timeoutMinutes} min
                             </span>
                         </div>
                     </div>
 
-                    {/* Info box */}
+                    {/* Security info */}
                     <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-blue-700 dark:text-blue-300 text-xs">
                         <Info size={14} className="mt-0.5 flex-shrink-0" />
                         <p>{t('masterPassword.setupInfo')}</p>
                     </div>
 
-                    {/* Buttons */}
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"
-                        >
-                            {t('common.cancel')}
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={!password || !confirmPassword || isLoading}
-                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg flex items-center justify-center gap-2"
-                        >
-                            {isLoading ? (
-                                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    {/* Submit button with encrypting animation */}
+                    <button
+                        type="submit"
+                        disabled={!password || !confirmPassword || isLoading}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                        {isLoading ? (
+                            <>
+                                <svg className="h-5 w-5" viewBox="0 0 100 100" fill="currentColor">
+                                    <path d="M31.6,3.5C5.9,13.6-6.6,42.7,3.5,68.4c10.1,25.7,39.2,38.3,64.9,28.1l-3.1-7.9c-21.3,8.4-45.4-2-53.8-23.3c-8.4-21.3,2-45.4,23.3-53.8L31.6,3.5z">
+                                        <animateTransform attributeName="transform" type="rotate" dur="2s" from="0 50 50" to="360 50 50" repeatCount="indefinite" />
+                                    </path>
+                                    <path d="M42.3,39.6c5.7-4.3,13.9-3.1,18.1,2.7c4.3,5.7,3.1,13.9-2.7,18.1l4.1,5.5c8.8-6.5,10.6-19,4.1-27.7c-6.5-8.8-19-10.6-27.7-4.1L42.3,39.6z">
+                                        <animateTransform attributeName="transform" type="rotate" dur="1s" from="0 50 50" to="-360 50 50" repeatCount="indefinite" />
+                                    </path>
+                                    <path d="M82,35.7C74.1,18,53.4,10.1,35.7,18S10.1,46.6,18,64.3l7.6-3.4c-6-13.5,0-29.3,13.5-35.3s29.3,0,35.3,13.5L82,35.7z">
+                                        <animateTransform attributeName="transform" type="rotate" dur="2s" from="0 50 50" to="360 50 50" repeatCount="indefinite" />
+                                    </path>
                                 </svg>
-                            ) : (
-                                <Shield size={18} />
-                            )}
-                            {t('masterPassword.enable')}
-                        </button>
-                    </div>
+                                <span className="transition-opacity duration-200">{t('settings.encrypting')}</span>
+                            </>
+                        ) : (
+                            <>
+                                <ShieldCheck size={20} />
+                                {t('masterPassword.enable')}
+                            </>
+                        )}
+                    </button>
+
+                    {/* Cancel link */}
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={isLoading}
+                        className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50"
+                    >
+                        {t('common.cancel')}
+                    </button>
                 </form>
+
+                {/* Footer */}
+                <div className="px-5 pb-4">
+                    <p className="text-xs text-center text-gray-400">
+                        {t('lockScreen.securityNote')}
+                    </p>
+                </div>
             </div>
         </div>
     );

@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.7] - 2026-02-05
+
+### Ubuntu Verification, UX Polish & macOS Audit
+
+Build verification, compatibility audits, and UX improvements. All 13 protocols, AeroVault v2, Cryptomator, AI Agent, and terminal verified working on Linux and macOS.
+
+#### Added
+
+- **Ubuntu Compatibility Audit**: Full static analysis across 4 domains (paths, security, desktop, build) — certified compatible with Ubuntu 22.04 LTS and 24.04 LTS
+- **macOS Compatibility Audit**: Comprehensive 4-domain static analysis (paths/filesystem, UI/clipboard, build/CI, protocols/TLS) — certified compatible with macOS 10.13+ (Intel + Apple Silicon)
+- **macOS bundle configuration**: Added `minimumSystemVersion: "10.13"` and entitlements reference in Tauri bundle config
+- **macOS hardened runtime**: Entitlements updated with `cs.allow-unsigned-executable-memory: false`, `cs.allow-dyld-environment-variables: false`, Downloads and Documents folder access
+- **macOS Edit menu**: Standard menu items (Undo, Redo, Cut, Copy, Paste) as native `PredefinedMenuItem` entries alongside Rename and Delete
+- **Empty-area context menu**: Right-click on file panel background shows Paste, New Folder, Refresh, and Select All options (both local and remote panels, list and grid views)
+- **Cross-panel paste**: Cut/Copy files in one panel and paste in the other using stored full paths (no longer depends on current directory listing)
+
+#### Fixed
+
+- **macOS keyboard shortcuts**: Normalized `Meta` (Cmd) to `Ctrl` in keyboard handler — both Cmd+C (macOS) and Ctrl+C (Linux/Windows) now trigger the same shortcuts across all 10+ keybindings
+- **macOS Finder reveal**: `open_in_file_manager` now uses `open -R` for files to select them in Finder, matching Windows `explorer /select,` behavior
+- **Context menu missing on empty space**: File panel context menu only appeared on file rows — added `onContextMenu` handlers to container divs with `data-file-row`/`data-file-card` attributes for proper target detection
+- **Cross-panel paste path lookup**: `clipboardPaste` was passing file names to `downloadMultipleFiles`/`uploadMultipleFiles` which looked up in current directory listing — now uses `downloadFile`/`uploadFile` directly with clipboard paths
+- **Tab navigation stuck on password toggles**: Added `tabIndex={-1}` to all 3 eye-icon toggle buttons in Settings Security tab (Current Password, New Password, Confirm Password) — Tab now skips toggles and moves to next input field
+- **WebDAV self-reference filter**: Removed redundant boolean condition in directory listing that triggered clippy deny-level lint
+- **Unused imports cleanup**: Removed 11 unused imports across 6 Rust source files (oauth2, box, pcloud, azure, filen, ai_stream)
+- **Dead code removal**: Removed unused `get_remote_files_recursive` function and unused `VaultLocked` error variant
+
+#### Changed
+
+- **MasterPasswordSetupDialog restyled**: Replaced green gradient header with clean AeroFTP modal style (icon + title header, centered shield, full-width submit button with "Encrypting..." spinner, cancel link, security footer)
+- **Unlock animation tuned**: Step durations adjusted to 1300ms per crypto phase for optimal pacing with Argon2id timing (~5.2s total before final "Loading credentials" step)
+- **LockScreen version badge**: Updated to v1.8.7
+- **i18n cleanup**: Removed 10 orphan translation keys from 50 language files; added 3 new context menu keys (`contextMenu.newFolder`, `contextMenu.refresh`, `contextMenu.selectAll`) synced to all 51 languages
+- **Dead code annotations**: Added `#[allow(dead_code)]` to serde deserialization structs that need fields for JSON parsing (filen, box, cryptomator, onedrive)
+
+---
+
 ## [1.8.6] - 2026-02-05
 
 ### Security & Windows Compatibility

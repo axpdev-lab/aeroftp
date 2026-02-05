@@ -33,8 +33,6 @@ const PASSPHRASE_LEN: usize = 64;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
-    #[error("Vault locked - master password required")]
-    VaultLocked,
     #[error("Vault not initialized")]
     VaultNotInitialized,
     #[error("Invalid master password")]
@@ -206,14 +204,6 @@ impl VaultKeyFile {
         std::fs::write(&path, &data)?;
         ensure_secure_permissions(&path)?;
         Ok(())
-    }
-
-    /// Extract passphrase (auto mode only — master mode requires password)
-    fn get_passphrase(&self) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
-        match &self.mode {
-            VaultKeyMode::Auto { passphrase } => Ok(*passphrase),
-            VaultKeyMode::Master { .. } => Err(CredentialError::VaultLocked),
-        }
     }
 
     /// Decrypt passphrase using master password (master mode only)

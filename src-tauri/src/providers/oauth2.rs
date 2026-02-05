@@ -77,7 +77,7 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
 }
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::ProviderError;
 

@@ -5,7 +5,7 @@
 | Version | Supported |
 | ------- | --------- |
 | 1.9.x   | Yes |
-| 1.8.x   | Security fixes only |
+| 1.8.x   | Yes (current) |
 | 1.7.x   | Security fixes only |
 | < 1.7   | No  |
 
@@ -13,7 +13,7 @@
 
 ### Credential Storage
 
-AeroFTP v1.8.6 uses a **Universal Vault** — a single encrypted credential backend that works identically on all platforms, replacing the previous dual-mode OS Keyring + encrypted vault approach.
+AeroFTP v1.8.7 uses a **Universal Vault** — a single encrypted credential backend that works identically on all platforms, replacing the previous dual-mode OS Keyring + encrypted vault approach.
 
 **Universal Vault (`vault.key` + `vault.db`)**
 
@@ -27,7 +27,7 @@ AeroFTP v1.8.6 uses a **Universal Vault** — a single encrypted credential back
 | **Encryption** | AES-256-GCM with per-entry random 12-byte nonces |
 | **File permissions** | `0600` (owner read/write only) on Unix; `icacls` ACL-restricted on Windows |
 
-**Why Universal Vault (v1.8.6)?**
+**Why Universal Vault (v1.8.6+)?**
 
 The previous dual-mode system (OS Keyring primary + encrypted vault fallback) suffered from platform-specific failures: Windows Credential Manager silently lost credentials, Linux keyring required desktop environment, macOS Keychain prompted for permissions. The Universal Vault eliminates all platform dependencies while maintaining equivalent or stronger security.
 
@@ -68,7 +68,7 @@ Additional options:
 
 - **PKCE** (Proof Key for Code Exchange) with SHA-256 code challenge
 - **CSRF** protection via state token validation
-- **Token storage** in OS keyring or encrypted vault
+- **Token storage** in Universal Vault (AES-256-GCM encrypted)
 - **Automatic refresh** with 5-minute buffer before expiry
 - **Ephemeral callback port**: OS-assigned random port (not a fixed port)
 
@@ -217,4 +217,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.8.6 - 5 February 2026*
+*AeroFTP v1.8.7 - 5 February 2026*

@@ -1040,6 +1040,7 @@ impl StorageProvider for OneDriveProvider {
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
+        #[allow(dead_code)]
         struct Permission {
             id: Option<String>,
             roles: Option<Vec<String>>,

@@ -8,12 +8,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
 use sha2::Sha256;
-use serde::Deserialize;
-use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
+    StorageProvider, ProviderType, ProviderError, RemoteEntry,
 };
 use super::types::AzureConfig;
 

@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo, FileVersion,
-    oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
+    oauth2::{OAuth2Manager, OAuthConfig},
 };
 use super::types::BoxConfig;
 
@@ -34,6 +34,7 @@ struct BoxItem {
 
 /// Box folder items response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct BoxItemCollection {
     entries: Vec<BoxItem>,
     total_count: u64,

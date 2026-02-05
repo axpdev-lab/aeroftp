@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 /// Cryptomator masterkey.cryptomator file format
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct MasterkeyFile {
     scrypt_salt: String,
     scrypt_cost_param: u32,
@@ -36,6 +37,7 @@ struct VaultConfig {
 }
 
 /// An unlocked vault with decrypted master keys
+#[allow(dead_code)]
 pub struct UnlockedVault {
     enc_key: [u8; 32],
     mac_key: [u8; 32],
