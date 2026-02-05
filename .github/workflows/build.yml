@@ -29,6 +29,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     
     steps:
+      - name: Free disk space (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/share/swift
+          sudo apt-get clean
+          df -h /
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
