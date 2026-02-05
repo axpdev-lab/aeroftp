@@ -654,15 +654,16 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
             xtermInstances.current.get(tabId)?.focus();
 
-            // Set prompt for local shell only (bash on Unix, PowerShell on Windows)
+            // Clear screen for local shell (prompt is set at spawn time in pty.rs)
             if (tab.type !== 'ssh') {
                 setTimeout(async () => {
                     try {
                         const isWindows = navigator.platform.startsWith('Win');
-                        const promptCommand = isWindows
-                            ? `function prompt { \"$([char]27)[1;32m$env:USERNAME@$env:COMPUTERNAME$([char]27)[0m:$([char]27)[1;34m$(Get-Location)$([char]27)[0m$ \" }; cls\n`
-                            : `export PS1='\\[\\e[1;32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ' && clear\n`;
-                        await invoke('pty_write', { data: promptCommand, sessionId: sessionId || null });
+                        // Windows: prompt already set via -Command at spawn; Linux: PS1 env var set at spawn
+                        const clearCommand = isWindows ? '' : 'clear\n';
+                        if (clearCommand) {
+                            await invoke('pty_write', { data: clearCommand, sessionId: sessionId || null });
+                        }
                     } catch { /* ignore */ }
                 }, 300);
             }

@@ -15,6 +15,7 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { getProviderById, ProviderConfig } from '../providers';
+import { AlertDialog } from './Dialogs';
 
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -47,6 +48,7 @@ interface ConnectionScreenProps {
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onOpenCloudPanel?: () => void;
+    onOpenSecuritySettings?: () => void;
     hasExistingSessions?: boolean;  // Show back button when there are existing sessions
 }
 
@@ -60,6 +62,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onSavedServerConnect,
     onSkipToFileManager,
     onOpenCloudPanel,
+    onOpenSecuritySettings,
     hasExistingSessions = false,
 }) => {
     const t = useTranslation();
@@ -84,6 +87,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
+
+    // Alert dialog state (replaces native alert())
+    const [credentialAlert, setCredentialAlert] = useState<{
+        title: string;
+        message: string;
+        type: 'warning' | 'error' | 'info';
+    } | null>(null);
 
     // Fetch AeroCloud config when AeroCloud is selected
     useEffect(() => {
@@ -110,9 +120,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         } catch (err) {
             const errorStr = String(err);
             if (errorStr.includes('KEYRING_BROKEN_NEED_VAULT_SETUP')) {
-                alert(t('connection.keyringFailed'));
+                setCredentialAlert({
+                    title: t('connection.securityTitle'),
+                    message: t('connection.keyringFailed'),
+                    type: 'warning',
+                });
             } else if (errorStr.includes('VAULT_LOCKED')) {
-                alert(t('connection.vaultLocked'));
+                setCredentialAlert({
+                    title: t('connection.vaultLockedTitle'),
+                    message: t('connection.vaultLocked'),
+                    type: 'info',
+                });
             } else {
                 console.error('Failed to store credential:', err);
             }
@@ -1034,6 +1052,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     <p className="text-xs text-gray-500 mt-2">{t('statusBar.notConnected')}</p>
                 </div>
             </div> {/* Close grid */}
+
+            {/* Credential storage alert dialog */}
+            {credentialAlert && (
+                <AlertDialog
+                    title={credentialAlert.title}
+                    message={credentialAlert.message}
+                    type={credentialAlert.type}
+                    onClose={() => setCredentialAlert(null)}
+                    actionLabel={credentialAlert.type === 'warning' && onOpenSecuritySettings ? t('settings.openSettings') : undefined}
+                    onAction={credentialAlert.type === 'warning' && onOpenSecuritySettings ? () => {
+                        setCredentialAlert(null);
+                        onOpenSecuritySettings();
+                    } : undefined}
+                />
+            )}
         </div>
     );
 };

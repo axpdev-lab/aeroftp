@@ -79,6 +79,15 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
 
     let mut cmd = CommandBuilder::new(&shell);
 
+    // Windows: start PowerShell with no banner and a custom colored prompt
+    #[cfg(windows)]
+    if shell.contains("powershell") {
+        cmd.arg("-NoLogo");
+        cmd.arg("-NoExit");
+        cmd.arg("-Command");
+        cmd.arg(r#"function prompt { "$([char]27)[1;32m$env:USERNAME@$env:COMPUTERNAME$([char]27)[0m:$([char]27)[1;34m$(Get-Location)$([char]27)[0m$ " }"#);
+    }
+
     // Set environment variables for better terminal experience
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");

@@ -3430,6 +3430,7 @@ const App: React.FC = () => {
             onQuickConnectDirsChange={setQuickConnectDirs}
             onConnect={connectToFtp}
             onOpenCloudPanel={() => setShowCloudPanel(true)}
+            onOpenSecuritySettings={() => { setSettingsInitialTab('security'); setShowSettingsPanel(true); }}
             hasExistingSessions={sessions.length > 0}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
               // NOTE: Do NOT set connectionParams here - that would show the form

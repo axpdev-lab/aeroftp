@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound } from 'lucide-react';
 
 // ============ Helper Functions ============
 const formatBytes = (bytes: number | null): string => {
@@ -53,6 +53,76 @@ const getMimeType = (name: string): string => {
     };
 
     return mimeTypes[ext] || 'application/octet-stream';
+};
+
+// ============ Alert Dialog ============
+interface AlertDialogProps {
+    title: string;
+    message: string;
+    type?: 'warning' | 'error' | 'info';
+    onClose: () => void;
+    actionLabel?: string;
+    onAction?: () => void;
+}
+
+export const AlertDialog: React.FC<AlertDialogProps> = ({
+    title,
+    message,
+    type = 'info',
+    onClose,
+    actionLabel,
+    onAction,
+}) => {
+    const t = useTranslation();
+    const iconMap = {
+        warning: <AlertTriangle size={24} className="text-amber-500" />,
+        error: <ShieldAlert size={24} className="text-red-500" />,
+        info: <Info size={24} className="text-blue-500" />,
+    };
+    const accentMap = {
+        warning: 'border-amber-500/30',
+        error: 'border-red-500/30',
+        info: 'border-blue-500/30',
+    };
+    const actionColorMap = {
+        warning: 'bg-amber-500 hover:bg-amber-600',
+        error: 'bg-red-500 hover:bg-red-600',
+        info: 'bg-blue-500 hover:bg-blue-600',
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+            <div
+                className={`bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 border ${accentMap[type]} overflow-hidden`}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-start gap-4 p-5">
+                    <div className="flex-shrink-0 mt-0.5">{iconMap[type]}</div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">{title}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{message}</p>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    >
+                        {t('common.ok')}
+                    </button>
+                    {actionLabel && onAction && (
+                        <button
+                            onClick={onAction}
+                            className={`px-4 py-2 text-sm text-white rounded-lg transition-colors flex items-center gap-2 ${actionColorMap[type]}`}
+                        >
+                            <KeyRound size={14} />
+                            {actionLabel}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // ============ Confirm Dialog ============

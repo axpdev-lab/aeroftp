@@ -2,6 +2,27 @@ import * as React from 'react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Check, Globe } from 'lucide-react';
 import { Language, LanguageInfo } from '../i18n';
+import * as Flags from 'country-flag-icons/react/3x2';
+
+// Extract 2-letter country code from flag emoji (regional indicator symbols)
+const getFlagCode = (flag: string): string => {
+    const codePoints = Array.from(flag).map(c => c.codePointAt(0) || 0);
+    if (codePoints.length >= 2 && codePoints[0] >= 0x1F1E6 && codePoints[0] <= 0x1F1FF) {
+        return String.fromCharCode(codePoints[0] - 0x1F1E6 + 65, codePoints[1] - 0x1F1E6 + 65);
+    }
+    return '';
+};
+
+// SVG flag icon from country-flag-icons (works on all platforms)
+const FlagIcon: React.FC<{ flag: string; size?: 'sm' | 'md' }> = ({ flag, size = 'md' }) => {
+    const code = getFlagCode(flag);
+    const FlagComponent = code ? (Flags as Record<string, React.FC<React.SVGProps<SVGSVGElement>>>)[code] : null;
+    const sizeClasses = size === 'md' ? 'w-9 h-7' : 'w-8 h-6';
+    if (FlagComponent) {
+        return <FlagComponent className={`${sizeClasses} rounded shadow-sm`} />;
+    }
+    return <Globe size={size === 'md' ? 24 : 20} className="text-gray-400" />;
+};
 
 interface LanguageSelectorProps {
     currentLanguage: Language;
@@ -128,7 +149,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                         : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                 }`}
             >
-                <span className="text-2xl">{currentLangInfo?.flag || '🌐'}</span>
+                {currentLangInfo ? <FlagIcon flag={currentLangInfo.flag} size="md" /> : <Globe size={24} className="text-gray-400" />}
                 <div className="flex-1 text-left">
                     <p className="font-medium">{currentLangInfo?.nativeName || 'Select Language'}</p>
                     <p className="text-xs text-gray-500">{currentLangInfo?.name}</p>
@@ -182,7 +203,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                                                 : ''
                                         }`}
                                     >
-                                        <span className="text-xl">{lang.flag}</span>
+                                        <FlagIcon flag={lang.flag} size="sm" />
                                         <div className="flex-1 text-left min-w-0">
                                             <p className={`font-medium truncate ${
                                                 currentLanguage === lang.code
