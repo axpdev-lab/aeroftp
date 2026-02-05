@@ -183,6 +183,7 @@ impl CloudService {
                 Ok(action) => match action {
                     SyncAction::Upload => result.uploaded += 1,
                     SyncAction::Download => result.downloaded += 1,
+                    SyncAction::KeepBoth => { result.downloaded += 1; }
                     SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
                     SyncAction::Skip => result.skipped += 1,
                     SyncAction::AskUser => {
@@ -300,6 +301,7 @@ impl CloudService {
                 Ok(action) => match action {
                     SyncAction::Upload => result.uploaded += 1,
                     SyncAction::Download => result.downloaded += 1,
+                    SyncAction::KeepBoth => { result.downloaded += 1; }
                     SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
                     SyncAction::Skip => result.skipped += 1,
                     SyncAction::AskUser => {
@@ -505,10 +507,7 @@ impl CloudService {
             SyncStatus::Conflict | SyncStatus::SizeMismatch => {
                 match config.conflict_strategy {
                     ConflictStrategy::AskUser => SyncAction::AskUser,
-                    ConflictStrategy::KeepBoth => {
-                        // TODO: Implement keep both logic
-                        SyncAction::AskUser
-                    }
+                    ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
                     ConflictStrategy::PreferLocal => SyncAction::Upload,
                     ConflictStrategy::PreferRemote => SyncAction::Download,
                     ConflictStrategy::PreferNewer => {
@@ -559,7 +558,7 @@ impl CloudService {
             }
             SyncAction::Download => {
                 let local_path = config.local_folder.join(&comparison.relative_path);
-                
+
                 if comparison.is_dir {
                     // Create local directory
                     std::fs::create_dir_all(&local_path).ok();
@@ -568,7 +567,7 @@ impl CloudService {
                     if let Some(parent) = local_path.parent() {
                         std::fs::create_dir_all(parent).ok();
                     }
-                    
+
                     ftp_manager
                         .download_file_with_progress(
                             &remote_info.path,
@@ -577,6 +576,34 @@ impl CloudService {
                         )
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
+                }
+            }
+            SyncAction::KeepBoth => {
+                if !comparison.is_dir {
+                    let local_path = config.local_folder.join(&comparison.relative_path);
+                    // Rename local file with _conflict suffix to preserve both versions
+                    if local_path.exists() {
+                        let stem = local_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                        let ext = local_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+                        let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
+                        let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
+                        let conflict_path = local_path.with_file_name(&conflict_name);
+                        std::fs::rename(&local_path, &conflict_path).ok();
+                    }
+                    // Download remote version to original path
+                    if let Some(remote_info) = &comparison.remote_info {
+                        if let Some(parent) = local_path.parent() {
+                            std::fs::create_dir_all(parent).ok();
+                        }
+                        ftp_manager
+                            .download_file_with_progress(
+                                &remote_info.path,
+                                &local_path.to_string_lossy(),
+                                |_| {},
+                            )
+                            .await
+                            .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                    }
                 }
             }
             _ => {}
@@ -664,10 +691,7 @@ impl CloudService {
             SyncStatus::Conflict | SyncStatus::SizeMismatch => {
                 match config.conflict_strategy {
                     ConflictStrategy::AskUser => SyncAction::AskUser,
-                    ConflictStrategy::KeepBoth => {
-                        // TODO: Implement keep both logic
-                        SyncAction::AskUser
-                    }
+                    ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
                     ConflictStrategy::PreferLocal => SyncAction::Upload,
                     ConflictStrategy::PreferRemote => SyncAction::Download,
                     ConflictStrategy::PreferNewer => {
@@ -718,7 +742,7 @@ impl CloudService {
             }
             SyncAction::Download => {
                 let local_path = config.local_folder.join(&comparison.relative_path);
-                
+
                 if comparison.is_dir {
                     // Create local directory
                     std::fs::create_dir_all(&local_path).ok();
@@ -727,11 +751,35 @@ impl CloudService {
                     if let Some(parent) = local_path.parent() {
                         std::fs::create_dir_all(parent).ok();
                     }
-                    
+
                     provider
                         .download(&remote_info.path, &local_path.to_string_lossy(), None)
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
+                }
+            }
+            SyncAction::KeepBoth => {
+                if !comparison.is_dir {
+                    let local_path = config.local_folder.join(&comparison.relative_path);
+                    // Rename local file with _conflict suffix to preserve both versions
+                    if local_path.exists() {
+                        let stem = local_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                        let ext = local_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+                        let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
+                        let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
+                        let conflict_path = local_path.with_file_name(&conflict_name);
+                        std::fs::rename(&local_path, &conflict_path).ok();
+                    }
+                    // Download remote version to original path
+                    if let Some(remote_info) = &comparison.remote_info {
+                        if let Some(parent) = local_path.parent() {
+                            std::fs::create_dir_all(parent).ok();
+                        }
+                        provider
+                            .download(&remote_info.path, &local_path.to_string_lossy(), None)
+                            .await
+                            .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                    }
                 }
             }
             _ => {}

@@ -1371,7 +1371,7 @@ pub async fn vault_v2_extract_all(
             dest_path.to_string_lossy().to_string(),
         ).await {
             Ok(_) => extracted += 1,
-            Err(e) => eprintln!("Failed to extract '{}': {}", name, e),
+            Err(e) => tracing::error!("Failed to extract '{}': {}", name, e),
         }
     }
 

@@ -93,7 +93,6 @@ pub async fn extract_zip_entry(
     password: Option<String>,
 ) -> Result<String, String> {
     use std::fs::{self, File};
-    use std::io::Read;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
@@ -116,10 +115,17 @@ pub async fn extract_zip_entry(
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    let mut outfile = File::create(out_path)
+    // Atomic write: extract to .tmp then rename to prevent partial files on failure
+    let tmp_path = out_path.with_extension("aerotmp");
+    let mut outfile = File::create(&tmp_path)
         .map_err(|e| format!("Failed to create output file: {}", e))?;
-    std::io::copy(&mut entry, &mut outfile)
-        .map_err(|e| format!("Failed to extract entry: {}", e))?;
+    if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(format!("Failed to extract entry: {}", e));
+    }
+    drop(outfile);
+    fs::rename(&tmp_path, out_path)
+        .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
 
     Ok(output_path)
 }
@@ -244,14 +250,25 @@ pub async fn extract_7z_entry(
     }
 
     let mut found = false;
+    let tmp_path = out_path.with_extension("aerotmp");
     archive.for_each_entries(|entry, reader| {
         if entry.name() == entry_name {
             found = true;
-            let mut outfile = File::create(out_path)?;
+            let mut outfile = File::create(&tmp_path)?;
             std::io::copy(reader, &mut outfile)?;
         }
         Ok(true)
-    }).map_err(|e| format!("Failed to extract: {}", e))?;
+    }).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        format!("Failed to extract: {}", e)
+    })?;
+
+    if found {
+        fs::rename(&tmp_path, out_path)
+            .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
+    } else {
+        let _ = fs::remove_file(&tmp_path);
+    }
 
     if !found {
         return Err(format!("Entry '{}' not found in archive", entry_name));
@@ -340,10 +357,17 @@ pub async fn extract_tar_entry(
             .to_string();
 
         if path == entry_name {
-            let mut outfile = File::create(out_path)
+            // Atomic write: extract to .tmp then rename to prevent partial files
+            let tmp_path = out_path.with_extension("aerotmp");
+            let mut outfile = File::create(&tmp_path)
                 .map_err(|e| format!("Failed to create file: {}", e))?;
-            std::io::copy(&mut entry, &mut outfile)
-                .map_err(|e| format!("Failed to extract: {}", e))?;
+            if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(format!("Failed to extract: {}", e));
+            }
+            drop(outfile);
+            fs::rename(&tmp_path, out_path)
+                .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
             return Ok(output_path);
         }
     }

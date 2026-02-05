@@ -109,6 +109,7 @@ pub enum SyncAction {
     DeleteRemote,
     Skip,
     AskUser,
+    KeepBoth,
 }
 
 /// A sync operation to execute

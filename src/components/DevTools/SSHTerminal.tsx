@@ -659,11 +659,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 setTimeout(async () => {
                     try {
                         const isWindows = navigator.platform.startsWith('Win');
-                        // Windows: prompt already set via -Command at spawn; Linux: PS1 env var set at spawn
-                        const clearCommand = isWindows ? '' : 'clear\n';
-                        if (clearCommand) {
-                            await invoke('pty_write', { data: clearCommand, sessionId: sessionId || null });
-                        }
+                        // Windows: cls for cmd.exe/PowerShell; Linux: clear for bash/zsh
+                        const clearCommand = isWindows ? 'cls\r\n' : 'clear\n';
+                        await invoke('pty_write', { data: clearCommand, sessionId: sessionId || null });
                     } catch { /* ignore */ }
                 }, 300);
             }

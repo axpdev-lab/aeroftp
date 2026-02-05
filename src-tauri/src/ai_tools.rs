@@ -315,13 +315,13 @@ pub async fn execute_ai_tool(
                 }))
             } else if has_ftp(&app_state).await {
                 // FTP: list parent dir and find the entry
-                let file_name = path.split('/').last().unwrap_or(&path);
-                let parent = if path.contains('/') {
-                    &path[..path.rfind('/').unwrap_or(0)]
+                let file_name = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(&path);
+                let parent = if let Some(pos) = path.rfind(|c: char| c == '/' || c == '\\') {
+                    let p = &path[..pos];
+                    if p.is_empty() { "/" } else { p }
                 } else {
                     "/"
                 };
-                let parent = if parent.is_empty() { "/" } else { parent };
 
                 let mut manager = app_state.ftp_manager.lock().await;
                 manager.change_dir(parent).await.map_err(|e| e.to_string())?;
