@@ -106,10 +106,10 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 
 ### Security
 - **AeroVault v2**: Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-256-KW key wrapping, AES-SIV filename encryption, Argon2id (128 MiB), HMAC-SHA512 header integrity, optional ChaCha20 cascade
-- **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager
+- **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager — with write-verify integrity check
+- **Encrypted vault fallback**: AES-256-GCM with Argon2id KDF, activated automatically when keyring fails, tied to Master Password
 - **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
-- **Encrypted vault fallback**: AES-256-GCM with Argon2id when keyring unavailable
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random port for callbacks (no fixed port exposure)
 - **FTP insecure warning**: Visual banner when using unencrypted FTP

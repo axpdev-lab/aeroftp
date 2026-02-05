@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 4 February 2026
-> Version: v1.8.0
+> Last Updated: 5 February 2026
+> Version: v1.8.5
 
 ---
 
@@ -92,8 +92,9 @@
 | Cryptomator | **Yes (v1.7.0)** | No | Yes | No | No | No |
 | Share Links | Yes | No | Yes | No | No | No |
 | Keychain/Keyring | Yes | Yes | Yes | Yes | Yes | Yes |
-| Encrypted Vault (AES-256-GCM) | Yes | No | No | No | No | No |
+| Encrypted Vault (AES-256-GCM) | **Yes (auto-fallback v1.8.5)** | No | No | No | No | No |
 | Argon2id Key Derivation | Yes | No | No | No | No | No |
+| Keyring Write-Verify | **Yes (v1.8.5)** | No | No | No | No | No |
 | SFTP Host Key Verification | Yes (TOFU) | Yes | Yes | Yes | Yes | Yes |
 | OAuth2 PKCE Flow | Yes | No | Yes | No | Yes | No |
 | Ephemeral OAuth Port | Yes | No | No | No | No | No |
@@ -139,14 +140,14 @@
 | **13 Native Protocols + 30 Presets** | FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Filen |
 | **Filen E2E Support** | Only client besides Filen web app with native Filen E2E encryption support |
 | **Monaco Editor** | VS Code engine for remote file editing |
-| **AeroVault** | AES-256-GCM encrypted containers with Argon2id KDF for secure file storage |
+| **AeroVault v2** | Military-grade containers: AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade |
 | **Cryptomator Format 8** | Open, browse, decrypt, encrypt files in Cryptomator vaults (scrypt + AES-SIV + AES-GCM) |
 | **AeroAgent AI Pro** | AI assistant with native function calling, streaming, 24 tools (local+remote edit, batch transfers), protocol expertise, 7 AI providers |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
 | **Tray Background Sync** | Continuous sync without main window |
 | **Sync Index Cache** | Persistent cache for faster re-scans and true conflict detection |
 | **Storage Quota Display** | Real-time used/total in status bar (9 providers) |
-| **AES-256-GCM Vault** | Argon2id + AES-256-GCM vault when keyring unavailable |
+| **AES-256-GCM Vault** | Argon2id + AES-256-GCM vault with write-verify fallback when keyring fails silently (v1.8.5) |
 | **Ephemeral OAuth Ports** | OS-assigned random port for callback |
 | **Memory Zeroization** | Passwords cleared from memory via zeroize/secrecy |
 | **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) with compression levels and password protection |
@@ -218,6 +219,15 @@
 - Smart Sync (3 intelligent modes), Batch Rename (4 modes), Inline Rename
 - AeroVault v2 (AES-256-GCM-SIV + AES-KW + AES-SIV + Argon2id 128MiB + HMAC-SHA512 + ChaCha20 cascade)
 
+### v1.8.5 - Done
+
+- Keyring write-verify integrity: detect silent credential storage failures (Windows Credential Manager)
+- Encrypted vault auto-fallback: Master Password gates credential vault when keyring broken
+- Custom AlertDialog with themed modals replacing native alerts
+- SVG flag icons for cross-platform language selector (Windows emoji fix)
+- PowerShell terminal prompt fix (no raw command echo on startup)
+- Windows compatibility improvements across all platforms
+
 ### v1.9.0 - Planned
 - AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation
 - Remote vault open/save, Cryptomator vault creation
@@ -230,7 +240,7 @@
                     CLOUD INTEGRATION
                           |
          Cyberduck        |        AeroFTP
-                          |        (v1.7.0)
+                          |        (v1.8.5)
     ----------------------+----------------------> PRO FEATURES
          FileZilla        |
                           |

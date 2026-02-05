@@ -25,11 +25,13 @@ AeroFTP uses a dual-mode credential storage system with the OS native keyring as
 
 **Encrypted Vault (fallback)**
 
-When the OS keyring is unavailable, credentials are stored in a local encrypted vault at `~/.config/aeroftp/vault.db`:
+When the OS keyring is unavailable (detected via write-verify pattern in v1.8.5), credentials are stored in a local encrypted vault at `~/.config/aeroftp/vault.db`, initialized and gated by the Master Password:
 
+- **Write-verify integrity** (v1.8.5): After every keyring write, the credential is immediately read back to detect silent failures (e.g., Windows Credential Manager)
+- **Master Password initialization** (v1.8.5): Setting a Master Password automatically creates the encrypted credential vault; unlock propagates to vault
 - **Key derivation**: Argon2id (64 MB memory, 3 iterations, 4 threads) producing a 256-bit key
 - **Encryption**: AES-256-GCM with per-entry random 12-byte nonces
-- **File permissions**: `0600` (owner read/write only)
+- **File permissions**: `0600` (owner read/write only) on Unix; ACL-restricted on Windows
 
 ### Connection Protocols
 
@@ -185,7 +187,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 | ------- | ----------- | -------------- |
 | **AeroVault v2** | Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade | Advanced encryption with nonce misuse resistance and cascade mode |
 | **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) | Only Cyberduck also supports this; FileZilla, WinSCP do not |
-| **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF when OS keyring is unavailable | Competitors store credentials in plaintext config files when keyring fails |
+| **Encrypted Vault Fallback** | AES-256-GCM vault with Argon2id KDF, write-verify keyring integrity, Master Password gating (v1.8.5) | Competitors store credentials in plaintext config files when keyring fails |
 | **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
 | **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
@@ -217,4 +219,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.8.0 - 4 February 2026*
+*AeroFTP v1.8.5 - 5 February 2026*

@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 4 February 2026
-> Version: v1.8.0 (Smart Sync & AeroVault v2 — Intelligent conflict resolution, Batch Rename, Inline Rename, Military-grade encryption)
+> Last Updated: 5 February 2026
+> Version: v1.8.5 (Secure Credential Storage — Write-verify keyring, encrypted vault fallback, Master Password integration)
 
 ---
 
@@ -338,8 +338,8 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 
 | Layer | Method | When Used |
 |-------|--------|-----------|
-| **Primary** | OS Keyring (gnome-keyring / macOS Keychain / Windows Credential Manager) | Always attempted first |
-| **Fallback** | AES-256-GCM encrypted vault (`~/.config/aeroftp/vault.db`) | When keyring unavailable |
+| **Primary** | OS Keyring (gnome-keyring / macOS Keychain / Windows Credential Manager) | Always attempted first, write-verify integrity (v1.8.5) |
+| **Fallback** | AES-256-GCM encrypted vault (`~/.config/aeroftp/vault.db`) | When keyring write-verify fails (v1.8.5), gated by Master Password |
 | **OAuth Tokens** | OS Keyring or vault | Stored after OAuth2 flow |
 | **AI API Keys** | OS Keyring or vault | Migrated from localStorage (v1.4.1) |
 | **MEGA** | secrecy crate (zero-on-drop) | In-memory only during session |

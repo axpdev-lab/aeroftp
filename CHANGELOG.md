@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - 2026-02-05
+
+### Secure Credential Storage
+
+Resolves Windows keyring silent failure where passwords were lost after save. Introduces encrypted vault fallback with Master Password integration, themed alert dialogs, and cross-platform UI improvements.
+
+#### Fixed
+
+- **Windows keyring silent failure**: Passwords saved to Windows Credential Manager were silently lost. Added write-verify pattern that immediately reads back after store to detect failures
+- **PowerShell terminal prompt leak**: Terminal no longer shows raw `function prompt` command on startup; prompt is now set via spawn arguments (`-NoLogo -NoExit -Command`)
+- **Flag emojis invisible on Windows**: Replaced emoji flags with SVG flag icons (`country-flag-icons`) in the language selector for consistent cross-platform rendering
+
+#### Added
+
+- **Encrypted credential vault fallback**: When OS keyring fails, credentials are stored in an AES-256-GCM encrypted vault (Argon2id KDF) tied to the Master Password
+- **Keyring health monitoring**: Global `KEYRING_HEALTH` state caches keyring status (unknown/working/broken) to avoid repeated probes
+- **Structured credential error codes**: Backend returns `KEYRING_BROKEN_NEED_VAULT_SETUP`, `VAULT_LOCKED`, `NO_CREDENTIAL_STORE` for precise frontend handling
+- **AlertDialog component**: New themed modal dialog with icon, title, message, and optional action button — replaces all native `alert()` calls
+- **Direct Settings navigation**: Credential error dialog includes "Open Settings" button that navigates directly to Settings > Security tab
+
+#### Changed
+
+- **Master Password now initializes credential vault**: Setting up a Master Password automatically creates and unlocks the encrypted credential vault
+- **Locking/unlocking propagates to vault**: Master Password lock/unlock operations also lock/unlock the credential vault cache
+
+---
+
 ## [1.8.4] - 2026-02-04
 
 ### Windows Compatibility
