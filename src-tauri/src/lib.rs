@@ -4000,31 +4000,55 @@ async fn get_credential_status() -> Result<CredentialStatus, String> {
 
 #[tauri::command]
 async fn store_credential(account: String, password: String) -> Result<(), String> {
-    // Try credential store (probe-based)
-    if let Ok(store) = get_credential_store() {
-        return store.store_and_track(&account, &password)
-            .map_err(|e| format!("Failed to store credential: {}", e));
+    // Try primary credential store (keyring or cached vault)
+    match get_credential_store() {
+        Ok(store) => {
+            match store.store_and_track(&account, &password) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    warn!("Primary store failed: {}", e);
+                    // If keyring write-verify failed, try vault fallback
+                    if let Some(vault) = credential_store::CredentialStore::from_cache() {
+                        return vault.store_and_track(&account, &password)
+                            .map_err(|e| format!("Failed to store credential: {}", e));
+                    }
+                    // No vault available — return structured error for frontend
+                    if credential_store::CredentialStore::vault_exists() {
+                        return Err("VAULT_LOCKED".to_string());
+                    }
+                    return Err("KEYRING_BROKEN_NEED_VAULT_SETUP".to_string());
+                }
+            }
+        }
+        Err(e) if e == "VAULT_LOCKED" => return Err(e),
+        Err(e) if e == "NO_CREDENTIAL_STORE" => {
+            // Last resort: try direct keyring access without probe (helps on Linux)
+            let entry = keyring::Entry::new("aeroftp", &account)
+                .map_err(|_| "KEYRING_BROKEN_NEED_VAULT_SETUP".to_string())?;
+            return entry.set_password(&password)
+                .map_err(|_| "KEYRING_BROKEN_NEED_VAULT_SETUP".to_string());
+        }
+        Err(e) => return Err(e),
     }
-    // Fallback: try direct keyring access without probe
-    let entry = keyring::Entry::new("aeroftp", &account)
-        .map_err(|e| format!("Keyring unavailable: {}", e))?;
-    entry.set_password(&password)
-        .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
 #[tauri::command]
 async fn get_credential(account: String) -> Result<String, String> {
-    // Try credential store (probe-based)
-    if let Ok(store) = get_credential_store() {
-        return store.get(&account)
-            .map_err(|e| format!("Failed to get credential: {}", e));
+    // Try primary credential store (keyring or cached vault)
+    match get_credential_store() {
+        Ok(store) => {
+            return store.get(&account)
+                .map_err(|e| format!("Failed to get credential: {}", e));
+        }
+        Err(e) if e == "VAULT_LOCKED" => return Err(e),
+        Err(_) => {
+            // Last resort: try direct keyring access without probe (helps on Linux)
+            let entry = keyring::Entry::new("aeroftp", &account)
+                .map_err(|e| format!("Keyring unavailable: {}", e))?;
+            return entry.get_password()
+                .map_err(|e| format!("Failed to get credential: {}", e));
+        }
     }
-    // Fallback: try direct keyring access without probe
-    // On Linux, gnome-keyring may reject probe but serve real credentials
-    let entry = keyring::Entry::new("aeroftp", &account)
-        .map_err(|e| format!("Keyring unavailable: {}", e))?;
-    entry.get_password()
-        .map_err(|e| format!("Failed to get credential: {}", e))
 }
 
 #[tauri::command]
@@ -4083,7 +4107,22 @@ async fn app_master_password_set(
 ) -> Result<(), String> {
     master_password::setup_master_password(&password, timeout_seconds, &state)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Also initialize credential vault with the same password
+    if !credential_store::CredentialStore::vault_exists() {
+        let store = credential_store::CredentialStore::setup_vault(&password)
+            .map_err(|e| format!("Failed to setup credential vault: {}", e))?;
+        store.cache_vault();
+        info!("Credential vault initialized alongside master password");
+    } else {
+        // Vault already exists — unlock it
+        match credential_store::CredentialStore::with_vault(&password) {
+            Ok(store) => store.cache_vault(),
+            Err(_) => warn!("Could not unlock existing vault with master password"),
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -4093,7 +4132,16 @@ async fn app_master_password_unlock(
 ) -> Result<(), String> {
     state.unlock(&password)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Also unlock credential vault with the same password
+    if credential_store::CredentialStore::vault_exists() {
+        match credential_store::CredentialStore::with_vault(&password) {
+            Ok(store) => store.cache_vault(),
+            Err(_) => warn!("Could not unlock credential vault with master password"),
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -4101,6 +4149,7 @@ async fn app_master_password_lock(
     state: State<'_, master_password::MasterPasswordState>,
 ) -> Result<(), String> {
     state.lock().await;
+    credential_store::CredentialStore::clear_cache();
     Ok(())
 }
 
@@ -4150,13 +4199,27 @@ async fn app_master_password_check_timeout(
 
 /// Helper to get an active credential store (keyring preferred, vault fallback)
 fn get_credential_store() -> Result<credential_store::CredentialStore, String> {
-    // Try OS keyring first
-    if let Some(store) = credential_store::CredentialStore::with_keyring() {
+    let health = credential_store::CredentialStore::keyring_health();
+
+    // If keyring is not already known-broken, try it
+    if health != 2 {
+        if let Some(store) = credential_store::CredentialStore::with_keyring() {
+            return Ok(store);
+        }
+    }
+
+    // Keyring unavailable or broken — try cached vault
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
         return Ok(store);
     }
-    // Vault fallback - it needs to be unlocked already
-    // For now, return error if neither is available
-    Err("No credential store available. OS keyring not found and vault not configured.".to_string())
+
+    // Vault exists but not unlocked
+    if credential_store::CredentialStore::vault_exists() {
+        return Err("VAULT_LOCKED".to_string());
+    }
+
+    // Nothing available
+    Err("NO_CREDENTIAL_STORE".to_string())
 }
 
 // ============ Profile Export/Import ============

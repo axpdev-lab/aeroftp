@@ -101,8 +101,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     }, [protocol]);
 
+    // Try to store a credential securely, handling keyring failures
+    const tryStoreCredential = async (account: string, password: string | undefined): Promise<boolean> => {
+        if (!password) return false;
+        try {
+            await invoke('store_credential', { account, password });
+            return true;
+        } catch (err) {
+            const errorStr = String(err);
+            if (errorStr.includes('KEYRING_BROKEN_NEED_VAULT_SETUP')) {
+                alert(t('connection.keyringFailed'));
+            } else if (errorStr.includes('VAULT_LOCKED')) {
+                alert(t('connection.vaultLocked'));
+            } else {
+                console.error('Failed to store credential:', err);
+            }
+            return false;
+        }
+    };
+
     // Save the current connection to saved servers (or update existing)
-    const saveToServers = () => {
+    const saveToServers = async () => {
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
 
@@ -115,7 +134,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const existingServers = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
 
         if (editingProfileId) {
-            // Update existing profile
+            const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
+
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
@@ -124,7 +144,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         host: connectionParams.server,
                         port: connectionParams.port || getDefaultPort(protocol),
                         username: connectionParams.username,
-                        hasStoredCredential: !!connectionParams.password,
+                        hasStoredCredential: credentialStored || (s.hasStoredCredential && !connectionParams.password),
                         protocol: protocol as ProviderType,
                         options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
@@ -134,48 +154,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 }
                 return s;
             });
-            // Store password in secure credential store (never in localStorage)
-            if (connectionParams.password) {
-                invoke('store_credential', {
-                    account: `server_${editingProfileId}`,
-                    password: connectionParams.password,
-                }).catch(err => console.error('Failed to store credential:', err));
-            }
+
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
             setSavedServersUpdate(Date.now());
         } else if (saveConnection) {
-            // Create new profile
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+
             const newServer: ServerProfile = {
                 id: newId,
                 name: connectionName || connectionParams.server || protocol,
                 host: connectionParams.server,
                 port: connectionParams.port || getDefaultPort(protocol),
                 username: connectionParams.username,
-                hasStoredCredential: !!connectionParams.password,
+                hasStoredCredential: credentialStored,
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
                 options: optionsToSave,
                 providerId: selectedProviderId || undefined,
             };
-            // Store password in secure credential store (never in localStorage)
-            if (connectionParams.password) {
-                invoke('store_credential', {
-                    account: `server_${newId}`,
-                    password: connectionParams.password,
-                }).catch(err => console.error('Failed to store credential:', err));
-            }
+
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
-            setSavedServersUpdate(Date.now()); // Trigger refresh
+            setSavedServersUpdate(Date.now());
         }
     };
 
     // Handle the main action button
-    const handleConnectAndSave = () => {
+    const handleConnectAndSave = async () => {
         if (editingProfileId) {
             // Edit mode: save changes and reset form
-            saveToServers();
+            await saveToServers();
             setEditingProfileId(null);
             setConnectionName('');
             setSaveConnection(false);
@@ -183,7 +192,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
         } else if (saveConnection) {
             // Save mode: only save, user connects from saved servers list
-            saveToServers();
+            await saveToServers();
             setConnectionName('');
             setSaveConnection(false);
             onConnectionParamsChange({ server: '', username: '', password: '' });

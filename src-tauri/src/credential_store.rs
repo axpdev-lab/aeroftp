@@ -4,8 +4,16 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
+
+// Cached keyring health: 0 = unknown, 1 = verified working, 2 = verified broken
+static KEYRING_HEALTH: AtomicU8 = AtomicU8::new(0);
+
+// Cached unlocked vault state (path, master_key, salt)
+static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32], Vec<u8>)>> = Mutex::new(None);
 
 const SERVICE_NAME: &str = "aeroftp";
 const VAULT_FILENAME: &str = "vault.db";
@@ -67,6 +75,56 @@ pub struct CredentialStore {
 }
 
 impl CredentialStore {
+    /// Get cached keyring health: 0 = unknown, 1 = working, 2 = broken
+    pub fn keyring_health() -> u8 {
+        KEYRING_HEALTH.load(Ordering::SeqCst)
+    }
+
+    /// Mark keyring as broken (silent failure detected)
+    pub fn mark_keyring_broken() {
+        KEYRING_HEALTH.store(2, Ordering::SeqCst);
+        warn!("Keyring marked as broken — will use vault fallback");
+    }
+
+    /// Mark keyring as verified working
+    pub fn mark_keyring_working() {
+        KEYRING_HEALTH.store(1, Ordering::SeqCst);
+    }
+
+    /// Get a vault store from cache (previously unlocked)
+    pub fn from_cache() -> Option<Self> {
+        let cache = VAULT_CACHE.lock().ok()?;
+        let (path, key, salt) = cache.as_ref()?;
+        Some(Self {
+            backend: Backend::EncryptedVault {
+                path: path.clone(),
+                master_key: *key,
+                salt: salt.clone(),
+            },
+        })
+    }
+
+    /// Cache the vault state after unlock (keeps master_key in memory)
+    pub fn cache_vault(&self) {
+        if let Backend::EncryptedVault { path, master_key, salt } = &self.backend {
+            if let Ok(mut cache) = VAULT_CACHE.lock() {
+                *cache = Some((path.clone(), *master_key, salt.clone()));
+                info!("Credential vault cached in memory");
+            }
+        }
+    }
+
+    /// Clear the vault cache (on lock or master password removal)
+    pub fn clear_cache() {
+        if let Ok(mut cache) = VAULT_CACHE.lock() {
+            if let Some((_, ref mut key, _)) = *cache {
+                // Zeroize the master key before dropping
+                key.fill(0);
+            }
+            *cache = None;
+        }
+    }
+
     /// Try to create a store using OS keyring. Returns None if keyring unavailable.
     pub fn with_keyring() -> Option<Self> {
         // Test keyring availability by trying a probe operation
@@ -185,7 +243,22 @@ impl CredentialStore {
                     .map_err(|e| CredentialError::Keyring(e.to_string()))?;
                 entry.set_password(secret)
                     .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                info!("Credential stored in OS keyring: {}", account);
+
+                // Write-verify: immediately read back to detect silent failures
+                let verify = keyring::Entry::new(SERVICE_NAME, account)
+                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
+                match verify.get_password() {
+                    Ok(readback) if readback == secret => {
+                        Self::mark_keyring_working();
+                        info!("Credential stored and verified in OS keyring: {}", account);
+                    }
+                    _ => {
+                        Self::mark_keyring_broken();
+                        return Err(CredentialError::Keyring(
+                            "Keyring write verification failed: credential not persisted".to_string()
+                        ));
+                    }
+                }
             }
             Backend::EncryptedVault { path, master_key, .. } => {
                 let mut vault = Self::read_vault(path)?;

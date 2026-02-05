@@ -118,6 +118,8 @@
             "megaPasswordPlaceholder": "Your MEGA password",
             "dismiss": "Dismiss",
             "credentialLoadFailed": "Could not load saved password. OS keyring may be locked. Please re-enter your password.",
+            "keyringFailed": "Password storage unavailable. Set up a Master Password in Settings > Security to save passwords securely.",
+            "vaultLocked": "Enter your Master Password to access saved credentials.",
             "authenticating": "Authenticating...",
             "oauth2Connection": "OAuth2 Connection"
         },

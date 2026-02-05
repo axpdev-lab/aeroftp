@@ -118,6 +118,8 @@
             "megaPasswordPlaceholder": "La tua password MEGA",
             "dismiss": "Chiudi",
             "credentialLoadFailed": "Impossibile caricare la password salvata. Il portachiavi del sistema potrebbe essere bloccato. Reinserisci la password.",
+            "keyringFailed": "Archiviazione password non disponibile. Configura una Master Password in Impostazioni > Sicurezza per salvare le password in modo sicuro.",
+            "vaultLocked": "Inserisci la Master Password per accedere alle credenziali salvate.",
             "authenticating": "Autenticazione...",
             "oauth2Connection": "Connessione OAuth2"
         },
