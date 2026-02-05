@@ -135,7 +135,7 @@ export interface TransferEvent {
   event_type:
   // Transfer events
   | 'start' | 'progress' | 'complete' | 'error' | 'cancelled'
-  | 'file_start' | 'file_complete' | 'file_error'
+  | 'file_start' | 'file_complete' | 'file_error' | 'file_skip'
   // Delete events
   | 'delete_start' | 'delete_complete' | 'delete_error'
   | 'delete_file_start' | 'delete_file_complete' | 'delete_file_error'

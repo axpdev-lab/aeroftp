@@ -27,6 +27,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
   const pendingDeleteLogIds = useRef<Map<string, string>>(new Map());
+  // Track completed transfer IDs to prevent late progress events from re-showing the toast
+  const completedTransferIds = useRef<Set<string>>(new Set());
 
   // Use refs for callbacks to avoid stale closures without re-subscribing
   const callbacksRef = useRef({ loadRemoteFiles, loadLocalFiles, currentLocalPath });
@@ -38,6 +40,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
+        // Clean up completed set for this new transfer
+        completedTransferIds.current.delete(data.transfer_id);
         let logId = '';
         // Check if we have a pending manual log for this file (deduplication)
         if (pendingFileLogIds.current.has(data.filename)) {
@@ -48,11 +52,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
         transferIdToLogId.current.set(data.transfer_id, logId);
 
-        const queueItem = transferQueue.items.find((i: { filename: string; status: string; id: string }) => i.filename === data.filename && i.status === 'pending');
+        const queueItem = transferQueue.items.find((i: { filename: string; status: string; id: string }) =>
+          i.filename === data.filename && (i.status === 'pending' || i.status === 'transferring'));
         if (queueItem) {
           transferIdToQueueId.current.set(data.transfer_id, queueItem.id);
           transferQueue.markAsFolder(queueItem.id);
-          transferQueue.startTransfer(queueItem.id);
+          if (queueItem.status === 'pending') transferQueue.startTransfer(queueItem.id);
         }
       } else if (data.event_type === 'file_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
@@ -60,6 +65,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
           { filename: data.filename, location: loc }, 'running');
         pendingFileLogIds.current.set(`${data.transfer_id}:${data.filename}`, fileLogId);
+
+        // Add individual file to transfer queue
+        const fileDirection = data.direction === 'upload' ? 'upload' : 'download';
+        const fileSize = data.progress?.total || 0;
+        const fileQueueId = transferQueue.addItem(data.filename, '', fileSize, fileDirection);
+        transferQueue.startTransfer(fileQueueId);
+        transferIdToQueueId.current.set(data.transfer_id, fileQueueId);
       } else if (data.event_type === 'file_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const key = `${data.transfer_id}:${data.filename}`;
@@ -73,12 +85,37 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           humanLog.logRaw(successKey, data.direction === 'upload' ? 'UPLOAD' : 'DOWNLOAD',
             { filename: data.filename, location: loc, details: '' }, 'success');
         }
+
+        // Complete individual file queue item
+        const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
+        if (fileQueueId) {
+          transferQueue.completeTransfer(fileQueueId);
+          transferIdToQueueId.current.delete(data.transfer_id);
+        }
       } else if (data.event_type === 'file_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
           'ERROR', { filename: data.filename, location: loc }, 'error');
+
+        // Fail individual file queue item
+        const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
+        if (fileQueueId) {
+          transferQueue.failTransfer(fileQueueId, data.message || 'Transfer failed');
+          transferIdToQueueId.current.delete(data.transfer_id);
+        }
+      } else if (data.event_type === 'file_skip') {
+        // File skipped due to file_exists_action setting (identical/not newer)
+        humanLog.logRaw('activity.file_skipped', 'SKIP', { filename: data.filename }, 'success');
+
+        // Add skipped file to queue and mark as completed
+        const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
+        const skipQueueId = transferQueue.addItem(data.filename, '', 0, skipDirection);
+        transferQueue.completeTransfer(skipQueueId);
       } else if (data.event_type === 'progress' && data.progress) {
-        setActiveTransfer(data.progress);
+        // Ignore late progress events for already-completed transfers (race condition fix)
+        if (!completedTransferIds.current.has(data.transfer_id)) {
+          setActiveTransfer(data.progress);
+        }
 
         if (data.transfer_id.includes('folder')) {
           const queueId = transferIdToQueueId.current.get(data.transfer_id);
@@ -87,6 +124,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           }
         }
       } else if (data.event_type === 'complete') {
+        completedTransferIds.current.add(data.transfer_id);
         setActiveTransfer(null);
 
         let size = '';

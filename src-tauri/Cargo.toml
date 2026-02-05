@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "1.8.5"
+version = "1.8.6"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -57,7 +57,6 @@ quick-xml = "0.39"
 # OAuth2 Cloud Providers (Sprint 2)
 oauth2 = { version = "5", default-features = false }
 http = "1"
-keyring = { version = "3", features = ["linux-native"] }
 open = "5"
 rand = "0.8"
 tauri-plugin-shell = "2"

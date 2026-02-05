@@ -5,30 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.5] - 2026-02-05
+## [1.8.6] - 2026-02-05
 
-### Secure Credential Storage
+### Security & Windows Compatibility
 
-Resolves Windows keyring silent failure where passwords were lost after save. Introduces encrypted vault fallback with Master Password integration, themed alert dialogs, and cross-platform UI improvements.
+**Important**: This release contains critical security improvements and Windows-specific fixes. All users are strongly encouraged to update.
 
-#### Fixed
-
-- **Windows keyring silent failure**: Passwords saved to Windows Credential Manager were silently lost. Added write-verify pattern that immediately reads back after store to detect failures
-- **PowerShell terminal prompt leak**: Terminal no longer shows raw `function prompt` command on startup; prompt is now set via spawn arguments (`-NoLogo -NoExit -Command`)
-- **Flag emojis invisible on Windows**: Replaced emoji flags with SVG flag icons (`country-flag-icons`) in the language selector for consistent cross-platform rendering
+Complete rewrite of the credential storage system. Replaces the dual-mode OS Keyring + Encrypted Vault approach with a single Universal Vault that works identically on all platforms. Master password is now fully optional — credentials are saved and loaded automatically without any user interaction by default.
 
 #### Added
 
-- **Encrypted credential vault fallback**: When OS keyring fails, credentials are stored in an AES-256-GCM encrypted vault (Argon2id KDF) tied to the Master Password
-- **Keyring health monitoring**: Global `KEYRING_HEALTH` state caches keyring status (unknown/working/broken) to avoid repeated probes
-- **Structured credential error codes**: Backend returns `KEYRING_BROKEN_NEED_VAULT_SETUP`, `VAULT_LOCKED`, `NO_CREDENTIAL_STORE` for precise frontend handling
-- **AlertDialog component**: New themed modal dialog with icon, title, message, and optional action button — replaces all native `alert()` calls
-- **Direct Settings navigation**: Credential error dialog includes "Open Settings" button that navigates directly to Settings > Security tab
+- **Universal Vault**: Single credential backend using `vault.key` + `vault.db` (AES-256-GCM) — no OS keyring dependency
+- **Auto mode** (default): 64-byte CSPRNG passphrase stored in `vault.key` with OS file permissions (Unix 0o600, Windows ACL). Credentials available immediately on startup with zero user interaction
+- **Master mode** (optional): Passphrase encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM. User enters master password on app start
+- **HKDF-SHA256 key derivation**: High-entropy passphrase (512 bits) derived to 256-bit vault key via HKDF (RFC 5869)
+- **Standalone lock button**: Header lock icon works independently — locks app immediately when master password is set, opens setup dialog when not set
+- **MasterPasswordSetupDialog**: New standalone modal for enabling master password with password confirmation and auto-lock timeout slider
+- **vault.key binary format**: Compact binary format (76 bytes auto / 136 bytes master) with magic bytes, version, and mode detection
 
 #### Changed
 
-- **Master Password now initializes credential vault**: Setting up a Master Password automatically creates and unlocks the encrypted credential vault
-- **Locking/unlocking propagates to vault**: Master Password lock/unlock operations also lock/unlock the credential vault cache
+- **Credential store architecture**: Single `CredentialStore` with `init()` → `from_cache()` pattern replaces complex fallback chain
+- **Tauri commands simplified**: `store_credential`, `get_credential`, `delete_credential` use vault-only backend via `from_cache()`
+- **OAuth token storage**: All OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud) use Universal Vault instead of OS keyring
+- **Settings Security tab**: Shows "Universal Vault (AES-256-GCM)" status, master password management without keyring references
+- **ConnectionScreen**: Removed credential error alert dialogs and keyring failure handling — store operations are transparent
+
+#### Removed
+
+- **OS Keyring dependency**: Removed `keyring` crate entirely — no platform-specific credential backend
+- **Keyring health monitoring**: Removed `KEYRING_HEALTH`, `mark_keyring_broken()`, `is_keyring_available()`, write-verify pattern
+- **Dual backend fallback**: Removed `Backend` enum (OsKeyring/EncryptedVault), migration functions, manifest tracking
+- **Credential error dialogs**: Removed `KEYRING_BROKEN_NEED_VAULT_SETUP`, `VAULT_LOCKED` error codes and AlertDialog prompts in ConnectionScreen
+
+#### Fixed
+
+- **Windows credential persistence**: Credentials now persist reliably across app restarts on all platforms (was silently failing on Windows Credential Manager)
+- **PowerShell terminal prompt leak**: Terminal no longer shows raw `function prompt` command on startup
+- **Flag emojis invisible on Windows**: SVG flag icons (`country-flag-icons`) for consistent cross-platform rendering
+- **Transfer toast stuck at 100%**: Race condition fix — late progress events no longer re-show the toast after transfer completion. Added 3-second auto-dismiss safety timer
+- **Folder transfers bypass conflict settings**: Folders now respect the "When file exists" setting instead of silently overwriting all files
+- **Windows drag & drop broken**: Disabled Tauri 2 WebView2 native drag interception (`dragDropEnabled: false`) that was preventing HTML5 drag & drop on Windows
+- **Folder download missing queue counter**: Download folder now emits folder-level progress events matching upload behavior
+- **Queue folder mapping race condition**: `start` event handler now matches queue items in both `pending` and `transferring` status, fixing folder counter not appearing when frontend calls `startTransfer` before backend emits `start`
+
+#### Added
+
+- **Folder conflict resolution**: Backend `file_exists_action` parameter enables per-file comparison during folder transfers (size + timestamp with 2s tolerance). Supports skip, overwrite_if_newer, overwrite_if_different, skip_if_identical
+- **FolderOverwriteDialog**: New merge strategy dialog for folder transfers in "Ask" mode — Merge & Overwrite, Merge & Skip identical, Merge & Overwrite if newer, Skip folder
+- **Transfer Queue improvements**: Context menu (right-click) with Retry, Copy error, Remove actions. Error tooltip on failed items. Header actions (Clear completed, Stop all, Clear all) with animated stop button. Wider popup with RTL filename truncation (always shows file extension)
+- **Individual file tracking in queue**: Folder transfers now show every file as a separate queue item with live progress, across all 13 protocols (FTP/FTPS/SFTP/S3/WebDAV/GDrive/Dropbox/OneDrive/Box/pCloud/Azure/MEGA/Filen)
+- **Folder progress counter**: Live file counter badge on folder queue row (e.g. 3/9 cyan while transferring, 9/9 green on completion). Works for both upload and download
+- **Upload folder smart comparison**: Phase 2.5 pre-indexes remote files before upload, enabling instant skip of unchanged files in large folders
+- **Cut, Copy, Paste**: Context menu and keyboard shortcuts (Ctrl+X/C/V) for file operations — cross-panel paste triggers upload/download, same-panel cut moves files, same-panel copy duplicates locally. Backend `copy_local_file` command with recursive directory copy
+- **Queue copy to clipboard**: Button to copy full queue contents as formatted text for debugging and sharing
 
 ---
 

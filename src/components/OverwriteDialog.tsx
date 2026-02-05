@@ -115,23 +115,23 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
             {/* Dialog */}
             <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
                 {/* Header */}
-                <div className="bg-amber-500 dark:bg-amber-600 px-4 py-3 flex items-center gap-3">
-                    <AlertTriangle size={24} className="text-white" />
-                    <div className="flex-1">
-                        <h2 className="text-white font-semibold">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle size={18} className="text-amber-500" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
                             {t('overwrite.title') || 'File Already Exists'}
-                        </h2>
+                        </span>
                         {queueCount > 0 && (
-                            <p className="text-amber-100 text-xs">
-                                {queueCount} {t('overwrite.moreFiles') || 'more file(s) in queue'}
-                            </p>
+                            <span className="text-xs text-gray-500 ml-2">
+                                +{queueCount} in queue
+                            </span>
                         )}
                     </div>
                     <button
                         onClick={handleCancel}
-                        className="p-1 rounded-full hover:bg-white/20 transition-colors"
+                        className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
-                        <X size={18} className="text-white" />
+                        <X size={16} className="text-gray-400 hover:text-gray-200" />
                     </button>
                 </div>
 

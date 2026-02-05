@@ -38,8 +38,8 @@ const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null
     }
 };
 
-// Load OAuth credentials from OS keyring (for Box, pCloud, and as fallback)
-const loadOAuthCredentialsFromKeyring = async (provider: string): Promise<{ clientId: string; clientSecret: string } | null> => {
+// Load OAuth credentials from credential vault
+const loadOAuthCredentials = async (provider: string): Promise<{ clientId: string; clientSecret: string } | null> => {
     try {
         const clientId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
         const clientSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
@@ -47,7 +47,7 @@ const loadOAuthCredentialsFromKeyring = async (provider: string): Promise<{ clie
             return { clientId, clientSecret };
         }
     } catch {
-        // Not found in keyring
+        // Not found in vault
     }
     return null;
 };
@@ -234,9 +234,9 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 }
             }
 
-            // Fallback: load from OS keyring (Box, pCloud, or migrated credentials)
+            // Fallback: load from credential vault
             if (!credentials) {
-                credentials = await loadOAuthCredentialsFromKeyring(server.protocol);
+                credentials = await loadOAuthCredentials(server.protocol);
             }
 
             if (!credentials) {
@@ -314,18 +314,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         setServers(updated);
         saveServers(updated);
 
-        // Load password from secure credential store (OS keyring)
+        // Load password from credential vault
         let password = '';
         try {
             password = await invoke<string>('get_credential', { account: `server_${server.id}` });
-        } catch (e) {
-            console.error(`Failed to load credential for ${server.name}:`, e);
-            // If credential was expected but keyring unavailable, redirect to edit
-            if (server.hasStoredCredential) {
-                setOauthError(t('connection.credentialLoadFailed'));
-                onEdit(server);
-                return;
-            }
+        } catch {
+            // Credential not found — password empty (never saved or server without password)
         }
 
         // Build connection params - for providers, don't append port to host

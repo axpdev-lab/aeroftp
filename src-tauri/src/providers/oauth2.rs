@@ -433,36 +433,30 @@ impl OAuth2Manager {
 
         let account = format!("oauth_{:?}", provider).to_lowercase();
 
-        // Try secure credential store first
-        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
-            store.store_and_track(&account, &json)
-                .map_err(|e| ProviderError::Other(format!("Failed to store tokens in keyring: {}", e)))?;
-            info!("Tokens stored in secure credential store for {:?}", provider);
+        // Store in universal vault
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            store.store(&account, &json)
+                .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+            info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
         }
 
-        // Fallback: try vault
-        if crate::credential_store::CredentialStore::vault_exists() {
-            // Vault needs to be unlocked - store in file with secure permissions as last resort
-            warn!("Vault locked, falling back to file storage for {:?} tokens", provider);
-        }
-
-        // Last resort fallback: file with 0o600 permissions
+        // Vault not open — fallback to file with secure permissions
         let token_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         std::fs::write(&token_path, &json)
             .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
         let _ = crate::credential_store::ensure_secure_permissions(&token_path);
 
-        info!("Tokens stored in file for {:?} (keyring unavailable)", provider);
+        info!("Tokens stored in file for {:?} (vault not open)", provider);
         Ok(())
     }
 
-    /// Load tokens from secure credential store or legacy file
+    /// Load tokens from credential vault or legacy file
     pub fn load_tokens(&self, provider: OAuthProvider) -> Result<StoredTokens, ProviderError> {
         let account = format!("oauth_{:?}", provider).to_lowercase();
 
-        // Try secure credential store first
-        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
+        // Try vault first
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if let Ok(json) = store.get(&account) {
                 return serde_json::from_str(&json)
                     .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
@@ -478,13 +472,13 @@ impl OAuth2Manager {
             .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))
     }
 
-    /// Delete tokens from credential store and legacy file
+    /// Delete tokens from credential vault and legacy file
     pub fn delete_tokens(&self, provider: OAuthProvider) -> Result<(), ProviderError> {
         let account = format!("oauth_{:?}", provider).to_lowercase();
 
-        // Delete from credential store
-        if let Some(store) = crate::credential_store::CredentialStore::with_keyring() {
-            let _ = store.delete_and_track(&account);
+        // Delete from vault
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            let _ = store.delete(&account);
         }
 
         // Also delete legacy file if exists

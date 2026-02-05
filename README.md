@@ -63,6 +63,19 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 ### Cloud Storage Integration
 13 protocols, 30 presets in one client. Native support for Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen alongside traditional FTP/SFTP/WebDAV/S3. Cross-provider features: remote search, storage quota display in status bar, file versions, thumbnails, share permissions, and WebDAV locking.
 
+### Universal Credential Vault (v1.8.6)
+
+- **Single encrypted backend**: `vault.key` + `vault.db` (AES-256-GCM) — no OS keyring dependency, works identically on all platforms
+- **Auto mode** (default): CSPRNG passphrase in `vault.key` with OS file permissions. Zero user interaction on startup
+- **Master mode** (optional): Passphrase encrypted with Argon2id (128 MiB, t=4, p=4). Requires master password on app start
+- **HKDF-SHA256**: 512-bit passphrase derived to 256-bit vault key via RFC 5869
+
+### Smart Folder Transfers (v1.8.6)
+
+- **Folder conflict resolution**: Per-file comparison (size + date) during folder uploads/downloads — skip unchanged files automatically
+- **FolderOverwriteDialog**: Merge strategies for "Ask" mode — Overwrite all, Skip identical, Overwrite if newer, Skip folder
+- **Transfer Queue**: Context menu, retry failed items, remove individual items, error tooltips, header actions (Clear completed / Stop all / Clear all)
+
 ### Encryption and Vaults (v1.8.0)
 - **AeroVault v2**: Military-grade encrypted containers (.aerovault) with advanced security stack:
   - *AES-256-GCM-SIV* (RFC 8452): Nonce misuse-resistant content encryption — even nonce reuse doesn't compromise security
@@ -106,8 +119,8 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 
 ### Security
 - **AeroVault v2**: Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-256-KW key wrapping, AES-SIV filename encryption, Argon2id (128 MiB), HMAC-SHA512 header integrity, optional ChaCha20 cascade
-- **OS Keyring**: gnome-keyring, macOS Keychain, Windows Credential Manager — with write-verify integrity check
-- **Encrypted vault fallback**: AES-256-GCM with Argon2id KDF, activated automatically when keyring fails, tied to Master Password
+- **Universal Vault** (v1.8.6): Single `vault.key` + `vault.db` backend (AES-256-GCM, Argon2id, HKDF-SHA256) — no OS keyring dependency
+- **Master Password** (optional): Argon2id (128 MiB, t=4, p=4) encrypted passphrase with auto-lock timeout
 - **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
 - **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
 - **SFTP host key verification**: TOFU with `~/.ssh/known_hosts`
@@ -134,7 +147,8 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 | Code Editor | Monaco (VS Code) | No | No | Basic |
 | AI Assistant | **24 tools, 7 providers** | No | No | No |
 | Cryptomator | **Yes (format 8)** | No | Yes | No |
-| Encrypted Vaults | **AeroVault (AES-256-GCM)** | No | No | No |
+| Encrypted Vaults | **AeroVault (AES-256-GCM-SIV)** | No | No | No |
+| Folder Conflict Resolution | **Per-file comparison** | Basic overwrite | No | Timestamp-based |
 | Archive Browser | **ZIP/7z/TAR/RAR** | No | No | No |
 | Personal Cloud | AeroCloud | No | No | No |
 | Storage Quota | 9 providers | No | Yes | No |

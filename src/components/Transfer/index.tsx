@@ -70,6 +70,14 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({ transf
     const isUpload = transfer.direction === 'upload';
     const isIndeterminate = isUpload && transfer.percentage < 5;
 
+    // Auto-dismiss safety: if stuck at 100% for 3 seconds, dismiss the toast
+    useEffect(() => {
+        if (transfer.percentage >= 100) {
+            const timer = setTimeout(() => onCancel(), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [transfer.percentage, onCancel]);
+
     return (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-96">
             <div className="flex items-center gap-4">

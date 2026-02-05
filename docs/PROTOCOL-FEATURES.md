@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 5 February 2026
-> Version: v1.8.5 (Secure Credential Storage — Write-verify keyring, encrypted vault fallback, Master Password integration)
+> Version: v1.8.6 (Universal Vault — Single encrypted credential backend, folder conflict resolution, transfer queue improvements)
 
 ---
 
@@ -11,18 +11,18 @@
 
 | Protocol | Encryption | Auth Method | Credential Storage | Host Verification |
 |----------|-----------|-------------|-------------------|-------------------|
-| **FTP** | None | Password | OS Keyring / Vault | N/A |
-| **FTPS** | TLS/SSL (Explicit/Implicit) | Password | OS Keyring / Vault | TLS Certificate |
-| **SFTP** | SSH | Password / SSH Key | OS Keyring / Vault | TOFU + known_hosts |
-| **WebDAV** | HTTPS | Password | OS Keyring / Vault | TLS Certificate |
-| **S3** | HTTPS | Access Key + Secret | OS Keyring / Vault | TLS Certificate |
-| **Google Drive** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
-| **Dropbox** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
-| **OneDrive** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
+| **FTP** | None | Password | Universal Vault | N/A |
+| **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
+| **SFTP** | SSH | Password / SSH Key | Universal Vault | TOFU + known_hosts |
+| **WebDAV** | HTTPS | Password | Universal Vault | TLS Certificate |
+| **S3** | HTTPS | Access Key + Secret | Universal Vault | TLS Certificate |
+| **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
+| **Dropbox** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
+| **OneDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **MEGA.nz** | Client-side AES | Password (MEGAcmd) | secrecy (zero-on-drop) | E2E Encrypted |
-| **Box** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
-| **pCloud** | HTTPS | OAuth2 PKCE | OS Keyring / Vault | TLS + CSRF State |
-| **Azure Blob** | HTTPS | Shared Key HMAC / SAS | OS Keyring / Vault | TLS Certificate |
+| **Box** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
+| **pCloud** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
+| **Azure Blob** | HTTPS | Shared Key HMAC / SAS | Universal Vault | TLS Certificate |
 | **Filen** | Client-side AES-256-GCM | Password (PBKDF2) | secrecy (zero-on-drop) | E2E Encrypted |
 
 ### Security Features by Protocol
@@ -382,7 +382,7 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 
 | Version | Feature |
 |---------|---------|
-| v1.9.0 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
+| v1.8.6 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
 | v2.0.0 | Master password, 2FA (TOTP), unified encrypted keystore, settings consolidation |
 | v2.1.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 

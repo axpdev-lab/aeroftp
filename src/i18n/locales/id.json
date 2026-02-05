@@ -203,7 +203,12 @@
             "importLinkFailed": "[NEEDS TRANSLATION] Failed to import link",
             "downloadCount": "[NEEDS TRANSLATION] Download ({count})",
             "uploadCount": "[NEEDS TRANSLATION] Upload ({count})",
-            "browseArchive": "[NEEDS TRANSLATION] Browse Archive"
+            "browseArchive": "[NEEDS TRANSLATION] Browse Archive",
+            "cut": "[NEEDS TRANSLATION] Cut",
+            "copy": "[NEEDS TRANSLATION] Copy",
+            "paste": "[NEEDS TRANSLATION] Paste",
+            "copied": "[NEEDS TRANSLATION] Copied",
+            "moved": "[NEEDS TRANSLATION] Moved"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -359,7 +364,12 @@
             "securityZeroize": "[NEEDS TRANSLATION] Automatic memory zeroization on lock",
             "encrypting": "[NEEDS TRANSLATION] Encrypting...",
             "saveTimeout": "[NEEDS TRANSLATION] Save Timeout",
-            "timeoutSaved": "[NEEDS TRANSLATION] Auto-lock timeout saved"
+            "timeoutSaved": "[NEEDS TRANSLATION] Auto-lock timeout saved",
+            "lockScreenPattern": "[NEEDS TRANSLATION] Lock Screen Background",
+            "lockPatternSaved": "[NEEDS TRANSLATION] Background pattern updated",
+            "saved": "[NEEDS TRANSLATION] Saved",
+            "saving": "[NEEDS TRANSLATION] Saving...",
+            "oauthNote": "[NEEDS TRANSLATION] OAuth2 credentials are stored locally in your encrypted vault and never sent to AeroFTP servers."
         },
         "devtools": {
             "title": "Alat Pengembang",
@@ -596,7 +606,8 @@
             "update_checking": "Checking for updates...",
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "Up to date (v{version})",
-            "update_error": "Update check failed: {error}"
+            "update_error": "Update check failed: {error}",
+            "file_skipped": "[NEEDS TRANSLATION] Skipped (unchanged): {filename}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -722,7 +733,15 @@
             "processing": "Processing...",
             "create": "Create Vault",
             "unlock": "Unlock",
-            "cancel": "Cancel"
+            "cancel": "Cancel",
+            "setupDescription": "[NEEDS TRANSLATION] Protect your saved credentials",
+            "setupInfo": "[NEEDS TRANSLATION] Your credentials are already encrypted. The master password adds an extra layer of protection — you'll need to enter it when the app starts or after inactivity.",
+            "lockTooltip": "[NEEDS TRANSLATION] Lock App",
+            "setupTooltip": "[NEEDS TRANSLATION] Set Master Password",
+            "confirmPassword": "[NEEDS TRANSLATION] Confirm password",
+            "minLength": "[NEEDS TRANSLATION] Minimum 8 characters",
+            "autoLockTimeout": "[NEEDS TRANSLATION] Auto-lock timeout",
+            "enable": "[NEEDS TRANSLATION] Enable"
         },
         "search": {
             "remote_placeholder": "[NEEDS TRANSLATION] Search remote files...",
@@ -1079,7 +1098,28 @@
             "unlock": "[NEEDS TRANSLATION] Unlock",
             "unlocking": "[NEEDS TRANSLATION] Unlocking...",
             "invalidPassword": "[NEEDS TRANSLATION] Invalid password. Please try again.",
-            "securityNote": "[NEEDS TRANSLATION] Your data is protected with AES-256-GCM encryption"
+            "securityNote": "[NEEDS TRANSLATION] Your data is protected with AES-256-GCM encryption",
+            "patternCross": "[NEEDS TRANSLATION] Cross",
+            "patternDots": "[NEEDS TRANSLATION] Dots",
+            "patternCircuit": "[NEEDS TRANSLATION] Circuit",
+            "patternDiagonal": "[NEEDS TRANSLATION] Diagonal",
+            "patternHexagon": "[NEEDS TRANSLATION] Hexagon",
+            "patternGrid": "[NEEDS TRANSLATION] Grid",
+            "patternTopography": "[NEEDS TRANSLATION] Topography",
+            "patternNone": "[NEEDS TRANSLATION] None",
+            "stepDeriving": "[NEEDS TRANSLATION] Deriving key (Argon2id)...",
+            "stepDecrypting": "[NEEDS TRANSLATION] Decrypting passphrase...",
+            "stepExpanding": "[NEEDS TRANSLATION] Expanding vault key (HKDF)...",
+            "stepVerifying": "[NEEDS TRANSLATION] Verifying integrity...",
+            "stepLoading": "[NEEDS TRANSLATION] Loading credentials..."
+        },
+        "folderOverwrite": {
+            "title": "[NEEDS TRANSLATION] Folder Already Exists",
+            "description": "[NEEDS TRANSLATION] The destination folder already exists. Choose how to handle files inside:",
+            "mergeOverwrite": "[NEEDS TRANSLATION] Merge & Overwrite all files",
+            "mergeSkipIdentical": "[NEEDS TRANSLATION] Merge & Skip identical files",
+            "mergeOverwriteNewer": "[NEEDS TRANSLATION] Merge & Overwrite if newer",
+            "skipFolder": "[NEEDS TRANSLATION] Skip folder"
         }
     }
 }

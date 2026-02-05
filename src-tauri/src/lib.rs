@@ -108,12 +108,16 @@ pub struct UploadParams {
 pub struct DownloadFolderParams {
     remote_path: String,
     local_path: String,
+    #[serde(default)]
+    file_exists_action: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadFolderParams {
     local_path: String,
     remote_path: String,
+    #[serde(default)]
+    file_exists_action: String,
 }
 
 #[derive(Serialize)]
@@ -783,6 +787,81 @@ async fn upload_file(
     }
 }
 
+/// Check if a file should be skipped during folder download based on the file_exists_action setting.
+/// Used for download: source is remote, destination is local filesystem.
+pub fn should_skip_file_download(
+    action: &str,
+    source_modified: Option<chrono::DateTime<chrono::Utc>>,
+    source_size: u64,
+    dest_meta: &std::fs::Metadata,
+) -> bool {
+    use chrono::DateTime;
+    let dest_size = dest_meta.len();
+    let dest_modified: Option<DateTime<chrono::Utc>> = dest_meta
+        .modified()
+        .ok()
+        .map(DateTime::<chrono::Utc>::from);
+    const TOLERANCE_SECS: i64 = 2;
+
+    match action {
+        "skip" => true,
+        "overwrite_if_newer" => {
+            // Skip if source is NOT newer than destination
+            match (source_modified, dest_modified) {
+                (Some(src), Some(dst)) => src.timestamp() <= dst.timestamp() + TOLERANCE_SECS,
+                _ => false, // If unknown dates, don't skip (overwrite)
+            }
+        }
+        "overwrite_if_different" | "skip_if_identical" => {
+            // Skip if date AND size are the same
+            let size_same = source_size == dest_size;
+            let date_same = match (source_modified, dest_modified) {
+                (Some(src), Some(dst)) => (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS,
+                _ => false,
+            };
+            size_same && date_same
+        }
+        _ => false, // "overwrite" or empty → don't skip
+    }
+}
+
+/// Check if a file should be skipped during folder upload based on the file_exists_action setting.
+/// Used for upload: source is local filesystem, destination is remote.
+fn should_skip_file_upload(
+    action: &str,
+    local_meta: &std::fs::Metadata,
+    remote_size: u64,
+    remote_modified: Option<chrono::DateTime<chrono::Utc>>,
+) -> bool {
+    use chrono::DateTime;
+    let local_size = local_meta.len();
+    let local_modified: Option<DateTime<chrono::Utc>> = local_meta
+        .modified()
+        .ok()
+        .map(DateTime::<chrono::Utc>::from);
+    const TOLERANCE_SECS: i64 = 2;
+
+    match action {
+        "skip" => true,
+        "overwrite_if_newer" => {
+            // Skip if local (source) is NOT newer than remote (dest)
+            match (local_modified, remote_modified) {
+                (Some(src), Some(dst)) => src.timestamp() <= dst.timestamp() + TOLERANCE_SECS,
+                _ => false,
+            }
+        }
+        "overwrite_if_different" | "skip_if_identical" => {
+            let size_same = local_size == remote_size;
+            let date_same = match (local_modified, remote_modified) {
+                (Some(src), Some(dst)) => (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS,
+                _ => false,
+            };
+            size_same && date_same
+        }
+        _ => false,
+    }
+}
+
 #[tauri::command]
 async fn download_folder(
     app: AppHandle,
@@ -838,6 +917,7 @@ async fn download_folder(
         is_dir: bool,
         size: u64,
         name: String,
+        modified: Option<chrono::DateTime<chrono::Utc>>,
     }
     
     let mut items_to_download: Vec<DownloadItem> = Vec::new();
@@ -876,15 +956,23 @@ async fn download_folder(
                     is_dir: true,
                     size: 0,
                     name: file.name,
+                    modified: None,
                 });
             } else {
                 // Add file to download list
+                let modified_dt = file.modified.as_ref().and_then(|s| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                        .ok()
+                        .map(|ndt| ndt.and_utc())
+                });
                 items_to_download.push(DownloadItem {
                     remote_path: remote_file_path,
                     local_path: local_file_path,
                     is_dir: false,
                     size: file.size.unwrap_or(0),
                     name: file.name,
+                    modified: modified_dt,
                 });
             }
             
@@ -935,8 +1023,10 @@ async fn download_folder(
     
     // Download phase: process all items
     let mut downloaded_files = 0;
+    let mut skipped_files = 0u64;
     let mut errors = 0;
-    
+    let file_exists_action = params.file_exists_action.as_str();
+
     for item in &items_to_download {
         if item.is_dir {
             // Create local directory
@@ -945,6 +1035,25 @@ async fn download_folder(
                 errors += 1;
             }
         } else {
+            // Check if local file exists and should be skipped
+            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+                if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
+                    if local_meta.is_file() && should_skip_file_download(file_exists_action, item.modified, item.size, &local_meta) {
+                        skipped_files += 1;
+                        // Emit file_skip event
+                        let _ = app.emit("transfer_event", TransferEvent {
+                            event_type: "file_skip".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: item.name.clone(),
+                            direction: "download".to_string(),
+                            message: Some(format!("Skipped (identical): {}", item.name)),
+                            progress: None,
+                        });
+                        continue;
+                    }
+                }
+            }
+
             // Download file
             // First, change to the file's parent directory on the server
             if let Some(parent) = PathBuf::from(&item.remote_path).parent() {
@@ -1008,7 +1117,26 @@ async fn download_folder(
                             direction: "download".to_string(),
                         }),
                     });
-                    
+
+                    // Emit folder progress event (for folder row counter in queue)
+                    let _ = app.emit("transfer_event", TransferEvent {
+                        event_type: "progress".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Downloaded {}/{} files", downloaded_files, total_files)),
+                        progress: Some(TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            filename: folder_name.clone(),
+                            transferred: downloaded_files as u64,
+                            total: total_files as u64,
+                            percentage,
+                            speed_bps: 0,
+                            eta_seconds: 0,
+                            direction: "download".to_string(),
+                        }),
+                    });
+
                     info!("Downloaded: {} ({}/{})", item.name, downloaded_files, total_files);
                 }
                 Err(e) => {
@@ -1033,12 +1161,16 @@ async fn download_folder(
     let _ = ftp_manager.change_dir(&original_path).await;
     
     // Emit complete event
-    let result_message = if errors > 0 {
+    let result_message = if errors > 0 && skipped_files > 0 {
+        format!("Downloaded {} files, {} skipped, {} errors", downloaded_files, skipped_files, errors)
+    } else if skipped_files > 0 {
+        format!("Downloaded {} files, {} skipped", downloaded_files, skipped_files)
+    } else if errors > 0 {
         format!("Downloaded {} files ({} errors)", downloaded_files, errors)
     } else {
         format!("Downloaded {} files successfully", downloaded_files)
     };
-    
+
     let _ = app.emit("transfer_event", TransferEvent {
         event_type: "complete".to_string(),
         transfer_id: transfer_id.clone(),
@@ -1047,7 +1179,7 @@ async fn download_folder(
         message: Some(result_message.clone()),
         progress: None,
     });
-    
+
     Ok(result_message)
 }
 
@@ -1234,15 +1366,64 @@ async fn upload_folder(
         }
     }
     
+    // ============ PHASE 2.5: Collect remote file metadata for smart comparison ============
+    let file_exists_action = params.file_exists_action.as_str();
+    let mut remote_index: std::collections::HashMap<String, (u64, Option<chrono::DateTime<chrono::Utc>>)> = std::collections::HashMap::new();
+
+    if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+        info!("Phase 2.5: Listing remote files for comparison (action: {})...", file_exists_action);
+        for remote_dir in &dirs_sorted {
+            // Change to directory and list files
+            if ftp_manager.change_dir(remote_dir).await.is_ok() {
+                if let Ok(entries) = ftp_manager.list_files().await {
+                    for entry in entries {
+                        if !entry.is_dir {
+                            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
+                            let modified_dt = entry.modified.as_ref().and_then(|s| {
+                                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                                    .ok()
+                                    .map(|ndt| ndt.and_utc())
+                            });
+                            remote_index.insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
+                        }
+                    }
+                }
+            }
+        }
+        info!("Phase 2.5 complete: {} remote files indexed for comparison", remote_index.len());
+    }
+
     // ============ PHASE 3: Upload all files with per-file events ============
     info!("Phase 3: Uploading {} files...", total_files);
-    
+
     let mut uploaded_files = 0u64;
+    let mut skipped_files = 0u64;
     let mut errors = 0u64;
-    
+
     for item in &files_to_upload {
+        // Check if remote file exists and should be skipped
+        if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+            if let Some(&(remote_size, remote_modified)) = remote_index.get(&item.remote_path) {
+                if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
+                    if should_skip_file_upload(file_exists_action, &local_meta, remote_size, remote_modified) {
+                        skipped_files += 1;
+                        let _ = app.emit("transfer_event", TransferEvent {
+                            event_type: "file_skip".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: item.name.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(format!("Skipped (identical): {}", item.name)),
+                            progress: None,
+                        });
+                        continue;
+                    }
+                }
+            }
+        }
+
         let file_transfer_id = format!("ul-{}-{}", transfer_id, uploaded_files);
-        
+
         // Emit file_start event for activity log
         let _ = app.emit("transfer_event", TransferEvent {
             event_type: "file_start".to_string(),
@@ -1330,12 +1511,16 @@ async fn upload_folder(
     }
     
     // Emit complete event
-    let result_message = if errors > 0 {
+    let result_message = if errors > 0 && skipped_files > 0 {
+        format!("Uploaded {} files, {} skipped, {} errors", uploaded_files, skipped_files, errors)
+    } else if skipped_files > 0 {
+        format!("Uploaded {} files, {} skipped", uploaded_files, skipped_files)
+    } else if errors > 0 {
         format!("Uploaded {} files ({} errors)", uploaded_files, errors)
     } else {
         format!("Uploaded {} files successfully", uploaded_files)
     };
-    
+
     let _ = app.emit("transfer_event", TransferEvent {
         event_type: "complete".to_string(),
         transfer_id: transfer_id.clone(),
@@ -2136,6 +2321,44 @@ async fn rename_local_file(from: String, to: String) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
 
+    Ok(())
+}
+
+#[tauri::command]
+async fn copy_local_file(from: String, to: String) -> Result<(), String> {
+    let from_path = std::path::Path::new(&from);
+    if !from_path.exists() {
+        return Err(format!("Source does not exist: {}", from));
+    }
+    if from_path.is_dir() {
+        // Recursive directory copy
+        copy_dir_recursive(from_path, std::path::Path::new(&to)).await?;
+    } else {
+        tokio::fs::copy(&from, &to)
+            .await
+            .map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+    Ok(())
+}
+
+async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    tokio::fs::create_dir_all(dst)
+        .await
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    while let Some(entry) = entries.next_entry().await.map_err(|e| format!("Failed to read entry: {}", e))? {
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
+        } else {
+            tokio::fs::copy(&src_path, &dst_path)
+                .await
+                .map_err(|e| format!("Failed to copy file: {}", e))?;
+        }
+    }
     Ok(())
 }
 
@@ -3812,8 +4035,8 @@ async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<c
     // Load credentials from secure store (keyring or vault)
     info!("Background sync: loading credentials for profile '{}'", server_profile);
 
-    let store = get_credential_store()
-        .map_err(|e| format!("Background sync: no credential store available: {}", e))?;
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Background sync: credential vault not open".to_string())?;
 
     let creds_json = store.get(&format!("server_{}", server_profile))
         .map_err(|e| format!("No saved credentials for profile '{}': {}", server_profile, e))?;
@@ -3931,7 +4154,7 @@ async fn set_tray_status(app: AppHandle, status: String, tooltip: Option<String>
     Ok(())
 }
 
-/// Save server credentials for background sync use (now uses secure credential store)
+/// Save server credentials for background sync use
 #[tauri::command]
 async fn save_server_credentials(
     profile_name: String,
@@ -3939,7 +4162,8 @@ async fn save_server_credentials(
     username: String,
     password: String,
 ) -> Result<(), String> {
-    let store = get_credential_store()?;
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
 
     let value = serde_json::json!({
         "server": server,
@@ -3947,7 +4171,7 @@ async fn save_server_credentials(
         "password": password,
     });
 
-    store.store_and_track(
+    store.store(
         &format!("server_{}", profile_name),
         &value.to_string(),
     ).map_err(|e| format!("Failed to save credentials: {}", e))?;
@@ -3956,222 +4180,121 @@ async fn save_server_credentials(
     Ok(())
 }
 
-// ============ Secure Credential Store Commands ============
+// ============ Universal Credential Vault Commands ============
 
 #[derive(Serialize)]
-struct CredentialStatus {
-    backend: String,
-    accounts_count: u32,
-    keyring_available: bool,
+struct CredentialStoreStatus {
+    master_mode: bool,
+    is_locked: bool,
     vault_exists: bool,
+    accounts_count: u32,
+    timeout_seconds: u64,
 }
 
 #[tauri::command]
-async fn check_keyring_available() -> Result<bool, String> {
-    Ok(credential_store::CredentialStore::is_keyring_available())
+async fn init_credential_store() -> Result<String, String> {
+    credential_store::CredentialStore::init()
+        .map_err(|e| format!("Failed to initialize credential vault: {}", e))
 }
 
 #[tauri::command]
-async fn get_credential_status() -> Result<CredentialStatus, String> {
-    let keyring_available = credential_store::CredentialStore::is_keyring_available();
+async fn get_credential_store_status(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<CredentialStoreStatus, String> {
     let vault_exists = credential_store::CredentialStore::vault_exists();
+    let master_mode = credential_store::CredentialStore::is_master_mode();
+    let is_locked = state.is_locked();
 
-    let (backend, accounts_count) = if keyring_available {
-        match credential_store::CredentialStore::with_keyring() {
-            Some(store) => {
-                let count = store.list_accounts().unwrap_or_default().len() as u32;
-                ("keyring".to_string(), count)
-            }
-            None => ("none".to_string(), 0),
-        }
-    } else if vault_exists {
-        ("vault_locked".to_string(), 0)
-    } else {
-        ("none".to_string(), 0)
-    };
+    let accounts_count = credential_store::CredentialStore::from_cache()
+        .and_then(|store| store.list_accounts().ok())
+        .map(|a| a.len() as u32)
+        .unwrap_or(0);
 
-    Ok(CredentialStatus {
-        backend,
-        accounts_count,
-        keyring_available,
+    Ok(CredentialStoreStatus {
+        master_mode,
+        is_locked,
         vault_exists,
+        accounts_count,
+        timeout_seconds: state.get_timeout(),
     })
 }
 
 #[tauri::command]
 async fn store_credential(account: String, password: String) -> Result<(), String> {
-    // Try primary credential store (keyring or cached vault)
-    match get_credential_store() {
-        Ok(store) => {
-            match store.store_and_track(&account, &password) {
-                Ok(()) => return Ok(()),
-                Err(e) => {
-                    warn!("Primary store failed: {}", e);
-                    // If keyring write-verify failed, try vault fallback
-                    if let Some(vault) = credential_store::CredentialStore::from_cache() {
-                        return vault.store_and_track(&account, &password)
-                            .map_err(|e| format!("Failed to store credential: {}", e));
-                    }
-                    // No vault available — return structured error for frontend
-                    if credential_store::CredentialStore::vault_exists() {
-                        return Err("VAULT_LOCKED".to_string());
-                    }
-                    return Err("KEYRING_BROKEN_NEED_VAULT_SETUP".to_string());
-                }
-            }
-        }
-        Err(e) if e == "VAULT_LOCKED" => return Err(e),
-        Err(e) if e == "NO_CREDENTIAL_STORE" => {
-            // Last resort: try direct keyring access without probe (helps on Linux)
-            let entry = keyring::Entry::new("aeroftp", &account)
-                .map_err(|_| "KEYRING_BROKEN_NEED_VAULT_SETUP".to_string())?;
-            return entry.set_password(&password)
-                .map_err(|_| "KEYRING_BROKEN_NEED_VAULT_SETUP".to_string());
-        }
-        Err(e) => return Err(e),
-    }
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    store.store(&account, &password)
+        .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
 #[tauri::command]
 async fn get_credential(account: String) -> Result<String, String> {
-    // Try primary credential store (keyring or cached vault)
-    match get_credential_store() {
-        Ok(store) => {
-            return store.get(&account)
-                .map_err(|e| format!("Failed to get credential: {}", e));
-        }
-        Err(e) if e == "VAULT_LOCKED" => return Err(e),
-        Err(_) => {
-            // Last resort: try direct keyring access without probe (helps on Linux)
-            let entry = keyring::Entry::new("aeroftp", &account)
-                .map_err(|e| format!("Keyring unavailable: {}", e))?;
-            return entry.get_password()
-                .map_err(|e| format!("Failed to get credential: {}", e));
-        }
-    }
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    store.get(&account)
+        .map_err(|e| format!("Failed to get credential: {}", e))
 }
 
 #[tauri::command]
 async fn delete_credential(account: String) -> Result<(), String> {
-    let store = get_credential_store()?;
-    store.delete_and_track(&account)
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    store.delete(&account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
 #[tauri::command]
-async fn setup_master_password(password: String) -> Result<(), String> {
-    credential_store::CredentialStore::setup_vault(&password)
-        .map_err(|e| format!("Failed to setup vault: {}", e))?;
-    info!("Master password vault initialized");
+async fn unlock_credential_store(
+    password: String,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    credential_store::CredentialStore::unlock_with_master(&password)
+        .map_err(|e| e.to_string())?;
+    state.set_locked(false);
+    state.update_activity();
     Ok(())
 }
 
 #[tauri::command]
-async fn unlock_vault(password: String) -> Result<(), String> {
-    // Verify the password works
-    credential_store::CredentialStore::with_vault(&password)
-        .map_err(|e| format!("Failed to unlock vault: {}", e))?;
-    info!("Vault unlocked successfully");
+async fn lock_credential_store(
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    credential_store::CredentialStore::lock();
+    state.set_locked(true);
     Ok(())
 }
 
 #[tauri::command]
-async fn migrate_plaintext_credentials() -> Result<credential_store::MigrationResult, String> {
-    let store = get_credential_store()?;
-
-    // Migrate server credentials
-    let mut result = credential_store::migrate_server_credentials(&store)
-        .map_err(|e| format!("Migration failed: {}", e))?;
-
-    // Migrate OAuth tokens
-    match credential_store::migrate_oauth_tokens(&store) {
-        Ok(count) => result.migrated_count += count,
-        Err(e) => result.errors.push(format!("OAuth migration: {}", e)),
-    }
-
-    // Harden all config directory permissions
-    let _ = credential_store::harden_config_directory();
-
-    info!("Migration complete: {} credentials migrated", result.migrated_count);
-    Ok(result)
-}
-
-// ============ App Master Password Commands ============
-// App-level security with Argon2id 128 MiB + AES-256-GCM + Auto-lock
-
-#[tauri::command]
-async fn app_master_password_set(
+async fn enable_master_password(
     password: String,
     timeout_seconds: u32,
     state: State<'_, master_password::MasterPasswordState>,
 ) -> Result<(), String> {
-    master_password::setup_master_password(&password, timeout_seconds, &state)
-        .await
+    credential_store::CredentialStore::enable_master_password(&password)
         .map_err(|e| e.to_string())?;
-
-    // Also initialize credential vault with the same password
-    if !credential_store::CredentialStore::vault_exists() {
-        let store = credential_store::CredentialStore::setup_vault(&password)
-            .map_err(|e| format!("Failed to setup credential vault: {}", e))?;
-        store.cache_vault();
-        info!("Credential vault initialized alongside master password");
-    } else {
-        // Vault already exists — unlock it
-        match credential_store::CredentialStore::with_vault(&password) {
-            Ok(store) => store.cache_vault(),
-            Err(_) => warn!("Could not unlock existing vault with master password"),
-        }
-    }
+    state.set_timeout(timeout_seconds as u64);
+    state.update_activity();
     Ok(())
 }
 
 #[tauri::command]
-async fn app_master_password_unlock(
+async fn disable_master_password(
     password: String,
     state: State<'_, master_password::MasterPasswordState>,
 ) -> Result<(), String> {
-    state.unlock(&password)
-        .await
+    credential_store::CredentialStore::disable_master_password(&password)
         .map_err(|e| e.to_string())?;
-
-    // Also unlock credential vault with the same password
-    if credential_store::CredentialStore::vault_exists() {
-        match credential_store::CredentialStore::with_vault(&password) {
-            Ok(store) => store.cache_vault(),
-            Err(_) => warn!("Could not unlock credential vault with master password"),
-        }
-    }
+    state.set_locked(false);
+    state.set_timeout(0);
     Ok(())
 }
 
 #[tauri::command]
-async fn app_master_password_lock(
-    state: State<'_, master_password::MasterPasswordState>,
-) -> Result<(), String> {
-    state.lock().await;
-    credential_store::CredentialStore::clear_cache();
-    Ok(())
-}
-
-#[tauri::command]
-async fn app_master_password_change(
+async fn change_master_password(
     old_password: String,
     new_password: String,
-    new_timeout: Option<u32>,
-    state: State<'_, master_password::MasterPasswordState>,
 ) -> Result<(), String> {
-    master_password::change_master_password(&old_password, &new_password, new_timeout, &state)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn app_master_password_remove(
-    password: String,
-    state: State<'_, master_password::MasterPasswordState>,
-) -> Result<(), String> {
-    master_password::remove_master_password(&password, &state)
-        .await
+    credential_store::CredentialStore::change_master_password(&old_password, &new_password)
         .map_err(|e| e.to_string())
 }
 
@@ -4197,31 +4320,6 @@ async fn app_master_password_check_timeout(
     Ok(state.check_timeout())
 }
 
-/// Helper to get an active credential store (keyring preferred, vault fallback)
-fn get_credential_store() -> Result<credential_store::CredentialStore, String> {
-    let health = credential_store::CredentialStore::keyring_health();
-
-    // If keyring is not already known-broken, try it
-    if health != 2 {
-        if let Some(store) = credential_store::CredentialStore::with_keyring() {
-            return Ok(store);
-        }
-    }
-
-    // Keyring unavailable or broken — try cached vault
-    if let Some(store) = credential_store::CredentialStore::from_cache() {
-        return Ok(store);
-    }
-
-    // Vault exists but not unlocked
-    if credential_store::CredentialStore::vault_exists() {
-        return Err("VAULT_LOCKED".to_string());
-    }
-
-    // Nothing available
-    Err("NO_CREDENTIAL_STORE".to_string())
-}
-
 // ============ Profile Export/Import ============
 
 #[tauri::command]
@@ -4236,7 +4334,7 @@ async fn export_server_profiles(
 
     // Fetch credentials from secure store if requested
     if include_credentials {
-        if let Ok(store) = get_credential_store() {
+        if let Some(store) = credential_store::CredentialStore::from_cache() {
             for server in &mut servers {
                 if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
                     server.credential = Some(cred);
@@ -4257,11 +4355,11 @@ async fn import_server_profiles(
     let (servers, metadata) = profile_export::import_profiles(std::path::Path::new(&file_path), &password)
         .map_err(|e| e.to_string())?;
 
-    // Store credentials in secure store and strip from returned data
-    if let Ok(store) = get_credential_store() {
+    // Store credentials in secure store
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
         for server in &servers {
             if let Some(ref cred) = server.credential {
-                let _ = store.store_and_track(&format!("server_{}", server.id), cred);
+                let _ = store.store(&format!("server_{}", server.id), cred);
             }
         }
     }
@@ -4518,6 +4616,7 @@ pub fn run() {
             chmod_remote_file,
             delete_local_file,
             rename_local_file,
+            copy_local_file,
             create_local_folder,
             read_file_base64,
             calculate_checksum,
@@ -4559,27 +4658,24 @@ pub fn run() {
             is_background_sync_running,
             set_tray_status,
             save_server_credentials,
-            // Secure Credential Store commands
-            check_keyring_available,
-            get_credential_status,
+            // Universal Credential Vault
+            init_credential_store,
+            get_credential_store_status,
             store_credential,
             get_credential,
             delete_credential,
-            export_server_profiles,
-            import_server_profiles,
-            read_export_metadata,
-            setup_master_password,
-            unlock_vault,
-            migrate_plaintext_credentials,
-            // App Master Password (security)
-            app_master_password_set,
-            app_master_password_unlock,
-            app_master_password_lock,
-            app_master_password_change,
-            app_master_password_remove,
+            unlock_credential_store,
+            lock_credential_store,
+            enable_master_password,
+            disable_master_password,
+            change_master_password,
             app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
+            // Profile Export/Import
+            export_server_profiles,
+            import_server_profiles,
+            read_export_metadata,
             // Debug & dependencies commands
             get_dependencies,
             check_crate_versions,

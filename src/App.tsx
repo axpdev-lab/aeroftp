@@ -13,11 +13,13 @@ import {
 interface DownloadFolderParams {
   remote_path: string;
   local_path: string;
+  file_exists_action?: string;
 }
 
 interface UploadFolderParams {
   local_path: string;
   remote_path: string;
+  file_exists_action?: string;
 }
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
@@ -42,6 +44,7 @@ import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
+import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { LockScreen } from './components/LockScreen';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
@@ -52,7 +55,7 @@ import {
   Download, Upload, Pencil, Trash2, X,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
-  Copy, Clipboard, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
+  Copy, Clipboard, ClipboardPaste, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut
 } from 'lucide-react';
 
@@ -61,7 +64,7 @@ import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIc
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferProgressBar } from './components/Transfer';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
@@ -123,6 +126,7 @@ const App: React.FC = () => {
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
+  const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
   const [isConnected, setIsConnected] = useState(false);
@@ -178,6 +182,15 @@ const App: React.FC = () => {
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
+  // Folder overwrite dialog state
+  const [folderOverwriteDialog, setFolderOverwriteDialog] = useState<{
+    isOpen: boolean;
+    folderName: string;
+    direction: 'upload' | 'download';
+    queueCount: number;
+    resolve: ((result: { action: FolderMergeAction; applyToAll: boolean }) => void) | null;
+  }>({ isOpen: false, folderName: '', direction: 'upload', queueCount: 0, resolve: null });
+  const folderOverwriteApplyToAll = useRef<{ action: FolderMergeAction; enabled: boolean }>({ action: 'merge_overwrite', enabled: false });
   // showSettingsPanel provided by useSettings
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
@@ -196,8 +209,18 @@ const App: React.FC = () => {
 
   // Transfer Queue (unified upload + download)
   const transferQueue = useTransferQueue();
+  const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
 
   const localSearchRef = React.useRef<HTMLInputElement>(null);
+
+  // File clipboard for Cut/Copy/Paste
+  const fileClipboardRef = React.useRef<{
+    files: { name: string; path: string; is_dir: boolean }[];
+    sourceDir: string;
+    isRemote: boolean;
+    operation: 'cut' | 'copy';
+  } | null>(null);
+  const [hasClipboard, setHasClipboard] = React.useState(false);
 
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
@@ -285,21 +308,25 @@ const App: React.FC = () => {
   }, [isConnected, connectionParams.server, currentLocalPath]);
 
 
-  // === Master Password / Auto-Lock ===
-  // Check if master password is set on app load
+  // === Universal Vault / Auto-Lock ===
+  // Initialize credential vault on app load
   useEffect(() => {
-    const checkMasterPassword = async () => {
+    const initVault = async () => {
       try {
-        const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
-        setMasterPasswordSet(status.is_set);
-        if (status.is_set && status.is_locked) {
+        const result = await invoke<string>('init_credential_store');
+        if (result === 'MASTER_PASSWORD_REQUIRED') {
           setIsAppLocked(true);
+          setMasterPasswordSet(true);
+        } else {
+          // Check if master mode is active (for lock button state)
+          const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+          setMasterPasswordSet(status.master_mode);
         }
       } catch (err) {
-        console.error('Failed to check master password status:', err);
+        console.error('Failed to initialize credential vault:', err);
       }
     };
-    checkMasterPassword();
+    initVault();
   }, []);
 
   // Auto-lock timer: check every 30 seconds if timeout has expired
@@ -310,7 +337,7 @@ const App: React.FC = () => {
       try {
         const shouldLock = await invoke<boolean>('app_master_password_check_timeout');
         if (shouldLock) {
-          await invoke('app_master_password_lock');
+          await invoke('lock_credential_store');
           setIsAppLocked(true);
         }
       } catch (err) {
@@ -506,6 +533,37 @@ const App: React.FC = () => {
     // Ctrl+F: toggle local search bar
     'Ctrl+F': () => {
       setShowLocalSearchBar(prev => !prev);
+    },
+
+    // Ctrl+C: copy selected files
+    'Ctrl+C': () => {
+      if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+        const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+        clipboardCopy(files, true, currentRemotePath);
+      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+        const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+        clipboardCopy(files, false, currentLocalPath);
+      }
+    },
+
+    // Ctrl+X: cut selected files
+    'Ctrl+X': () => {
+      if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+        const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+        clipboardCut(files, true, currentRemotePath);
+      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+        const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+        clipboardCut(files, false, currentLocalPath);
+      }
+    },
+
+    // Ctrl+V: paste files
+    'Ctrl+V': () => {
+      if (activePanel === 'remote') {
+        clipboardPaste(true, currentRemotePath);
+      } else {
+        clipboardPaste(false, currentLocalPath);
+      }
     },
 
     // Space key: Open preview for selected file
@@ -1820,6 +1878,47 @@ const App: React.FC = () => {
 
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
+  // Helper: check folder overwrite in 'ask' mode — shows FolderOverwriteDialog
+  const checkFolderOverwrite = useCallback(async (
+    folderName: string,
+    direction: 'upload' | 'download',
+    queueCount: number = 0
+  ): Promise<{ action: FolderMergeAction; applyToAll: boolean }> => {
+    // If apply-to-all was set previously in this batch, reuse it
+    if (folderOverwriteApplyToAll.current.enabled) {
+      return { action: folderOverwriteApplyToAll.current.action, applyToAll: true };
+    }
+    // Check if destination folder exists
+    const exists = direction === 'upload'
+      ? remoteFiles.some(f => f.name === folderName && f.is_dir)
+      : localFiles.some(f => f.name === folderName && f.is_dir);
+    if (!exists) {
+      return { action: 'merge_overwrite', applyToAll: false };
+    }
+    // Read settings
+    const savedSettings = localStorage.getItem('aeroftp_settings');
+    const fileExistsAction = savedSettings ? (JSON.parse(savedSettings).fileExistsAction || 'ask') : 'ask';
+    if (fileExistsAction !== 'ask') {
+      // Map setting to folder action without showing dialog
+      return { action: 'merge_overwrite', applyToAll: false };
+    }
+    // Show dialog and wait
+    return new Promise((resolve) => {
+      setFolderOverwriteDialog({
+        isOpen: true,
+        folderName,
+        direction,
+        queueCount,
+        resolve: (result) => {
+          if (result.applyToAll) {
+            folderOverwriteApplyToAll.current = { action: result.action, enabled: true };
+          }
+          resolve(result);
+        },
+      });
+    });
+  }, [localFiles, remoteFiles]);
+
   const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number) => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
@@ -1835,12 +1934,17 @@ const App: React.FC = () => {
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
+          // Read file exists action from settings for folder transfers
+          const savedSettings = localStorage.getItem('aeroftp_settings');
+          const fileExistsAction = savedSettings ? (JSON.parse(savedSettings).fileExistsAction || 'ask') : 'ask';
+          // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
+          const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
           if (isProvider) {
             // Use provider command for folder download
-            await invoke('provider_download_folder', { remotePath: remoteFilePath, localPath: folderPath });
+            await invoke('provider_download_folder', { remotePath: remoteFilePath, localPath: folderPath, fileExistsAction: folderAction || undefined });
           } else {
             // Use FTP command
-            const params: DownloadFolderParams = { remote_path: remoteFilePath, local_path: folderPath };
+            const params: DownloadFolderParams = { remote_path: remoteFilePath, local_path: folderPath, file_exists_action: folderAction || undefined };
             await invoke('download_folder', { params });
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1906,12 +2010,15 @@ const App: React.FC = () => {
               if (entry.is_dir) {
                 await processFolder(entry.path, newRemotePath);
               } else {
+                const fileQueueId = transferQueue.addItem(entry.name, entry.path, entry.size || 0, 'upload');
+                transferQueue.startTransfer(fileQueueId);
                 try {
                   humanLog.updateEntry(logId, { message: `Uploading ${entry.name}...` });
                   await invoke('provider_upload_file', { localPath: entry.path, remotePath: newRemotePath });
+                  transferQueue.completeTransfer(fileQueueId);
                 } catch (e) {
                   console.error(`Failed to upload ${entry.name}:`, e);
-                  // Continue with other files? Yes.
+                  transferQueue.failTransfer(fileQueueId, String(e));
                 }
               }
             }
@@ -1928,7 +2035,11 @@ const App: React.FC = () => {
           return;
         }
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
-        const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath };
+        // Read file exists action from settings for folder transfers
+        const savedSettings2 = localStorage.getItem('aeroftp_settings');
+        const fileExistsAction2 = savedSettings2 ? (JSON.parse(savedSettings2).fileExistsAction || 'ask') : 'ask';
+        const folderAction2 = fileExistsAction2 === 'ask' ? '' : fileExistsAction2;
+        const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath, file_exists_action: folderAction2 || undefined };
         await invoke('upload_folder', { params });
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const details = `(${elapsed}s)`;
@@ -1960,6 +2071,125 @@ const App: React.FC = () => {
     try { await invoke('cancel_transfer'); } catch { }
   };
 
+  // ======== File Clipboard (Cut/Copy/Paste) ========
+
+  const clipboardCopy = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy' };
+    setHasClipboard(true);
+    notify.success(t('contextMenu.copied') || 'Copied', `${files.length} file(s)`);
+  };
+
+  const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
+    setHasClipboard(true);
+    notify.success(t('contextMenu.cut') || 'Cut', `${files.length} file(s)`);
+  };
+
+  const clipboardPaste = async (targetIsRemote: boolean, targetDir: string) => {
+    const cb = fileClipboardRef.current;
+    if (!cb) return;
+
+    const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
+
+    // Cross-panel paste → upload or download
+    if (sourceIsRemote !== targetIsRemote) {
+      if (sourceIsRemote) {
+        // Remote → Local: download
+        await downloadMultipleFiles(files.map(f => f.name));
+      } else {
+        // Local → Remote: upload
+        await uploadMultipleFiles(files.map(f => f.name));
+      }
+      if (operation === 'cut') {
+        // Delete source after successful transfer
+        for (const file of files) {
+          try {
+            if (sourceIsRemote) {
+              const activeSession = sessions.find(s => s.id === activeSessionId);
+              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              if (protocol && isNonFtpProvider(protocol)) {
+                await invoke('provider_delete_file', { path: file.path });
+              } else {
+                await invoke('delete_remote_file', { path: file.path });
+              }
+            } else {
+              await invoke('delete_local_file', { path: file.path });
+            }
+          } catch (e) {
+            console.error(`Failed to delete source after cut: ${file.name}`, e);
+          }
+        }
+        if (sourceIsRemote) loadRemoteFiles();
+        else loadLocalFiles(currentLocalPath);
+      }
+    }
+    // Same-panel paste
+    else {
+      if (operation === 'cut') {
+        // Move files to target directory
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const useProvider = protocol && isNonFtpProvider(protocol) && protocol !== 'sftp';
+
+        for (const file of files) {
+          const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
+          const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
+          try {
+            if (targetIsRemote) {
+              if (useProvider) {
+                await invoke('provider_rename', { from: file.path, to: destPath });
+              } else {
+                await invoke('rename_remote_file', { from: file.path, to: destPath });
+              }
+            } else {
+              await invoke('rename_local_file', { from: file.path, to: destPath });
+            }
+          } catch (e) {
+            notify.error(`Failed to move ${file.name}`, String(e));
+          }
+        }
+        if (targetIsRemote) loadRemoteFiles();
+        else loadLocalFiles(currentLocalPath);
+      } else {
+        // Copy files within same panel
+        if (!targetIsRemote) {
+          // Local copy
+          for (const file of files) {
+            const sep = targetDir.includes('\\') ? '\\' : '/';
+            const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
+            if (destPath === file.path) {
+              // Same directory: add " (copy)" suffix
+              const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
+              const baseName = ext ? file.name.slice(0, -ext.length) : file.name;
+              const copyName = `${baseName} (copy)${ext}`;
+              const copyDest = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${copyName}`;
+              try {
+                await invoke('copy_local_file', { from: file.path, to: copyDest });
+              } catch (e) {
+                notify.error(`Failed to copy ${file.name}`, String(e));
+              }
+            } else {
+              try {
+                await invoke('copy_local_file', { from: file.path, to: destPath });
+              } catch (e) {
+                notify.error(`Failed to copy ${file.name}`, String(e));
+              }
+            }
+          }
+          loadLocalFiles(currentLocalPath);
+        } else {
+          notify.error('Copy', 'Server-side copy not supported');
+        }
+      }
+    }
+
+    // Clear clipboard after cut (not after copy, so user can paste multiple times)
+    if (operation === 'cut') {
+      fileClipboardRef.current = null;
+      setHasClipboard(false);
+    }
+  };
+
   // openDevToolsPreview, openUniversalPreview, closeUniversalPreview provided by usePreview hook
 
   // Upload files (Selected or Dialog)
@@ -1987,7 +2217,17 @@ const App: React.FC = () => {
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
-          return { id: transferQueue.addItem(fileName, filePath, size, 'upload'), filePath, fileName, file };
+          const id = transferQueue.addItem(fileName, filePath, size, 'upload');
+          retryCallbacksRef.current.set(id, async () => {
+            transferQueue.startTransfer(id);
+            try {
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined);
+              transferQueue.completeTransfer(id);
+            } catch (error) {
+              transferQueue.failTransfer(id, String(error));
+            }
+          });
+          return { id, filePath, fileName, file };
         });
 
         // Upload sequentially with queue tracking and overwrite checking
@@ -1996,8 +2236,23 @@ const App: React.FC = () => {
           const item = queueItems[i];
           const remainingInQueue = queueItems.length - i - 1;
 
-          // Check for overwrite (only for files, not directories)
-          if (!item.file.is_dir) {
+          if (item.file.is_dir) {
+            // Folder: show FolderOverwriteDialog in 'ask' mode
+            const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue);
+            if (folderResult.action === 'cancel') {
+              transferQueue.failTransfer(item.id, 'Cancelled by user');
+              for (let j = i + 1; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+              }
+              break;
+            }
+            if (folderResult.action === 'skip') {
+              transferQueue.completeTransfer(item.id);
+              skippedCount++;
+              continue;
+            }
+          } else {
+            // File: use standard overwrite check
             const overwriteResult = await checkOverwrite(
               item.fileName,
               item.file.size || 0,
@@ -2007,7 +2262,6 @@ const App: React.FC = () => {
             );
 
             if (overwriteResult.action === 'cancel') {
-              // Cancel entire batch
               transferQueue.failTransfer(item.id, 'Cancelled by user');
               for (let j = i + 1; j < queueItems.length; j++) {
                 transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
@@ -2016,14 +2270,11 @@ const App: React.FC = () => {
             }
 
             if (overwriteResult.action === 'skip') {
-              transferQueue.completeTransfer(item.id); // Mark as complete (skipped)
+              transferQueue.completeTransfer(item.id);
               humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
               skippedCount++;
               continue;
             }
-
-            // For rename, we would need to modify the destination - for now, just proceed
-            // TODO: Implement rename logic
           }
 
           transferQueue.startTransfer(item.id);
@@ -2037,6 +2288,7 @@ const App: React.FC = () => {
 
         // Reset apply-to-all after batch completes
         resetOverwriteSettings();
+        folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
 
         // Queue shows completion - no toast needed
         if (skippedCount > 0) {
@@ -2111,10 +2363,19 @@ const App: React.FC = () => {
       // Queue shows progress - no toast needed
 
       // Add all files to queue first
-      const queueItems = filesToDownload.map(file => ({
-        id: transferQueue.addItem(file.name, file.path, file.size || 0, 'download'),
-        file
-      }));
+      const queueItems = filesToDownload.map(file => {
+        const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download');
+        retryCallbacksRef.current.set(id, async () => {
+          transferQueue.startTransfer(id);
+          try {
+            await downloadFile(file.path, file.name, currentLocalPath, file.is_dir, file.size || undefined);
+            transferQueue.completeTransfer(id);
+          } catch (error) {
+            transferQueue.failTransfer(id, String(error));
+          }
+        });
+        return { id, file };
+      });
 
       // Download sequentially with queue tracking and overwrite checking
       let skippedCount = 0;
@@ -2122,8 +2383,23 @@ const App: React.FC = () => {
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
-        // Check for overwrite (only for files, not directories)
-        if (!item.file.is_dir) {
+        if (item.file.is_dir) {
+          // Folder: show FolderOverwriteDialog in 'ask' mode
+          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue);
+          if (folderResult.action === 'cancel') {
+            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            for (let j = i + 1; j < queueItems.length; j++) {
+              transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+            }
+            break;
+          }
+          if (folderResult.action === 'skip') {
+            transferQueue.completeTransfer(item.id);
+            skippedCount++;
+            continue;
+          }
+        } else {
+          // File: use standard overwrite check
           const overwriteResult = await checkOverwrite(
             item.file.name,
             item.file.size || 0,
@@ -2133,7 +2409,6 @@ const App: React.FC = () => {
           );
 
           if (overwriteResult.action === 'cancel') {
-            // Cancel entire batch
             transferQueue.failTransfer(item.id, 'Cancelled by user');
             for (let j = i + 1; j < queueItems.length; j++) {
               transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
@@ -2142,14 +2417,11 @@ const App: React.FC = () => {
           }
 
           if (overwriteResult.action === 'skip') {
-            transferQueue.completeTransfer(item.id); // Mark as complete (skipped)
+            transferQueue.completeTransfer(item.id);
             humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: item.file.name }, 'success');
             skippedCount++;
             continue;
           }
-
-          // For rename, we would need to modify the destination - for now, just proceed
-          // TODO: Implement rename logic
         }
 
         transferQueue.startTransfer(item.id);
@@ -2672,6 +2944,24 @@ const App: React.FC = () => {
         }), disabled: count > 1
       },
       { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
+      {
+        label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
+          const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCut(selectedFiles, true, currentRemotePath);
+        }
+      },
+      {
+        label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
+          const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCopy(selectedFiles, true, currentRemotePath);
+        }
+      },
+      {
+        label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
+        action: () => clipboardPaste(true, currentRemotePath),
+        disabled: !hasClipboard,
+        divider: true,
+      },
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); } },
     ];
@@ -2860,6 +3150,24 @@ const App: React.FC = () => {
         }), disabled: count > 1
       },
       { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
+      {
+        label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
+          const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCut(selectedFiles, false, currentLocalPath);
+        }
+      },
+      {
+        label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
+          const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCopy(selectedFiles, false, currentLocalPath);
+        }
+      },
+      {
+        label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
+        action: () => clipboardPaste(false, currentLocalPath),
+        disabled: !hasClipboard,
+        divider: true,
+      },
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
@@ -3064,6 +3372,17 @@ const App: React.FC = () => {
         <LockScreen onUnlock={() => setIsAppLocked(false)} />
       )}
 
+      {/* Master Password Setup Dialog (standalone from header button) */}
+      {showMasterPasswordSetup && (
+        <MasterPasswordSetupDialog
+          onComplete={() => {
+            setShowMasterPasswordSetup(false);
+            setMasterPasswordSet(true);
+          }}
+          onClose={() => setShowMasterPasswordSetup(false)}
+        />
+      )}
+
       <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
 
@@ -3168,6 +3487,14 @@ const App: React.FC = () => {
         isVisible={transferQueue.isVisible}
         onToggle={transferQueue.toggle}
         onClear={transferQueue.clear}
+        onClearCompleted={transferQueue.clearCompleted}
+        onStopAll={transferQueue.stopAll}
+        onRemoveItem={transferQueue.removeItem}
+        onRetryItem={(id: string) => {
+          transferQueue.retryItem(id);
+          const cb = retryCallbacksRef.current.get(id);
+          if (cb) cb();
+        }}
       />
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
@@ -3269,6 +3596,24 @@ const App: React.FC = () => {
           setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
         }}
       />
+      <FolderOverwriteDialog
+        isOpen={folderOverwriteDialog.isOpen}
+        folderName={folderOverwriteDialog.folderName}
+        direction={folderOverwriteDialog.direction}
+        queueCount={folderOverwriteDialog.queueCount}
+        onDecision={(action, applyToAll) => {
+          if (folderOverwriteDialog.resolve) {
+            folderOverwriteDialog.resolve({ action, applyToAll });
+          }
+          setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+        onCancel={() => {
+          if (folderOverwriteDialog.resolve) {
+            folderOverwriteDialog.resolve({ action: 'cancel', applyToAll: false });
+          }
+          setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
       <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
       <SettingsPanel
         isOpen={showSettingsPanel}
@@ -3359,16 +3704,6 @@ const App: React.FC = () => {
               </button>
               {/* Separator */}
               <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
-              {/* AeroVault */}
-              <button
-                onClick={() => setShowVaultPanel(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="AeroVault - Military-Grade Encryption"
-              >
-                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
-              </button>
-              {/* Separator */}
-              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
               {/* Quick System Menu Bar Toggle */}
               <button
                 onClick={async () => {
@@ -3383,16 +3718,33 @@ const App: React.FC = () => {
               </button>
               {/* Theme toggle */}
               <ThemeToggle theme={theme} setTheme={setTheme} />
-              {/* Master Password indicator */}
+              {/* Separator */}
+              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+              {/* AeroVault */}
               <button
-                onClick={() => { setSettingsInitialTab('security'); setShowSettingsPanel(true); }}
+                onClick={() => setShowVaultPanel(true)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="AeroVault - Military-Grade Encryption"
+              >
+                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
+              </button>
+              {/* Lock / Master Password button (standalone) */}
+              <button
+                onClick={async () => {
+                  if (!masterPasswordSet) {
+                    setShowMasterPasswordSetup(true);
+                  } else {
+                    await invoke('lock_credential_store');
+                    setIsAppLocked(true);
+                  }
+                }}
                 className={`p-2 rounded-lg transition-colors ${masterPasswordSet ? 'hover:bg-emerald-100 dark:hover:bg-emerald-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                title={masterPasswordSet ? t('settings.masterPasswordEnabled') : t('settings.masterPasswordDisabled')}
+                title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}
               >
                 {masterPasswordSet ? (
                   <Lock size={18} className="text-emerald-500" />
                 ) : (
-                  <Unlock size={18} className="text-gray-400 dark:text-gray-500" />
+                  <Shield size={18} className="text-gray-400 dark:text-gray-500" />
                 )}
               </button>
               {/* Settings button */}
@@ -3430,7 +3782,6 @@ const App: React.FC = () => {
             onQuickConnectDirsChange={setQuickConnectDirs}
             onConnect={connectToFtp}
             onOpenCloudPanel={() => setShowCloudPanel(true)}
-            onOpenSecuritySettings={() => { setSettingsInitialTab('security'); setShowSettingsPanel(true); }}
             hasExistingSessions={sessions.length > 0}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
               // NOTE: Do NOT set connectionParams here - that would show the form

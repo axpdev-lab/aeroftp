@@ -45,6 +45,34 @@ pub fn decrypt_aes_gcm(key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Resul
         .map_err(|e| format!("AES-GCM decrypt: {}", e))
 }
 
+/// Derive vault key from high-entropy passphrase (64 bytes) using HKDF-SHA256
+/// Used by Universal Vault — passphrase has 512 bits of entropy so HKDF is sufficient
+pub fn derive_from_passphrase(passphrase: &[u8]) -> [u8; 32] {
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+    let hk = Hkdf::<Sha256>::new(None, passphrase);
+    let mut key = [0u8; 32];
+    hk.expand(b"aeroftp-vault-v2", &mut key).expect("HKDF expand");
+    key
+}
+
+/// Derive master key from user password using Argon2id with strong parameters (128 MiB)
+/// Used for master password mode where human password has low entropy
+pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    let params = argon2::Params::new(
+        131072, // 128 MiB
+        4,      // t=4
+        4,      // p=4
+        Some(32),
+    ).map_err(|e| format!("Argon2 params: {}", e))?;
+
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let mut key = [0u8; 32];
+    argon2.hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|e| format!("Argon2 derive: {}", e))?;
+    Ok(key)
+}
+
 /// Generate cryptographically secure random bytes
 pub fn random_bytes(len: usize) -> Vec<u8> {
     use rand::RngCore;

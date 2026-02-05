@@ -72,8 +72,8 @@ Currently supported: **51 languages** at 100% coverage
 
 ## 📅 Last Updated
 
-- **Documentation Version**: 1.7.0
-- **Last Update**: 2026-02-03
+- **Documentation Version**: 1.8.6
+- **Last Update**: 2026-02-05
 
 ---
 

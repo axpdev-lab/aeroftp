@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -15,7 +15,6 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { getProviderById, ProviderConfig } from '../providers';
-import { AlertDialog } from './Dialogs';
 
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -48,7 +47,6 @@ interface ConnectionScreenProps {
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onOpenCloudPanel?: () => void;
-    onOpenSecuritySettings?: () => void;
     hasExistingSessions?: boolean;  // Show back button when there are existing sessions
 }
 
@@ -62,7 +60,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onSavedServerConnect,
     onSkipToFileManager,
     onOpenCloudPanel,
-    onOpenSecuritySettings,
     hasExistingSessions = false,
 }) => {
     const t = useTranslation();
@@ -87,13 +84,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
-
-    // Alert dialog state (replaces native alert())
-    const [credentialAlert, setCredentialAlert] = useState<{
-        title: string;
-        message: string;
-        type: 'warning' | 'error' | 'info';
-    } | null>(null);
+    const [securityInfoOpen, setSecurityInfoOpen] = useState(false);
 
     // Fetch AeroCloud config when AeroCloud is selected
     useEffect(() => {
@@ -111,29 +102,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     }, [protocol]);
 
-    // Try to store a credential securely, handling keyring failures
+    // Store a credential in the universal vault
     const tryStoreCredential = async (account: string, password: string | undefined): Promise<boolean> => {
         if (!password) return false;
         try {
             await invoke('store_credential', { account, password });
             return true;
         } catch (err) {
-            const errorStr = String(err);
-            if (errorStr.includes('KEYRING_BROKEN_NEED_VAULT_SETUP')) {
-                setCredentialAlert({
-                    title: t('connection.securityTitle'),
-                    message: t('connection.keyringFailed'),
-                    type: 'warning',
-                });
-            } else if (errorStr.includes('VAULT_LOCKED')) {
-                setCredentialAlert({
-                    title: t('connection.vaultLockedTitle'),
-                    message: t('connection.vaultLocked'),
-                    type: 'info',
-                });
-            } else {
-                console.error('Failed to store credential:', err);
-            }
+            console.error('Failed to store credential:', err);
             return false;
         }
     };
@@ -387,30 +363,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             <div className="py-6 space-y-6">
                                 <p className="text-sm text-center text-gray-500 dark:text-gray-400">{t('connection.selectProtocolPrompt')}</p>
 
-                                {/* Security Info Box */}
-                                <div className="mx-auto max-w-md p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                        <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 text-sm">{t('connection.securityTitle')}</h4>
+                                {/* Security Info Box — collapsible */}
+                                <div className="mx-auto max-w-sm bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSecurityInfoOpen(!securityInfoOpen)}
+                                        className="w-full flex items-center gap-2 p-3 hover:bg-emerald-100/50 dark:hover:bg-emerald-800/20 transition-colors"
+                                    >
+                                        <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                        <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 text-xs">{t('connection.securityTitle')}</h4>
+                                        <ChevronDown size={14} className={`ml-auto text-emerald-600 dark:text-emerald-400 transition-transform duration-200 ${securityInfoOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <div className={`grid transition-all duration-200 ${securityInfoOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                                        <div className="overflow-hidden">
+                                            <ul className="space-y-1.5 text-xs text-emerald-700 dark:text-emerald-300 px-3 pb-3">
+                                                <li className="flex items-start gap-2">
+                                                    <Check size={12} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                                    <span>{t('connection.securityKeyring')}</span>
+                                                </li>
+                                                <li className="flex items-start gap-2">
+                                                    <Check size={12} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                                    <span>{t('connection.securityNoSend')}</span>
+                                                </li>
+                                                <li className="flex items-start gap-2">
+                                                    <Check size={12} className="mt-0.5 flex-shrink-0 text-emerald-500" />
+                                                    <span>{t('connection.securityTLS')}</span>
+                                                </li>
+                                            </ul>
+                                        </div>
                                     </div>
-                                    <ul className="space-y-2 text-xs text-emerald-700 dark:text-emerald-300">
-                                        <li className="flex items-start gap-2">
-                                            <KeyRound size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
-                                            <span>{t('connection.securityKeyring')}</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <Lock size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
-                                            <span>{t('connection.securityEncryption')}</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <Check size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
-                                            <span>{t('connection.securityNoSend')}</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <Check size={14} className="mt-0.5 flex-shrink-0 text-emerald-500" />
-                                            <span>{t('connection.securityTLS')}</span>
-                                        </li>
-                                    </ul>
                                 </div>
                             </div>
                         ) : isAeroCloudProvider(protocol) ? (
@@ -1053,20 +1034,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
             </div> {/* Close grid */}
 
-            {/* Credential storage alert dialog */}
-            {credentialAlert && (
-                <AlertDialog
-                    title={credentialAlert.title}
-                    message={credentialAlert.message}
-                    type={credentialAlert.type}
-                    onClose={() => setCredentialAlert(null)}
-                    actionLabel={credentialAlert.type === 'warning' && onOpenSecuritySettings ? t('settings.openSettings') : undefined}
-                    onAction={credentialAlert.type === 'warning' && onOpenSecuritySettings ? () => {
-                        setCredentialAlert(null);
-                        onOpenSecuritySettings();
-                    } : undefined}
-                />
-            )}
         </div>
     );
 };

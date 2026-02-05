@@ -1,32 +1,41 @@
-// AeroFTP Secure Credential Store
-// Dual-mode: OS Keyring (preferred) + Encrypted Vault fallback (Argon2id + AES-256-GCM)
-// CVE-level hotfix: replaces all plaintext credential storage
+// AeroFTP Universal Credential Vault
+// Single encrypted vault for ALL credential types:
+// - Server passwords (server_{id})
+// - OAuth tokens (oauth_{provider}_*)
+// - AI API keys (ai_apikey_{provider})
+//
+// Two modes:
+// - Auto mode (default): vault.key stores passphrase in cleartext, protected by OS permissions
+// - Master mode (optional): vault.key passphrase encrypted with Argon2id(user_password) + AES-GCM
+//
+// v2.0 — February 2026
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
-// Cached keyring health: 0 = unknown, 1 = verified working, 2 = verified broken
-static KEYRING_HEALTH: AtomicU8 = AtomicU8::new(0);
+// Cached unlocked vault state: (vault.db path, vault_key)
+static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
 
-// Cached unlocked vault state (path, master_key, salt)
-static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32], Vec<u8>)>> = Mutex::new(None);
-
-const SERVICE_NAME: &str = "aeroftp";
 const VAULT_FILENAME: &str = "vault.db";
+const VAULTKEY_FILENAME: &str = "vault.key";
+
+// vault.key binary format constants
+const VAULTKEY_MAGIC: &[u8; 8] = b"AEROVKEY";
+const VAULTKEY_VERSION: u8 = 2;
+const MODE_AUTO: u8 = 0x00;
+const MODE_MASTER: u8 = 0x01;
+const PASSPHRASE_LEN: usize = 64;
 
 // ============ Error Types ============
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
-    #[error("Keyring error: {0}")]
-    Keyring(String),
     #[error("Vault locked - master password required")]
     VaultLocked,
-    #[error("Vault not initialized - setup master password first")]
+    #[error("Vault not initialized")]
     VaultNotInitialized,
     #[error("Invalid master password")]
     InvalidMasterPassword,
@@ -38,16 +47,23 @@ pub enum CredentialError {
     Io(#[from] std::io::Error),
     #[error("Serialization error: {0}")]
     Serialization(String),
+    #[error("Invalid vault.key format")]
+    InvalidKeyFile,
+    #[error("Master password already set")]
+    MasterAlreadySet,
+    #[error("Master password not set")]
+    MasterNotSet,
+    #[error("Password must be at least 8 characters")]
+    PasswordTooShort,
 }
 
-// ============ Vault File Format ============
+// ============ Vault File Format (vault.db) ============
 
 #[derive(Serialize, Deserialize)]
 struct VaultFile {
     version: u32,
-    salt: Vec<u8>,           // 32 bytes for Argon2id
     verify_nonce: Vec<u8>,   // 12 bytes - nonce for verification token
-    verify_data: Vec<u8>,    // encrypted "aeroftp_vault_ok" for password verification
+    verify_data: Vec<u8>,    // encrypted "aeroftp_vault_v2_ok" for key verification
     entries: HashMap<String, VaultEntry>,
 }
 
@@ -57,342 +73,464 @@ struct VaultEntry {
     data: Vec<u8>,    // [ciphertext][tag 16B]
 }
 
-// ============ Credential Backend ============
+// ============ VaultKeyFile (vault.key) ============
 
-enum Backend {
-    OsKeyring,
-    EncryptedVault {
-        path: PathBuf,
-        master_key: [u8; 32],
-        salt: Vec<u8>,
+/// Represents the vault.key file that stores the passphrase
+struct VaultKeyFile {
+    mode: VaultKeyMode,
+}
+
+enum VaultKeyMode {
+    /// Passphrase stored in cleartext, protected by OS file permissions
+    Auto { passphrase: [u8; PASSPHRASE_LEN] },
+    /// Passphrase encrypted with Argon2id(user_password) + AES-256-GCM
+    Master {
+        salt: [u8; 32],
+        nonce: [u8; 12],
+        encrypted_passphrase: Vec<u8>, // 64 bytes passphrase + 16 bytes GCM tag = 80 bytes
     },
+}
+
+impl VaultKeyFile {
+    /// Get vault.key path
+    fn path() -> Result<PathBuf, CredentialError> {
+        let dir = config_dir()?;
+        Ok(dir.join(VAULTKEY_FILENAME))
+    }
+
+    /// Check if vault.key exists
+    fn exists() -> bool {
+        Self::path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    /// Check if vault.key is in master mode (without reading passphrase)
+    fn is_master_mode() -> bool {
+        let path = match Self::path() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        let data = match std::fs::read(&path) {
+            Ok(d) => d,
+            Err(_) => return false,
+        };
+        // Magic(8) + Version(1) + Mode(1)
+        if data.len() < 10 {
+            return false;
+        }
+        if &data[0..8] != VAULTKEY_MAGIC {
+            return false;
+        }
+        data[9] == MODE_MASTER
+    }
+
+    /// Serialize to bytes
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(140);
+        data.extend_from_slice(VAULTKEY_MAGIC);
+        data.push(VAULTKEY_VERSION);
+
+        match &self.mode {
+            VaultKeyMode::Auto { passphrase } => {
+                data.push(MODE_AUTO);
+                data.extend_from_slice(passphrase);
+                data.extend_from_slice(&[0u8; 2]); // padding
+            }
+            VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
+                data.push(MODE_MASTER);
+                data.extend_from_slice(salt);
+                data.extend_from_slice(nonce);
+                data.extend_from_slice(encrypted_passphrase);
+                data.extend_from_slice(&[0u8; 2]); // padding
+            }
+        }
+        data
+    }
+
+    /// Parse from bytes
+    fn from_bytes(data: &[u8]) -> Result<Self, CredentialError> {
+        // Minimum: magic(8) + version(1) + mode(1) + passphrase(64) + padding(2) = 76
+        if data.len() < 76 {
+            return Err(CredentialError::InvalidKeyFile);
+        }
+        if &data[0..8] != VAULTKEY_MAGIC {
+            return Err(CredentialError::InvalidKeyFile);
+        }
+        if data[8] != VAULTKEY_VERSION {
+            return Err(CredentialError::InvalidKeyFile);
+        }
+
+        let mode_byte = data[9];
+        match mode_byte {
+            MODE_AUTO => {
+                if data.len() < 76 {
+                    return Err(CredentialError::InvalidKeyFile);
+                }
+                let mut passphrase = [0u8; PASSPHRASE_LEN];
+                passphrase.copy_from_slice(&data[10..10 + PASSPHRASE_LEN]);
+                Ok(VaultKeyFile {
+                    mode: VaultKeyMode::Auto { passphrase },
+                })
+            }
+            MODE_MASTER => {
+                // magic(8) + ver(1) + mode(1) + salt(32) + nonce(12) + enc_passphrase(80) + padding(2) = 136
+                if data.len() < 136 {
+                    return Err(CredentialError::InvalidKeyFile);
+                }
+                let mut salt = [0u8; 32];
+                salt.copy_from_slice(&data[10..42]);
+                let mut nonce = [0u8; 12];
+                nonce.copy_from_slice(&data[42..54]);
+                let encrypted_passphrase = data[54..134].to_vec();
+                Ok(VaultKeyFile {
+                    mode: VaultKeyMode::Master { salt, nonce, encrypted_passphrase },
+                })
+            }
+            _ => Err(CredentialError::InvalidKeyFile),
+        }
+    }
+
+    /// Read vault.key from disk
+    fn read() -> Result<Self, CredentialError> {
+        let path = Self::path()?;
+        if !path.exists() {
+            return Err(CredentialError::VaultNotInitialized);
+        }
+        let data = std::fs::read(&path)?;
+        Self::from_bytes(&data)
+    }
+
+    /// Write vault.key to disk with secure permissions
+    fn write(&self) -> Result<(), CredentialError> {
+        let path = Self::path()?;
+        let data = self.to_bytes();
+        std::fs::write(&path, &data)?;
+        ensure_secure_permissions(&path)?;
+        Ok(())
+    }
+
+    /// Extract passphrase (auto mode only — master mode requires password)
+    fn get_passphrase(&self) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
+        match &self.mode {
+            VaultKeyMode::Auto { passphrase } => Ok(*passphrase),
+            VaultKeyMode::Master { .. } => Err(CredentialError::VaultLocked),
+        }
+    }
+
+    /// Decrypt passphrase using master password (master mode only)
+    fn decrypt_passphrase(&self, password: &str) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
+        match &self.mode {
+            VaultKeyMode::Auto { passphrase } => Ok(*passphrase),
+            VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
+                let key = crate::crypto::derive_key_strong(password, salt)
+                    .map_err(CredentialError::Encryption)?;
+                let plaintext = crate::crypto::decrypt_aes_gcm(&key, nonce, encrypted_passphrase)
+                    .map_err(|_| CredentialError::InvalidMasterPassword)?;
+                if plaintext.len() != PASSPHRASE_LEN {
+                    return Err(CredentialError::InvalidKeyFile);
+                }
+                let mut passphrase = [0u8; PASSPHRASE_LEN];
+                passphrase.copy_from_slice(&plaintext);
+                Ok(passphrase)
+            }
+        }
+    }
 }
 
 // ============ Credential Store ============
 
 pub struct CredentialStore {
-    backend: Backend,
+    vault_path: PathBuf,
+    vault_key: [u8; 32],
 }
 
 impl CredentialStore {
-    /// Get cached keyring health: 0 = unknown, 1 = working, 2 = broken
-    pub fn keyring_health() -> u8 {
-        KEYRING_HEALTH.load(Ordering::SeqCst)
-    }
+    // ---- Initialization ----
 
-    /// Mark keyring as broken (silent failure detected)
-    pub fn mark_keyring_broken() {
-        KEYRING_HEALTH.store(2, Ordering::SeqCst);
-        warn!("Keyring marked as broken — will use vault fallback");
-    }
+    /// Initialize the credential store at app startup.
+    /// Returns "OK" if vault is open, "MASTER_PASSWORD_REQUIRED" if locked.
+    pub fn init() -> Result<String, CredentialError> {
+        if !VaultKeyFile::exists() {
+            // First run: create auto-mode vault
+            Self::first_run_init()?;
+            return Ok("OK".to_string());
+        }
 
-    /// Mark keyring as verified working
-    pub fn mark_keyring_working() {
-        KEYRING_HEALTH.store(1, Ordering::SeqCst);
-    }
+        let key_file = VaultKeyFile::read()?;
+        match &key_file.mode {
+            VaultKeyMode::Auto { passphrase } => {
+                let vault_key = crate::crypto::derive_from_passphrase(passphrase);
+                let vault_path = Self::vault_path()?;
 
-    /// Get a vault store from cache (previously unlocked)
-    pub fn from_cache() -> Option<Self> {
-        let cache = VAULT_CACHE.lock().ok()?;
-        let (path, key, salt) = cache.as_ref()?;
-        Some(Self {
-            backend: Backend::EncryptedVault {
-                path: path.clone(),
-                master_key: *key,
-                salt: salt.clone(),
-            },
-        })
-    }
+                // If vault.db doesn't exist yet (shouldn't happen but be safe), create it
+                if !vault_path.exists() {
+                    Self::create_empty_vault(&vault_path, &vault_key)?;
+                }
 
-    /// Cache the vault state after unlock (keeps master_key in memory)
-    pub fn cache_vault(&self) {
-        if let Backend::EncryptedVault { path, master_key, salt } = &self.backend {
-            if let Ok(mut cache) = VAULT_CACHE.lock() {
-                *cache = Some((path.clone(), *master_key, salt.clone()));
-                info!("Credential vault cached in memory");
+                Self::open_and_cache(vault_path, vault_key)?;
+                Ok("OK".to_string())
+            }
+            VaultKeyMode::Master { .. } => {
+                Ok("MASTER_PASSWORD_REQUIRED".to_string())
             }
         }
     }
 
-    /// Clear the vault cache (on lock or master password removal)
+    /// First run: generate random passphrase, create vault.key (auto) + vault.db (empty)
+    fn first_run_init() -> Result<(), CredentialError> {
+        // Ensure config directory exists with secure permissions
+        let dir = config_dir()?;
+
+        // Generate 64-byte random passphrase (512 bits of entropy)
+        let passphrase_bytes = crate::crypto::random_bytes(PASSPHRASE_LEN);
+        let mut passphrase = [0u8; PASSPHRASE_LEN];
+        passphrase.copy_from_slice(&passphrase_bytes);
+
+        // Write vault.key in auto mode
+        let key_file = VaultKeyFile {
+            mode: VaultKeyMode::Auto { passphrase },
+        };
+        key_file.write()?;
+
+        // Derive vault key and create empty vault.db
+        let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
+        let vault_path = dir.join(VAULT_FILENAME);
+        Self::create_empty_vault(&vault_path, &vault_key)?;
+
+        // Cache vault key in memory
+        Self::open_and_cache(vault_path, vault_key)?;
+
+        // Harden the entire config directory
+        let _ = harden_config_directory();
+
+        info!("Universal credential vault initialized (auto mode)");
+        Ok(())
+    }
+
+    /// Create an empty vault.db with a verification token
+    fn create_empty_vault(path: &Path, vault_key: &[u8; 32]) -> Result<(), CredentialError> {
+        let verify_nonce = crate::crypto::random_bytes(12);
+        let verify_data = crate::crypto::encrypt_aes_gcm(vault_key, &verify_nonce, b"aeroftp_vault_v2_ok")
+            .map_err(CredentialError::Encryption)?;
+
+        let vault = VaultFile {
+            version: 2,
+            verify_nonce,
+            verify_data,
+            entries: HashMap::new(),
+        };
+
+        Self::write_vault(path, &vault)?;
+        Ok(())
+    }
+
+    /// Derive vault key from passphrase using HKDF-SHA256
+    fn derive_vault_key(passphrase: &[u8; PASSPHRASE_LEN]) -> [u8; 32] {
+        crate::crypto::derive_from_passphrase(passphrase)
+    }
+
+    /// Open vault.db and cache the key in memory
+    fn open_and_cache(vault_path: PathBuf, vault_key: [u8; 32]) -> Result<(), CredentialError> {
+        // Verify we can read and decrypt the vault
+        let vault = Self::read_vault(&vault_path)?;
+        crate::crypto::decrypt_aes_gcm(&vault_key, &vault.verify_nonce, &vault.verify_data)
+            .map_err(|_| CredentialError::InvalidMasterPassword)?;
+
+        // Cache in static
+        if let Ok(mut cache) = VAULT_CACHE.lock() {
+            *cache = Some((vault_path, vault_key));
+        }
+        info!("Credential vault opened and cached");
+        Ok(())
+    }
+
+    // ---- Cache Management ----
+
+    /// Get a store instance from cache (vault must be open)
+    pub fn from_cache() -> Option<Self> {
+        let cache = VAULT_CACHE.lock().ok()?;
+        let (path, key) = cache.as_ref()?;
+        Some(Self {
+            vault_path: path.clone(),
+            vault_key: *key,
+        })
+    }
+
+    /// Clear the vault cache (on lock)
     pub fn clear_cache() {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
-            if let Some((_, ref mut key, _)) = *cache {
-                // Zeroize the master key before dropping
+            if let Some((_, ref mut key)) = *cache {
+                // Zeroize the vault key before dropping
                 key.fill(0);
             }
             *cache = None;
         }
     }
 
-    /// Try to create a store using OS keyring. Returns None if keyring unavailable.
-    pub fn with_keyring() -> Option<Self> {
-        // Test keyring availability by trying a probe operation
-        let entry = match keyring::Entry::new(SERVICE_NAME, "__probe__") {
-            Ok(e) => e,
-            Err(_) => return None,
-        };
-        // Try to read (will return NotFound which is fine, or a platform error)
-        match entry.get_password() {
-            Ok(_) => {},
-            Err(keyring::Error::NoEntry) => {},
-            Err(keyring::Error::NoStorageAccess(_)) => return None,
-            Err(keyring::Error::PlatformFailure(_)) => {
-                // On Windows, PlatformFailure during probe may be transient
-                // (Credential Manager locked, pending Windows Hello, etc.)
-                // Allow keyring backend — actual credential access may still work
-                #[cfg(windows)]
-                {
-                    warn!("Keyring probe returned PlatformFailure, proceeding anyway (Windows transient)");
-                }
-                #[cfg(not(windows))]
-                return None;
-            },
-            Err(_) => {},
-        }
-        Some(Self { backend: Backend::OsKeyring })
-    }
+    // ---- Master Password Management ----
 
-    /// Check if OS keyring is available
-    pub fn is_keyring_available() -> bool {
-        let entry = match keyring::Entry::new(SERVICE_NAME, "__probe__") {
-            Ok(e) => e,
-            Err(_) => return false,
-        };
-        match entry.get_password() {
-            Ok(_) | Err(keyring::Error::NoEntry) => true,
-            // On Windows, PlatformFailure may be transient — report as available
-            #[cfg(windows)]
-            Err(keyring::Error::PlatformFailure(_)) => true,
-            _ => false,
-        }
-    }
-
-    /// Create a store using encrypted vault with existing master password
-    pub fn with_vault(password: &str) -> Result<Self, CredentialError> {
+    /// Unlock vault with master password (master mode only)
+    pub fn unlock_with_master(password: &str) -> Result<(), CredentialError> {
+        let key_file = VaultKeyFile::read()?;
+        let passphrase = key_file.decrypt_passphrase(password)?;
+        let vault_key = Self::derive_vault_key(&passphrase);
         let vault_path = Self::vault_path()?;
-        if !vault_path.exists() {
-            return Err(CredentialError::VaultNotInitialized);
-        }
-
-        let vault_data = std::fs::read(&vault_path)?;
-        let vault: VaultFile = serde_json::from_slice(&vault_data)
-            .map_err(|e| CredentialError::Serialization(e.to_string()))?;
-
-        let master_key = crate::crypto::derive_key(password, &vault.salt)
-                .map_err(CredentialError::Encryption)?;
-
-        // Verify password by decrypting verification token
-        crate::crypto::decrypt_aes_gcm(&master_key, &vault.verify_nonce, &vault.verify_data)
-                .map_err(CredentialError::Encryption)
-            .map_err(|_| CredentialError::InvalidMasterPassword)?;
-
-        Ok(Self {
-            backend: Backend::EncryptedVault {
-                path: vault_path,
-                master_key,
-                salt: vault.salt,
-            },
-        })
+        Self::open_and_cache(vault_path, vault_key)
     }
 
-    /// Initialize a new vault with a master password
-    pub fn setup_vault(password: &str) -> Result<Self, CredentialError> {
-        let vault_path = Self::vault_path()?;
+    /// Enable master password: encrypt vault.key passphrase with user password
+    pub fn enable_master_password(password: &str) -> Result<(), CredentialError> {
+        if password.len() < 8 {
+            return Err(CredentialError::PasswordTooShort);
+        }
 
-        // Generate salt
+        let key_file = VaultKeyFile::read()?;
+        let passphrase = match &key_file.mode {
+            VaultKeyMode::Auto { passphrase } => *passphrase,
+            VaultKeyMode::Master { .. } => return Err(CredentialError::MasterAlreadySet),
+        };
+
+        // Encrypt passphrase with Argon2id(password) + AES-GCM
         let salt = crate::crypto::random_bytes(32);
-        let master_key = crate::crypto::derive_key(password, &salt)
-                .map_err(CredentialError::Encryption)?;
+        let mut salt_arr = [0u8; 32];
+        salt_arr.copy_from_slice(&salt);
 
-        // Create verification token
-        let verify_nonce = crate::crypto::random_bytes(12);
-        let verify_data = crate::crypto::encrypt_aes_gcm(&master_key, &verify_nonce, b"aeroftp_vault_ok")
-                .map_err(CredentialError::Encryption)?;
+        let key = crate::crypto::derive_key_strong(password, &salt)
+            .map_err(CredentialError::Encryption)?;
 
-        let vault = VaultFile {
-            version: 1,
-            salt: salt.clone(),
-            verify_nonce,
-            verify_data,
-            entries: HashMap::new(),
+        let nonce_bytes = crate::crypto::random_bytes(12);
+        let mut nonce_arr = [0u8; 12];
+        nonce_arr.copy_from_slice(&nonce_bytes);
+
+        let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase)
+            .map_err(CredentialError::Encryption)?;
+
+        let new_key_file = VaultKeyFile {
+            mode: VaultKeyMode::Master {
+                salt: salt_arr,
+                nonce: nonce_arr,
+                encrypted_passphrase,
+            },
+        };
+        new_key_file.write()?;
+
+        info!("Master password enabled — vault.key encrypted");
+        Ok(())
+    }
+
+    /// Disable master password: decrypt passphrase and store in cleartext
+    pub fn disable_master_password(password: &str) -> Result<(), CredentialError> {
+        let key_file = VaultKeyFile::read()?;
+        let passphrase = match &key_file.mode {
+            VaultKeyMode::Master { .. } => key_file.decrypt_passphrase(password)?,
+            VaultKeyMode::Auto { .. } => return Err(CredentialError::MasterNotSet),
         };
 
-        Self::write_vault(&vault_path, &vault)?;
-        info!("Credential vault initialized");
+        let new_key_file = VaultKeyFile {
+            mode: VaultKeyMode::Auto { passphrase },
+        };
+        new_key_file.write()?;
 
-        Ok(Self {
-            backend: Backend::EncryptedVault {
-                path: vault_path,
-                master_key,
-                salt,
+        info!("Master password disabled — vault.key in auto mode");
+        Ok(())
+    }
+
+    /// Change master password
+    pub fn change_master_password(old_password: &str, new_password: &str) -> Result<(), CredentialError> {
+        if new_password.len() < 8 {
+            return Err(CredentialError::PasswordTooShort);
+        }
+
+        let key_file = VaultKeyFile::read()?;
+        let passphrase = key_file.decrypt_passphrase(old_password)?;
+
+        // Re-encrypt with new password
+        let salt = crate::crypto::random_bytes(32);
+        let mut salt_arr = [0u8; 32];
+        salt_arr.copy_from_slice(&salt);
+
+        let key = crate::crypto::derive_key_strong(new_password, &salt)
+            .map_err(CredentialError::Encryption)?;
+
+        let nonce_bytes = crate::crypto::random_bytes(12);
+        let mut nonce_arr = [0u8; 12];
+        nonce_arr.copy_from_slice(&nonce_bytes);
+
+        let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase)
+            .map_err(CredentialError::Encryption)?;
+
+        let new_key_file = VaultKeyFile {
+            mode: VaultKeyMode::Master {
+                salt: salt_arr,
+                nonce: nonce_arr,
+                encrypted_passphrase,
             },
-        })
+        };
+        new_key_file.write()?;
+
+        info!("Master password changed");
+        Ok(())
     }
 
-    /// Check if a vault file exists
-    pub fn vault_exists() -> bool {
-        Self::vault_path().map(|p| p.exists()).unwrap_or(false)
+    /// Lock: clear VAULT_CACHE
+    pub fn lock() {
+        Self::clear_cache();
+        info!("Credential vault locked");
     }
+
+    /// Check if vault.key is in master mode
+    pub fn is_master_mode() -> bool {
+        VaultKeyFile::is_master_mode()
+    }
+
+    /// Check if vault.key exists
+    pub fn vault_exists() -> bool {
+        VaultKeyFile::exists()
+    }
+
+    // ---- CRUD Operations ----
 
     /// Store a credential
     pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        match &self.backend {
-            Backend::OsKeyring => {
-                let entry = keyring::Entry::new(SERVICE_NAME, account)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                entry.set_password(secret)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-
-                // Write-verify: immediately read back to detect silent failures
-                let verify = keyring::Entry::new(SERVICE_NAME, account)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                match verify.get_password() {
-                    Ok(readback) if readback == secret => {
-                        Self::mark_keyring_working();
-                        info!("Credential stored and verified in OS keyring: {}", account);
-                    }
-                    _ => {
-                        Self::mark_keyring_broken();
-                        return Err(CredentialError::Keyring(
-                            "Keyring write verification failed: credential not persisted".to_string()
-                        ));
-                    }
-                }
-            }
-            Backend::EncryptedVault { path, master_key, .. } => {
-                let mut vault = Self::read_vault(path)?;
-                let nonce = crate::crypto::random_bytes(12);
-                let data = crate::crypto::encrypt_aes_gcm(master_key, &nonce, secret.as_bytes())
-                        .map_err(CredentialError::Encryption)?;
-                vault.entries.insert(account.to_string(), VaultEntry { nonce, data });
-                Self::write_vault(path, &vault)?;
-                info!("Credential stored in vault: {}", account);
-            }
-        }
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        let nonce = crate::crypto::random_bytes(12);
+        let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+            .map_err(CredentialError::Encryption)?;
+        vault.entries.insert(account.to_string(), VaultEntry { nonce, data });
+        Self::write_vault(&self.vault_path, &vault)?;
+        info!("Credential stored: {}", account);
         Ok(())
     }
 
     /// Retrieve a credential
     pub fn get(&self, account: &str) -> Result<String, CredentialError> {
-        match &self.backend {
-            Backend::OsKeyring => {
-                let entry = keyring::Entry::new(SERVICE_NAME, account)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                entry.get_password()
-                    .map_err(|e| match e {
-                        keyring::Error::NoEntry => CredentialError::NotFound(account.to_string()),
-                        other => CredentialError::Keyring(other.to_string()),
-                    })
-            }
-            Backend::EncryptedVault { path, master_key, .. } => {
-                let vault = Self::read_vault(path)?;
-                let entry = vault.entries.get(account)
-                    .ok_or_else(|| CredentialError::NotFound(account.to_string()))?;
-                let plaintext = crate::crypto::decrypt_aes_gcm(master_key, &entry.nonce, &entry.data)
-                        .map_err(CredentialError::Encryption)?;
-                String::from_utf8(plaintext)
-                    .map_err(|e| CredentialError::Encryption(e.to_string()))
-            }
-        }
+        let vault = Self::read_vault(&self.vault_path)?;
+        let entry = vault.entries.get(account)
+            .ok_or_else(|| CredentialError::NotFound(account.to_string()))?;
+        let plaintext = crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+            .map_err(CredentialError::Encryption)?;
+        String::from_utf8(plaintext)
+            .map_err(|e| CredentialError::Encryption(e.to_string()))
     }
 
     /// Delete a credential
     pub fn delete(&self, account: &str) -> Result<(), CredentialError> {
-        match &self.backend {
-            Backend::OsKeyring => {
-                let entry = keyring::Entry::new(SERVICE_NAME, account)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                entry.delete_credential()
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                info!("Credential deleted from OS keyring: {}", account);
-            }
-            Backend::EncryptedVault { path, .. } => {
-                let mut vault = Self::read_vault(path)?;
-                vault.entries.remove(account);
-                Self::write_vault(path, &vault)?;
-                info!("Credential deleted from vault: {}", account);
-            }
-        }
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        vault.entries.remove(account);
+        Self::write_vault(&self.vault_path, &vault)?;
+        info!("Credential deleted: {}", account);
         Ok(())
     }
 
     /// List all stored account names
     pub fn list_accounts(&self) -> Result<Vec<String>, CredentialError> {
-        match &self.backend {
-            Backend::OsKeyring => {
-                // Keyring doesn't support listing; we maintain a manifest
-                let manifest_key = "__aeroftp_accounts__";
-                let entry = keyring::Entry::new(SERVICE_NAME, manifest_key)
-                    .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-                match entry.get_password() {
-                    Ok(json) => {
-                        let accounts: Vec<String> = serde_json::from_str(&json)
-                            .unwrap_or_default();
-                        Ok(accounts)
-                    }
-                    Err(keyring::Error::NoEntry) => Ok(vec![]),
-                    Err(e) => Err(CredentialError::Keyring(e.to_string())),
-                }
-            }
-            Backend::EncryptedVault { path, .. } => {
-                let vault = Self::read_vault(path)?;
-                Ok(vault.entries.keys().cloned().collect())
-            }
-        }
+        let vault = Self::read_vault(&self.vault_path)?;
+        Ok(vault.entries.keys().cloned().collect())
     }
 
-    /// Update the keyring account manifest (call after store/delete when using keyring)
-    fn update_keyring_manifest(&self, accounts: &[String]) -> Result<(), CredentialError> {
-        if let Backend::OsKeyring = &self.backend {
-            let manifest_key = "__aeroftp_accounts__";
-            let entry = keyring::Entry::new(SERVICE_NAME, manifest_key)
-                .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-            let json = serde_json::to_string(accounts)
-                .map_err(|e| CredentialError::Serialization(e.to_string()))?;
-            entry.set_password(&json)
-                .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-        }
-        Ok(())
-    }
-
-    /// Store credential and update manifest (keyring-aware)
-    pub fn store_and_track(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        self.store(account, secret)?;
-        if let Backend::OsKeyring = &self.backend {
-            let mut accounts = self.list_accounts().unwrap_or_default();
-            if !accounts.contains(&account.to_string()) {
-                accounts.push(account.to_string());
-                self.update_keyring_manifest(&accounts)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Delete credential and update manifest (keyring-aware)
-    pub fn delete_and_track(&self, account: &str) -> Result<(), CredentialError> {
-        self.delete(account)?;
-        if let Backend::OsKeyring = &self.backend {
-            let mut accounts = self.list_accounts().unwrap_or_default();
-            accounts.retain(|a| a != account);
-            self.update_keyring_manifest(&accounts)?;
-        }
-        Ok(())
-    }
-
-    // ============ Internal Helpers ============
+    // ---- Internal Helpers ----
 
     fn vault_path() -> Result<PathBuf, CredentialError> {
-        let base = dirs::config_dir()
-            .or_else(|| dirs::home_dir())
-            .ok_or_else(|| CredentialError::Io(
-                std::io::Error::new(std::io::ErrorKind::NotFound, "No config directory")
-            ))?;
-        let dir = base.join("aeroftp");
-        if !dir.exists() {
-            std::fs::create_dir_all(&dir)?;
-            ensure_secure_permissions(&dir)?;
-        }
+        let dir = config_dir()?;
         Ok(dir.join(VAULT_FILENAME))
     }
 
@@ -409,10 +547,24 @@ impl CredentialStore {
         ensure_secure_permissions(path)?;
         Ok(())
     }
-
 }
 
-// ============ Permission Hardening ============
+// ============ Shared Helpers ============
+
+/// Get aeroftp config directory, creating it with secure permissions if needed
+fn config_dir() -> Result<PathBuf, CredentialError> {
+    let base = dirs::config_dir()
+        .or_else(|| dirs::home_dir())
+        .ok_or_else(|| CredentialError::Io(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "No config directory")
+        ))?;
+    let dir = base.join("aeroftp");
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir)?;
+        ensure_secure_permissions(&dir)?;
+    }
+    Ok(dir)
+}
 
 /// Ensure secure file/directory permissions (0o600 files, 0o700 dirs on Unix; ACL on Windows)
 pub fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
@@ -431,20 +583,13 @@ pub fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
 
 /// Ensure the entire aeroftp config directory has secure permissions
 pub fn harden_config_directory() -> Result<(), CredentialError> {
-    let base = dirs::config_dir()
-        .or_else(|| dirs::home_dir())
-        .ok_or_else(|| CredentialError::Io(
-            std::io::Error::new(std::io::ErrorKind::NotFound, "No config directory")
-        ))?;
-    let aeroftp_dir = base.join("aeroftp");
-    if aeroftp_dir.exists() {
-        ensure_secure_permissions(&aeroftp_dir)?;
-        // Harden all files in the directory
-        if let Ok(entries) = std::fs::read_dir(&aeroftp_dir) {
+    let dir = config_dir()?;
+    if dir.exists() {
+        ensure_secure_permissions(&dir)?;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 ensure_secure_permissions(&path)?;
-                // Also harden subdirectories (e.g. oauth_tokens/)
                 if path.is_dir() {
                     if let Ok(sub_entries) = std::fs::read_dir(&path) {
                         for sub_entry in sub_entries.flatten() {
@@ -465,7 +610,6 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
         if size > 0 {
             let zeros = vec![0u8; size as usize];
             std::fs::write(path, &zeros)?;
-            // Second pass with random data
             let random = crate::crypto::random_bytes(size as usize);
             std::fs::write(path, &random)?;
         }
@@ -473,129 +617,4 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
         info!("Securely deleted: {:?}", path);
     }
     Ok(())
-}
-
-// ============ Migration ============
-
-#[derive(Serialize)]
-pub struct MigrationResult {
-    pub migrated_count: u32,
-    pub errors: Vec<String>,
-    pub old_file_deleted: bool,
-}
-
-/// Migrate plaintext credentials from server_credentials.json to the credential store
-pub fn migrate_server_credentials(store: &CredentialStore) -> Result<MigrationResult, CredentialError> {
-    let creds_path = dirs::config_dir()
-        .or_else(|| dirs::home_dir())
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("aeroftp")
-        .join("server_credentials.json");
-
-    let mut result = MigrationResult {
-        migrated_count: 0,
-        errors: vec![],
-        old_file_deleted: false,
-    };
-
-    // Also check for interrupted previous migration
-    let migrating_path = creds_path.with_extension("json.migrating");
-    if migrating_path.exists() && !creds_path.exists() {
-        // Previous migration completed but cleanup failed - just delete
-        let _ = secure_delete(&migrating_path);
-        result.old_file_deleted = true;
-        return Ok(result);
-    }
-
-    if !creds_path.exists() {
-        return Ok(result);
-    }
-
-    // Fix permissions first
-    let _ = ensure_secure_permissions(&creds_path);
-
-    #[derive(Deserialize)]
-    struct OldCreds {
-        server: String,
-        username: String,
-        password: String,
-    }
-
-    let content = std::fs::read_to_string(&creds_path)?;
-    let creds_map: HashMap<String, OldCreds> = serde_json::from_str(&content)
-        .map_err(|e| CredentialError::Serialization(e.to_string()))?;
-
-    for (profile_name, creds) in &creds_map {
-        // Store as JSON blob with server+username+password
-        let value = serde_json::json!({
-            "server": creds.server,
-            "username": creds.username,
-            "password": creds.password,
-        });
-        let value_str = value.to_string();
-        match store.store_and_track(&format!("server_{}", profile_name), &value_str) {
-            Ok(_) => result.migrated_count += 1,
-            Err(e) => result.errors.push(format!("{}: {}", profile_name, e)),
-        }
-    }
-
-    // Atomic delete: rename to .migrating first, then secure-delete
-    if result.errors.is_empty() {
-        let migrating_path = creds_path.with_extension("json.migrating");
-        match std::fs::rename(&creds_path, &migrating_path) {
-            Ok(_) => {
-                match secure_delete(&migrating_path) {
-                    Ok(_) => result.old_file_deleted = true,
-                    Err(e) => result.errors.push(format!("Failed to delete migrated file: {}", e)),
-                }
-            }
-            Err(e) => result.errors.push(format!("Failed to rename for migration: {}", e)),
-        }
-    }
-
-    Ok(result)
-}
-
-/// Migrate OAuth tokens from JSON files to credential store
-pub fn migrate_oauth_tokens(store: &CredentialStore) -> Result<u32, CredentialError> {
-    let base = match dirs::config_dir() {
-        Some(d) => d,
-        None => return Ok(0),
-    };
-    let token_dir = base.join("aeroftp").join("oauth_tokens");
-    if !token_dir.exists() {
-        return Ok(0);
-    }
-
-    let mut count = 0;
-    let entries = std::fs::read_dir(&token_dir)?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
-            if let Ok(json) = std::fs::read_to_string(&path) {
-                // Extract provider name from filename: oauth2_google.json -> oauth_google
-                let stem = path.file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                let account = stem.replace("oauth2_", "oauth_");
-                match store.store_and_track(&account, &json) {
-                    Ok(_) => {
-                        let _ = secure_delete(&path);
-                        count += 1;
-                    }
-                    Err(e) => {
-                        warn!("Failed to migrate OAuth token {}: {}", stem, e);
-                    }
-                }
-            }
-        }
-    }
-
-    // Remove empty directory
-    if std::fs::read_dir(&token_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
-        let _ = std::fs::remove_dir(&token_dir);
-    }
-
-    Ok(count)
 }

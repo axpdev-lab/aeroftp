@@ -8,6 +8,7 @@ import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { useTranslation } from '../i18n';
 
 // Protocol colors for avatar (same as SavedServers)
@@ -260,6 +261,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
     const [showExportImport, setShowExportImport] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
     // Master Password state
     const [masterPasswordStatus, setMasterPasswordStatus] = useState<{
@@ -275,6 +277,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [masterPasswordError, setMasterPasswordError] = useState('');
     const [masterPasswordSuccess, setMasterPasswordSuccess] = useState('');
     const [isSettingPassword, setIsSettingPassword] = useState(false);
+    const [passwordBtnState, setPasswordBtnState] = useState<'idle' | 'encrypting' | 'done'>('idle');
     const [isSavingTimeout, setIsSavingTimeout] = useState(false);
 
     // i18n hook
@@ -313,18 +316,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (savedAnalytics !== null) {
                     setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
                 }
-                // Load master password status
-                invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status')
+                // Load credential store status
+                invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status')
                     .then(status => {
-                        setMasterPasswordStatus(status);
+                        setMasterPasswordStatus({
+                            is_set: status.master_mode,
+                            is_locked: status.is_locked,
+                            timeout_seconds: Number(status.timeout_seconds),
+                        });
                         if (status.timeout_seconds > 0) {
-                            setAutoLockTimeout(Math.floor(status.timeout_seconds / 60));
+                            setAutoLockTimeout(Math.floor(Number(status.timeout_seconds) / 60));
                         }
                     })
                     .catch(console.error);
             } catch { }
         }
     }, [isOpen]);
+
+    const flashSaved = () => {
+        setSaveState('saving');
+        setTimeout(() => setSaveState('saved'), 800);
+        setTimeout(() => setSaveState('idle'), 1800);
+    };
 
     const handleSave = () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -1377,10 +1390,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     </div>
                                 </div>
 
-                                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700 flex items-start gap-2">
+                                    <Shield size={16} className="mt-0.5 flex-shrink-0 text-blue-500 dark:text-blue-400" />
                                     <p className="text-sm text-blue-700 dark:text-blue-300">
-                                        <strong>Note:</strong> OAuth2 credentials are stored locally and never sent to AeroFTP servers.
-                                        Tokens are securely stored in your system keyring.
+                                        {t('settings.oauthNote')}
                                     </p>
                                 </div>
                             </div>
@@ -1635,13 +1648,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         setIsSavingTimeout(true);
                                                         setMasterPasswordError('');
                                                         try {
-                                                            await invoke('app_master_password_change', {
+                                                            // Verify password is correct, then update timeout
+                                                            await invoke('change_master_password', {
                                                                 oldPassword: currentMasterPassword,
                                                                 newPassword: currentMasterPassword,
-                                                                newTimeout: autoLockTimeout * 60
                                                             });
-                                                            const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
-                                                            setMasterPasswordStatus(status);
+                                                            const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                            setMasterPasswordStatus({
+                                                                is_set: status.master_mode,
+                                                                is_locked: status.is_locked,
+                                                                timeout_seconds: Number(status.timeout_seconds),
+                                                            });
                                                             setMasterPasswordSuccess(t('settings.timeoutSaved'));
                                                         } catch (err) {
                                                             setMasterPasswordError(String(err));
@@ -1685,44 +1702,71 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     }
 
                                                     setIsSettingPassword(true);
+                                                    setPasswordBtnState('encrypting');
                                                     try {
                                                         const timeoutSeconds = autoLockTimeout * 60;
                                                         if (masterPasswordStatus?.is_set) {
                                                             // Change password
-                                                            await invoke('app_master_password_change', {
+                                                            await invoke('change_master_password', {
                                                                 oldPassword: currentMasterPassword,
                                                                 newPassword: newMasterPassword,
-                                                                newTimeout: timeoutSeconds
                                                             });
                                                             setMasterPasswordSuccess(t('settings.passwordChanged'));
                                                         } else {
-                                                            // Set new password
-                                                            await invoke('app_master_password_set', {
+                                                            // Enable master password
+                                                            await invoke('enable_master_password', {
                                                                 password: newMasterPassword,
                                                                 timeoutSeconds
                                                             });
                                                             setMasterPasswordSuccess(t('settings.passwordSet'));
                                                         }
                                                         // Refresh status
-                                                        const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
-                                                        setMasterPasswordStatus(status);
+                                                        const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                        setMasterPasswordStatus({
+                                                            is_set: status.master_mode,
+                                                            is_locked: status.is_locked,
+                                                            timeout_seconds: Number(status.timeout_seconds),
+                                                        });
                                                         // Clear form
                                                         setNewMasterPassword('');
                                                         setConfirmMasterPassword('');
                                                         setCurrentMasterPassword('');
+                                                        // Show "done" state for 1 second
+                                                        setPasswordBtnState('done');
+                                                        setIsSettingPassword(false);
+                                                        setTimeout(() => setPasswordBtnState('idle'), 1000);
                                                     } catch (err) {
                                                         setMasterPasswordError(String(err));
-                                                    } finally {
                                                         setIsSettingPassword(false);
+                                                        setPasswordBtnState('idle');
                                                     }
                                                 }}
-                                                disabled={isSettingPassword}
-                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                                disabled={isSettingPassword || passwordBtnState === 'done'}
+                                                className={`px-4 py-2 min-w-[160px] rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                    passwordBtnState === 'done'
+                                                        ? 'bg-emerald-500 text-white'
+                                                        : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white'
+                                                }`}
                                             >
-                                                {isSettingPassword ? (
+                                                {passwordBtnState === 'encrypting' ? (
                                                     <>
-                                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                        <svg className="h-4 w-4" viewBox="0 0 100 100" fill="currentColor">
+                                                            <path d="M31.6,3.5C5.9,13.6-6.6,42.7,3.5,68.4c10.1,25.7,39.2,38.3,64.9,28.1l-3.1-7.9c-21.3,8.4-45.4-2-53.8-23.3c-8.4-21.3,2-45.4,23.3-53.8L31.6,3.5z">
+                                                                <animateTransform attributeName="transform" type="rotate" dur="2s" from="0 50 50" to="360 50 50" repeatCount="indefinite" />
+                                                            </path>
+                                                            <path d="M42.3,39.6c5.7-4.3,13.9-3.1,18.1,2.7c4.3,5.7,3.1,13.9-2.7,18.1l4.1,5.5c8.8-6.5,10.6-19,4.1-27.7c-6.5-8.8-19-10.6-27.7-4.1L42.3,39.6z">
+                                                                <animateTransform attributeName="transform" type="rotate" dur="1s" from="0 50 50" to="-360 50 50" repeatCount="indefinite" />
+                                                            </path>
+                                                            <path d="M82,35.7C74.1,18,53.4,10.1,35.7,18S10.1,46.6,18,64.3l7.6-3.4c-6-13.5,0-29.3,13.5-35.3s29.3,0,35.3,13.5L82,35.7z">
+                                                                <animateTransform attributeName="transform" type="rotate" dur="2s" from="0 50 50" to="360 50 50" repeatCount="indefinite" />
+                                                            </path>
+                                                        </svg>
                                                         {t('settings.encrypting')}
+                                                    </>
+                                                ) : passwordBtnState === 'done' ? (
+                                                    <>
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                                        {masterPasswordStatus?.is_set ? t('settings.passwordChanged') : t('settings.passwordSet')}
                                                     </>
                                                 ) : (
                                                     masterPasswordStatus?.is_set ? t('settings.changePassword') : t('settings.setPassword')
@@ -1738,9 +1782,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         }
                                                         if (confirm(t('settings.confirmRemovePassword'))) {
                                                             try {
-                                                                await invoke('app_master_password_remove', { password: currentMasterPassword });
-                                                                const status = await invoke<{ is_set: boolean; is_locked: boolean; timeout_seconds: number }>('app_master_password_status');
-                                                                setMasterPasswordStatus(status);
+                                                                await invoke('disable_master_password', { password: currentMasterPassword });
+                                                                const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                                setMasterPasswordStatus({
+                                                                    is_set: status.master_mode,
+                                                                    is_locked: status.is_locked,
+                                                                    timeout_seconds: Number(status.timeout_seconds),
+                                                                });
                                                                 setCurrentMasterPassword('');
                                                                 setMasterPasswordSuccess(t('settings.passwordRemoved'));
                                                             } catch (err) {
@@ -1797,6 +1845,58 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </svg>
                                             </div>
                                             <span className="text-sm text-gray-600 dark:text-gray-300">{t('settings.securityZeroize')}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Lock Screen Pattern */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <h4 className="font-medium flex items-center gap-2 text-sm">
+                                            <Palette size={14} className="text-gray-500" />
+                                            {t('settings.lockScreenPattern')}
+                                        </h4>
+                                    </div>
+                                    <div className="p-4">
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {LOCK_SCREEN_PATTERNS.map(pattern => {
+                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'cross';
+                                                const isSelected = currentId === pattern.id;
+                                                return (
+                                                    <button
+                                                        key={pattern.id}
+                                                        onClick={() => {
+                                                            localStorage.setItem('aeroftp_lock_pattern', pattern.id);
+                                                            flashSaved();
+                                                        }}
+                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                                                            isSelected
+                                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                        }`}
+                                                        title={t(pattern.nameKey)}
+                                                    >
+                                                        {/* Pattern preview */}
+                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                            {pattern.svg && (
+                                                                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
+                                                            )}
+                                                        </div>
+                                                        {/* Label */}
+                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                        </div>
+                                                        {/* Selected check */}
+                                                        {isSelected && (
+                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -1895,13 +1995,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={!hasChanges}
-                        className={`px-4 py-2 text-sm rounded-lg transition-colors ${hasChanges
-                            ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                            : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                            }`}
+                        disabled={!hasChanges && saveState === 'idle'}
+                        className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 flex items-center gap-2 min-w-[140px] justify-center ${
+                            saveState === 'saving'
+                                ? 'bg-blue-500 text-white'
+                                : saveState === 'saved'
+                                    ? 'bg-emerald-500 text-white'
+                                    : hasChanges
+                                        ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
                     >
-                        {t('settings.saveChanges')}
+                        {saveState === 'saving' ? (
+                            <>
+                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                {t('settings.saving')}
+                            </>
+                        ) : saveState === 'saved' ? (
+                            <>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                </svg>
+                                {t('settings.saved')}
+                            </>
+                        ) : (
+                            t('settings.saveChanges')
+                        )}
                     </button>
                 </div>
             </div>

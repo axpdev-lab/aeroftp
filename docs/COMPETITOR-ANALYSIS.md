@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
 > Last Updated: 5 February 2026
-> Version: v1.8.5
+> Version: v1.8.6
 
 ---
 
@@ -228,7 +228,7 @@
 - PowerShell terminal prompt fix (no raw command echo on startup)
 - Windows compatibility improvements across all platforms
 
-### v1.9.0 - Planned
+### v1.8.6 - Planned
 - AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation
 - Remote vault open/save, Cryptomator vault creation
 
