@@ -74,11 +74,15 @@ const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'oauth2', description: 'OAuth2' },
 ];
 
+// Injected at build time by Vite (see vite.config.ts define)
+declare const __FRONTEND_VERSIONS__: { react: string; typescript: string; tailwindcss: string; monaco: string; vite: string };
+const _fv = typeof __FRONTEND_VERSIONS__ !== 'undefined' ? __FRONTEND_VERSIONS__ : { react: '?', typescript: '?', tailwindcss: '?', monaco: '?', vite: '?' };
 const FRONTEND_DEPS = [
-    { name: 'React', version: '18' },
-    { name: 'TypeScript', version: '5' },
-    { name: 'Tailwind CSS', version: '3' },
-    { name: 'Monaco Editor', version: '0.52' },
+    { name: 'React', version: _fv.react },
+    { name: 'TypeScript', version: _fv.typescript },
+    { name: 'Tailwind CSS', version: _fv.tailwindcss },
+    { name: 'Monaco Editor', version: _fv.monaco },
+    { name: 'Vite', version: _fv.vite },
 ];
 
 // Crypto Donate Panel Component
@@ -192,8 +196,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
             `--- ${t('about.buildInfo')} ---`,
             `Tauri: ${systemInfo.tauri_version}`,
             `Rust: ${systemInfo.rust_version}`,
-            `React: 18`,
-            `TypeScript: 5`,
+            ...FRONTEND_DEPS.map(d => `${d.name}: ${d.version}`),
             '',
             `--- ${t('about.systemDetails')} ---`,
             `${t('about.operatingSystem')}: ${systemInfo.os}`,
@@ -338,8 +341,9 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
                                     <InfoRow label="Tauri" value={systemInfo?.tauri_version ?? '...'} />
                                     <InfoRow label="Rust" value={systemInfo?.rust_version ?? '...'} />
-                                    <InfoRow label="React" value="18" />
-                                    <InfoRow label="TypeScript" value="5" />
+                                    {FRONTEND_DEPS.map(dep => (
+                                        <InfoRow key={dep.name} label={dep.name} value={dep.version} />
+                                    ))}
                                 </div>
                             </div>
 
@@ -372,15 +376,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 </div>
                             </div>
 
-                            {/* Frontend Dependencies */}
-                            <div>
-                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.frontendDeps')}</h3>
-                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
-                                    {FRONTEND_DEPS.map(dep => (
-                                        <InfoRow key={dep.name} label={dep.name} value={dep.version} />
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                     )}
 

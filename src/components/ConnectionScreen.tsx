@@ -10,6 +10,7 @@ import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, S
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
+import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { OAuthConnect } from './OAuthConnect';
@@ -48,6 +49,7 @@ interface ConnectionScreenProps {
     onSkipToFileManager: () => void;
     onOpenCloudPanel?: () => void;
     hasExistingSessions?: boolean;  // Show back button when there are existing sessions
+    serversRefreshKey?: number;  // Change this to force refresh of saved servers list
 }
 
 export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
@@ -61,6 +63,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onSkipToFileManager,
     onOpenCloudPanel,
     hasExistingSessions = false,
+    serversRefreshKey = 0,
 }) => {
     const t = useTranslation();
     const protocol = connectionParams.protocol; // Can be undefined
@@ -84,6 +87,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
+
+    // Export/Import dialog state
+    const [showExportImport, setShowExportImport] = useState(false);
+    const [servers, setServers] = useState<ServerProfile[]>([]);
+
+    // Load servers when opening export/import dialog
+    useEffect(() => {
+        if (showExportImport) {
+            try {
+                const stored = localStorage.getItem(SERVERS_STORAGE_KEY);
+                if (stored) setServers(JSON.parse(stored));
+            } catch { /* ignore */ }
+        }
+    }, [showExportImport]);
     const [securityInfoOpen, setSecurityInfoOpen] = useState(false);
 
     // Fetch AeroCloud config when AeroCloud is selected
@@ -198,27 +215,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleEdit = async (profile: ServerProfile) => {
+        // Reset form FIRST to clear previous server's data immediately
+        // This prevents stale data from showing when switching between servers
         setEditingProfileId(profile.id);
         setConnectionName(profile.name);
         setSaveConnection(true); // Implied for editing
         setSelectedProviderId(profile.providerId || null);
 
-        // Load password from OS keyring if stored
-        let password = profile.password || '';
-        if (!password && profile.hasStoredCredential) {
-            try {
-                password = await invoke<string>('get_credential', { account: `server_${profile.id}` });
-            } catch {
-                // Credential not found, leave empty
-            }
-        }
-
-        // Update form params
+        // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
             server: profile.host,
             port: profile.port,
             username: profile.username,
-            password,
+            password: profile.password || '', // Set immediately, will be updated if stored
             protocol: profile.protocol || 'ftp',
             options: profile.options || {}
         });
@@ -227,6 +236,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             remoteDir: profile.initialPath || '',
             localDir: profile.localInitialPath || ''
         });
+
+        // Then load password from OS keyring asynchronously (if stored)
+        if (!profile.password && profile.hasStoredCredential) {
+            try {
+                const storedPassword = await invoke<string>('get_credential', { account: `server_${profile.id}` });
+                // Only update if we're still editing the same profile (prevents race condition)
+                if (storedPassword) {
+                    onConnectionParamsChange({
+                        server: profile.host,
+                        port: profile.port,
+                        username: profile.username,
+                        password: storedPassword,
+                        protocol: profile.protocol || 'ftp',
+                        options: profile.options || {}
+                    });
+                }
+            } catch {
+                // Credential not found, password stays empty
+            }
+        }
     };
 
     const handleCancelEdit = () => {
@@ -272,14 +301,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleProtocolChange = (newProtocol: ProviderType) => {
+        // Exit edit mode when changing protocol (user wants to create new connection)
+        if (editingProfileId) {
+            setEditingProfileId(null);
+            setConnectionName('');
+            setSaveConnection(false);
+        }
+
         // Reset provider selection when protocol changes
         setSelectedProviderId(null);
+
+        // Reset ALL form fields (clear previous server's credentials)
         onConnectionParamsChange({
-            ...connectionParams,
+            server: '',
+            username: '',
+            password: '',
             protocol: newProtocol,
             port: getDefaultPort(newProtocol),
             options: {},
         });
+        onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
     };
 
     // Handle provider selection (for S3/WebDAV)
@@ -332,7 +373,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     return (
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto relative z-10">
             {/* Back button - shown when user has existing sessions and wants to go back */}
             {hasExistingSessions && (
                 <button
@@ -1016,7 +1057,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     <SavedServers
                         onConnect={onSavedServerConnect}
                         onEdit={handleEdit}
-                        lastUpdate={savedServersUpdate}
+                        lastUpdate={savedServersUpdate + serversRefreshKey}
+                        onOpenExportImport={() => setShowExportImport(true)}
                     />
                 </div>
 
@@ -1034,6 +1076,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
             </div> {/* Close grid */}
 
+            {/* Export/Import Dialog */}
+            {showExportImport && (
+                <ExportImportDialog
+                    servers={servers}
+                    onImport={(newServers) => {
+                        const updated = [...servers, ...newServers];
+                        setServers(updated);
+                        localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
+                        setShowExportImport(false);
+                        setSavedServersUpdate(Date.now());
+                    }}
+                    onClose={() => setShowExportImport(false)}
+                />
+            )}
         </div>
     );
 };

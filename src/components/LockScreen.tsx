@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import { Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
@@ -52,6 +53,26 @@ export const LOCK_SCREEN_PATTERNS: LockPattern[] = [
         svg: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 50c10-20 30-20 40 0s30 20 40 0' stroke='%23ffffff' stroke-width='0.6' fill='none'/%3E%3Cpath d='M10 30c10-20 30-20 40 0s30 20 40 0' stroke='%23ffffff' stroke-width='0.6' fill='none'/%3E%3Cpath d='M10 70c10-20 30-20 40 0s30 20 40 0' stroke='%23ffffff' stroke-width='0.6' fill='none'/%3E%3C/svg%3E")`,
     },
     {
+        id: 'waves',
+        nameKey: 'lockScreen.patternWaves',
+        svg: `url("data:image/svg+xml,%3Csvg width='120' height='60' viewBox='0 0 120 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 30 Q30 10 60 30 T120 30' stroke='%23ffffff' stroke-width='0.6' fill='none'/%3E%3Cpath d='M0 45 Q30 25 60 45 T120 45' stroke='%23ffffff' stroke-width='0.6' fill='none' opacity='0.7'/%3E%3Cpath d='M0 15 Q30 -5 60 15 T120 15' stroke='%23ffffff' stroke-width='0.6' fill='none' opacity='0.7'/%3E%3C/svg%3E")`,
+    },
+    {
+        id: 'constellation',
+        nameKey: 'lockScreen.patternConstellation',
+        svg: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg%3E%3Ccircle cx='20' cy='20' r='1.5' fill='%23ffffff'/%3E%3Ccircle cx='80' cy='30' r='1' fill='%23ffffff'/%3E%3Ccircle cx='50' cy='50' r='2' fill='%23ffffff'/%3E%3Ccircle cx='30' cy='80' r='1' fill='%23ffffff'/%3E%3Ccircle cx='90' cy='70' r='1.5' fill='%23ffffff'/%3E%3Ccircle cx='10' cy='60' r='1' fill='%23ffffff'/%3E%3Cline x1='20' y1='20' x2='50' y2='50' stroke='%23ffffff' stroke-width='0.4'/%3E%3Cline x1='80' y1='30' x2='50' y2='50' stroke='%23ffffff' stroke-width='0.4'/%3E%3Cline x1='50' y1='50' x2='30' y2='80' stroke='%23ffffff' stroke-width='0.4'/%3E%3Cline x1='50' y1='50' x2='90' y2='70' stroke='%23ffffff' stroke-width='0.4'/%3E%3Cline x1='20' y1='20' x2='10' y2='60' stroke='%23ffffff' stroke-width='0.4'/%3E%3C/g%3E%3C/svg%3E")`,
+    },
+    {
+        id: 'isometric',
+        nameKey: 'lockScreen.patternIsometric',
+        svg: `url("data:image/svg+xml,%3Csvg width='60' height='52' viewBox='0 0 60 52' xmlns='http://www.w3.org/2000/svg'%3E%3Cg stroke='%23ffffff' stroke-width='0.5' fill='none'%3E%3Cpath d='M30 0 L60 17.3 L60 52 L30 34.6 L0 52 L0 17.3 Z'/%3E%3Cpath d='M30 0 L30 34.6'/%3E%3Cpath d='M0 17.3 L30 34.6 L60 17.3'/%3E%3C/g%3E%3C/svg%3E")`,
+    },
+    {
+        id: 'bubbles',
+        nameKey: 'lockScreen.patternBubbles',
+        svg: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg stroke='%23ffffff' stroke-width='0.5' fill='none'%3E%3Ccircle cx='25' cy='25' r='20'/%3E%3Ccircle cx='75' cy='35' r='15'/%3E%3Ccircle cx='50' cy='75' r='22'/%3E%3Ccircle cx='85' cy='80' r='10'/%3E%3Ccircle cx='10' cy='70' r='8'/%3E%3C/g%3E%3C/svg%3E")`,
+    },
+    {
         id: 'none',
         nameKey: 'lockScreen.patternNone',
         svg: '',
@@ -59,7 +80,7 @@ export const LOCK_SCREEN_PATTERNS: LockPattern[] = [
 ];
 
 const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
-const DEFAULT_PATTERN = 'cross';
+const DEFAULT_PATTERN = 'hexagon';
 
 interface LockScreenProps {
     onUnlock: () => void;
@@ -72,6 +93,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [unlockStep, setUnlockStep] = useState(0);
+    const [appVersion, setAppVersion] = useState('');
+
+    useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
     const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Cryptographic unlock steps — real terms matching the actual vault unlock flow
@@ -241,7 +265,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
 
                 {/* Version badge */}
                 <div className="mt-3 text-center">
-                    <span className="text-xs text-gray-600">AeroFTP v1.8.8</span>
+                    <span className="text-xs text-gray-600">AeroFTP {appVersion ? `v${appVersion}` : ''}</span>
                 </div>
             </div>
         </div>

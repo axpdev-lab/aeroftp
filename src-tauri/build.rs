@@ -24,6 +24,12 @@ const TRACKED_DEPS: &[&str] = &[
     "keyring",
     "argon2",
     "aes-gcm",
+    "aes-gcm-siv",
+    "chacha20poly1305",
+    "hkdf",
+    "aes-kw",
+    "aes-siv",
+    "scrypt",
     "ring",
     "zeroize",
     "secrecy",
@@ -59,6 +65,15 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=Cargo.lock");
+
+    // Detect Rust compiler version at build time: "rustc 1.84.0 (...)" → "1.84.0"
+    if let Ok(output) = std::process::Command::new("rustc").arg("--version").output() {
+        let ver_line = String::from_utf8_lossy(&output.stdout);
+        let ver = ver_line.split_whitespace().nth(1).unwrap_or("unknown");
+        println!("cargo:rustc-env=RUSTC_VERSION={ver}");
+    } else {
+        println!("cargo:rustc-env=RUSTC_VERSION=unknown");
+    }
 
     tauri_build::build()
 }

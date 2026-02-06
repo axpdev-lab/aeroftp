@@ -368,7 +368,9 @@
             "lockPatternSaved": "[NEEDS TRANSLATION] Background pattern updated",
             "saved": "[NEEDS TRANSLATION] Saved",
             "saving": "[NEEDS TRANSLATION] Saving...",
-            "oauthNote": "[NEEDS TRANSLATION] OAuth2 credentials are stored locally in your encrypted vault and never sent to AeroFTP servers."
+            "oauthNote": "[NEEDS TRANSLATION] OAuth2 credentials are stored locally in your encrypted vault and never sent to AeroFTP servers.",
+            "appBackgroundPattern": "[NEEDS TRANSLATION] App Background Pattern",
+            "appBackgroundPatternDesc": "[NEEDS TRANSLATION] Choose a subtle pattern for the main app background"
         },
         "devtools": {
             "title": "ڈیو ٹولز",
@@ -1107,7 +1109,11 @@
             "stepDecrypting": "[NEEDS TRANSLATION] Decrypting passphrase...",
             "stepExpanding": "[NEEDS TRANSLATION] Expanding vault key (HKDF)...",
             "stepVerifying": "[NEEDS TRANSLATION] Verifying integrity...",
-            "stepLoading": "[NEEDS TRANSLATION] Loading credentials..."
+            "stepLoading": "[NEEDS TRANSLATION] Loading credentials...",
+            "patternWaves": "[NEEDS TRANSLATION] Waves",
+            "patternConstellation": "[NEEDS TRANSLATION] Stars",
+            "patternIsometric": "[NEEDS TRANSLATION] Isometric",
+            "patternBubbles": "[NEEDS TRANSLATION] Bubbles"
         },
         "folderOverwrite": {
             "title": "[NEEDS TRANSLATION] Folder Already Exists",
@@ -1116,6 +1122,20 @@
             "mergeSkipIdentical": "[NEEDS TRANSLATION] Merge & Skip identical files",
             "mergeOverwriteNewer": "[NEEDS TRANSLATION] Merge & Overwrite if newer",
             "skipFolder": "[NEEDS TRANSLATION] Skip folder"
+        },
+        "appearance": {
+            "patternCross": "[NEEDS TRANSLATION] Cross",
+            "patternDots": "[NEEDS TRANSLATION] Dots",
+            "patternCircuit": "[NEEDS TRANSLATION] Circuit",
+            "patternDiagonal": "[NEEDS TRANSLATION] Diagonal",
+            "patternHexagon": "[NEEDS TRANSLATION] Hexagon",
+            "patternGrid": "[NEEDS TRANSLATION] Grid",
+            "patternTopography": "[NEEDS TRANSLATION] Topography",
+            "patternWaves": "[NEEDS TRANSLATION] Waves",
+            "patternConstellation": "[NEEDS TRANSLATION] Stars",
+            "patternIsometric": "[NEEDS TRANSLATION] Isometric",
+            "patternBubbles": "[NEEDS TRANSLATION] Bubbles",
+            "patternNone": "[NEEDS TRANSLATION] None"
         }
     }
 }

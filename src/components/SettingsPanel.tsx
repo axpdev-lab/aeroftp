@@ -8,7 +8,9 @@ import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
+import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 
@@ -84,6 +86,7 @@ interface SettingsPanelProps {
     onOpenCloudPanel?: () => void;
     onActivityLog?: ActivityLogCallback;
     initialTab?: TabId;
+    onServersChanged?: () => void;
 }
 
 // Settings storage key
@@ -240,7 +243,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged }) => {
     const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
 
     // Reset to initialTab when panel opens with a specific tab
@@ -253,6 +256,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);
     const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
+    const [showEditPassword, setShowEditPassword] = useState(false);
     const [showExportImport, setShowExportImport] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -366,6 +370,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const deleteServer = (id: string) => {
         setServers(prev => prev.filter(s => s.id !== id));
         setHasChanges(true);
+        onServersChanged?.();
     };
 
     if (!isOpen) return null;
@@ -633,7 +638,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5"
                                             title={t('settings.exportImport')}
                                         >
-                                            <Shield size={14} /> {t('settings.exportImport')}
+                                            <ImportExportIcon size={14} /> {t('settings.exportImport')}
                                         </button>
                                         <button
                                             onClick={() => setEditingServer({ id: crypto.randomUUID(), name: '', host: '', port: 21, username: '', password: '' })}
@@ -919,13 +924,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
                                                                 {isS3 ? t('settings.secretAccessKey') : t('settings.password')}
                                                             </label>
-                                                            <input
-                                                                type="password"
-                                                                placeholder="••••••••"
-                                                                value={editingServer.password || ''}
-                                                                onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
+                                                            <div className="relative">
+                                                                <input
+                                                                    type={showEditPassword ? 'text' : 'password'}
+                                                                    placeholder="••••••••"
+                                                                    value={editingServer.password || ''}
+                                                                    onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
+                                                                    className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    tabIndex={-1}
+                                                                    onClick={() => setShowEditPassword(!showEditPassword)}
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                                                                >
+                                                                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     )}
 
@@ -1002,25 +1017,49 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </div>
                                                 <div className="flex gap-2 justify-end">
                                                     <button
-                                                        onClick={() => setEditingServer(null)}
+                                                        onClick={() => { setEditingServer(null); setShowEditPassword(false); }}
                                                         className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
                                                     >
                                                         {t('common.cancel')}
                                                     </button>
                                                     <button
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             const exists = servers.some(s => s.id === editingServer.id);
                                                             let updatedServers: ServerProfile[];
+
+                                                            // Store password in credential vault if provided
+                                                            let hasStoredCredential = editingServer.hasStoredCredential || false;
+                                                            if (editingServer.password) {
+                                                                try {
+                                                                    await invoke('store_credential', {
+                                                                        account: `server_${editingServer.id}`,
+                                                                        password: editingServer.password
+                                                                    });
+                                                                    hasStoredCredential = true;
+                                                                } catch (err) {
+                                                                    console.error('Failed to store credential:', err);
+                                                                }
+                                                            }
+
+                                                            // Update server profile with hasStoredCredential flag, without storing password in localStorage
+                                                            const serverToSave = {
+                                                                ...editingServer,
+                                                                password: undefined, // Don't store password in localStorage
+                                                                hasStoredCredential,
+                                                            };
+
                                                             if (exists) {
-                                                                updatedServers = servers.map(s => s.id === editingServer.id ? editingServer : s);
+                                                                updatedServers = servers.map(s => s.id === editingServer.id ? serverToSave : s);
                                                             } else {
-                                                                updatedServers = [...servers, editingServer];
+                                                                updatedServers = [...servers, serverToSave];
                                                             }
                                                             setServers(updatedServers);
                                                             // Persist immediately so changes aren't lost if user closes without Save Changes
                                                             localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
                                                             setEditingServer(null);
+                                                            setShowEditPassword(false);
                                                             setHasChanges(true);
+                                                            onServersChanged?.();
                                                         }}
                                                         className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
                                                     >
@@ -1482,6 +1521,65 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </label>
                                 </div>
+
+                                {/* App Background Pattern */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mt-6">
+                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <h4 className="font-medium flex items-center gap-2 text-sm">
+                                            <Palette size={14} className="text-gray-500" />
+                                            {t('settings.appBackgroundPattern')}
+                                        </h4>
+                                    </div>
+                                    <div className="p-4">
+                                        <p className="text-xs text-gray-500 mb-3">{t('settings.appBackgroundPatternDesc')}</p>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {APP_BACKGROUND_PATTERNS.map(pattern => {
+                                                const currentId = localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND;
+                                                const isSelected = currentId === pattern.id;
+                                                return (
+                                                    <button
+                                                        key={pattern.id}
+                                                        onClick={() => {
+                                                            localStorage.setItem(APP_BACKGROUND_KEY, pattern.id);
+                                                            flashSaved();
+                                                            // Dispatch event to notify App.tsx
+                                                            window.dispatchEvent(new CustomEvent('app-background-changed', { detail: pattern.id }));
+                                                        }}
+                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                                                            isSelected
+                                                                ? 'border-blue-500 ring-1 ring-blue-500/30'
+                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                        }`}
+                                                        title={t(pattern.nameKey)}
+                                                    >
+                                                        {/* Pattern preview - use Lock Screen patterns (full opacity) with opacity-10 for consistent visibility */}
+                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                            {pattern.svg && (() => {
+                                                                // Find matching Lock Screen pattern for preview (full opacity SVGs)
+                                                                const lockPattern = LOCK_SCREEN_PATTERNS.find(p => p.id === pattern.id);
+                                                                return lockPattern?.svg ? (
+                                                                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: lockPattern.svg }} />
+                                                                ) : null;
+                                                            })()}
+                                                        </div>
+                                                        {/* Label */}
+                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                        </div>
+                                                        {/* Selected check */}
+                                                        {isSelected && (
+                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -1857,7 +1955,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4">
                                         <div className="grid grid-cols-4 gap-2">
                                             {LOCK_SCREEN_PATTERNS.map(pattern => {
-                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'cross';
+                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
                                                 const isSelected = currentId === pattern.id;
                                                 return (
                                                     <button
@@ -2035,6 +2133,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         setServers(updated);
                         localStorage.setItem(SERVERS_KEY, JSON.stringify(updated));
                         setShowExportImport(false);
+                        onServersChanged?.();
                     }}
                     onClose={() => setShowExportImport(false)}
                 />

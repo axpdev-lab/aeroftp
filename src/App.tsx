@@ -48,6 +48,7 @@ import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOve
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { LockScreen } from './components/LockScreen';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
+import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
@@ -56,8 +57,9 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut
 } from 'lucide-react';
+import { VaultIcon } from './components/icons/VaultIcon';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
@@ -130,6 +132,15 @@ const App: React.FC = () => {
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
+  // === App Background Pattern ===
+  const [appBackgroundId, setAppBackgroundId] = useState(() =>
+    localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND
+  );
+  const appBackgroundPattern = useMemo(() =>
+    APP_BACKGROUND_PATTERNS.find(p => p.id === appBackgroundId) || APP_BACKGROUND_PATTERNS.find(p => p.id === 'none'),
+    [appBackgroundId]
+  );
+
   const [isConnected, setIsConnected] = useState(false);
   const [showRemotePanel, setShowRemotePanel] = useState(true);
   const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
@@ -193,6 +204,7 @@ const App: React.FC = () => {
   }>({ isOpen: false, folderName: '', direction: 'upload', queueCount: 0, resolve: null });
   const folderOverwriteApplyToAll = useRef<{ action: FolderMergeAction; enabled: boolean }>({ action: 'merge_overwrite', enabled: false });
   // showSettingsPanel provided by useSettings
+  const [serversRefreshKey, setServersRefreshKey] = useState(0);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
@@ -328,6 +340,15 @@ const App: React.FC = () => {
       }
     };
     initVault();
+  }, []);
+
+  // Listen for app background pattern changes from Settings
+  useEffect(() => {
+    const handleBackgroundChange = (e: CustomEvent<string>) => {
+      setAppBackgroundId(e.detail);
+    };
+    window.addEventListener('app-background-changed', handleBackgroundChange as EventListener);
+    return () => window.removeEventListener('app-background-changed', handleBackgroundChange as EventListener);
   }, []);
 
   // Auto-lock timer: check every 30 seconds if timeout has expired
@@ -3458,7 +3479,13 @@ const App: React.FC = () => {
         />
       )}
 
-      <div className={`h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
+      <div className={`relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
+      {/* App Background Pattern Overlay */}
+      {appBackgroundPattern?.svg && (
+        <div className="absolute inset-0 pointer-events-none z-0">
+          <div className="absolute inset-0" style={{ backgroundImage: appBackgroundPattern.svg }} />
+        </div>
+      )}
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
@@ -3696,6 +3723,7 @@ const App: React.FC = () => {
         onOpenCloudPanel={() => setShowCloudPanel(true)}
         onActivityLog={{ logRaw: humanLog.logRaw }}
         initialTab={settingsInitialTab}
+        onServersChanged={() => setServersRefreshKey(k => k + 1)}
       />
 
       {/* Universal Preview Modal for Media Files */}
@@ -3765,7 +3793,7 @@ const App: React.FC = () => {
 
       {/* Header - can be hidden */}
       {showMenuBar && (
-        <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-700">
+        <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between px-6 py-3">
             <Logo size="sm" isConnected={isConnected} hasActivity={hasActivity || hasQueueActivity} isReconnecting={isReconnecting} />
             <div className="flex items-center gap-3">
@@ -3777,20 +3805,6 @@ const App: React.FC = () => {
               >
                 <Heart size={18} className="fill-current" />
               </button>
-              {/* Separator */}
-              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
-              {/* Quick System Menu Bar Toggle */}
-              <button
-                onClick={async () => {
-                  const newState = !systemMenuVisible;
-                  setSystemMenuVisible(newState);
-                  await invoke('toggle_menu_bar', { visible: newState });
-                }}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title={systemMenuVisible ? 'Hide system menu bar' : 'Show system menu bar'}
-              >
-                <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
-              </button>
               {/* Theme toggle */}
               <ThemeToggle theme={theme} setTheme={setTheme} />
               {/* Separator */}
@@ -3801,7 +3815,7 @@ const App: React.FC = () => {
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 title="AeroVault - Military-Grade Encryption"
               >
-                <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
+                <VaultIcon size={18} className="text-emerald-500 dark:text-emerald-400" />
               </button>
               {/* Lock / Master Password button (standalone) */}
               <button
@@ -3819,8 +3833,22 @@ const App: React.FC = () => {
                 {masterPasswordSet ? (
                   <Lock size={18} className="text-emerald-500" />
                 ) : (
-                  <Shield size={18} className="text-gray-400 dark:text-gray-500" />
+                  <LockOpen size={18} className="text-gray-400 dark:text-gray-500" />
                 )}
+              </button>
+              {/* Separator */}
+              <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+              {/* Quick System Menu Bar Toggle */}
+              <button
+                onClick={async () => {
+                  const newState = !systemMenuVisible;
+                  setSystemMenuVisible(newState);
+                  await invoke('toggle_menu_bar', { visible: newState });
+                }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title={systemMenuVisible ? 'Hide system menu bar' : 'Show system menu bar'}
+              >
+                <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
               </button>
               {/* Settings button */}
               <button
@@ -3858,6 +3886,7 @@ const App: React.FC = () => {
             onConnect={connectToFtp}
             onOpenCloudPanel={() => setShowCloudPanel(true)}
             hasExistingSessions={sessions.length > 0}
+            serversRefreshKey={serversRefreshKey}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
               // NOTE: Do NOT set connectionParams here - that would show the form
               // The form should only appear when clicking Edit, not when connecting
@@ -4054,7 +4083,7 @@ const App: React.FC = () => {
             }}
           />
         ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10">
             {/* Session Tabs - visible when there are sessions or cloud is enabled */}
             {(sessions.length > 0 || isCloudActive) && (
               <SessionTabs

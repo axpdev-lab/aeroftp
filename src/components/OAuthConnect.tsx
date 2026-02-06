@@ -149,7 +149,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   }, [oauthProvider, hasTokens]);
 
   // Load saved credentials from secure credential store (fallback: localStorage for migration)
+  // Reset credentials first when provider changes to avoid showing stale values
   useEffect(() => {
+    // Reset to empty before loading new provider's credentials
+    setClientId('');
+    setClientSecret('');
+    setShowCredentialsForm(false);
+
     const loadCredentials = async () => {
       try {
         const savedId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.9] - 2026-02-05
+
+### Dynamic Version Info & Dependency Updates
+
+About dialog now displays all version information dynamically — no more hardcoded strings.
+
+#### Changed
+
+- **Dynamic Rust version**: `rust_version` in About dialog now detected at compile time via `rustc --version` in build.rs instead of hardcoded `"1.77.2+"`
+- **Dynamic frontend versions**: React, TypeScript, Tailwind CSS, Monaco Editor, and Vite versions extracted from `package.json` at build time via Vite `define` — no hardcoded values in AboutDialog
+- **Crypto deps tracked**: Added 6 security crates to build.rs tracked dependencies and About dialog: `aes-gcm-siv`, `chacha20poly1305`, `hkdf`, `aes-kw`, `aes-siv`, `scrypt`
+- **Build Info consolidated**: Merged Frontend Dependencies section into Build Info section in About Technical tab — single clean list for all build stack versions
+- **Clipboard text dynamic**: Copy Technical Info now uses the same dynamic version sources as the UI
+
+#### Updated
+
+- **tauri**: 2.10.1 → 2.10.2
+- **anyhow**: 1.0.100 → 1.0.101
+- **zip**: 7.2.0 → 7.3.0
+- **tauri-plugin-single-instance**: 2.3.7 → 2.4.0
+- **tauri-build**: 2.5.4 → 2.5.5
+
+---
+
 ## [1.8.8] - 2026-02-05
 
 ### Security Hardening, Vision AI & Agent Intelligence

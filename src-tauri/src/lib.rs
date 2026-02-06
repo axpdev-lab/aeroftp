@@ -1640,6 +1640,12 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "secrecy".into(), version: env!("DEP_VERSION_SECRECY").into(), category: "Security".into() },
         DependencyInfo { name: "sha2".into(), version: env!("DEP_VERSION_SHA2").into(), category: "Security".into() },
         DependencyInfo { name: "hmac".into(), version: env!("DEP_VERSION_HMAC").into(), category: "Security".into() },
+        DependencyInfo { name: "aes-gcm-siv".into(), version: env!("DEP_VERSION_AES_GCM_SIV").into(), category: "Security".into() },
+        DependencyInfo { name: "chacha20poly1305".into(), version: env!("DEP_VERSION_CHACHA20POLY1305").into(), category: "Security".into() },
+        DependencyInfo { name: "hkdf".into(), version: env!("DEP_VERSION_HKDF").into(), category: "Security".into() },
+        DependencyInfo { name: "aes-kw".into(), version: env!("DEP_VERSION_AES_KW").into(), category: "Security".into() },
+        DependencyInfo { name: "aes-siv".into(), version: env!("DEP_VERSION_AES_SIV").into(), category: "Security".into() },
+        DependencyInfo { name: "scrypt".into(), version: env!("DEP_VERSION_SCRYPT").into(), category: "Security".into() },
         // Archives
         DependencyInfo { name: "sevenz-rust".into(), version: env!("DEP_VERSION_SEVENZ_RUST").into(), category: "Archives".into() },
         DependencyInfo { name: "zip".into(), version: env!("DEP_VERSION_ZIP").into(), category: "Archives".into() },
@@ -1758,6 +1764,12 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("sevenz-rust".into(), env!("DEP_VERSION_SEVENZ_RUST").into());
     dep_versions.insert("quick-xml".into(), env!("DEP_VERSION_QUICK_XML").into());
     dep_versions.insert("oauth2".into(), env!("DEP_VERSION_OAUTH2").into());
+    dep_versions.insert("aes-gcm-siv".into(), env!("DEP_VERSION_AES_GCM_SIV").into());
+    dep_versions.insert("chacha20poly1305".into(), env!("DEP_VERSION_CHACHA20POLY1305").into());
+    dep_versions.insert("hkdf".into(), env!("DEP_VERSION_HKDF").into());
+    dep_versions.insert("aes-kw".into(), env!("DEP_VERSION_AES_KW").into());
+    dep_versions.insert("aes-siv".into(), env!("DEP_VERSION_AES_SIV").into());
+    dep_versions.insert("scrypt".into(), env!("DEP_VERSION_SCRYPT").into());
 
     SystemInfo {
         app_version: env!("CARGO_PKG_VERSION").into(),
@@ -1765,7 +1777,7 @@ fn get_system_info() -> SystemInfo {
         os_version: std::env::consts::ARCH.into(),
         arch: std::env::consts::ARCH.into(),
         tauri_version: env!("DEP_VERSION_TAURI").into(),
-        rust_version: "1.77.2+".into(),
+        rust_version: env!("RUSTC_VERSION").into(),
         keyring_backend: keyring_backend.into(),
         config_dir,
         vault_exists,

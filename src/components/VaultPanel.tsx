@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown } from 'lucide-react';
+import { VaultIcon } from './icons/VaultIcon';
 import { ArchiveEntry, AeroVaultMeta } from '../types';
 import { useTranslation } from '../i18n';
 import { formatDate, formatSize } from '../utils/formatters';
@@ -374,7 +375,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                     <div className="flex items-center gap-2">
-                        <Shield size={18} className="text-emerald-400" />
+                        <VaultIcon size={18} className="text-emerald-400" />
                         <span className="font-medium">
                             {mode === 'browse' ? vaultName : (t('vault.title') || 'AeroVault')}
                         </span>
@@ -398,7 +399,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                     <div className="p-6 flex flex-col items-center gap-5">
                         {/* Security badge */}
                         <div className="relative">
-                            <Shield size={56} className="text-emerald-400" />
+                            <VaultIcon size={56} className="text-emerald-400" />
                             <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1">
                                 <Lock size={12} className="text-white" />
                             </div>
@@ -621,7 +622,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         <div className="flex-1 overflow-auto">
                             {entries.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                                    <Shield size={32} className="mb-2 opacity-50" />
+                                    <VaultIcon size={32} className="mb-2 opacity-50" />
                                     <p className="text-sm">{t('vault.empty') || 'Vault is empty. Add files to get started.'}</p>
                                 </div>
                             ) : (

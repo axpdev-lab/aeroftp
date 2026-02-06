@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock, GripVertical } from 'lucide-react';
+import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '../types';
 import { useTranslation } from '../i18n';
@@ -39,11 +40,29 @@ const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null
     }
 };
 
+// Helper: get credential with retry if vault not ready yet (race condition on app startup)
+const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await invoke<string>('get_credential', { account });
+        } catch (err) {
+            const errorMsg = String(err);
+            if (errorMsg.includes('STORE_NOT_READY') && attempt < maxRetries - 1) {
+                // Vault not initialized yet, wait and retry
+                await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error('Failed to get credential after retries');
+};
+
 // Load OAuth credentials from credential vault
 const loadOAuthCredentials = async (provider: string): Promise<{ clientId: string; clientSecret: string } | null> => {
     try {
-        const clientId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
-        const clientSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
+        const clientId = await getCredentialWithRetry(`oauth_${provider}_client_id`);
+        const clientSecret = await getCredentialWithRetry(`oauth_${provider}_client_secret`);
         if (clientId && clientSecret) {
             return { clientId, clientSecret };
         }
@@ -59,6 +78,7 @@ interface SavedServersProps {
     className?: string;
     onEdit: (profile: ServerProfile) => void;
     lastUpdate?: number;
+    onOpenExportImport?: () => void;
 }
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -126,7 +146,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     currentProfile,
     className = '',
     onEdit,
-    lastUpdate
+    lastUpdate,
+    onOpenExportImport
 }) => {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -315,10 +336,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         setServers(updated);
         saveServers(updated);
 
-        // Load password from credential vault
+        // Load password from credential vault (with retry if vault not ready yet)
         let password = '';
         try {
-            password = await invoke<string>('get_credential', { account: `server_${server.id}` });
+            password = await getCredentialWithRetry(`server_${server.id}`);
         } catch {
             // Credential not found — password empty (never saved or server without password)
         }
@@ -347,14 +368,25 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
     return (
         <div className={`${className}`}>
-            <div className="mb-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Server size={20} />
-                    {t('connection.savedServers')}
-                </h3>
-                <div className="text-xs text-gray-500 font-normal mt-1">
-                    {t('connection.savedServersHelp')}
+            <div className="mb-4 flex items-start justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Server size={20} />
+                        {t('connection.savedServers')}
+                    </h3>
+                    <div className="text-xs text-gray-500 font-normal mt-1">
+                        {t('connection.savedServersHelp')}
+                    </div>
                 </div>
+                {onOpenExportImport && (
+                    <button
+                        onClick={onOpenExportImport}
+                        className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                        title={t('settings.exportImport')}
+                    >
+                        <ImportExportIcon size={18} />
+                    </button>
+                )}
             </div>
 
             {/* Server list */}
