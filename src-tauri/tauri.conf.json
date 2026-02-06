@@ -50,9 +50,16 @@
         "shortDescription": "Modern Multi-Protocol File Client with AI, Encryption & Cloud Storage",
         "longDescription": "AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen — 13 protocols, 30 presets, one app. Features include AeroVault (AES-256-GCM encrypted containers), Cryptomator vault support, AeroAgent AI assistant with 24 tools and 7 providers, Monaco code editor, integrated terminal, dual-pane file browser, AeroCloud personal sync, archive browser (ZIP/7z/TAR/RAR), 51 languages, and dark mode. Built with Rust (Tauri 2) + React 18. Open source under GPL-3.0.",
         "category": "Utility",
-        "copyright": "Copyright © 2025 axpdev",
-        "license": "MIT",
+        "copyright": "Copyright © 2025-2026 axpdev",
+        "license": "GPL-3.0",
         "licenseFile": "../LICENSE",
+        "linux": {
+            "deb": {
+                "files": {
+                    "../com.aeroftp.AeroFTP.metainfo.xml": "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml"
+                }
+            }
+        },
         "macOS": {
             "minimumSystemVersion": "10.13",
             "entitlements": "entitlements.plist"

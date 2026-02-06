@@ -1,192 +1,244 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.aeroftp.AeroFTP</id>
-  
+
   <name>AeroFTP</name>
-  <summary>Fast, Beautiful, Reliable FTP Client</summary>
-  
+  <summary>Modern Multi-Protocol File Client with AI, Encryption and Cloud Storage</summary>
+
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  
+
   <description>
     <p>
-      AeroFTP is a modern multi-protocol file transfer client built with Tauri.
-      It supports FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers
-      including Google Drive, Dropbox, OneDrive, and MEGA.
+      AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
+      S3-compatible storage, and cloud providers including Google Drive, Dropbox,
+      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols,
+      30 presets, one app.
     </p>
-    <p>Features:</p>
+    <p>Security and Encryption:</p>
     <ul>
+      <li>AeroVault v2: Military-grade encrypted containers with AES-256-GCM-SIV, Argon2id, HMAC-SHA512, and optional ChaCha20 cascade</li>
+      <li>Cryptomator format 8 vault support (scrypt + AES-SIV + AES-GCM)</li>
+      <li>Universal Credential Vault with AES-256-GCM encryption and optional master password</li>
+      <li>Archive encryption: ZIP and 7z with AES-256 password protection</li>
+      <li>Memory zeroization for all passwords and keys (Rust secrecy + zeroize)</li>
+    </ul>
+    <p>AI Assistant:</p>
+    <ul>
+      <li>AeroAgent: AI-powered assistant with 24 provider-agnostic tools</li>
+      <li>7 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom</li>
+      <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
+      <li>Native function calling with streaming responses and cost tracking</li>
+    </ul>
+    <p>File Management:</p>
+    <ul>
+      <li>Dual-pane file browser with list/grid views, thumbnails, and media player</li>
+      <li>Archive browser for ZIP, 7z, TAR, and RAR with selective extraction</li>
+      <li>Smart Sync with intelligent conflict resolution (3 modes)</li>
+      <li>Batch Rename with 4 modes and live preview</li>
+      <li>Monaco code editor (VS Code engine) with syntax highlighting</li>
+      <li>Integrated terminal with SSH remote shell and 8 themes</li>
       <li>51 languages with RTL support (Arabic, Hebrew, Persian, Urdu)</li>
-      <li>AeroCloud - Turn any FTP server into your personal cloud</li>
-      <li>Multi-protocol: FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA</li>
-      <li>Smart Overwrite Dialog with file comparison view</li>
-      <li>Properties Dialog with checksum calculation (MD5/SHA-256)</li>
-      <li>Compress and extract ZIP archives</li>
-      <li>Drag and drop file organization</li>
-      <li>Dual-pane file browser with list and grid views</li>
-      <li>Integrated DevTools: Monaco code editor, terminal, AI assistant</li>
-      <li>Built-in media player and image preview</li>
-      <li>Multi-session tabs with connection persistence</li>
-      <li>Activity Log with real-time transfer monitoring</li>
     </ul>
     <p>
-      Built with Rust (Tauri 2) and React 18/TypeScript. Open source under GPL-3.0 license.
+      Built with Rust (Tauri 2) and React 18/TypeScript. Open source under GPL-3.0.
     </p>
   </description>
-  
-  <launchable type="desktop-id">com.aeroftp.AeroFTP.desktop</launchable>
-  
+
+  <launchable type="desktop-id">AeroFTP.desktop</launchable>
+
   <screenshots>
     <screenshot type="default">
       <caption>AeroFTP main window showing dual-pane file browser</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/v0.9.9/docs/screenshots/screenshot-1.png</image>
+      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-1.png</image>
     </screenshot>
     <screenshot>
       <caption>Connection screen with saved servers</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/v0.9.9/docs/screenshots/screenshot-2.png</image>
+      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-2.png</image>
     </screenshot>
     <screenshot>
-      <caption>Integrated DevTools with code editor</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/v0.9.9/docs/screenshots/screenshot-3.png</image>
+      <caption>Integrated DevTools with code editor and AI assistant</caption>
+      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-3.png</image>
     </screenshot>
   </screenshots>
-  
+
   <url type="homepage">https://github.com/axpnet/aeroftp</url>
   <url type="bugtracker">https://github.com/axpnet/aeroftp/issues</url>
   <url type="vcs-browser">https://github.com/axpnet/aeroftp</url>
-  
+  <url type="donation">https://github.com/sponsors/axpnet</url>
+
   <developer id="com.aeroftp">
     <name>Ale (axpdev)</name>
   </developer>
-  
+
   <provides>
     <binary>aeroftp</binary>
   </provides>
-  
+
   <languages>
     <lang percentage="100">en</lang>
+    <lang percentage="100">it</lang>
     <lang percentage="100">de</lang>
     <lang percentage="100">es</lang>
     <lang percentage="100">fr</lang>
-    <lang percentage="100">it</lang>
-    <lang percentage="100">ja</lang>
-    <lang percentage="100">ko</lang>
     <lang percentage="100">pt</lang>
     <lang percentage="100">ru</lang>
+    <lang percentage="100">ja</lang>
+    <lang percentage="100">ko</lang>
     <lang percentage="100">zh</lang>
     <lang percentage="100">ar</lang>
     <lang percentage="100">he</lang>
+    <lang percentage="100">hi</lang>
+    <lang percentage="100">tr</lang>
+    <lang percentage="100">pl</lang>
+    <lang percentage="100">nl</lang>
+    <lang percentage="100">sv</lang>
+    <lang percentage="100">da</lang>
+    <lang percentage="100">fi</lang>
+    <lang percentage="100">no</lang>
+    <lang percentage="100">cs</lang>
+    <lang percentage="100">hu</lang>
+    <lang percentage="100">ro</lang>
+    <lang percentage="100">uk</lang>
+    <lang percentage="100">el</lang>
+    <lang percentage="100">th</lang>
+    <lang percentage="100">vi</lang>
+    <lang percentage="100">id</lang>
+    <lang percentage="100">ms</lang>
+    <lang percentage="100">fa</lang>
+    <lang percentage="100">ur</lang>
+    <lang percentage="100">bn</lang>
+    <lang percentage="100">ta</lang>
+    <lang percentage="100">te</lang>
+    <lang percentage="100">ml</lang>
+    <lang percentage="100">kn</lang>
+    <lang percentage="100">mr</lang>
+    <lang percentage="100">gu</lang>
+    <lang percentage="100">pa</lang>
+    <lang percentage="100">si</lang>
+    <lang percentage="100">km</lang>
+    <lang percentage="100">my</lang>
+    <lang percentage="100">lo</lang>
+    <lang percentage="100">ka</lang>
+    <lang percentage="100">am</lang>
+    <lang percentage="100">ne</lang>
+    <lang percentage="100">bg</lang>
+    <lang percentage="100">hr</lang>
+    <lang percentage="100">sk</lang>
+    <lang percentage="100">sl</lang>
+    <lang percentage="100">et</lang>
   </languages>
-  
+
   <releases>
+    <release version="1.8.9" date="2026-02-06">
+      <description>
+        <p>Dynamic Version Info, Credential Fix and Dependency Updates</p>
+        <ul>
+          <li>Fixed critical credential save race condition for OAuth cloud providers</li>
+          <li>Added vault write serialization (VAULT_WRITE_LOCK Mutex) to prevent concurrent write races</li>
+          <li>Dynamic version info in About dialog (Rust, React, TypeScript, Tailwind detected at build time)</li>
+          <li>Updated dependencies: Tauri 2.10.2, zip 7.4.0</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.8.8" date="2026-02-05">
+      <description>
+        <p>Security Hardening, Vision AI and Agent Intelligence</p>
+        <ul>
+          <li>Full security audit remediation: XSS prevention, CSP hardening, ZIP Slip fix, AI tool restrictions</li>
+          <li>Vision/multimodal AI: attach images for analysis with GPT-4o, Claude, Gemini, Ollama</li>
+          <li>Agent panel refresh: file panels auto-update after AI tool mutations</li>
+          <li>Console.log gating behind debug-only logger utility</li>
+          <li>Duplicate consolidation: formatBytes, getMimeType, UpdateInfo unified</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.8.0" date="2026-02-04">
+      <description>
+        <p>Smart Sync, AeroVault v2 Military-Grade Encryption</p>
+        <ul>
+          <li>Smart Sync with 3 intelligent conflict modes</li>
+          <li>AeroVault v2: AES-256-GCM-SIV, Argon2id 128 MiB, HMAC-SHA512, optional ChaCha20 cascade</li>
+          <li>Batch Rename with 4 modes and live preview</li>
+          <li>Inline Rename with F2 or click</li>
+          <li>Universal Credential Vault with optional master password</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.7.0" date="2026-02-01">
+      <description>
+        <p>Encryption Block, AeroFile Mode, AeroAgent Expansion</p>
+        <ul>
+          <li>AeroVault encrypted containers (.aerovault format)</li>
+          <li>Archive browser for ZIP, 7z, TAR, RAR with selective extraction</li>
+          <li>Cryptomator format 8 vault support</li>
+          <li>AeroFile local-only file manager mode</li>
+          <li>AeroAgent expanded to 24 tools with local file operations and batch transfers</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.6.0" date="2026-01-31">
+      <description>
+        <p>AeroAgent Pro: Native AI Function Calling and Streaming</p>
+        <ul>
+          <li>Native function calling for OpenAI, Anthropic, Gemini</li>
+          <li>Streaming responses with real-time rendering for all 7 providers</li>
+          <li>14 provider-agnostic tools via StorageProvider trait</li>
+          <li>Chat history persistence with cost tracking per message</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.5.0" date="2026-01-29">
+      <description>
+        <p>Cloud Expansion: Box, pCloud, Azure Blob, Filen</p>
+        <ul>
+          <li>4 new cloud providers: Box, pCloud, Azure Blob Storage, Filen</li>
+          <li>13 protocols total with 30 presets</li>
+          <li>Native clipboard with cross-panel drag and drop</li>
+          <li>Integrated terminal with SSH remote shell</li>
+          <li>In-app auto-updater with download progress</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.8" date="2026-01-25">
       <description>
-        <p>Global Multilingual Edition (51 Languages) + File Management Pro</p>
+        <p>Global Multilingual Edition (51 Languages)</p>
         <ul>
           <li>51 languages including RTL support (Arabic, Hebrew, Persian, Urdu)</li>
-          <li>SFTP protocol with SSH key authentication</li>
           <li>Smart Overwrite Dialog with file comparison</li>
           <li>Properties Dialog with checksum calculation (MD5/SHA-256)</li>
-          <li>Compress/Extract ZIP archives</li>
-          <li>Drag and drop file organization</li>
-          <li>MEGA.nz integration with 20GB free storage</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.2.0" date="2026-01-20">
-      <description>
-        <p>Google Drive and OAuth Providers</p>
-        <ul>
-          <li>Google Drive Integration (OAuth2)</li>
-          <li>New OAuth Settings panel with secure token storage</li>
-          <li>Provider icons in session tabs</li>
-          <li>Fixed critical session switching bugs (FTP to OAuth)</li>
-          <li>Improved OAuth callback handling with local server</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.1.0" date="2026-01-20">
-      <description>
-        <p>🌐 Multi-Protocol Cloud Storage (Sprint 1)</p>
-        <ul>
-          <li>WebDAV support - Nextcloud, ownCloud, and any WebDAV server</li>
-          <li>S3 support - AWS S3, MinIO, Backblaze B2, Cloudflare R2</li>
-          <li>Protocol selector in connection screen</li>
-          <li>AeroCloud sync now works with any provider</li>
-          <li>New unified storage provider architecture</li>
+          <li>MEGA.nz integration with end-to-end encryption</li>
         </ul>
       </description>
     </release>
     <release version="1.0.0" date="2026-01-20">
       <description>
-        <p>🎉 First stable release!</p>
-        <ul>
-          <li>Cleaner logo without shadow effects</li>
-          <li>Fixed DevTools terminal keyboard input</li>
-          <li>Improved terminal styling with GitHub Dark theme</li>
-          <li>Colored shell prompt (green user@host, blue path)</li>
-          <li>Updated plugin versions for compatibility</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.9.9" date="2026-01-19">
-      <description>
-        <p>Per-session improvements:</p>
-        <ul>
-          <li>Per-session navigation sync - each tab maintains independent sync state</li>
-          <li>Path coherence check - warning when local/remote paths don't match</li>
-          <li>AeroCloud log filter - toggle to hide/show cloud sync messages</li>
-          <li>Tab switch logging - reconnection status in Activity Log</li>
-          <li>Fixed local path not restoring on tab switch</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.9.7" date="2026-01-17">
-      <description>
-        <p>Activity Log Panel release with major improvements:</p>
-        <ul>
-          <li>Activity Log Panel with FileZilla-style real-time logging</li>
-          <li>Dual theme system: Professional (Tokio Night) and Cyber (neon glow)</li>
-          <li>Humanized log messages in 5 languages</li>
-          <li>Badge counter in StatusBar showing log count</li>
-          <li>Multi-tab switching bug fixed</li>
-          <li>Keep-alive timeout and reconnection logging</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.9.6" date="2026-01-16">
-      <description>
-        <p>Multilingual Edition with major improvements:</p>
-        <ul>
-          <li>Added Spanish, French, and Simplified Chinese languages</li>
-          <li>English now default language</li>
-          <li>Hidden files (dotfiles) now visible by default</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.9.5" date="2026-01-15">
-      <description>
-        <p>Snap Store publication and bug fixes</p>
+        <p>First stable release with FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive support.</p>
       </description>
     </release>
   </releases>
-  
+
   <content_rating type="oars-1.1">
     <content_attribute id="social-info">mild</content_attribute>
   </content_rating>
-  
+
   <categories>
     <category>Network</category>
     <category>FileTransfer</category>
   </categories>
-  
+
   <keywords>
     <keyword>ftp</keyword>
     <keyword>sftp</keyword>
     <keyword>ftps</keyword>
+    <keyword>webdav</keyword>
+    <keyword>s3</keyword>
     <keyword>file transfer</keyword>
+    <keyword>cloud storage</keyword>
+    <keyword>encryption</keyword>
+    <keyword>vault</keyword>
     <keyword>sync</keyword>
-    <keyword>cloud</keyword>
+    <keyword>ai</keyword>
   </keywords>
 
   <requires>
