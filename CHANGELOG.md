@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.9] - 2026-02-05
+## [1.8.9] - 2026-02-06
 
-### Dynamic Version Info & Dependency Updates
+### Dynamic Version Info, Credential Fix & Dependency Updates
 
-About dialog now displays all version information dynamically — no more hardcoded strings.
+About dialog now displays all version information dynamically. Fixed critical credential save race condition.
+
+#### Fixed
+
+- **Credential save race condition**: OAuth cloud provider credentials (Google Drive, Dropbox, OneDrive, Box, pCloud) were overwriting each other when saved from Settings. All 10 `store_credential` calls fired simultaneously without `await`, causing concurrent read-modify-write on `vault.db` — only the last writer survived. Now saves sequentially with `await`, matching the pattern used by ConnectionScreen
+- **Vault write serialization**: Added `VAULT_WRITE_LOCK` Mutex to Rust credential store backend, serializing all `store()` and `delete()` operations to prevent concurrent write races from any call site
 
 #### Changed
 
@@ -23,7 +28,7 @@ About dialog now displays all version information dynamically — no more hardco
 
 - **tauri**: 2.10.1 → 2.10.2
 - **anyhow**: 1.0.100 → 1.0.101
-- **zip**: 7.2.0 → 7.3.0
+- **zip**: 7.2.0 → 7.4.0
 - **tauri-plugin-single-instance**: 2.3.7 → 2.4.0
 - **tauri-build**: 2.5.4 → 2.5.5
 

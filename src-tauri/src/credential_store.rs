@@ -19,6 +19,9 @@ use tracing::info;
 // Cached unlocked vault state: (vault.db path, vault_key)
 static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
 
+// Serializes all vault write operations to prevent concurrent read-modify-write races
+static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
 const VAULT_FILENAME: &str = "vault.db";
 const VAULTKEY_FILENAME: &str = "vault.key";
 
@@ -481,6 +484,7 @@ impl CredentialStore {
 
     /// Store a credential
     pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         let nonce = crate::crypto::random_bytes(12);
         let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
@@ -504,6 +508,7 @@ impl CredentialStore {
 
     /// Delete a credential
     pub fn delete(&self, account: &str) -> Result<(), CredentialError> {
+        let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         vault.entries.remove(account);
         Self::write_vault(&self.vault_path, &vault)?;

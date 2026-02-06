@@ -99,8 +99,8 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 ### AeroAgent AI (v1.7.0+)
 AI-powered assistant with **24 provider-agnostic tools** that work across all 13 protocols:
 - **7 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom
-- **Vision/Multimodal** (v1.9.0): Attach images for analysis — supports GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, Ollama llava. File picker, clipboard paste, auto-resize, up to 5 images per message
-- **Auto panel refresh** (v1.9.0): File panels automatically update after AI tool mutations (create, delete, rename, upload, download) — no manual refresh needed
+- **Vision/Multimodal** (v1.8.8): Attach images for analysis — supports GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, Ollama llava. File picker, clipboard paste, auto-resize, up to 5 images per message
+- **Auto panel refresh** (v1.8.8): File panels automatically update after AI tool mutations (create, delete, rename, upload, download) — no manual refresh needed
 - **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
 - **Streaming responses**: Real-time incremental rendering for all providers
 - **File operations**: List, read, search, create, edit, rename, delete (local + remote)

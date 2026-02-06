@@ -1,6 +1,6 @@
 # Universal Credential Vault — Technical Documentation
 
-> AeroFTP v1.8.6 — February 2026
+> AeroFTP v1.8.9 — February 2026
 
 ---
 
@@ -46,6 +46,8 @@ The Universal Vault is AeroFTP's credential storage system. It replaces the prev
 - User password → Argon2id (128 MiB, t=4, p=4) → 256-bit KEK
 - KEK + AES-256-GCM encrypts the 64-byte passphrase in vault.key
 - Even if vault.key is exfiltrated, passphrase cannot be recovered without the user password
+
+**Write serialization** (v1.8.9): All `store()` and `delete()` operations are serialized via `VAULT_WRITE_LOCK` Mutex. This prevents concurrent read-modify-write races when multiple credentials are saved simultaneously (e.g., OAuth settings for multiple providers).
 
 ---
 

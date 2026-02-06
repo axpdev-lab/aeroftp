@@ -337,18 +337,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         setTimeout(() => setSaveState('idle'), 1800);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
-        // Save OAuth secrets to secure credential store (not localStorage)
+        // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
         const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
         for (const p of providers) {
             const creds = oauthSettings[p];
             if (creds.clientId) {
-                invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
+                await invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
             }
             if (creds.clientSecret) {
-                invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
+                await invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
             }
         }
         // Remove legacy OAuth settings from localStorage

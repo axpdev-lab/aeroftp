@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 5 February 2026
-> Version: v1.8.6 (Universal Vault — Single encrypted credential backend, folder conflict resolution, transfer queue improvements)
+> Last Updated: 6 February 2026
+> Version: v1.8.9 (Dynamic version info, credential vault write serialization, dependency updates)
 
 ---
 

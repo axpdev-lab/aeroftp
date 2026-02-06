@@ -4,8 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.9.x   | Yes |
-| 1.8.x   | Yes (current) |
+| 1.9.x   | Yes (current) |
+| 1.8.x   | Security fixes only |
 | 1.7.x   | Security fixes only |
 | < 1.7   | No  |
 
@@ -13,7 +13,7 @@
 
 ### Credential Storage
 
-AeroFTP v1.8.7 uses a **Universal Vault** — a single encrypted credential backend that works identically on all platforms, replacing the previous dual-mode OS Keyring + encrypted vault approach.
+AeroFTP uses a **Universal Vault** — a single encrypted credential backend that works identically on all platforms, replacing the previous dual-mode OS Keyring + encrypted vault approach.
 
 **Universal Vault (`vault.key` + `vault.db`)**
 
@@ -25,6 +25,7 @@ AeroFTP v1.8.7 uses a **Universal Vault** — a single encrypted credential back
 | **Master mode** (optional) | Passphrase encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM. User enters master password on app start |
 | **Key derivation** | HKDF-SHA256 (RFC 5869): 512-bit passphrase → 256-bit vault key |
 | **Encryption** | AES-256-GCM with per-entry random 12-byte nonces |
+| **Write serialization** | `VAULT_WRITE_LOCK` Mutex prevents concurrent read-modify-write races (v1.8.9) |
 | **File permissions** | `0600` (owner read/write only) on Unix; `icacls` ACL-restricted on Windows |
 
 **Why Universal Vault (v1.8.6+)?**
@@ -217,4 +218,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.8.7 - 5 February 2026*
+*AeroFTP v1.8.9 - 6 February 2026*
