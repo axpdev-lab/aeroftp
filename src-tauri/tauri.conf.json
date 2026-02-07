@@ -56,7 +56,7 @@
         "linux": {
             "deb": {
                 "files": {
-                    "../com.aeroftp.AeroFTP.metainfo.xml": "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml"
+                    "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml"
                 }
             }
         },
