@@ -1,6 +1,6 @@
 # Universal Credential Vault — Technical Documentation
 
-> AeroFTP v1.8.9 — February 2026
+> AeroFTP v1.9.0 — February 2026
 
 ---
 
@@ -8,12 +8,16 @@
 
 The Universal Vault is AeroFTP's credential storage system. It replaces the previous dual-mode architecture (OS Keyring + Encrypted Vault fallback) with a single, platform-independent encrypted vault that works identically on Linux, Windows, and macOS.
 
+Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted Keystore**: all sensitive data that was previously stored in browser localStorage (server profiles, AI provider configuration, OAuth credentials, application settings) is now encrypted in `vault.db`. A migration wizard automatically moves legacy data on first launch, and a backup/restore system enables vault portability across devices.
+
 ### Design Goals
 
 1. **Zero-interaction default**: Credentials save and load automatically without any user prompt
 2. **Cross-platform reliability**: No dependency on OS keyring services (gnome-keyring, Windows Credential Manager, macOS Keychain)
 3. **Optional master password**: Users who want extra protection can enable a master password at any time
 4. **Simple architecture**: One code path, no fallback chains, no health probes
+5. **Complete coverage** (v1.9.0): No sensitive data in localStorage — everything encrypted in vault
+6. **Portable backups** (v1.9.0): Full vault export/import for disaster recovery and device migration
 
 ---
 
@@ -142,13 +146,18 @@ The credential database is a JSON object encrypted per-entry with AES-256-GCM:
 | Type | Key format | Example |
 |------|-----------|---------|
 | Server password | `server_{id}` | `server_srv_abc123` |
+| Server profile | `profile_{id}` | `profile_srv_abc123` |
 | OAuth access token | `oauth_{provider}_access_token` | `oauth_googledrive_access_token` |
 | OAuth refresh token | `oauth_{provider}_refresh_token` | `oauth_dropbox_refresh_token` |
 | OAuth client ID | `oauth_{provider}_client_id` | `oauth_onedrive_client_id` |
 | OAuth client secret | `oauth_{provider}_client_secret` | `oauth_box_client_secret` |
 | AI API key | `ai_apikey_{provider}` | `ai_apikey_openai` |
+| AI settings | `ai_settings_{provider}` | `ai_settings_openai` |
+| App config | `config_{key}` | `config_theme_preference` |
 | WebDAV password | `server_{id}` | Same as server |
 | S3 secret key | `server_{id}` | Same as server |
+
+> **v1.9.0 expansion**: `profile_*`, `ai_settings_*`, and `config_*` entries are new in v1.9.0 and correspond to data previously stored in browser localStorage.
 
 ---
 
@@ -308,17 +317,138 @@ Activity updated on:
 
 ## Comparison with Previous System
 
-| Aspect | v1.8.x (Dual Mode) | v1.8.6 (Universal Vault) |
-|--------|--------------------|-----------------------|
-| Backends | OS Keyring + Encrypted Vault | Single vault only |
-| Windows | Silent failures | Reliable |
-| Linux | gnome-keyring dependency | No dependency |
-| Default UX | May require master password | Zero interaction |
-| Fallback chain | 5 levels | None needed |
-| Code complexity | ~800 lines | ~450 lines |
-| Crate dependencies | keyring + argon2 + aes-gcm | argon2 + aes-gcm + hkdf |
-| Health probes | KEYRING_HEALTH, write-verify | None |
-| Migration code | Yes | None (clean break) |
+| Aspect | v1.8.x (Dual Mode) | v1.8.6 (Universal Vault) | v1.9.0 (Unified Keystore) |
+|--------|--------------------|-----------------------|--------------------------|
+| Backends | OS Keyring + Encrypted Vault | Single vault only | Single vault only |
+| Scope | Passwords + tokens only | Passwords + tokens only | **All sensitive data** (profiles, AI config, OAuth, settings) |
+| localStorage usage | Server profiles, AI settings, configs | Server profiles, AI settings, configs | **Non-sensitive UI state only** |
+| Windows | Silent failures | Reliable | Reliable |
+| Linux | gnome-keyring dependency | No dependency | No dependency |
+| Default UX | May require master password | Zero interaction | Zero interaction + auto-migration |
+| Backup/restore | None | None | `.aeroftp-keystore` (Argon2id + AES-256-GCM) |
+| Migration | None | None (clean break) | Automatic wizard from localStorage |
+| Fallback chain | 5 levels | None needed | Vault-first + localStorage read fallback |
+| Code complexity | ~800 lines | ~450 lines | ~550 lines (+ secureStorage.ts) |
+| Crate dependencies | keyring + argon2 + aes-gcm | argon2 + aes-gcm + hkdf | argon2 + aes-gcm + hkdf |
+
+---
+
+## Unified Keystore (v1.9.0)
+
+### Motivation
+
+Before v1.9.0, the Universal Vault stored only credential secrets (passwords, tokens, API keys). Server profile metadata (host, port, username, protocol), AI provider settings (model selection, temperature), and application preferences remained in browser localStorage — unencrypted and accessible to any code running in the webview.
+
+The Unified Keystore moves **all sensitive data** into `vault.db`, eliminating the last unencrypted storage surface.
+
+### secureStorage.ts API
+
+The frontend uses a `secureStorage` utility that abstracts vault access:
+
+```typescript
+// Vault-first with localStorage fallback
+await secureStorage.setItem('profile_srv_abc', jsonString);
+const data = await secureStorage.getItem('profile_srv_abc');
+await secureStorage.removeItem('profile_srv_abc');
+```
+
+- **Write**: Always writes to vault via Tauri `store_credential` command
+- **Read**: Reads from vault first; falls back to localStorage if not found (migration may be partial)
+- **Delete**: Removes from both vault and localStorage
+
+### Data Categories
+
+| Category | Key prefix | Count tracked | Example data |
+|----------|-----------|---------------|--------------|
+| Server credentials | `server_` | Yes | Passwords, SSH keys |
+| Connection profiles | `profile_` | Yes | Host, port, username, protocol config |
+| AI API keys | `ai_apikey_` | Yes | OpenAI, Anthropic, Gemini keys |
+| AI settings | `ai_settings_` | Yes | Model, provider, temperature |
+| OAuth tokens | `oauth_` | Yes | Access/refresh tokens for 5 OAuth providers |
+| Config entries | `config_` | Yes | Theme, locale, UI preferences |
+
+---
+
+## Migration Wizard (v1.9.0)
+
+### Trigger
+
+The migration wizard runs automatically on first launch after upgrading to v1.9.0. It detects localStorage entries matching known key patterns and migrates them to the encrypted vault.
+
+### Migration Flow
+
+```
+App start (v1.9.0 first launch)
+  → detect_legacy_data()
+  → Found: server profiles, AI settings, OAuth tokens in localStorage
+  → Show migration dialog with category summary
+  → User confirms (or auto-migrate in background)
+  → For each entry:
+    → Read from localStorage
+    → store_credential(key, value) → vault.db
+    → Verify: get_credential(key) matches original
+    → Mark localStorage entry as migrated
+  → Show completion summary
+  → Remove migrated localStorage entries
+```
+
+### Safety
+
+- Migration is **non-destructive**: localStorage entries are only removed after successful vault write + verification
+- If migration is interrupted, it resumes on next launch (idempotent)
+- Entries that fail to migrate remain in localStorage and continue to work via the fallback read path
+
+---
+
+## Keystore Backup and Restore (v1.9.0)
+
+### Export (.aeroftp-keystore)
+
+The backup file contains a complete snapshot of all vault entries, encrypted with a user-chosen backup password.
+
+```
+Export flow:
+  → User enters backup password
+  → Read all entries from vault.db
+  → Serialize to JSON with category metadata
+  → Argon2id(password, random_salt) → backup KEK
+  → AES-256-GCM encrypt(KEK, payload) → ciphertext
+  → HMAC-SHA256(KEK, ciphertext) → integrity tag
+  → Write .aeroftp-keystore file:
+    [magic: "AEROBKP\0"] [version: 1] [salt: 32B]
+    [nonce: 12B] [hmac: 32B] [ciphertext]
+```
+
+### Import
+
+```
+Import flow:
+  → User selects .aeroftp-keystore file
+  → Verify magic bytes and version
+  → User enters backup password
+  → Argon2id(password, salt) → backup KEK
+  → Verify HMAC-SHA256 integrity
+  → AES-256-GCM decrypt → JSON payload
+  → Parse categories and entry count summary
+  → User selects merge strategy:
+    → Skip existing: only import entries not in current vault
+    → Overwrite all: replace all entries with backup data
+  → Import entries to vault.db
+  → Show completion summary with per-category counts
+```
+
+### Backup Encryption Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| KDF | Argon2id |
+| Memory | 64 MB (65536 KiB) |
+| Iterations | 3 |
+| Parallelism | 4 |
+| Salt | 32 random bytes |
+| Encryption | AES-256-GCM (12-byte nonce) |
+| Integrity | HMAC-SHA256 over ciphertext |
+| File extension | `.aeroftp-keystore` |
 
 ---
 

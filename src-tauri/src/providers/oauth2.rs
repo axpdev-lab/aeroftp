@@ -882,8 +882,12 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
         let value = kv.next().unwrap_or("");
         
         match key {
-            "code" => code = Some(urlencoding::decode(value).unwrap_or_default().to_string()),
-            "state" => state = Some(urlencoding::decode(value).unwrap_or_default().to_string()),
+            "code" => code = Some(urlencoding::decode(value)
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("Invalid URL encoding in code: {}", e)))?
+                .to_string()),
+            "state" => state = Some(urlencoding::decode(value)
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("Invalid URL encoding in state: {}", e)))?
+                .to_string()),
             "error" => return Err(ProviderError::AuthenticationFailed(format!("OAuth error: {}", value))),
             _ => {}
         }

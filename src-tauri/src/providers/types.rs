@@ -507,6 +507,8 @@ impl AzureConfig {
 pub struct FilenConfig {
     pub email: String,
     pub password: secrecy::SecretString,
+    /// Optional TOTP code for accounts with 2FA enabled
+    pub two_factor_code: Option<String>,
 }
 
 impl FilenConfig {
@@ -515,7 +517,8 @@ impl FilenConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("Email required for Filen".to_string()))?;
         let password = config.password.clone()
             .ok_or_else(|| ProviderError::InvalidConfig("Password required for Filen".to_string()))?;
-        Ok(Self { email, password: password.into() })
+        let two_factor_code = config.extra.get("two_factor_code").cloned();
+        Ok(Self { email, password: password.into(), two_factor_code })
     }
 }
 

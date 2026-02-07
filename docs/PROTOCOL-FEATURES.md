@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 6 February 2026
-> Version: v1.8.9 (Dynamic version info, credential vault write serialization, dependency updates)
+> Last Updated: 7 February 2026
+> Version: v1.9.0 (Unified Keystore, AI 27 tools, RAG indexing, plugin system, keystore backup/restore, migration wizard, dual security audit, AeroPlayer WebGL engine)
 
 ---
 
@@ -287,7 +287,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 24 tools work identically across all 13 protocols via the `StorageProvider` trait:
+All 25 tools work identically across all 13 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -313,6 +313,7 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 | `archive_create` | Medium | Create archive |
 | `archive_extract` | Medium | Extract archive |
 | `remote_delete` | High | Delete remote file |
+| `terminal_exec` | High | Execute terminal command |
 | `local_delete` | High | Delete local file/directory |
 
 ### AI Features
@@ -329,31 +330,48 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 | Auto-routing | Done (v1.4.0) | Task-type detection routes to optimal model |
 | Rate limiting | Done (v1.4.0) | 20 RPM per provider, frontend token bucket |
 | Speech input | Done (v1.4.0) | Web Speech API |
+| Multi-step autonomous tools | Done (v1.9.0) | Agent chains multiple tool calls without repeated prompts |
+| Ollama auto-detection | Done (v1.9.0) | Discovers local Ollama instances and available models |
+| Conversation export | Done (v1.9.0) | Export as Markdown or JSON |
+| Monaco bidirectional sync | Done (v1.9.0) | Live two-way sync between editor and AI agent |
+| Terminal command execution | Done (v1.9.0) | AI executes terminal commands with user approval |
 
 ---
 
-## Credential Storage Architecture (v1.3.2+)
+## Credential Storage Architecture (v1.9.0)
 
-### Storage Layers
+### Unified Keystore
 
-| Layer | Method | When Used |
-|-------|--------|-----------|
-| **Primary** | OS Keyring (gnome-keyring / macOS Keychain / Windows Credential Manager) | Always attempted first, write-verify integrity (v1.8.5) |
-| **Fallback** | AES-256-GCM encrypted vault (`~/.config/aeroftp/vault.db`) | When keyring write-verify fails (v1.8.5), gated by Master Password |
-| **OAuth Tokens** | OS Keyring or vault | Stored after OAuth2 flow |
-| **AI API Keys** | OS Keyring or vault | Migrated from localStorage (v1.4.1) |
-| **MEGA** | secrecy crate (zero-on-drop) | In-memory only during session |
+Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db`). The previous layered approach (OS Keyring primary, vault fallback) has been replaced by a single encrypted backend.
+
+| Data Type | Storage | Notes |
+|-----------|---------|-------|
+| **Server passwords** | vault.db (AES-256-GCM) | Per-entry encryption with random nonce |
+| **Server profiles** | vault.db (AES-256-GCM) | Host, port, username, protocol config (v1.9.0) |
+| **OAuth tokens** | vault.db (AES-256-GCM) | Access + refresh tokens for all 5 OAuth providers |
+| **AI API keys** | vault.db (AES-256-GCM) | All 7 AI provider keys |
+| **AI settings** | vault.db (AES-256-GCM) | Model selection, provider config (v1.9.0) |
+| **App config** | vault.db (AES-256-GCM) | Sensitive application settings (v1.9.0) |
+| **MEGA credentials** | secrecy crate (zero-on-drop) | In-memory only during session |
+
+### Keystore Backup/Restore (v1.9.0)
+
+| Parameter | Value |
+|-----------|-------|
+| Format | `.aeroftp-keystore` binary |
+| KDF | Argon2id (64 MB, t=3, p=4) |
+| Encryption | AES-256-GCM |
+| Integrity | HMAC-SHA256 |
+| Merge modes | Skip existing, Overwrite all |
 
 ### Key Derivation (Vault)
 
 | Parameter | Value |
 |-----------|-------|
-| Algorithm | Argon2id |
-| Memory | 64 MB |
-| Iterations | 3 |
-| Parallelism | 4 threads |
-| Output | 256-bit key |
-| Nonce | 12 bytes random per entry |
+| Algorithm | HKDF-SHA256 (RFC 5869) |
+| Input | 512-bit CSPRNG passphrase |
+| Output | 256-bit vault key |
+| Per-entry | AES-256-GCM with random 12-byte nonce |
 
 ---
 
@@ -378,12 +396,16 @@ All 24 tools work identically across all 13 protocols via the `StorageProvider` 
 | v1.7.0 | Encryption Block: AeroVault v1, archive browser + selective extraction, Cryptomator format 8, CompressDialog, AeroFile mode, preview panel, Type column, 7z password fix | Done |
 | v1.8.0 | Smart Sync (3 intelligent modes), Batch Rename (4 modes), Inline Rename, **AeroVault v2** (AES-256-GCM-SIV + AES-KW + AES-SIV + Argon2id 128MiB + HMAC-SHA512 + ChaCha20 cascade) | Done |
 
+| v1.8.6 | Universal Credential Vault (AES-256-GCM + Argon2id + HKDF-SHA256), smart folder transfers, folder conflict resolution | Done |
+| v1.8.7 | File clipboard (cut/copy/paste), cross-panel paste, Ubuntu/macOS audits | Done |
+| v1.8.8 | Vision/multimodal AI, auto panel refresh, XSS hardening, security audit | Done |
+| v1.9.0 | **Unified Keystore** (localStorage to vault migration), **keystore backup/restore** (.aeroftp-keystore), **migration wizard**, AI multi-step tools, Ollama auto-detection, conversation export, Monaco bidirectional sync, terminal command execution | Done |
+
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v1.8.6 | AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation |
-| v2.0.0 | Master password, 2FA (TOTP), unified encrypted keystore, settings consolidation |
+| v2.0.0 | CLI Foundation (`aeroftp connect/ls/get/put/sync`), settings consolidation |
 | v2.1.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 
 ---

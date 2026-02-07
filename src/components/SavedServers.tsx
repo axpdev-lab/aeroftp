@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { logger } from '../utils/logger';
+import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 // OAuth settings storage key (same as SettingsPanel)
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
@@ -136,9 +137,10 @@ const getSavedServers = (): ServerProfile[] => {
     }
 };
 
-// Save servers to localStorage
+// Save servers to localStorage (sync) and vault (async)
 const saveServers = (servers: ServerProfile[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
+    secureStoreAndClean('server_profiles', STORAGE_KEY, servers).catch(() => {});
 };
 
 export const SavedServers: React.FC<SavedServersProps> = ({
@@ -216,7 +218,23 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     };
 
     useEffect(() => {
+        // Load from localStorage immediately (sync), then try vault
         setServers(getSavedServers());
+        (async () => {
+            const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', STORAGE_KEY);
+            if (vaultServers && vaultServers.length > 0) {
+                // Migrate providerId if needed
+                let migrated = false;
+                for (const s of vaultServers) {
+                    if (!s.providerId) {
+                        const derived = deriveProviderId(s);
+                        if (derived) { s.providerId = derived; migrated = true; }
+                    }
+                }
+                if (migrated) saveServers(vaultServers);
+                setServers(vaultServers);
+            }
+        })();
     }, [lastUpdate]);
 
     const handleDelete = (id: string) => {

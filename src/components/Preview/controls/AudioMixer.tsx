@@ -1,13 +1,13 @@
 /**
  * Audio Mixer / Equalizer Component
- * 
+ *
  * 10-band graphic equalizer with presets and balance control.
  * Uses Web Audio API BiquadFilterNode for each frequency band.
- * 
+ *
  * Bands: 32Hz, 64Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Sliders, RotateCcw, ChevronDown, Volume2 } from 'lucide-react';
 import { EqualizerState, EQPreset } from '../types';
 
@@ -42,6 +42,8 @@ export const EQ_PRESETS: EQPreset[] = [
 interface AudioMixerProps {
     state: EqualizerState;
     onStateChange: (state: EqualizerState) => void;
+    eqNodes?: BiquadFilterNode[];
+    pannerNode?: StereoPannerNode | null;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
     className?: string;
@@ -50,40 +52,73 @@ interface AudioMixerProps {
 export const AudioMixer: React.FC<AudioMixerProps> = ({
     state,
     onStateChange,
+    eqNodes,
+    pannerNode,
     isExpanded = false,
     onToggleExpand,
     className = '',
 }) => {
     const [showPresetMenu, setShowPresetMenu] = useState(false);
+    // Store band values for restore when toggling enabled
+    const savedBandsRef = useRef<number[]>([...state.bands]);
 
-    // Handle band change
+    // Sync Web Audio nodes when they arrive or when state.enabled changes
+    useEffect(() => {
+        if (!eqNodes || eqNodes.length === 0) return;
+        for (let i = 0; i < eqNodes.length && i < state.bands.length; i++) {
+            eqNodes[i].gain.value = state.enabled ? state.bands[i] : 0;
+        }
+    }, [eqNodes, state.enabled]);
+
+    // Sync panner node when it arrives
+    useEffect(() => {
+        if (pannerNode) {
+            pannerNode.pan.value = state.enabled ? state.balance : 0;
+        }
+    }, [pannerNode, state.balance, state.enabled]);
+
+    // Handle band change — update both state and real Web Audio node
     const handleBandChange = useCallback((index: number, value: number) => {
+        // Apply to real node immediately for zero-latency feedback
+        if (eqNodes && eqNodes[index] && state.enabled) {
+            eqNodes[index].gain.value = value;
+        }
         const newBands = [...state.bands];
         newBands[index] = value;
+        savedBandsRef.current = newBands;
         onStateChange({
             ...state,
             bands: newBands,
             presetName: 'Custom',
         });
-    }, [state, onStateChange]);
+    }, [state, onStateChange, eqNodes]);
 
-    // Handle balance change
+    // Handle balance change — update both state and real StereoPannerNode
     const handleBalanceChange = useCallback((value: number) => {
+        if (pannerNode && state.enabled) {
+            pannerNode.pan.value = value;
+        }
         onStateChange({
             ...state,
             balance: value,
         });
-    }, [state, onStateChange]);
+    }, [state, onStateChange, pannerNode]);
 
-    // Apply preset
+    // Apply preset — update all nodes + state
     const applyPreset = useCallback((preset: EQPreset) => {
+        if (eqNodes && state.enabled) {
+            for (let i = 0; i < eqNodes.length && i < preset.bands.length; i++) {
+                eqNodes[i].gain.value = preset.bands[i];
+            }
+        }
+        savedBandsRef.current = [...preset.bands];
         onStateChange({
             ...state,
             bands: [...preset.bands],
             presetName: preset.name,
         });
         setShowPresetMenu(false);
-    }, [state, onStateChange]);
+    }, [state, onStateChange, eqNodes]);
 
     // Reset to flat
     const resetEQ = useCallback(() => {
@@ -91,13 +126,19 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         applyPreset(flatPreset);
     }, [applyPreset]);
 
-    // Toggle EQ enabled
+    // Toggle EQ enabled — bypass (gain=0) or restore saved values
     const toggleEnabled = useCallback(() => {
+        const willBeEnabled = !state.enabled;
+        if (eqNodes) {
+            for (let i = 0; i < eqNodes.length; i++) {
+                eqNodes[i].gain.value = willBeEnabled ? (savedBandsRef.current[i] ?? 0) : 0;
+            }
+        }
         onStateChange({
             ...state,
-            enabled: !state.enabled,
+            enabled: willBeEnabled,
         });
-    }, [state, onStateChange]);
+    }, [state, onStateChange, eqNodes]);
 
     if (!isExpanded) {
         return (

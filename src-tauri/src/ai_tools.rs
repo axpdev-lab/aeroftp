@@ -20,6 +20,8 @@ const ALLOWED_TOOLS: &[&str] = &[
     "upload_files", "download_files",
     // Advanced tools
     "sync_preview", "archive_create", "archive_extract",
+    // RAG tools
+    "rag_index", "rag_search",
 ];
 
 /// Validate a path argument — reject null bytes, traversal, excessive length
@@ -465,8 +467,13 @@ pub async fn execute_ai_tool(
             let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(true);
             validate_path(&path, "path")?;
 
-            let content = std::fs::read_to_string(&path)
+            let mut content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
+
+            // Strip UTF-8 BOM if present (common in Windows-created files)
+            if content.starts_with('\u{FEFF}') {
+                content = content.strip_prefix('\u{FEFF}').unwrap().to_string();
+            }
 
             let occurrences = content.matches(&find).count();
             if occurrences == 0 {
@@ -514,8 +521,13 @@ pub async fn execute_ai_tool(
                 return Err("Not connected to any server".to_string());
             };
 
-            let content = String::from_utf8(bytes)
+            let mut content = String::from_utf8(bytes)
                 .map_err(|_| "File is not valid UTF-8 text".to_string())?;
+
+            // Strip UTF-8 BOM if present
+            if content.starts_with('\u{FEFF}') {
+                content = content[3..].to_string();
+            }
 
             let occurrences = content.matches(&find).count();
             if occurrences == 0 {
@@ -737,6 +749,205 @@ pub async fn execute_ai_tool(
             let _format = get_str_opt(&args, "format").unwrap_or_else(|| "zip".to_string());
             Ok(json!({
                 "message": "Archive operations should be performed via the context menu on files. Right-click a file to compress/extract.",
+            }))
+        }
+
+        "rag_index" => {
+            let path = get_str(&args, "path")?;
+            validate_path(&path, "path")?;
+            let recursive = args.get("recursive").and_then(|v| v.as_bool()).unwrap_or(true);
+            let max_files = args.get("max_files").and_then(|v| v.as_u64()).unwrap_or(200) as u32;
+
+            const TEXT_EXTENSIONS: &[&str] = &[
+                "rs", "ts", "tsx", "js", "jsx", "py", "json", "toml", "yaml", "yml",
+                "md", "txt", "html", "css", "sh", "sql", "xml", "csv", "env", "cfg",
+                "ini", "conf", "log", "go", "java", "c", "cpp", "h", "hpp", "rb",
+                "php", "swift", "kt",
+            ];
+
+            fn is_text_file(path: &std::path::Path) -> bool {
+                path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| TEXT_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                    .unwrap_or(false)
+            }
+
+            fn scan_dir(
+                dir: &std::path::Path,
+                base: &std::path::Path,
+                recursive: bool,
+                files: &mut Vec<Value>,
+                dirs_count: &mut u32,
+                max_files: u32,
+            ) {
+                let entries = match std::fs::read_dir(dir) {
+                    Ok(e) => e,
+                    Err(_) => return,
+                };
+                for entry in entries.flatten() {
+                    if files.len() >= max_files as usize {
+                        return;
+                    }
+                    let entry_path = entry.path();
+                    let meta = match entry.metadata() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+                    if meta.is_dir() {
+                        *dirs_count += 1;
+                        if recursive {
+                            scan_dir(&entry_path, base, recursive, files, dirs_count, max_files);
+                        }
+                    } else if meta.is_file() {
+                        let rel = entry_path.strip_prefix(base)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
+                        let name = entry_path.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let ext = entry_path.extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        let size = meta.len();
+
+                        let preview = if is_text_file(&entry_path) && size < 50_000 {
+                            std::fs::read_to_string(&entry_path)
+                                .ok()
+                                .map(|content| {
+                                    content.lines().take(20).collect::<Vec<_>>().join("\n")
+                                })
+                        } else {
+                            None
+                        };
+
+                        let mut file_obj = json!({
+                            "name": name,
+                            "path": rel,
+                            "size": size,
+                            "ext": ext,
+                        });
+                        if let Some(p) = preview {
+                            file_obj.as_object_mut().unwrap().insert("preview".to_string(), json!(p));
+                        }
+                        files.push(file_obj);
+                    }
+                }
+            }
+
+            let base_path = std::path::Path::new(&path);
+            if !base_path.is_dir() {
+                return Err(format!("Not a directory: {}", path));
+            }
+
+            let mut files: Vec<Value> = Vec::new();
+            let mut dirs_count: u32 = 0;
+            scan_dir(base_path, base_path, recursive, &mut files, &mut dirs_count, max_files);
+
+            let total_size: u64 = files.iter()
+                .filter_map(|f| f.get("size").and_then(|s| s.as_u64()))
+                .sum();
+
+            let mut extensions: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+            for f in &files {
+                if let Some(ext) = f.get("ext").and_then(|e| e.as_str()) {
+                    if !ext.is_empty() {
+                        *extensions.entry(ext.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+
+            Ok(json!({
+                "files_count": files.len(),
+                "dirs_count": dirs_count,
+                "total_size": total_size,
+                "extensions": extensions,
+                "files": files,
+            }))
+        }
+
+        "rag_search" => {
+            let query = get_str(&args, "query")?;
+            let path = get_str_opt(&args, "path").unwrap_or_else(|| ".".to_string());
+            validate_path(&path, "path")?;
+            let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+
+            const SEARCH_EXTENSIONS: &[&str] = &[
+                "rs", "ts", "tsx", "js", "jsx", "py", "json", "toml", "yaml", "yml",
+                "md", "txt", "html", "css", "sh", "sql", "xml", "csv", "env", "cfg",
+                "ini", "conf", "log", "go", "java", "c", "cpp", "h", "hpp", "rb",
+                "php", "swift", "kt",
+            ];
+
+            fn is_searchable(path: &std::path::Path) -> bool {
+                path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| SEARCH_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                    .unwrap_or(false)
+            }
+
+            fn search_dir(
+                dir: &std::path::Path,
+                base: &std::path::Path,
+                query_lower: &str,
+                matches: &mut Vec<Value>,
+                files_scanned: &mut u32,
+                max_results: usize,
+                max_files: u32,
+            ) {
+                let entries = match std::fs::read_dir(dir) {
+                    Ok(e) => e,
+                    Err(_) => return,
+                };
+                for entry in entries.flatten() {
+                    if matches.len() >= max_results || *files_scanned >= max_files {
+                        return;
+                    }
+                    let entry_path = entry.path();
+                    let meta = match entry.metadata() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+                    if meta.is_dir() {
+                        search_dir(&entry_path, base, query_lower, matches, files_scanned, max_results, max_files);
+                    } else if meta.is_file() && is_searchable(&entry_path) && meta.len() < 100_000 {
+                        *files_scanned += 1;
+                        let rel = entry_path.strip_prefix(base)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
+
+                        if let Ok(content) = std::fs::read_to_string(&entry_path) {
+                            for (line_num, line) in content.lines().enumerate() {
+                                if matches.len() >= max_results {
+                                    break;
+                                }
+                                if line.to_lowercase().contains(query_lower) {
+                                    matches.push(json!({
+                                        "path": rel,
+                                        "line": line_num + 1,
+                                        "context": line.chars().take(200).collect::<String>(),
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let base_path = std::path::Path::new(&path);
+            if !base_path.is_dir() {
+                return Err(format!("Not a directory: {}", path));
+            }
+
+            let query_lower = query.to_lowercase();
+            let mut matches: Vec<Value> = Vec::new();
+            let mut files_scanned: u32 = 0;
+            search_dir(base_path, base_path, &query_lower, &mut matches, &mut files_scanned, max_results, 500);
+
+            Ok(json!({
+                "query": query,
+                "files_scanned": files_scanned,
+                "matches": matches,
             }))
         }
 

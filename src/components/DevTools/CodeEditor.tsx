@@ -47,6 +47,8 @@ interface CodeEditorProps {
     className?: string;
     /** Monaco theme: 'vs' (light), 'vs-dark', or 'tokyo-night' */
     theme?: EditorTheme;
+    /** Send selected code to AeroAgent AI chat */
+    onAskAgent?: (code: string, fileName: string) => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -55,14 +57,23 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     onClose,
     className = '',
     theme: themeProp = 'tokyo-night',
+    onAskAgent,
 }) => {
     const editorRef = useRef<any>(null);
     const monacoRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const onAskAgentRef = useRef(onAskAgent);
+    const fileRef = useRef(file);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [originalContent, setOriginalContent] = useState('');
     const theme = themeProp; // Use prop directly
+
+    // Keep refs in sync so Monaco closure always has latest values
+    useEffect(() => {
+        onAskAgentRef.current = onAskAgent;
+        fileRef.current = file;
+    }, [onAskAgent, file]);
 
     const handleEditorDidMount: OnMount = (editor, monaco) => {
         editorRef.current = editor;
@@ -75,6 +86,24 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         if (file) {
             setOriginalContent(file.content);
         }
+
+        // "Ask AeroAgent" context menu action
+        editor.addAction({
+            id: 'ask-aeroagent',
+            label: 'Ask AeroAgent',
+            contextMenuGroupId: '9_aeroagent',
+            contextMenuOrder: 1,
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyA],
+            run: (ed) => {
+                const selection = ed.getSelection();
+                const selectedText = selection ? ed.getModel()?.getValueInRange(selection) : '';
+                const code = selectedText || ed.getValue();
+                const fileName = fileRef.current?.name || 'unknown';
+                if (onAskAgentRef.current) {
+                    onAskAgentRef.current(code, fileName);
+                }
+            },
+        });
 
         // Force layout update after mount to fix rendering issues
         setTimeout(() => {
@@ -125,6 +154,38 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         resizeObserver.observe(container);
         return () => resizeObserver.disconnect();
     }, []);
+
+    // Listen for editor-reload events (from Agent -> Monaco live sync)
+    useEffect(() => {
+        const handleReload = (e: Event) => {
+            const { path, content } = (e as CustomEvent).detail;
+            if (!file || !path) return;
+
+            // Check if this reload is for the currently open file
+            const normalizedPath = path.replace(/\\/g, '/');
+            const normalizedFile = (file.path || file.name).replace(/\\/g, '/');
+
+            if (normalizedPath === normalizedFile || normalizedFile.endsWith(normalizedPath.split('/').pop() || '') || normalizedPath.endsWith(normalizedFile.split('/').pop() || '')) {
+                const editor = editorRef.current;
+                if (editor) {
+                    // Save cursor position
+                    const position = editor.getPosition();
+                    // Update content
+                    editor.setValue(content);
+                    setOriginalContent(content);
+                    setHasChanges(false);
+                    // Restore cursor position
+                    if (position) {
+                        editor.setPosition(position);
+                        editor.revealPositionInCenter(position);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('editor-reload', handleReload);
+        return () => window.removeEventListener('editor-reload', handleReload);
+    }, [file]);
 
     const handleChange = (value: string | undefined) => {
         if (value !== undefined && value !== originalContent) {

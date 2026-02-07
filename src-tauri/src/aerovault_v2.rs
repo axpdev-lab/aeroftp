@@ -1290,6 +1290,538 @@ pub async fn vault_v2_delete_entry(
     }))
 }
 
+/// Add files to a specific directory inside an AeroVault v2
+/// The target_dir specifies the parent directory path (e.g. "docs/notes")
+/// Files are stored as "target_dir/filename" in the manifest
+#[tauri::command]
+pub async fn vault_v2_add_files_to_dir(
+    vault_path: String,
+    password: String,
+    file_paths: Vec<String>,
+    target_dir: String,
+) -> Result<serde_json::Value, String> {
+    let target_dir = target_dir.trim().trim_matches('/').to_string();
+
+    // Validate target_dir
+    if target_dir.contains("..") {
+        return Err("Directory path cannot contain '..'".into());
+    }
+
+    let pwd = SecretString::from(password);
+
+    // Open and read the entire vault
+    let file = File::open(&vault_path)
+        .map_err(|e| format!("Failed to open vault: {}", e))?;
+    let mut reader = BufReader::new(file);
+
+    // Read header
+    let mut header_buf = [0u8; HEADER_SIZE];
+    reader.read_exact(&mut header_buf)
+        .map_err(|e| format!("Failed to read header: {}", e))?;
+
+    let header = VaultHeader::from_bytes(&header_buf)?;
+    let cascade_mode = header.flags.cascade_mode;
+    let chunk_size = header.chunk_size as usize;
+
+    // Derive keys
+    let base_kek = derive_key(&pwd, &header.salt)?;
+    let (mut kek_master, mut kek_mac) = derive_kek_pair(base_kek.expose_secret());
+
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+
+    kek_master.zeroize();
+    kek_mac.zeroize();
+
+    // Verify header MAC
+    let computed_mac = header.compute_mac(mac_key.expose_secret());
+    if computed_mac != header.header_mac {
+        return Err("Header integrity check failed - wrong password?".into());
+    }
+
+    // Derive ChaCha key for cascade mode if needed
+    let mut chacha_key = if cascade_mode {
+        derive_chacha_key(master_key.expose_secret())
+    } else {
+        [0u8; 32]
+    };
+
+    // Read manifest
+    let mut manifest_len_buf = [0u8; 4];
+    reader.read_exact(&mut manifest_len_buf)
+        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
+    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
+
+    let mut manifest_encrypted = vec![0u8; manifest_len];
+    reader.read_exact(&mut manifest_encrypted)
+        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+
+    let manifest_json = decrypt_filename(
+        master_key.expose_secret(),
+        &String::from_utf8_lossy(&manifest_encrypted),
+    )?;
+    manifest_encrypted.zeroize();
+
+    let mut manifest: VaultManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    // Verify target directory exists (if non-empty)
+    if !target_dir.is_empty() {
+        let target_encrypted = encrypt_filename(master_key.expose_secret(), &target_dir)?;
+        let dir_exists = manifest.entries.iter().any(|e| e.encrypted_name == target_encrypted && e.is_dir);
+        if !dir_exists {
+            return Err(format!("Target directory '{}' does not exist in vault", target_dir));
+        }
+    }
+
+    // Read existing data section
+    let mut existing_data = Vec::new();
+    reader.read_to_end(&mut existing_data)
+        .map_err(|e| format!("Failed to read data: {}", e))?;
+
+    // Current data offset for new files
+    let mut data_offset = existing_data.len() as u64;
+    let mut new_data = Vec::new();
+    let mut added_count = 0;
+
+    // Process each file to add
+    for file_path in &file_paths {
+        let source_file = File::open(file_path)
+            .map_err(|e| format!("Failed to open source file '{}': {}", file_path, e))?;
+        let metadata = source_file.metadata()
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        // Get filename from path
+        let filename = std::path::Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("Invalid filename: {}", file_path))?;
+
+        // Build full vault path: "target_dir/filename" or just "filename"
+        let vault_name = if target_dir.is_empty() {
+            filename.to_string()
+        } else {
+            format!("{}/{}", target_dir, filename)
+        };
+
+        // Check for duplicate
+        let encrypted_name = encrypt_filename(master_key.expose_secret(), &vault_name)?;
+        if manifest.entries.iter().any(|e| e.encrypted_name == encrypted_name) {
+            continue; // Skip duplicates
+        }
+
+        // Read and encrypt file content in chunks
+        let mut source_reader = BufReader::new(source_file);
+        let mut chunk_count = 0u32;
+        let entry_offset = data_offset;
+
+        loop {
+            let mut chunk = vec![0u8; chunk_size];
+            let bytes_read = source_reader.read(&mut chunk)
+                .map_err(|e| format!("Failed to read source: {}", e))?;
+
+            if bytes_read == 0 {
+                break;
+            }
+            chunk.truncate(bytes_read);
+
+            let encrypted_chunk = if cascade_mode {
+                encrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &chunk)?
+            } else {
+                encrypt_chunk(master_key.expose_secret(), &chunk)?
+            };
+
+            let chunk_len = encrypted_chunk.len() as u32;
+            new_data.extend_from_slice(&chunk_len.to_le_bytes());
+            new_data.extend_from_slice(&encrypted_chunk);
+
+            data_offset += 4 + encrypted_chunk.len() as u64;
+            chunk_count += 1;
+
+            chunk.zeroize();
+        }
+
+        // Add manifest entry
+        let modified = metadata.modified()
+            .map(|t| {
+                let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                datetime.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            })
+            .unwrap_or_else(|_| chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+
+        manifest.entries.push(ManifestEntry {
+            encrypted_name,
+            name: String::new(),
+            size: metadata.len(),
+            offset: entry_offset,
+            chunk_count,
+            is_dir: false,
+            modified,
+        });
+
+        added_count += 1;
+    }
+
+    // Update manifest timestamp
+    manifest.modified = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Re-encrypt manifest
+    let manifest_json = serde_json::to_string(&manifest)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+    let encrypted_manifest = encrypt_filename(master_key.expose_secret(), &manifest_json)?;
+    let manifest_bytes = encrypted_manifest.as_bytes();
+
+    chacha_key.zeroize();
+
+    // Write updated vault
+    let file = File::create(&vault_path)
+        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(&header_buf)
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+
+    let manifest_len = manifest_bytes.len() as u32;
+    writer.write_all(&manifest_len.to_le_bytes())
+        .map_err(|e| format!("Failed to write manifest length: {}", e))?;
+    writer.write_all(manifest_bytes)
+        .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    writer.write_all(&existing_data)
+        .map_err(|e| format!("Failed to write existing data: {}", e))?;
+    writer.write_all(&new_data)
+        .map_err(|e| format!("Failed to write new data: {}", e))?;
+
+    writer.flush()
+        .map_err(|e| format!("Failed to flush: {}", e))?;
+
+    Ok(serde_json::json!({
+        "added": added_count,
+        "total": manifest.entries.len()
+    }))
+}
+
+/// Create a directory inside an AeroVault v2
+/// Directories are manifest-only entries with is_dir=true, no data section
+/// Supports nested paths (e.g. "docs/notes") — intermediate directories are created automatically
+#[tauri::command]
+pub async fn vault_v2_create_directory(
+    vault_path: String,
+    password: String,
+    dir_name: String,
+) -> Result<serde_json::Value, String> {
+    // Validate directory name
+    let dir_name = dir_name.trim().trim_matches('/').to_string();
+    if dir_name.is_empty() {
+        return Err("Directory name cannot be empty".into());
+    }
+    if dir_name.contains("..") {
+        return Err("Directory name cannot contain '..'".into());
+    }
+    if dir_name.len() > 4096 {
+        return Err("Directory name too long".into());
+    }
+
+    let pwd = SecretString::from(password);
+
+    // Read the entire vault
+    let vault_data = std::fs::read(&vault_path)
+        .map_err(|e| format!("Failed to read vault: {}", e))?;
+
+    if vault_data.len() < HEADER_SIZE {
+        return Err("Invalid vault file: too small".into());
+    }
+
+    // Parse header
+    let header = VaultHeader::from_bytes(&vault_data[..HEADER_SIZE])?;
+
+    // Derive keys
+    let base_kek = derive_key(&pwd, &header.salt)?;
+    let (mut kek_master, mut kek_mac) = derive_kek_pair(base_kek.expose_secret());
+
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+
+    kek_master.zeroize();
+    kek_mac.zeroize();
+
+    // Verify header MAC
+    let computed_mac = header.compute_mac(mac_key.expose_secret());
+    if computed_mac != header.header_mac {
+        return Err("Header integrity check failed - wrong password?".into());
+    }
+
+    // Read manifest
+    let mut pos = HEADER_SIZE;
+    if vault_data.len() < pos + 4 {
+        return Err("Invalid vault: missing manifest length".into());
+    }
+    let manifest_len = u32::from_le_bytes([
+        vault_data[pos], vault_data[pos + 1], vault_data[pos + 2], vault_data[pos + 3]
+    ]) as usize;
+    pos += 4;
+
+    if vault_data.len() < pos + manifest_len {
+        return Err("Invalid vault: manifest truncated".into());
+    }
+    let manifest_encrypted = &vault_data[pos..pos + manifest_len];
+    pos += manifest_len;
+
+    let manifest_json = decrypt_filename(
+        master_key.expose_secret(),
+        &String::from_utf8_lossy(manifest_encrypted),
+    )?;
+
+    let mut manifest: VaultManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    // Decrypt all existing names to check for duplicates
+    let mut existing_names: Vec<String> = Vec::new();
+    for entry in &manifest.entries {
+        let name = decrypt_filename(master_key.expose_secret(), &entry.encrypted_name)?;
+        existing_names.push(name);
+    }
+
+    // Collect all directories to create (including intermediate ones)
+    // e.g. "a/b/c" → ["a", "a/b", "a/b/c"]
+    let parts: Vec<&str> = dir_name.split('/').collect();
+    let mut dirs_to_create: Vec<String> = Vec::new();
+    for i in 1..=parts.len() {
+        let path = parts[..i].join("/");
+        if !existing_names.contains(&path) {
+            dirs_to_create.push(path);
+        }
+    }
+
+    if dirs_to_create.is_empty() {
+        return Ok(serde_json::json!({
+            "created": 0,
+            "message": "Directory already exists"
+        }));
+    }
+
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Add directory entries to manifest
+    for dir_path in &dirs_to_create {
+        let encrypted_name = encrypt_filename(master_key.expose_secret(), dir_path)?;
+        manifest.entries.push(ManifestEntry {
+            encrypted_name,
+            name: String::new(),
+            size: 0,
+            offset: 0,
+            chunk_count: 0,
+            is_dir: true,
+            modified: now.clone(),
+        });
+    }
+
+    // Update manifest timestamp
+    manifest.modified = now;
+
+    // Re-encrypt manifest
+    let new_manifest_json = serde_json::to_string(&manifest)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+    let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
+    let new_manifest_bytes = new_encrypted_manifest.as_bytes();
+
+    // Rebuild vault: header + new manifest + existing data section
+    let data_section = &vault_data[pos..];
+
+    let file = File::create(&vault_path)
+        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(&vault_data[..HEADER_SIZE])
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+
+    let new_manifest_len = new_manifest_bytes.len() as u32;
+    writer.write_all(&new_manifest_len.to_le_bytes())
+        .map_err(|e| format!("Failed to write manifest length: {}", e))?;
+    writer.write_all(new_manifest_bytes)
+        .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    writer.write_all(data_section)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    writer.flush()
+        .map_err(|e| format!("Failed to flush: {}", e))?;
+
+    let created_count = dirs_to_create.len();
+    Ok(serde_json::json!({
+        "created": created_count,
+        "directories": dirs_to_create,
+        "total": manifest.entries.len()
+    }))
+}
+
+/// Delete entries from an AeroVault v2 with recursive directory support
+/// If the entry is a directory and recursive=true, all children are also removed
+/// If recursive=false and the directory has children, returns an error
+#[tauri::command]
+pub async fn vault_v2_delete_entries(
+    vault_path: String,
+    password: String,
+    entry_names: Vec<String>,
+    recursive: bool,
+) -> Result<serde_json::Value, String> {
+    let pwd = SecretString::from(password);
+
+    // Read the entire vault
+    let vault_data = std::fs::read(&vault_path)
+        .map_err(|e| format!("Failed to read vault: {}", e))?;
+
+    if vault_data.len() < HEADER_SIZE {
+        return Err("Invalid vault file: too small".into());
+    }
+
+    // Parse header
+    let header = VaultHeader::from_bytes(&vault_data[..HEADER_SIZE])?;
+
+    // Derive keys
+    let base_kek = derive_key(&pwd, &header.salt)?;
+    let (mut kek_master, mut kek_mac) = derive_kek_pair(base_kek.expose_secret());
+
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+
+    kek_master.zeroize();
+    kek_mac.zeroize();
+
+    // Verify header MAC
+    let computed_mac = header.compute_mac(mac_key.expose_secret());
+    if computed_mac != header.header_mac {
+        return Err("Header integrity check failed - wrong password?".into());
+    }
+
+    // Read manifest
+    let mut pos = HEADER_SIZE;
+    if vault_data.len() < pos + 4 {
+        return Err("Invalid vault: missing manifest length".into());
+    }
+    let manifest_len = u32::from_le_bytes([
+        vault_data[pos], vault_data[pos + 1], vault_data[pos + 2], vault_data[pos + 3]
+    ]) as usize;
+    pos += 4;
+
+    if vault_data.len() < pos + manifest_len {
+        return Err("Invalid vault: manifest truncated".into());
+    }
+    let manifest_encrypted = &vault_data[pos..pos + manifest_len];
+    pos += manifest_len;
+
+    let manifest_json = decrypt_filename(
+        master_key.expose_secret(),
+        &String::from_utf8_lossy(manifest_encrypted),
+    )?;
+
+    let mut manifest: VaultManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    // Decrypt all names first
+    let mut decrypted_names: Vec<String> = Vec::with_capacity(manifest.entries.len());
+    for entry in &manifest.entries {
+        let name = decrypt_filename(master_key.expose_secret(), &entry.encrypted_name)?;
+        decrypted_names.push(name);
+    }
+
+    // Build set of entries to remove
+    let mut to_remove: Vec<bool> = vec![false; manifest.entries.len()];
+    let mut removed_names: Vec<String> = Vec::new();
+
+    for target_name in &entry_names {
+        let mut found = false;
+
+        for (i, name) in decrypted_names.iter().enumerate() {
+            if name == target_name {
+                found = true;
+
+                // If it's a directory, check children
+                if manifest.entries[i].is_dir {
+                    let prefix = format!("{}/", target_name);
+                    let has_children = decrypted_names.iter().any(|n| n.starts_with(&prefix));
+
+                    if has_children && !recursive {
+                        return Err(format!(
+                            "Directory '{}' is not empty. Use recursive delete to remove it and its contents.",
+                            target_name
+                        ));
+                    }
+
+                    // Mark children for removal if recursive
+                    if recursive {
+                        for (j, child_name) in decrypted_names.iter().enumerate() {
+                            if child_name.starts_with(&prefix) && !to_remove[j] {
+                                to_remove[j] = true;
+                                removed_names.push(child_name.clone());
+                            }
+                        }
+                    }
+                }
+
+                if !to_remove[i] {
+                    to_remove[i] = true;
+                    removed_names.push(name.clone());
+                }
+                break;
+            }
+        }
+
+        if !found {
+            return Err(format!("Entry '{}' not found in vault", target_name));
+        }
+    }
+
+    let original_count = manifest.entries.len();
+
+    // Remove marked entries (iterate in reverse to preserve indices)
+    let mut new_entries = Vec::new();
+    for (i, entry) in manifest.entries.into_iter().enumerate() {
+        if !to_remove[i] {
+            new_entries.push(entry);
+        }
+    }
+    manifest.entries = new_entries;
+
+    // Update manifest timestamp
+    manifest.modified = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Re-encrypt manifest
+    let new_manifest_json = serde_json::to_string(&manifest)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+    let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
+    let new_manifest_bytes = new_encrypted_manifest.as_bytes();
+
+    // Rebuild vault: header + new manifest + existing data section
+    let data_section = &vault_data[pos..];
+
+    let file = File::create(&vault_path)
+        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(&vault_data[..HEADER_SIZE])
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+
+    let new_manifest_len = new_manifest_bytes.len() as u32;
+    writer.write_all(&new_manifest_len.to_le_bytes())
+        .map_err(|e| format!("Failed to write manifest length: {}", e))?;
+    writer.write_all(new_manifest_bytes)
+        .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    writer.write_all(data_section)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    writer.flush()
+        .map_err(|e| format!("Failed to flush: {}", e))?;
+
+    let removed_count = original_count - manifest.entries.len();
+    Ok(serde_json::json!({
+        "deleted": removed_names,
+        "remaining": manifest.entries.len(),
+        "removed_count": removed_count
+    }))
+}
+
 /// Extract all entries from AeroVault v2 to a directory
 #[tauri::command]
 pub async fn vault_v2_extract_all(

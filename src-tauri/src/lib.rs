@@ -24,9 +24,11 @@ mod session_commands;
 mod crypto;
 mod credential_store;
 mod profile_export;
+mod keystore_export;
 mod pty;
 mod ssh_shell;
 mod ai_tools;
+mod plugins;
 mod ai_stream;
 mod archive_browse;
 mod aerovault;
@@ -4327,6 +4329,30 @@ async fn read_export_metadata(file_path: String) -> Result<profile_export::Expor
         .map_err(|e| e.to_string())
 }
 
+// ============ Full Keystore Export/Import ============
+
+#[tauri::command]
+async fn export_keystore(password: String, file_path: String) -> Result<keystore_export::KeystoreMetadata, String> {
+    keystore_export::export_keystore(&password, std::path::Path::new(&file_path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn import_keystore(
+    password: String,
+    file_path: String,
+    merge_strategy: String,
+) -> Result<keystore_export::KeystoreImportResult, String> {
+    keystore_export::import_keystore(&password, std::path::Path::new(&file_path), &merge_strategy)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::KeystoreMetadata, String> {
+    keystore_export::read_keystore_metadata(std::path::Path::new(&file_path))
+        .map_err(|e| e.to_string())
+}
+
 // ============ App Entry Point ============
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -4632,6 +4658,10 @@ pub fn run() {
             export_server_profiles,
             import_server_profiles,
             read_export_metadata,
+            // Full Keystore Export/Import
+            export_keystore,
+            import_keystore,
+            read_keystore_metadata,
             // Debug & dependencies commands
             get_dependencies,
             check_crate_versions,
@@ -4674,6 +4704,9 @@ pub fn run() {
             aerovault_v2::vault_v2_extract_all,
             aerovault_v2::vault_v2_change_password,
             aerovault_v2::vault_v2_delete_entry,
+            aerovault_v2::vault_v2_create_directory,
+            aerovault_v2::vault_v2_delete_entries,
+            aerovault_v2::vault_v2_add_files_to_dir,
             // Cryptomator vault support
             cryptomator::cryptomator_unlock,
             cryptomator::cryptomator_lock,
@@ -4758,7 +4791,12 @@ pub fn run() {
             ssh_shell_open,
             ssh_shell_write,
             ssh_shell_resize,
-            ssh_shell_close
+            ssh_shell_close,
+            // Plugin system
+            plugins::list_plugins,
+            plugins::execute_plugin_tool,
+            plugins::install_plugin,
+            plugins::remove_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

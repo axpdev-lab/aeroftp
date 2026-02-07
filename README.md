@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 24 tools and vision.
+  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 27 tools, 7 providers, vision, RAG indexing, and plugin system. Unified encrypted keystore for all credentials. Built-in media player with 14 visualizer modes, WebGL GPU shaders, and 10-band EQ.
 </p>
 
 <p align="center">
@@ -71,6 +71,15 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 - **HKDF-SHA256**: 512-bit passphrase derived to 256-bit vault key via RFC 5869
 - **Animated unlock**: Cryptographic step visualization (Argon2id derivation, decryption, HKDF expansion, integrity verification)
 
+### Unified Encrypted Keystore (v1.9.0)
+
+- **All credentials in vault**: Server profiles, AI API keys, OAuth tokens, and application config migrated from localStorage to AES-256-GCM encrypted `vault.db`
+- **`secureStorage.ts` utility**: Vault-first storage with automatic localStorage fallback for backward compatibility
+- **Migration wizard**: Auto-triggers on first launch after upgrade, migrating all legacy data to the encrypted vault
+- **Keystore backup/restore**: Full vault export/import as `.aeroftp-keystore` files, protected with Argon2id (64 MB) + AES-256-GCM
+- **Category tracking**: Server credentials, profiles, AI keys, OAuth tokens, and config entries tracked separately
+- **Merge strategies**: Skip existing entries or overwrite all during import
+
 ### Smart Folder Transfers (v1.8.6+)
 
 - **Folder conflict resolution**: Per-file comparison (size + date) during folder uploads/downloads — skip unchanged files automatically
@@ -92,13 +101,21 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
   - *HMAC-SHA512*: Header integrity verification — detects tampering before decryption
   - *ChaCha20-Poly1305*: Optional cascade mode for defense-in-depth (double encryption)
   - *64 KB chunks*: Optimal streaming performance with per-chunk authentication
+  - *Directory support* (v1.9.0): Create nested folders inside vaults with encrypted directory entries, hierarchical navigation with breadcrumb, and recursive delete for directories with all contents
 - **Cryptomator**: Open and browse Cryptomator format 8 vaults (legacy support via context menu). Decrypt and encrypt files with scrypt + AES-SIV + AES-GCM
 - **Archive Browser**: Browse contents of ZIP, 7z, TAR, and RAR archives in-app without extracting. Selective single-file extraction
 - **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
 
 ### AeroAgent AI (v1.7.0+)
-AI-powered assistant with **24 provider-agnostic tools** that work across all 13 protocols:
+AI-powered assistant with **27 provider-agnostic tools** that work across all 13 protocols:
 - **7 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom
+- **RAG integration** (v1.9.0): `rag_index` auto-indexes workspace files with type/size/preview summaries; `rag_search` performs full-text search across files — AI automatically understands your codebase
+- **Plugin system** (v1.9.0): Extend AeroAgent with custom tools via JSON manifest + shell scripts. Plugins run as sandboxed subprocesses with 30s timeout and 1MB output limit. 6th tab "Plugins" in AI Settings
+- **Multi-step autonomous tools** (v1.9.0): Agent chains multiple tool calls to complete complex tasks. Auto-resumes after user approval of medium/high-risk tools — no need to manually prompt "continue"
+- **Ollama auto-detection** (v1.9.0): Automatically discovers locally running Ollama instances and available models
+- **Conversation export** (v1.9.0): Export chat history as Markdown or JSON for documentation and sharing
+- **Monaco bidirectional sync** (v1.9.0): Live two-way sync between Monaco editor and AI agent — edits flow in both directions
+- **Terminal command execution** (v1.9.0): AI can execute terminal commands directly from chat with user approval
 - **Vision/Multimodal** (v1.8.8): Attach images for analysis — supports GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, Ollama llava. File picker, clipboard paste, auto-resize, up to 5 images per message
 - **Auto panel refresh** (v1.8.8): File panels automatically update after AI tool mutations (create, delete, rename, upload, download) — no manual refresh needed
 - **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
@@ -107,6 +124,8 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 - **Batch transfers**: Multi-file upload/download, sync preview
 - **Find and replace**: Edit text in local and remote files directly from chat
 - **Context-aware**: Knows your connected server, current paths, selected files, and protocol
+- **Compact tool approval**: Inline approval bar with danger-level color coding, expandable args, and one-click Allow/Reject
+- **Collapsible messages**: Long AI responses auto-collapse with gradient fade and "Show more" toggle — keeps chat tidy
 - **Chat history**: Persistent conversations with cost tracking per message
 
 ### Advanced File Management
@@ -121,17 +140,31 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 - **Drag and Drop**: Cross-panel drag for upload/download, intra-panel drag for move
 - **List/Grid view** with thumbnails, sortable columns (name, size, type, date), **media player**
 
+### AeroPlayer Media Engine (v1.9.0)
+- **14 visualizer modes**: 8 Canvas 2D (bars, waveform, radial, spectrum, fractal, vortex, plasma, kaleidoscope) + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
+- **10-band graphic EQ**: Real Web Audio BiquadFilterNode per band (32Hz-16kHz) with 10 presets (Rock, Jazz, Electronic, etc.) and stereo balance control
+- **Beat detection**: Onset energy algorithm with exponential decay, driving beat-reactive effects across all modes
+- **WebGL shader engine**: 6 GLSL fragment shaders ported from CyberPulse — GPU-accelerated ray marching, metaball rendering, fractals, and particle systems
+- **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
+- **Cyber Mode**: Full cyberpunk aesthetic with Tokyo Night palette, particle system, and forced beat-triggered glitch
+- **Keyboard shortcuts**: Space (play/pause), arrows (seek/volume), E (EQ), M (mute), L (loop), C (cyber), V (cycle 14 modes)
+- **Zero dependencies**: Replaced Howler.js with native HTML5 `<audio>` + Web Audio API — fixes play/pause bug and large file buffering
+
 ### DevTools Panel
 - **Monaco Editor** (VS Code engine) for remote file editing with syntax highlighting
+- **Monaco <-> Agent bidirectional live sync** (v1.9.0): Edits in the editor and AI agent flow in both directions in real time
 - Integrated **terminal** with 8 themes, multiple tabs, SSH remote shell, font size control
+- **Terminal command execution from AI** (v1.9.0): AeroAgent can execute terminal commands directly with user approval
 - **AeroAgent** AI assistant panel with tool approval workflow
 
 ### Security
+- **Unified Encrypted Keystore** (v1.9.0): ALL sensitive data (server profiles, AI config, OAuth credentials) now stored in the AES-256-GCM encrypted vault — nothing remains in localStorage
+- **Keystore backup/restore** (v1.9.0): Export/import `.aeroftp-keystore` files protected with Argon2id (64 MB) + AES-256-GCM, with category tracking and merge strategies
+- **Migration wizard** (v1.9.0): Automatic one-time migration of legacy localStorage data to encrypted vault on first launch
 - **AeroVault v2**: Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-256-KW key wrapping, AES-SIV filename encryption, Argon2id (128 MiB), HMAC-SHA512 header integrity, optional ChaCha20 cascade
 - **Universal Vault** (v1.8.6+): Single `vault.key` + `vault.db` backend (AES-256-GCM, Argon2id, HKDF-SHA256) — no OS keyring dependency
 - **Master Password** (optional): Argon2id (128 MiB, t=4, p=4) encrypted passphrase with auto-lock timeout
 - **Cryptomator vaults**: Format 8 compatibility (scrypt + AES-SIV + AES-GCM) via context menu
-- **AI API keys in Keyring**: API keys for AI providers stored securely, never in localStorage
 - **XSS-hardened AI chat** (v1.8.8): Source-level HTML escaping before markdown rendering; strict CSP with no `unsafe-eval`
 - **AI tool confirmation** (v1.8.8): Local filesystem tools require explicit user approval — no silent file reads
 - **OAuth token protection** (v1.8.8): Tokens never written to disk unencrypted; vault auto-init or in-memory-only storage
@@ -157,7 +190,7 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 | Languages | **51** | 47 | ~10 | ~15 |
 | FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
 | Code Editor | Monaco (VS Code) | No | No | Basic |
-| AI Assistant | **24 tools, 7 providers, vision** | No | No | No |
+| AI Assistant | **27 tools, 7 providers, vision, RAG, plugins** | No | No | No |
 | Cryptomator | **Yes (format 8)** | No | Yes | No |
 | Encrypted Vaults | **AeroVault (AES-256-GCM-SIV)** | No | No | No |
 | Folder Conflict Resolution | **Per-file comparison** | Basic overwrite | No | Timestamp-based |
@@ -167,6 +200,7 @@ AI-powered assistant with **24 provider-agnostic tools** that work across all 13
 | Sync Index Cache | Yes | No | No | No |
 | Dark Mode | Yes | No | Yes | No |
 | Archive Encryption | ZIP AES-256, 7z AES-256 | No | No | No |
+| Media Player | **14 modes, WebGL shaders, 10-band EQ** | No | No | No |
 | Memory Zeroization | Yes (Rust) | No | No | No |
 
 ---

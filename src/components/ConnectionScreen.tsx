@@ -16,6 +16,7 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { getProviderById, ProviderConfig } from '../providers';
+import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -95,10 +96,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Load servers when opening export/import dialog
     useEffect(() => {
         if (showExportImport) {
+            // Sync fallback first
             try {
                 const stored = localStorage.getItem(SERVERS_STORAGE_KEY);
                 if (stored) setServers(JSON.parse(stored));
             } catch { /* ignore */ }
+            // Then try vault
+            (async () => {
+                const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY);
+                if (vaultServers && vaultServers.length > 0) setServers(vaultServers);
+            })();
         }
     }, [showExportImport]);
     const [securityInfoOpen, setSecurityInfoOpen] = useState(false);
@@ -142,7 +149,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             optionsToSave.session_expires_at = Date.now() + 24 * 60 * 60 * 1000;
         }
 
-        const existingServers = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
+        // Try vault first, fallback to localStorage
+        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
 
         if (editingProfileId) {
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
@@ -167,6 +175,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             });
 
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
+            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => {});
             setSavedServersUpdate(Date.now());
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -186,7 +195,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 providerId: selectedProviderId || undefined,
             };
 
-            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+            const newServers = [...existingServers, newServer];
+            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
+            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
             setSavedServersUpdate(Date.now());
         }
     };
@@ -529,6 +540,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onConnected={(displayName) => {
                                     // Save OAuth connection if requested
                                     if (saveConnection) {
+                                        // Load from localStorage synchronously, then persist to vault
                                         const existingServers: ServerProfile[] = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
                                         const saveName = connectionName || displayName;
                                         // Check for duplicate: same name and protocol
@@ -545,13 +557,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 initialPath: '/',
                                                 localInitialPath: quickConnectDirs.localDir,
                                             };
-                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify([...existingServers, newServer]));
+                                            const newServers = [...existingServers, newServer];
+                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
+                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
                                         } else {
                                             // Update existing entry
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? { ...s, localInitialPath: quickConnectDirs.localDir, lastConnected: new Date().toISOString() } : s
                                             );
                                             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
+                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                                         }
                                     }
                                     // After OAuth completes, trigger connection
@@ -1084,6 +1099,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         const updated = [...servers, ...newServers];
                         setServers(updated);
                         localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
+                        secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                         setShowExportImport(false);
                         setSavedServersUpdate(Date.now());
                     }}

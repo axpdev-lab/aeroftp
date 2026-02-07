@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Sparkles, Settings2, Mic, MicOff, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeftOpen, Copy, Check, ImageIcon, X } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Settings2, Mic, MicOff, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeftOpen, Copy, Check, ImageIcon, X, Download } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
-import { readFile } from '@tauri-apps/plugin-fs';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { readFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType, TaskType } from '../../types/ai';
 import { AgentToolCall, AGENT_TOOLS, generateToolsPrompt, toNativeDefinitions, requiresApproval, getToolByName } from '../../types/tools';
+import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
 import { Conversation, ConversationMessage, loadHistory, saveConversation, deleteConversation, createConversation } from '../../utils/chatHistory';
+import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 
 // Vision constants
@@ -63,6 +65,10 @@ interface AIChatProps {
     serverUser?: string;
     /** Callback to refresh file panels after AI tool mutations */
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
+    /** Currently open file name in the code editor */
+    editorFileName?: string;
+    /** Currently open file path in the code editor */
+    editorFilePath?: string;
 }
 
 // Get provider icon based on type
@@ -131,6 +137,84 @@ async function withRetry<T>(
     throw lastError;
 }
 
+// Estimate token count for a string (~4 chars per token heuristic)
+function estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+}
+
+// Build a context-aware message window within a token budget
+function buildMessageWindow(
+    allMessages: Message[],
+    systemPromptTokens: number,
+    currentUserTokens: number,
+    maxContextTokens: number,
+): { messages: Array<{ role: string; content: string }>; summarized: boolean } {
+    // Reserve tokens: system prompt + current message + response buffer
+    const responseBuffer = 1024; // reserve for the AI response
+    const availableTokens = maxContextTokens - systemPromptTokens - currentUserTokens - responseBuffer;
+
+    if (availableTokens <= 0) {
+        // Not enough budget — just include last 2 messages
+        return {
+            messages: allMessages.slice(-2).map(m => ({
+                role: m.role === 'user' ? 'user' : 'assistant',
+                content: m.content,
+            })),
+            summarized: false,
+        };
+    }
+
+    // Walk backwards from most recent, accumulating tokens
+    let usedTokens = 0;
+    let lastIncludedIndex = allMessages.length;
+
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+        const msgTokens = estimateTokens(allMessages[i].content);
+        if (usedTokens + msgTokens > availableTokens) {
+            lastIncludedIndex = i + 1;
+            break;
+        }
+        usedTokens += msgTokens;
+        lastIncludedIndex = i;
+    }
+
+    // If all messages fit, return them as-is
+    if (lastIncludedIndex === 0) {
+        return {
+            messages: allMessages.map(m => ({
+                role: m.role === 'user' ? 'user' : 'assistant',
+                content: m.content,
+            })),
+            summarized: false,
+        };
+    }
+
+    // Some messages were excluded — generate a summary placeholder
+    const excludedMessages = allMessages.slice(0, lastIncludedIndex);
+    const includedMessages = allMessages.slice(lastIncludedIndex);
+
+    // Build a compact summary of excluded messages
+    const summaryParts: string[] = [];
+    for (const msg of excludedMessages) {
+        const preview = msg.content.slice(0, 100) + (msg.content.length > 100 ? '...' : '');
+        summaryParts.push(`[${msg.role}]: ${preview}`);
+    }
+
+    const summaryText = `Previous conversation summary (${excludedMessages.length} messages):\n${summaryParts.slice(-5).join('\n')}`;
+
+    const result: Array<{ role: string; content: string }> = [];
+    result.push({ role: 'assistant', content: summaryText });
+
+    for (const m of includedMessages) {
+        result.push({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.content,
+        });
+    }
+
+    return { messages: result, summarized: true };
+}
+
 // Selected model state
 interface SelectedModel {
     providerId: string;
@@ -151,7 +235,7 @@ const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
     archive_create: 'both', archive_extract: 'both',
 };
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation, editorFileName, editorFilePath }) => {
     const t = useTranslation();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -168,9 +252,49 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
     const [attachedImages, setAttachedImages] = useState<VisionImage[]>([]);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const [isAutoExecuting, setIsAutoExecuting] = useState(false);
+    const [autoStepCount, setAutoStepCount] = useState(0);
+    const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+    // AI settings cached from vault (sync init from localStorage, then async vault refresh)
+    const [cachedAiSettings, setCachedAiSettings] = useState<AISettings | null>(() => {
+        try {
+            const raw = localStorage.getItem('aeroftp_ai_settings');
+            return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+    });
+    const autoStopRef = useRef(false);
+    const multiStepContextRef = useRef<{
+        aiRequest: Record<string, unknown>;
+        messageHistory: Array<Record<string, unknown>>;
+        modelInfo: { modelName: string; providerName: string; providerType: AIProviderType };
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
+    } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const historyLoadedRef = useRef(false);
+    const ragIndexRef = useRef<Record<string, unknown> | null>(null);
+    const [pluginManifests, setPluginManifests] = useState<PluginManifest[]>([]);
+
+    // Refresh AI settings from vault (async, with localStorage fallback)
+    const refreshAiSettings = useCallback(async () => {
+        const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
+        if (settings) setCachedAiSettings(settings);
+    }, []);
+
+    // Load AI settings from vault on mount
+    useEffect(() => { refreshAiSettings(); }, [refreshAiSettings]);
+
+    // Load plugins on mount
+    useEffect(() => {
+        invoke<PluginManifest[]>('list_plugins')
+            .then(manifests => setPluginManifests(manifests))
+            .catch(() => setPluginManifests([]));
+    }, []);
+
+    // Merge built-in tools with plugin tools
+    const pluginTools = allPluginTools(pluginManifests);
+    const allTools = [...AGENT_TOOLS, ...pluginTools];
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -291,6 +415,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         sync_preview: 'Comparing directories',
         archive_create: 'Creating archive',
         archive_extract: 'Extracting archive',
+        terminal_execute: 'Running command in terminal',
     };
 
     // Simple markdown renderer with strict HTML sanitization.
@@ -342,25 +467,42 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         detail = `<span class="opacity-70 ml-1.5">${left} &#8596; ${right}</span>`;
                     }
                 } catch { /* ignore */ }
-                return `<div class="inline-flex items-center gap-1.5 bg-gray-700 rounded-md px-2.5 py-0.5 my-1 text-xs border-l-[3px] border-purple-500"><span class="text-purple-400">&#9881;</span><strong>${label}</strong>${detail}</div>`;
+                const isPluginTool = !getToolByName(toolName);
+                const icon = isPluginTool ? '&#129513;' : '&#9881;';
+                const borderColor = isPluginTool ? 'border-cyan-500' : 'border-purple-500';
+                const iconColor = isPluginTool ? 'text-cyan-400' : 'text-purple-400';
+                return `<div class="inline-flex items-center gap-1.5 bg-gray-700 rounded-md px-2.5 py-0.5 my-1 text-xs border-l-[3px] ${borderColor}"><span class="${iconColor}">${icon}</span><strong>${label}</strong>${detail}</div>`;
             }
         );
     };
 
     useEffect(() => {
         scrollToBottom();
-        // Persist after assistant replies (when messages have at least 2 entries)
-        if (messages.length >= 2 && messages[messages.length - 1].role === 'assistant') {
+        // Persist conversation whenever there's at least 1 message
+        if (messages.length > 0) {
             persistConversation(messages);
         }
     }, [messages]);
 
+    // Save conversation on unmount (component destroyed when DevTools closes)
+    const messagesRef = useRef(messages);
+    messagesRef.current = messages;
+    useEffect(() => {
+        return () => {
+            if (messagesRef.current.length > 0) {
+                persistConversation(messagesRef.current);
+            }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Load available models from settings (API keys fetched from OS Keyring)
     const loadModels = async () => {
-        const settingsJson = localStorage.getItem('aeroftp_ai_settings');
-        if (settingsJson) {
+        // Read from vault with localStorage fallback, update cache
+        const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
+        if (settings) {
+            setCachedAiSettings(settings);
             try {
-                const settings: AISettings = JSON.parse(settingsJson);
                 const models: SelectedModel[] = [];
 
                 // Check which providers have API keys in keyring
@@ -442,6 +584,42 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
         }).catch(() => {});
     }, []);
+
+    // Listen for "Ask AeroAgent" events from Monaco editor
+    useEffect(() => {
+        const handleAskAgent = (e: Event) => {
+            const { code, fileName } = (e as CustomEvent).detail;
+            const language = fileName.split('.').pop() || 'text';
+            const trimmedCode = code.length > 2000 ? code.slice(0, 2000) + '\n// ...(truncated)' : code;
+            const contextText = `Regarding this code from \`${fileName}\`:\n\`\`\`${language}\n${trimmedCode}\n\`\`\`\n\n`;
+            setInput(contextText);
+            // Focus the input
+            setTimeout(() => {
+                if (inputRef.current) {
+                    inputRef.current.focus();
+                    inputRef.current.style.height = 'auto';
+                    inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
+                }
+            }, 100);
+        };
+        window.addEventListener('aeroagent-ask', handleAskAgent);
+        return () => window.removeEventListener('aeroagent-ask', handleAskAgent);
+    }, []);
+
+    // Auto-index workspace for RAG context
+    useEffect(() => {
+        const indexPath = localPath || remotePath;
+        if (!indexPath) { ragIndexRef.current = null; return; }
+
+        invoke('execute_ai_tool', {
+            toolName: 'rag_index',
+            args: { path: indexPath, recursive: true, max_files: 100 },
+        }).then((result: unknown) => {
+            ragIndexRef.current = result as Record<string, unknown>;
+        }).catch(() => {
+            ragIndexRef.current = null;
+        });
+    }, [localPath, remotePath]);
 
     // Save conversation after messages change
     const persistConversation = useCallback(async (msgs: Message[]) => {
@@ -585,8 +763,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         return null;
     };
 
-    // Execute a tool via unified provider-agnostic command
+    // Execute a tool via unified provider-agnostic command (built-in or plugin)
     const executeToolByName = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {
+        const plugin = findPluginForTool(pluginManifests, toolName);
+        if (plugin) {
+            return await invoke('execute_plugin_tool', {
+                pluginId: plugin.id,
+                toolName,
+                argsJson: JSON.stringify(args),
+            });
+        }
         return await invoke('execute_ai_tool', { toolName, args });
     };
 
@@ -666,14 +852,36 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     };
 
     // Execute a tool
-    const executeTool = async (toolCall: AgentToolCall) => {
+    const executeTool = async (toolCall: AgentToolCall): Promise<string | null> => {
         const tool = getToolByName(toolCall.toolName);
         if (!tool) {
             setPendingToolCall(null);
-            return;
+            return null;
         }
 
         try {
+            // Special case: terminal_execute is frontend-only (not sent to Rust backend)
+            if (toolCall.toolName === 'terminal_execute') {
+                const command = (toolCall.args.command as string) || '';
+                if (!command) {
+                    throw new Error('No command specified');
+                }
+                // Dispatch event for terminal to pick up
+                window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command } }));
+                // Also activate terminal panel
+                window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
+
+                const resultMessage: Message = {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: `Command sent to terminal: \`${command}\``,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, resultMessage]);
+                setPendingToolCall(null);
+                return 'Command sent to terminal';
+            }
+
             const result = await executeToolByName(toolCall.toolName, toolCall.args);
             const formattedResult = formatToolResult(toolCall.toolName, result);
             const resultMessage: Message = {
@@ -689,16 +897,230 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (mutationTarget && onFileMutation) {
                 onFileMutation(mutationTarget);
             }
+
+            // Notify Monaco editor of file change for live sync
+            if (toolCall.toolName === 'local_edit' || toolCall.toolName === 'local_write') {
+                const changedPath = (toolCall.args.path as string) || '';
+                if (changedPath) {
+                    window.dispatchEvent(new CustomEvent('file-changed', { detail: { path: changedPath } }));
+                }
+            }
+
+            setPendingToolCall(null);
+            return formattedResult;
         } catch (error: any) {
             const errorMessage: Message = {
                 id: Date.now().toString(),
                 role: 'assistant',
-                content: `❌ Tool failed: ${error.message || error.toString()}`,
+                content: `Tool failed: ${error.message || error.toString()}`,
                 timestamp: new Date(),
             };
             setMessages(prev => [...prev, errorMessage]);
+            setPendingToolCall(null);
+            return null;
         }
-        setPendingToolCall(null);
+    };
+
+    // Multi-step autonomous tool execution loop
+    const executeMultiStep = async (
+        initialToolResult: string,
+        aiRequest: Record<string, unknown>,
+        messageHistory: Array<Record<string, unknown>>,
+        modelInfo: { modelName: string; providerName: string; providerType: AIProviderType },
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; inputCostPer1k?: number; outputCostPer1k?: number } | undefined,
+    ) => {
+        const MAX_STEPS = 10;
+        let stepCount = 1;
+        let lastToolResult = initialToolResult;
+        setIsAutoExecuting(true);
+        setAutoStepCount(1);
+        autoStopRef.current = false;
+
+        try {
+            while (stepCount < MAX_STEPS && !autoStopRef.current) {
+                // Add tool result to message history for next AI call
+                messageHistory.push({ role: 'assistant', content: `Tool result:\n${lastToolResult}` });
+                messageHistory.push({ role: 'user', content: 'Continue with the next step based on the tool result above. If the task is complete, respond normally without calling a tool.' });
+
+                // Make another AI call
+                const response = await invoke<{
+                    content: string;
+                    model: string;
+                    tokens_used?: number;
+                    input_tokens?: number;
+                    output_tokens?: number;
+                    tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
+                }>('ai_chat', { request: { ...aiRequest, messages: messageHistory } });
+
+                // Parse tool call from response
+                let toolParsed: { tool: string; args: Record<string, unknown> } | null = null;
+                if (response.tool_calls && response.tool_calls.length > 0) {
+                    const tc = response.tool_calls[0];
+                    const args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments;
+                    toolParsed = { tool: tc.name, args: args as Record<string, unknown> };
+                } else {
+                    toolParsed = parseToolCall(response.content);
+                }
+
+                if (!toolParsed) {
+                    // AI responded without a tool call - show final response and stop
+                    const tokenInfo: Message['tokenInfo'] = response.input_tokens || response.output_tokens ? {
+                        inputTokens: response.input_tokens,
+                        outputTokens: response.output_tokens,
+                        totalTokens: (response.input_tokens || 0) + (response.output_tokens || 0),
+                        cost: modelDef?.inputCostPer1k && modelDef?.outputCostPer1k
+                            ? ((response.input_tokens || 0) / 1000) * modelDef.inputCostPer1k +
+                              ((response.output_tokens || 0) / 1000) * modelDef.outputCostPer1k
+                            : undefined,
+                    } : undefined;
+
+                    const finalMsg: Message = {
+                        id: Date.now().toString(),
+                        role: 'assistant',
+                        content: response.content,
+                        timestamp: new Date(),
+                        modelInfo,
+                        tokenInfo,
+                    };
+                    setMessages(prev => [...prev, finalMsg]);
+                    break;
+                }
+
+                // Tool call found - check if it requires approval
+                const tool = getToolByName(toolParsed.tool);
+                if (!tool) break;
+
+                const needsApproval = requiresApproval(toolParsed.tool);
+                if (needsApproval) {
+                    // Pause multi-step for user approval
+                    const toolCall: AgentToolCall = {
+                        id: Date.now().toString(),
+                        toolName: toolParsed.tool,
+                        args: toolParsed.args,
+                        status: 'pending',
+                    };
+                    const pendingMsg: Message = {
+                        id: (Date.now() + 1).toString(),
+                        role: 'assistant',
+                        content: response.content || '',
+                        timestamp: new Date(),
+                        modelInfo,
+                    };
+                    setMessages(prev => [...prev, pendingMsg]);
+                    multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
+                    setPendingToolCall(toolCall);
+                    break; // Stop auto-loop, user must approve manually
+                }
+
+                // Safe tool - auto-execute
+                stepCount++;
+                setAutoStepCount(stepCount);
+
+                const toolCall: AgentToolCall = {
+                    id: Date.now().toString(),
+                    toolName: toolParsed.tool,
+                    args: toolParsed.args,
+                    status: 'approved',
+                };
+
+                const result = await executeTool(toolCall);
+                if (!result) break; // Tool failed, stop loop
+
+                lastToolResult = result;
+            }
+
+            if (stepCount >= MAX_STEPS) {
+                const maxMsg: Message = {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: `Multi-step execution completed after ${MAX_STEPS} steps (maximum reached).`,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, maxMsg]);
+            }
+        } catch (error: unknown) {
+            const errMsg: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `Multi-step execution error: ${String(error)}`,
+                timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, errMsg]);
+        } finally {
+            setIsAutoExecuting(false);
+            setAutoStepCount(0);
+            setIsLoading(false);
+        }
+    };
+
+    // Export conversation
+    const exportConversation = async (format: 'markdown' | 'json') => {
+        setShowExportMenu(false);
+        if (messages.length === 0) return;
+
+        try {
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const title = conversations.find(c => c.id === activeConversationId)?.title || 'AeroAgent Chat';
+
+            if (format === 'markdown') {
+                const lines: string[] = [
+                    `# ${title}`,
+                    `*Exported on ${new Date().toLocaleString()}*`,
+                    '',
+                ];
+                for (const msg of messages) {
+                    const role = msg.role === 'user' ? 'User' : 'AeroAgent';
+                    const modelTag = msg.modelInfo ? ` *(${msg.modelInfo.modelName})*` : '';
+                    lines.push(`### ${role}${modelTag}`);
+                    lines.push(msg.content);
+                    if (msg.tokenInfo?.totalTokens) {
+                        lines.push(`> ${msg.tokenInfo.totalTokens} tokens${msg.tokenInfo.cost ? ` · $${msg.tokenInfo.cost.toFixed(4)}` : ''}`);
+                    }
+                    lines.push('');
+                }
+                lines.push('---');
+                lines.push('*Exported from AeroFTP AeroAgent*');
+
+                const filePath = await save({
+                    defaultPath: `aerochat-${timestamp}.md`,
+                    filters: [{ name: 'Markdown', extensions: ['md'] }],
+                });
+                if (filePath) {
+                    await writeTextFile(filePath, lines.join('\n'));
+                }
+            } else {
+                const conv = conversations.find(c => c.id === activeConversationId);
+                const exportData = {
+                    title,
+                    exportedAt: new Date().toISOString(),
+                    messageCount: messages.length,
+                    totalTokens: messages.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0),
+                    totalCost: messages.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0),
+                    messages: messages.map(m => ({
+                        role: m.role,
+                        content: m.content,
+                        timestamp: m.timestamp.toISOString(),
+                        modelInfo: m.modelInfo || null,
+                        tokenInfo: m.tokenInfo || null,
+                    })),
+                    metadata: conv ? {
+                        conversationId: conv.id,
+                        createdAt: conv.createdAt,
+                        updatedAt: conv.updatedAt,
+                    } : null,
+                };
+
+                const filePath = await save({
+                    defaultPath: `aerochat-${timestamp}.json`,
+                    filters: [{ name: 'JSON', extensions: ['json'] }],
+                });
+                if (filePath) {
+                    await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
+                }
+            }
+        } catch {
+            // Dialog cancelled or write error — silent
+        }
     };
 
     const handleSend = async () => {
@@ -726,13 +1148,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error('No model selected. Click ⚙️ to configure a provider.');
             }
 
-            // Load settings to get provider config
-            const settingsJson = localStorage.getItem('aeroftp_ai_settings');
-            if (!settingsJson) {
+            // Load settings from vault (with localStorage fallback)
+            const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
+            if (!settings) {
                 throw new Error('No AI providers configured. Click ⚙️ to add one.');
             }
-
-            const settings: AISettings = JSON.parse(settingsJson);
+            setCachedAiSettings(settings);
 
             // Auto-routing: detect task type and potentially override model
             let activeModel = selectedModel;
@@ -778,12 +1199,37 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (remotePath) contextLines.push(`- Remote path: ${remotePath}`);
             if (localPath) contextLines.push(`- Local path: ${localPath}`);
             if (selectedFiles && selectedFiles.length > 0) contextLines.push(`- Selected files: ${selectedFiles.slice(0, 10).join(', ')}${selectedFiles.length > 10 ? ` (+${selectedFiles.length - 10} more)` : ''}`);
+            if (editorFileName) contextLines.push(`- Editor: currently editing "${editorFileName}"${editorFilePath ? ` (${editorFilePath})` : ''}`);
+
+            // Auto-index workspace for RAG context (cached, non-blocking)
+            if (ragIndexRef.current) {
+                const idx = ragIndexRef.current;
+                const extSummary = Object.entries(idx.extensions || {})
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .slice(0, 8)
+                    .map(([ext, count]) => `${count} .${ext}`)
+                    .join(', ');
+                contextLines.push(`- Workspace indexed: ${idx.files_count} files (${extSummary})`);
+            }
+
             const contextBlock = contextLines.length > 0
                 ? `\n\nCURRENT CONTEXT:\n${contextLines.join('\n')}`
                 : '';
 
-            // Add system prompt with tools + context
-            const systemPrompt = `You are AeroAgent, the built-in AI assistant for AeroFTP — a multi-protocol file manager supporting FTP, FTPS, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
+            // Build system prompt - use custom if configured
+            const customPrompt = settings.advancedSettings?.useCustomPrompt && settings.advancedSettings?.customSystemPrompt?.trim();
+
+            const systemPrompt = customPrompt
+                ? `${settings.advancedSettings.customSystemPrompt}
+
+## Tools
+When you need to use a tool, respond with:
+TOOL: tool_name
+ARGS: {"param": "value"}
+
+Available tools:
+${generateToolsPrompt()}${contextBlock}`
+                : `You are AeroAgent, the built-in AI assistant for AeroFTP — a multi-protocol file manager supporting FTP, FTPS, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
 
 ## Identity & Tone
 - Professional yet approachable. Be concise and action-oriented.
@@ -889,6 +1335,9 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - For configuration help: list required fields, then optional fields, with examples.
 - Keep responses under 500 words unless the user asks for detail.${contextBlock}`;
 
+            // Check model capabilities (needed for context budget calculation)
+            const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+
             // Build message history (images only on the current user message)
             const currentUserMsg: Record<string, unknown> = {
                 role: 'user',
@@ -900,12 +1349,19 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                     media_type: img.mediaType,
                 }));
             }
+
+            // Build context-aware message window based on model's token limit
+            const modelMaxTokens = modelDef?.maxTokens || 4096;
+            const contextBudget = Math.floor(modelMaxTokens * 0.7); // 70% for context
+            const systemTokens = estimateTokens(systemPrompt);
+            const currentMsgTokens = estimateTokens(userMessage.content);
+            const { messages: windowMessages } = buildMessageWindow(
+                messages, systemTokens, currentMsgTokens, contextBudget,
+            );
+
             const messageHistory = [
                 { role: 'system', content: systemPrompt },
-                ...messages.slice(-10).map(m => ({
-                    role: m.role === 'user' ? 'user' : 'assistant',
-                    content: m.content,
-                })),
+                ...windowMessages,
                 currentUserMsg,
             ];
 
@@ -916,8 +1372,6 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
             }
             recordRequest(provider.id);
 
-            // Check model capabilities
-            const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
             const useNativeTools = modelDef?.supportsTools === true;
             const useStreaming = modelDef?.supportsStreaming === true;
 
@@ -936,7 +1390,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 messages: messageHistory,
                 max_tokens: settings.advancedSettings?.maxTokens || 4096,
                 temperature: settings.advancedSettings?.temperature || 0.7,
-                ...(useNativeTools ? { tools: toNativeDefinitions(AGENT_TOOLS) } : {}),
+                ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
             };
 
             if (useStreaming) {
@@ -1021,11 +1475,17 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                         // Update the streamed message or add approval
                         if (toolCall.status === 'pending') {
                             setMessages(prev => prev.map(m =>
-                                m.id === msgId ? { ...m, content: streamContent || `I want to execute **${toolLabels[toolParsed!.tool] || toolParsed!.tool}**${toolParsed!.args.path ? ` → \`${toolParsed!.args.path}\`` : ''}. Approve or cancel:` } : m
+                                m.id === msgId ? { ...m, content: streamContent || '' } : m
                             ));
+                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
                             setPendingToolCall(toolCall);
                         } else {
-                            await executeTool(toolCall);
+                            const toolResult = await executeTool(toolCall);
+                            // Start multi-step loop if tool was auto-executed (safe)
+                            if (toolResult && !autoStopRef.current) {
+                                await executeMultiStep(toolResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                                return; // Multi-step handles setIsLoading
+                            }
                         }
                     }
                 } else {
@@ -1081,14 +1541,19 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                             const pendingMessage: Message = {
                                 id: (Date.now() + 1).toString(),
                                 role: 'assistant',
-                                content: response.content || `I want to execute **${toolLabels[toolParsed.tool] || toolParsed.tool}**${toolParsed.args.path ? ` → \`${toolParsed.args.path}\`` : ''}. Approve or cancel:`,
+                                content: response.content || '',
                                 timestamp: new Date(),
                                 modelInfo,
                             };
                             setMessages(prev => [...prev, pendingMessage]);
+                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
                             setPendingToolCall(toolCall);
                         } else {
-                            await executeTool(toolCall);
+                            const toolResult = await executeTool(toolCall);
+                            if (toolResult && !autoStopRef.current) {
+                                await executeMultiStep(toolResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                                return; // Multi-step handles setIsLoading
+                            }
                         }
                     }
                 } else {
@@ -1131,7 +1596,9 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 hint = 'Model not found. Check your model name in AI Settings.';
             } else {
                 const errLower = rawErr.toLowerCase();
-                if (errLower.includes('unauthorized') || errLower.includes('auth')) {
+                if (errLower.includes('tool use') || errLower.includes('tool_use') || errLower.includes('function calling')) {
+                    hint = 'This model does not support tool use. Disable "Tools" for this model in AI Settings → Models.';
+                } else if (errLower.includes('unauthorized') || errLower.includes('auth')) {
                     hint = 'Authentication failed. Check your API key in AI Settings.';
                 } else if (errLower.includes('quota') || errLower.includes('rate limit')) {
                     hint = 'Rate limited by the provider. Wait a moment and try again.';
@@ -1182,6 +1649,34 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                     >
                         <Plus size={14} />
                     </button>
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            disabled={messages.length === 0}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Export Chat"
+                        >
+                            <Download size={14} />
+                        </button>
+                        {showExportMenu && (
+                            <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-20 py-1 min-w-[180px]">
+                                <button
+                                    onClick={() => exportConversation('markdown')}
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2"
+                                >
+                                    <span>📝</span>
+                                    <span>Export as Markdown</span>
+                                </button>
+                                <button
+                                    onClick={() => exportConversation('json')}
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2"
+                                >
+                                    <span>📦</span>
+                                    <span>Export as JSON</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button
                         onClick={() => setShowSettings(true)}
                         className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
@@ -1228,7 +1723,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
             )}
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" onClick={() => showExportMenu && setShowExportMenu(false)}>
                 {messages.length === 0 ? (
                     /* Empty State - System Welcome */
                     <div className="h-full flex flex-col items-center justify-center text-center px-6 py-8">
@@ -1282,10 +1777,33 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                             ))}
                                         </div>
                                     )}
-                                    <div
-                                        className="select-text prose prose-invert prose-sm max-w-none"
-                                        dangerouslySetInnerHTML={{ __html: formatToolCallDisplay(renderMarkdown(message.content)) }}
-                                    />
+                                    <div className="relative">
+                                        <div
+                                            className={`select-text prose prose-invert prose-sm max-w-none ${
+                                                message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id)
+                                                    ? 'max-h-[200px] overflow-hidden' : ''
+                                            }`}
+                                            dangerouslySetInnerHTML={{ __html: formatToolCallDisplay(renderMarkdown(message.content)) }}
+                                        />
+                                        {message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id) && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-800 to-transparent flex items-end justify-center">
+                                                <button
+                                                    onClick={() => setExpandedMessages(prev => new Set(prev).add(message.id))}
+                                                    className="text-xs text-purple-400 hover:text-purple-300 pb-0.5"
+                                                >
+                                                    {t('ai.showMore') || 'Show more'} ▾
+                                                </button>
+                                            </div>
+                                        )}
+                                        {message.role === 'assistant' && message.content.length > 500 && expandedMessages.has(message.id) && (
+                                            <button
+                                                onClick={() => setExpandedMessages(prev => { const s = new Set(prev); s.delete(message.id); return s; })}
+                                                className="text-xs text-purple-400 hover:text-purple-300 mt-1"
+                                            >
+                                                {t('ai.showLess') || 'Show less'} ▴
+                                            </button>
+                                        )}
+                                    </div>
                                     <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
                                         <span>{message.timestamp.toLocaleTimeString()}</span>
                                         {message.role === 'assistant' && (
@@ -1331,8 +1849,21 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                 <div className="w-7 h-7 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
                                     <Sparkles size={14} className="text-purple-400 animate-pulse" />
                                 </div>
-                                <div className="bg-gray-800 rounded-lg px-4 py-2 text-gray-400 text-sm">
-                                    {t('ai.thinking')}
+                                <div className="bg-gray-800 rounded-lg px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+                                    {isAutoExecuting ? (
+                                        <>
+                                            <span>Step {autoStepCount}/10</span>
+                                            <span className="mx-1">&mdash;</span>
+                                            <button
+                                                onClick={() => { autoStopRef.current = true; }}
+                                                className="text-red-400 hover:text-red-300 text-xs underline"
+                                            >
+                                                Stop
+                                            </button>
+                                        </>
+                                    ) : (
+                                        t('ai.thinking')
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1340,9 +1871,16 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                             <ToolApproval
                                 toolCall={pendingToolCall}
                                 onApprove={async () => {
-                                    await executeTool(pendingToolCall);
+                                    const toolResult = await executeTool(pendingToolCall);
+                                    // Resume multi-step loop if context was saved
+                                    if (toolResult && multiStepContextRef.current && !autoStopRef.current) {
+                                        const ctx = multiStepContextRef.current;
+                                        multiStepContextRef.current = null;
+                                        await executeMultiStep(toolResult, ctx.aiRequest, ctx.messageHistory, ctx.modelInfo, ctx.modelDef);
+                                    }
                                 }}
                                 onReject={() => {
+                                    multiStepContextRef.current = null;
                                     setPendingToolCall(null);
                                     const rejectedMsg: Message = {
                                         id: Date.now().toString(),
@@ -1514,9 +2052,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                             <span>{selectedModel.displayName}</span>
                                         </>
                                     ) : (() => {
-                                        const settingsJson = localStorage.getItem('aeroftp_ai_settings');
-                                        const settings = settingsJson ? JSON.parse(settingsJson) : null;
-                                        if (settings?.autoRouting?.enabled) {
+                                        if (cachedAiSettings?.autoRouting?.enabled) {
                                             return <><span>🤖</span><span className="text-purple-300">{t('ai.auto')}</span></>;
                                         }
                                         return <span>{t('ai.selectModel')}</span>;
@@ -1528,9 +2064,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                     <div className="absolute left-0 bottom-full mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-10 py-1 min-w-[260px] max-h-[300px] overflow-y-auto">
                                         {/* Auto option when auto-routing is enabled */}
                                         {(() => {
-                                            const settingsJson = localStorage.getItem('aeroftp_ai_settings');
-                                            const settings = settingsJson ? JSON.parse(settingsJson) : null;
-                                            if (settings?.autoRouting?.enabled) {
+                                            if (cachedAiSettings?.autoRouting?.enabled) {
                                                 return (
                                                     <button
                                                         onClick={() => { setSelectedModel(null); setShowModelSelector(false); }}

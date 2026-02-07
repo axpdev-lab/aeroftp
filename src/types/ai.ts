@@ -49,6 +49,8 @@ export interface AISettings {
         temperature: number;        // 0.0 - 2.0
         maxTokens: number;          // Max response length
         conversationStyle: 'precise' | 'balanced' | 'creative';
+        customSystemPrompt?: string;
+        useCustomPrompt?: boolean;
     };
     defaultModelId: string | null;
 }

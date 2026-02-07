@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, Plus, Trash2, Edit2, Check, AlertCircle,
-    Zap, Server, Key, Globe, Cpu, Settings2, ChevronDown, ChevronRight, Sliders
+    Zap, Server, Key, Globe, Cpu, Settings2, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle
 } from 'lucide-react';
+import type { PluginManifest } from '../../types/plugins';
 import {
     AIProvider, AIModel, AISettings, AIProviderType,
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
 } from '../../types/ai';
 import { logger } from '../../utils/logger';
+import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -184,11 +186,20 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
 
 export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClose }) => {
     const [settings, setSettings] = useState<AISettings>(getDefaultAISettings());
-    const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'routing' | 'advanced'>('providers');
+    const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'routing' | 'advanced' | 'prompt' | 'plugins'>('providers');
+    const [plugins, setPlugins] = useState<PluginManifest[]>([]);
+
+    // Load plugins
+    useEffect(() => {
+        invoke<PluginManifest[]>('list_plugins')
+            .then(setPlugins)
+            .catch(() => setPlugins([]));
+    }, []);
     const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null);
     const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
     const [testingProvider, setTestingProvider] = useState<string | null>(null);
-    const [testResults, setTestResults] = useState<Record<string, 'success' | 'error' | null>>({});
+    const [testResults, setTestResults] = useState<Record<string, { status: 'success' | 'error'; message?: string } | null>>({});
+    const [detectingModels, setDetectingModels] = useState<string | null>(null);
 
     // Model editing state
     const [editingModel, setEditingModel] = useState<{
@@ -197,61 +208,75 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         isNew: boolean;
     } | null>(null);
 
-    // Load settings from localStorage + API keys from OS Keyring
+    // Load settings from localStorage (sync) + vault (async) + API keys from OS Keyring
     useEffect(() => {
-        const loadSettings = async () => {
-            const saved = localStorage.getItem(AI_SETTINGS_KEY);
-            if (!saved) return;
-            try {
-                const parsed = JSON.parse(saved);
+        // Helper: hydrate parsed settings with API keys from OS Keyring
+        const hydrateApiKeys = async (parsed: AISettings): Promise<{ settings: AISettings; migrated: boolean }> => {
+            let migrated = false;
+            for (const provider of parsed.providers) {
                 // Convert date strings back to Date objects
-                parsed.providers = parsed.providers.map((p: AIProvider) => ({
-                    ...p,
-                    createdAt: new Date(p.createdAt),
-                    updatedAt: new Date(p.updatedAt),
-                }));
+                provider.createdAt = new Date(provider.createdAt);
+                provider.updatedAt = new Date(provider.updatedAt);
 
-                // Fetch API keys from OS Keyring for each provider
-                let migrated = false;
-                for (const provider of parsed.providers) {
-                    // Migration: if apiKey exists in localStorage, move it to keyring
-                    if (provider.apiKey) {
-                        try {
-                            await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
-                            migrated = true;
-                        } catch (e) {
-                            console.warn(`Failed to migrate API key for ${provider.name} to keyring:`, e);
-                        }
-                    } else {
-                        // Load from keyring
-                        try {
-                            const key = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
-                            provider.apiKey = key;
-                        } catch {
-                            // Key not in keyring yet — leave empty
-                        }
+                // Migration: if apiKey exists in localStorage copy, move it to keyring
+                if (provider.apiKey) {
+                    try {
+                        await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
+                        migrated = true;
+                    } catch (e) {
+                        console.warn(`Failed to migrate API key for ${provider.name} to keyring:`, e);
+                    }
+                } else {
+                    // Load from keyring
+                    try {
+                        const key = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+                        provider.apiKey = key;
+                    } catch {
+                        // Key not in keyring yet — leave empty
                     }
                 }
+            }
+            return { settings: parsed, migrated };
+        };
 
-                setSettings(parsed);
+        const loadSettings = async () => {
+            // 1. Synchronous localStorage read for immediate UI
+            const saved = localStorage.getItem(AI_SETTINGS_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved) as AISettings;
+                    const { settings: hydrated, migrated } = await hydrateApiKeys(parsed);
+                    setSettings(hydrated);
 
-                // After migration, strip API keys from localStorage
-                if (migrated) {
-                    const stripped = {
-                        ...parsed,
-                        providers: parsed.providers.map((p: AIProvider) => ({ ...p, apiKey: undefined })),
-                    };
-                    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
-                    logger.debug('[AI Settings] Migrated API keys from localStorage to OS Keyring');
+                    // After migration, strip API keys from localStorage
+                    if (migrated) {
+                        const stripped = {
+                            ...hydrated,
+                            providers: hydrated.providers.map((p: AIProvider) => ({ ...p, apiKey: undefined })),
+                        };
+                        localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
+                        logger.debug('[AI Settings] Migrated API keys from localStorage to OS Keyring');
+                    }
+                } catch (e) {
+                    console.error('Failed to parse AI settings:', e);
                 }
-            } catch (e) {
-                console.error('Failed to parse AI settings:', e);
+            }
+
+            // 2. Async vault read — overrides localStorage if vault has data
+            try {
+                const vaultData = await secureGetWithFallback<AISettings>('ai_settings', AI_SETTINGS_KEY);
+                if (vaultData && vaultData.providers && vaultData.providers.length > 0) {
+                    const { settings: vaultHydrated } = await hydrateApiKeys(vaultData);
+                    setSettings(vaultHydrated);
+                }
+            } catch {
+                // Vault unavailable, localStorage data already loaded above
             }
         };
         loadSettings();
     }, []);
 
-    // Save settings: API keys go to OS Keyring, rest to localStorage
+    // Save settings: API keys go to OS Keyring, rest to localStorage + vault
     const saveSettings = (newSettings: AISettings) => {
         setSettings(newSettings);
 
@@ -269,6 +294,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             providers: newSettings.providers.map(p => ({ ...p, apiKey: undefined })),
         };
         localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
+
+        // Fire-and-forget: persist stripped settings to encrypted vault
+        secureStoreAndClean('ai_settings', AI_SETTINGS_KEY, stripped).catch(() => {});
     };
 
     // Add provider from preset
@@ -331,29 +359,79 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         });
     };
 
-    // Test provider connection
+    // Test provider connection (calls real backend API validation)
     const testProvider = async (provider: AIProvider) => {
         setTestingProvider(provider.id);
         setTestResults({ ...testResults, [provider.id]: null });
 
         try {
-            // Simple test - just check if API key is set and base URL is reachable
             if (!provider.apiKey && provider.type !== 'ollama') {
                 throw new Error('API key required');
             }
 
-            // For Ollama, try to list models
-            if (provider.type === 'ollama') {
-                const response = await fetch(`${provider.baseUrl}/api/tags`);
-                if (!response.ok) throw new Error('Ollama not reachable');
-            }
+            const result = await invoke<boolean>('ai_test_provider', {
+                providerType: provider.type,
+                baseUrl: provider.baseUrl,
+                apiKey: provider.apiKey || null,
+            });
 
-            // For now, just validate the key exists
-            setTestResults({ ...testResults, [provider.id]: 'success' });
-        } catch (error) {
-            setTestResults({ ...testResults, [provider.id]: 'error' });
+            if (result) {
+                setTestResults({ ...testResults, [provider.id]: { status: 'success' } });
+            } else {
+                throw new Error('Connection test returned false');
+            }
+        } catch (error: any) {
+            const msg = typeof error === 'string' ? error : error?.message || 'Connection failed';
+            setTestResults({ ...testResults, [provider.id]: { status: 'error', message: msg } });
         } finally {
             setTestingProvider(null);
+        }
+    };
+
+    // Detect Ollama models via /api/tags
+    const detectOllamaModels = async (provider: AIProvider) => {
+        setDetectingModels(provider.id);
+        try {
+            const response = await fetch(`${provider.baseUrl}/api/tags`);
+            if (!response.ok) throw new Error('Ollama not reachable');
+            const data = await response.json();
+            const ollamaModels = data.models || [];
+            if (ollamaModels.length === 0) {
+                setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: 'No models found' } }));
+                return;
+            }
+
+            const existingNames = settings.models
+                .filter(m => m.providerId === provider.id)
+                .map(m => m.name);
+
+            const VISION_PATTERNS = /llava|bakllava|moondream|minicpm-v/i;
+            const newModels = ollamaModels
+                .filter((m: { name: string }) => !existingNames.includes(m.name))
+                .map((m: { name: string; size?: number }) => ({
+                    id: generateId(),
+                    providerId: provider.id,
+                    name: m.name,
+                    displayName: m.name.split(':')[0].replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    maxTokens: 4096,
+                    supportsStreaming: true,
+                    supportsTools: false,
+                    supportsVision: VISION_PATTERNS.test(m.name),
+                    isEnabled: true,
+                    isDefault: existingNames.length === 0 && ollamaModels.indexOf(m) === 0,
+                }));
+
+            if (newModels.length > 0) {
+                saveSettings({
+                    ...settings,
+                    models: [...settings.models, ...newModels],
+                });
+            }
+            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'success' } }));
+        } catch {
+            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: 'Ollama not reachable' } }));
+        } finally {
+            setDetectingModels(null);
         }
     };
 
@@ -413,6 +491,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         { id: 'models', label: 'Models', icon: <Cpu size={14} /> },
                         { id: 'routing', label: 'Auto-Routing', icon: <Zap size={14} /> },
                         { id: 'advanced', label: 'Advanced', icon: <Sliders size={14} /> },
+                        { id: 'prompt', label: 'System Prompt', icon: <MessageSquare size={14} /> },
+                        { id: 'plugins', label: 'Plugins', icon: <Puzzle size={14} /> },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -558,18 +638,56 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 )}
                                                                 Test
                                                             </button>
+                                                            {provider.type === 'ollama' && (
+                                                                <button
+                                                                    onClick={() => detectOllamaModels(provider)}
+                                                                    disabled={detectingModels === provider.id}
+                                                                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
+                                                                    title="Auto-detect available Ollama models"
+                                                                >
+                                                                    {detectingModels === provider.id ? (
+                                                                        <span className="animate-spin">⏳</span>
+                                                                    ) : (
+                                                                        <span>🔍</span>
+                                                                    )}
+                                                                    Detect
+                                                                </button>
+                                                            )}
                                                         </div>
                                                         {testResults[provider.id] && (
-                                                            <div className={`mt-2 text-xs flex items-center gap-1 ${testResults[provider.id] === 'success'
+                                                            <div className={`mt-2 text-xs flex items-center gap-1 ${testResults[provider.id]?.status === 'success'
                                                                 ? 'text-green-400'
                                                                 : 'text-red-400'
                                                                 }`}>
-                                                                {testResults[provider.id] === 'success'
+                                                                {testResults[provider.id]?.status === 'success'
                                                                     ? <><Check size={12} /> Connection successful</>
-                                                                    : <><AlertCircle size={12} /> Connection failed</>
+                                                                    : <><AlertCircle size={12} /> Connection failed{testResults[provider.id]?.message ? `: ${testResults[provider.id]!.message}` : ''}</>
                                                                 }
                                                             </div>
                                                         )}
+                                                        {provider.type === 'ollama' && testResults[provider.id]?.status === 'success' && (
+                                                            <div className="mt-1 text-xs text-cyan-400">
+                                                                {getProviderModels(provider.id).length} model(s) available
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Base URL */}
+                                                    <div>
+                                                        <label className="block text-sm text-gray-400 mb-1">
+                                                            <Globe size={12} className="inline mr-1" />
+                                                            Base URL
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={provider.baseUrl}
+                                                            onChange={e => updateProvider({
+                                                                ...provider,
+                                                                baseUrl: e.target.value
+                                                            })}
+                                                            placeholder="https://api.example.com/v1"
+                                                            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                                        />
                                                     </div>
 
                                                     {/* Models for this provider */}
@@ -930,6 +1048,155 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </div>
                                 <p className="text-xs text-gray-500 mt-2">
                                     Higher values allow longer responses but use more API credits.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'plugins' && (
+                        <div className="space-y-4">
+                            <div className="text-sm text-gray-400 mb-4">
+                                Extend AeroAgent with custom tools. Place plugin folders in the app plugins directory.
+                            </div>
+
+                            {plugins.length === 0 ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Puzzle size={48} className="mx-auto mb-4 opacity-30" />
+                                    <p className="text-lg font-medium">No plugins installed</p>
+                                    <p className="text-sm mt-2">
+                                        Create a folder with a <code className="bg-gray-800 px-1.5 py-0.5 rounded text-xs text-cyan-400">plugin.json</code> manifest in the plugins directory.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {plugins.map(plugin => (
+                                        <div key={plugin.id} className="bg-gray-800 rounded-lg p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <Puzzle size={18} className="text-cyan-400" />
+                                                    <div>
+                                                        <h3 className="font-medium text-white">{plugin.name}</h3>
+                                                        <p className="text-xs text-gray-400">
+                                                            v{plugin.version} by {plugin.author} — {plugin.tools.length} tool{plugin.tools.length !== 1 ? 's' : ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-xs px-2 py-1 rounded ${plugin.enabled !== false ? 'bg-green-900/50 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
+                                                        {plugin.enabled !== false ? 'Enabled' : 'Disabled'}
+                                                    </span>
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                await invoke('remove_plugin', { pluginId: plugin.id });
+                                                                setPlugins(prev => prev.filter(p => p.id !== plugin.id));
+                                                            } catch (e) {
+                                                                logger.error('Failed to remove plugin', e);
+                                                            }
+                                                        }}
+                                                        className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                                                        title="Remove plugin"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {plugin.tools.length > 0 && (
+                                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                                    {plugin.tools.map(tool => (
+                                                        <span key={tool.name} className="inline-flex items-center gap-1 bg-gray-700/60 text-gray-300 text-xs px-2 py-0.5 rounded">
+                                                            <span className="text-cyan-400">&#129513;</span>
+                                                            {tool.name}
+                                                            <span className={`ml-1 w-1.5 h-1.5 rounded-full ${
+                                                                tool.dangerLevel === 'safe' ? 'bg-green-400' :
+                                                                tool.dangerLevel === 'high' ? 'bg-red-400' : 'bg-yellow-400'
+                                                            }`} />
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'prompt' && (
+                        <div className="space-y-6">
+                            <div className="text-sm text-gray-400 mb-4">
+                                Customize the system prompt that defines AeroAgent's behavior and personality.
+                            </div>
+
+                            {/* Toggle */}
+                            <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+                                <div>
+                                    <h3 className="font-medium">Custom System Prompt</h3>
+                                    <p className="text-sm text-gray-400">Override the default AeroAgent system prompt</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const newSettings = {
+                                            ...settings,
+                                            advancedSettings: {
+                                                ...settings.advancedSettings,
+                                                useCustomPrompt: !settings.advancedSettings?.useCustomPrompt,
+                                            }
+                                        };
+                                        saveSettings(newSettings);
+                                    }}
+                                    className={`px-4 py-2 rounded-lg text-sm transition-colors ${settings.advancedSettings?.useCustomPrompt
+                                        ? 'bg-purple-600 text-white'
+                                        : 'bg-gray-700 text-gray-400'
+                                        }`}
+                                >
+                                    {settings.advancedSettings?.useCustomPrompt ? 'Enabled' : 'Disabled'}
+                                </button>
+                            </div>
+
+                            {/* Editor */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-medium text-white">Prompt Content</h4>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xs text-gray-500">
+                                            ~{Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4)} tokens
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                const newSettings = {
+                                                    ...settings,
+                                                    advancedSettings: {
+                                                        ...settings.advancedSettings,
+                                                        customSystemPrompt: '',
+                                                    }
+                                                };
+                                                saveSettings(newSettings);
+                                            }}
+                                            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                                        >
+                                            Reset to Default
+                                        </button>
+                                    </div>
+                                </div>
+                                <textarea
+                                    value={settings.advancedSettings?.customSystemPrompt || ''}
+                                    onChange={(e) => {
+                                        const newSettings = {
+                                            ...settings,
+                                            advancedSettings: {
+                                                ...settings.advancedSettings,
+                                                customSystemPrompt: e.target.value,
+                                            }
+                                        };
+                                        saveSettings(newSettings);
+                                    }}
+                                    placeholder={`Enter custom instructions for AeroAgent...\n\nThe default prompt includes: identity, tone, tool definitions, protocol expertise, and behavior rules. Your custom prompt will replace all of this (tool definitions and context are always appended automatically).`}
+                                    className="w-full h-64 px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y"
+                                    disabled={!settings.advancedSettings?.useCustomPrompt}
+                                />
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Variables like {'{remotePath}'}, {'{localPath}'}, {'{serverHost}'} in the context block are appended automatically. Tool definitions are always included regardless of custom prompt.
                                 </p>
                             </div>
                         </div>

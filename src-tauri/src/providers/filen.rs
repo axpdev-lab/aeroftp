@@ -287,7 +287,7 @@ impl FilenProvider {
         }
 
         let version = &encrypted[..3];
-        filen_log(&format!("try_decrypt: version={}, len={}, first50={}", version, encrypted.len(), &encrypted[..encrypted.len().min(50)]));
+        filen_log(&format!("try_decrypt: version={}, len={}", version, encrypted.len()));
 
         let (nonce_bytes_vec, ciphertext) = match version {
             "002" => {
@@ -529,15 +529,18 @@ impl StorageProvider for FilenProvider {
         // Step 2: Derive password hash and master key
         let (auth_hash, derived_master_key) = Self::derive_auth_credentials(password, &auth_data.salt, auth_data.auth_version)?;
 
-        // Step 3: Login
+        // Step 3: Login — include twoFactorCode only when user provides a TOTP code
+        let mut login_body = serde_json::json!({
+            "email": self.config.email,
+            "password": auth_hash,
+            "authVersion": auth_data.auth_version,
+        });
+        if let Some(ref code) = self.config.two_factor_code {
+            login_body["twoFactorCode"] = serde_json::Value::String(code.clone());
+        }
         let login_resp: LoginResponse = self.client
             .post(&format!("{}/v3/login", GATEWAY))
-            .json(&serde_json::json!({
-                "email": self.config.email,
-                "password": auth_hash,
-                "authVersion": auth_data.auth_version,
-                "twoFactorCode": "XXXXXX",
-            }))
+            .json(&login_body)
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json().await
@@ -558,8 +561,8 @@ impl StorageProvider for FilenProvider {
         self.master_keys = vec![derived_master_key.clone()];
 
         // Try to decrypt the encrypted master keys from the response
-        filen_log(&format!("master_keys field len={}, first80={}", login_data.master_keys.len(), &login_data.master_keys[..login_data.master_keys.len().min(80)]));
-        filen_log(&format!("derived_master_key len={}, first20={}", derived_master_key.len(), &derived_master_key[..derived_master_key.len().min(20)]));
+        filen_log(&format!("master_keys field len={}", login_data.master_keys.len()));
+        filen_log(&format!("derived_master_key len={}", derived_master_key.len()));
         if let Some(decrypted) = Self::try_decrypt_aes_gcm(&login_data.master_keys, &derived_master_key) {
             self.master_keys = decrypted.split('|')
                 .map(|s| s.to_string())
@@ -678,8 +681,8 @@ impl StorageProvider for FilenProvider {
                     },
                 });
             } else {
-                filen_log(&format!("FAILED decrypt folder: uuid={}, len={}, start={}",
-                    folder.uuid, folder.name.len(), &folder.name[..folder.name.len().min(50)]));
+                filen_log(&format!("FAILED decrypt folder: uuid={}, encrypted_len={}",
+                    folder.uuid, folder.name.len()));
             }
         }
 
@@ -719,8 +722,8 @@ impl StorageProvider for FilenProvider {
                     });
                 }
             } else {
-                filen_log(&format!("FAILED decrypt file: uuid={}, len={}, start={}",
-                    file.uuid, file.metadata.len(), &file.metadata[..file.metadata.len().min(50)]));
+                filen_log(&format!("FAILED decrypt file: uuid={}, encrypted_len={}",
+                    file.uuid, file.metadata.len()));
             }
         }
 
@@ -918,7 +921,7 @@ impl StorageProvider for FilenProvider {
         let checksum = hex::encode(checksum_hasher.finalize());
 
         // Send encrypted data as raw POST body (not multipart)
-        filen_log(&format!("upload: {} bytes encrypted, hash={}..., params={}", encrypted.len(), &chunk_hash[..16], url_params));
+        filen_log(&format!("upload: {} bytes encrypted", encrypted.len()));
         let resp = self.client.post(&upload_url)
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .header("Checksum", HeaderValue::from_str(&checksum).unwrap())
@@ -930,7 +933,7 @@ impl StorageProvider for FilenProvider {
         let resp_text = resp.text().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        filen_log(&format!("upload response: status={}, body={}", status, &resp_text[..resp_text.len().min(500)]));
+        filen_log(&format!("upload response: status={}, body_len={}", status, resp_text.len()));
 
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(format!("Upload chunk failed: {} - {}", status, resp_text)));

@@ -121,6 +121,16 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         };
         window.addEventListener('devtools-panel-toggle', handleMenuToggle);
 
+        // Listen for ensure-visible panel events (from terminal-execute)
+        const handlePanelEnsure = (e: Event) => {
+            const panel = (e as CustomEvent).detail as string;
+            if (panel === 'editor' || panel === 'terminal' || panel === 'agent') {
+                const key = panel === 'agent' ? 'chat' : panel;
+                setPanels(prev => ({ ...prev, [key]: true }));
+            }
+        };
+        window.addEventListener('devtools-panel-ensure', handlePanelEnsure);
+
         // Also use ResizeObserver for container-specific changes
         let observer: ResizeObserver | null = null;
         if (containerRef.current) {
@@ -131,6 +141,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         return () => {
             window.removeEventListener('resize', updateWidth);
             window.removeEventListener('devtools-panel-toggle', handleMenuToggle);
+            window.removeEventListener('devtools-panel-ensure', handlePanelEnsure);
             observer?.disconnect();
         };
     }, [isOpen]);
@@ -189,6 +200,32 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const togglePanel = (panel: keyof PanelVisibility) => {
         setPanels(prev => ({ ...prev, [panel]: !prev[panel] }));
     };
+
+    // Listen for file changes from AeroAgent tools to refresh editor
+    useEffect(() => {
+        const handleFileChanged = async (e: Event) => {
+            const { path } = (e as CustomEvent).detail;
+            if (!previewFile || !path) return;
+
+            // Check if the changed file matches the currently open file
+            const normalizedChanged = path.replace(/\\/g, '/');
+            const normalizedOpen = (previewFile.path || '').replace(/\\/g, '/');
+
+            if (normalizedChanged === normalizedOpen || normalizedOpen.endsWith(normalizedChanged) || normalizedChanged.endsWith(normalizedOpen)) {
+                // Re-read the file content
+                try {
+                    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+                    const content = await readTextFile(path);
+                    window.dispatchEvent(new CustomEvent('editor-reload', { detail: { path, content } }));
+                } catch {
+                    // File might not be readable (e.g., binary)
+                }
+            }
+        };
+
+        window.addEventListener('file-changed', handleFileChanged);
+        return () => window.removeEventListener('file-changed', handleFileChanged);
+    }, [previewFile]);
 
     if (!isOpen) return null;
 
@@ -305,6 +342,12 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                         onClose={() => onClearFile?.()}
                                         className="h-full"
                                         theme={editorTheme}
+                                        onAskAgent={(code, fileName) => {
+                                            // Activate chat panel
+                                            setPanels(prev => ({ ...prev, chat: true }));
+                                            // Dispatch event for AIChat to pick up
+                                            window.dispatchEvent(new CustomEvent('aeroagent-ask', { detail: { code, fileName } }));
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -336,7 +379,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                     <span className={`text-xs ${theme.text}`}>AI Assistant</span>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} onFileMutation={onFileMutation} />
+                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} isLightTheme={isLightTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} onFileMutation={onFileMutation} editorFileName={previewFile?.name} editorFilePath={previewFile?.path} />
                                 </div>
                             </div>
                         )}

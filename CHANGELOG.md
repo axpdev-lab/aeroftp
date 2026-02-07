@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-07
+
+### AeroAgent Super Powers & Unified Keystore
+
+17 new features spanning autonomous AI agent capabilities, RAG intelligence, extensibility, encrypted vault directories, and enterprise-grade credential security. AeroAgent gains multi-step tool execution, Ollama auto-detection, conversation export, system prompt customization, Monaco/Terminal integration, intelligent context management, workspace RAG indexing, and a custom plugin system. AeroVault v2 adds full directory support with hierarchical navigation and recursive delete. Security is elevated with a unified encrypted keystore, vault backup/restore, a guided migration wizard, and hardened AI/HTTP/URL handling based on dual audit (Claude Opus 4.6 + GPT-5.2-Codex). AeroPlayer completely rewritten with HTML5 Audio + Web Audio API, 10-band EQ, beat detection, and 14 visualizer modes including 6 WebGL GPU shaders.
+
+#### Added
+
+- **Multi-step autonomous tool calls**: AeroAgent can now chain up to 10 sequential tool calls in a single conversation turn. Safe tools execute automatically, medium/high-risk tools pause for user confirmation. Stop button provides immediate cancellation at any step (fixes #18)
+- **Ollama model auto-detection**: Cyan "Detect" button in AI Settings queries `GET /api/tags` to discover locally installed Ollama models. Eliminates manual model name entry and validates Ollama connectivity (fixes #19)
+- **Sliding window context management**: Token budget set to 70% of model maxTokens. When conversation exceeds budget, older messages are automatically summarized to preserve context while staying within limits (fixes #20)
+- **Conversation export**: Download icon in chat header toolbar exports full conversation history as Markdown (.md) or JSON (.json) files, including tool call results and timestamps (fixes #21)
+- **Full system prompt editor**: New 5th tab "System Prompt" in AI Settings with toggle switch and textarea for custom system prompts. Custom prompts are prepended to the built-in AeroAgent personality (fixes #22)
+- **Agent terminal command execution**: New `terminal_execute` tool dispatches shell commands to the integrated PTY terminal with user confirmation before execution. Danger level: high (fixes #25, #27)
+- **Agent-Monaco live sync**: `file-changed` and `editor-reload` custom events automatically reload Monaco editor content after AeroAgent executes `local_edit` or `local_write` tools — no manual refresh needed (fixes #26)
+- **Monaco "Ask AeroAgent" action**: New context menu action (Ctrl+Shift+A) sends selected code from Monaco editor to AI chat as prompt context for analysis, explanation, or refactoring (fixes #28)
+- **Unified Keystore Consolidation**: Server profiles, AI configuration, and OAuth credentials migrated from localStorage to encrypted vault.db (AES-256-GCM + Argon2id). New `secureStorage.ts` utility provides vault-first reads with automatic localStorage fallback for backwards compatibility (fixes #31)
+- **Keystore Backup/Restore**: New `keystore_export.rs` module exports and imports the entire vault as `.aeroftp-keystore` files protected with Argon2id + AES-256-GCM. Security tab UI displays metadata preview and merge strategy selection (overwrite, skip existing, merge) before import (fixes #34)
+- **Migration Wizard**: 4-step guided migration (Detect → Preview → Migrate → Cleanup) auto-triggered on first launch when legacy localStorage data is detected. Shows itemized preview of all data to be migrated with per-item toggle, then securely wipes legacy storage after confirmation (fixes #36)
+- **RAG integration**: Two new AI tools — `rag_index` scans directories and returns file listing with type/size/preview summaries (33 text extensions, max 200 files); `rag_search` performs full-text case-insensitive search across workspace files. Auto-indexing on path change injects workspace summary into AI context (fixes #47)
+- **Plugin system**: Extend AeroAgent with custom tools via JSON manifest (`plugin.json`) + shell scripts. Plugins stored in `~/.config/aeroftp/plugins/`, executed as sandboxed subprocesses with 30s timeout and 1MB output limit. New `plugins.rs` backend module with 4 Tauri commands. 6th tab "Plugins" in AI Settings shows installed plugins with tool badges and danger indicators (fixes #48)
+- **AeroVault directory support**: Create nested directories inside encrypted vaults with automatic intermediate directory creation. New `vault_v2_create_directory` command adds `is_dir` manifest entries with encrypted names. VaultPanel now features hierarchical navigation with breadcrumb, "New Folder" button, and directory-aware file listing (fixes #53)
+- **AeroVault recursive delete**: Delete files and directories from vaults with full recursive support. New `vault_v2_delete_entries` command removes directories and all their contents in a single operation. Files added to subdirectories via new `vault_v2_add_files_to_dir` command (fixes #54)
+- **AeroPlayer media engine rewrite**: Removed Howler.js dependency entirely. Audio playback now uses native HTML5 `<audio>` element with Web Audio API graph — eliminates the play/pause bug on first click, fixes buffer overload for large MP3 files (no more full-file decode into RAM), and enables real EQ processing
+- **10-band graphic equalizer**: AeroMixer now controls real Web Audio BiquadFilterNode per frequency band (32Hz-16kHz). Presets (Rock, Jazz, Electronic, etc.) and manual slider adjustments produce audible real-time changes. StereoPannerNode for L/R balance control
+- **Beat detection engine**: Onset energy algorithm with circular buffer (43-sample rolling window), adaptive threshold (1.5x average), 100ms cooldown, and exponential decay (0.92 factor). Drives visual effects across all visualizer modes
+- **14 visualizer modes**: 8 Canvas 2D modes (bars, waveform, radial, spectrum, fractal, vortex, plasma, kaleidoscope) enhanced with beat-reactive effects, plus 6 new WebGL 2 GPU-accelerated shader modes ported from CyberPulse engine
+- **WebGL shader visualizers**: 6 GLSL fragment shaders running on GPU — Wave Glitch (chromatic aberration, data moshing), VHS (tape wobble, RGB split), Fractal Mandelbrot (200-iteration zoom), Raymarch Tunnel (3D ray marching with volumetric fog), Metaball Pulse (smooth distance blending), Particles Explosion (3-layer system with shockwave rings)
+- **Post-processing effects**: Vignette overlay with bass-modulated edge darkening, chromatic aberration (RGB channel split) on beat in Cyber Mode, CRT scanlines, glitch effects with forced trigger on beat detection
+
+#### Changed
+
+- **AeroAgent tool count**: Expanded from 24 to 27 tools with addition of `terminal_execute`, `rag_index`, `rag_search`
+- **AI Settings tabs**: Reorganized from 4 to 6 tabs with new "System Prompt" and "Plugins" tabs
+- **Chat header toolbar**: Added conversation export button (download icon) alongside existing clear and settings buttons
+- **Security tab**: Extended with Keystore Backup/Restore section showing vault metadata, last backup date, and export/import buttons
+- **AeroPlayer visualizer menu**: Dropdown now shows 8 Canvas 2D modes plus 6 WebGL shader modes separated by divider, with emerald "GL" badge for GPU-accelerated effects
+- **AeroPlayer keyboard shortcut**: 'V' key now cycles through all 14 visualizer modes (8 Canvas + 6 WebGL) with wrap-around
+- **Audio dependency removed**: `howler` (v2.2.4) and `@types/howler` removed from package.json — one fewer dependency
+- **AnalyserNode fftSize**: Increased from 256 to 512 (128 → 256 frequency bins) for higher resolution visualizations
+- **Tool approval UI redesign**: Replaced large approval card with compact inline bar — border-left color accent by danger level, tool label + filename inline, small Allow/Reject buttons, expandable args via chevron
+- **Collapsible long messages**: Assistant messages exceeding 500 characters are collapsed to 200px max-height with gradient overlay and "Show more" / "Show less" toggle — prevents file content dumps from flooding the chat
+- **Multi-step auto-resume**: After user approves a medium/high-risk tool, the agent loop now automatically continues to the next step instead of stopping. Context (aiRequest, messageHistory, modelInfo) is preserved across the approval pause
+- **Tool descriptions clarified**: `local_edit` and `remote_edit` descriptions now explicitly state "literal match, not regex" to prevent AI models from sending regex syntax in find parameters
+
+#### Fixed
+
+- **AeroPlayer play/pause first-click bug**: AudioContext `"suspended"` state (browser autoplay policy) now properly resumed before play — first click always works
+- **AeroPlayer large file buffer overflow**: Removed Howler's full-file `decodeAudioData()` path that loaded 100MB MP3s entirely into RAM as PCM. HTML5 `<audio>` streams natively
+- **local_edit BOM handling**: UTF-8 BOM (`\u{FEFF}`) stripped before text matching in both `local_edit` and `remote_edit` — prevents "string not found" on Windows-created files
+- **Double confirmation eliminated**: System prompt now instructs AI to call tools directly without asking for permission in natural language — the UI approval prompt handles user confirmation
+- **Hardcoded English messages removed**: Tool approval messages ("I want to execute...") replaced with model's own localized response content
+- **WebGL context loss recovery**: Auto-fallback from WebGL shader to Canvas 2D visualizer when GPU context is lost, with user notification
+
+#### Security
+
+- **Credential storage hardened**: All sensitive data (server passwords, API keys, OAuth tokens) now encrypted at rest in vault.db instead of plaintext localStorage
+- **Keystore export encryption**: Backup files use independent Argon2id derivation (not the vault master key) so backups remain secure even if vault password is compromised
+- **Legacy data cleanup**: Migration wizard securely erases localStorage entries after successful vault migration, leaving no plaintext credential residue
+- **Dual security audit remediation**: Claude Opus 4.6 audit (B+ grade, 11 findings) + GPT-5.2-Codex audit (7 findings) — all resolved:
+  - AI settings migrated from localStorage to encrypted vault (AA-002)
+  - OpenAI API header unwrap replaced with safe error propagation (no panic on invalid keys)
+  - HTTP status check before JSON parse for all AI provider responses (clear error messages)
+  - URL scheme allowlist (`http:`, `https:`, `mailto:` only) prevents `file://` and `javascript:` abuse
+  - Filen 2FA passthrough support (conditional `twoFactorCode` field)
+  - Secret logging redacted in Filen provider (6 log lines sanitized)
+  - OAuth callback URL decode error propagation (no silent fallback on invalid encoding)
+  - Secure delete rewritten: chunked 1 MiB overwrite with `OpenOptions` (no truncate) + random pass
+- **Plugin subprocess isolation**: Plugin tools run in separate processes with timeout enforcement, output size limits, and plugin ID validation
+
+#### Performance
+
+- **Circular buffer beat detection**: Replaced Array.shift() O(n) with Float32Array circular buffer O(1) for energy history
+- **Particle system cap**: Maximum 200 concurrent particles prevents memory growth during long playback sessions
+- **WebGL shader rendering**: GPU-offloaded visualization with pre-allocated Float32Array spectrum buffers — zero per-frame allocations
+
+---
+
 ## [1.8.9] - 2026-02-06
 
 ### Dynamic Version Info, Credential Fix & Dependency Updates

@@ -73,6 +73,35 @@ Additional options:
 - **Automatic refresh** with 5-minute buffer before expiry
 - **Ephemeral callback port**: OS-assigned random port (not a fixed port)
 
+### Unified Encrypted Keystore (v1.9.0)
+
+In v1.9.0, AeroFTP consolidates **all sensitive data** from localStorage into the encrypted vault. Previously, only server passwords and OAuth tokens were vault-encrypted; AI API keys, server profiles, and application configuration remained in browser localStorage. The Unified Keystore eliminates this gap.
+
+| Aspect | Details |
+| ------ | ------- |
+| **Scope** | Server profiles, AI provider settings, OAuth credentials, application config — all moved to `vault.db` |
+| **Frontend utility** | `secureStorage.ts` provides a vault-first API with automatic localStorage fallback for non-sensitive data |
+| **Migration wizard** | Auto-triggers on first launch after upgrade; migrates all legacy localStorage entries to encrypted vault |
+| **Data categories** | Server credentials, connection profiles, AI API keys, OAuth access/refresh tokens, config entries |
+| **Encryption** | Same AES-256-GCM per-entry encryption as the Universal Vault (HKDF-SHA256 derived key) |
+| **Backward compatibility** | Falls back to localStorage reads if vault entry is not found (migration may be partial on first run) |
+
+**What changed**: Before v1.9.0, `localStorage` contained server profile metadata (host, port, username — not passwords), AI provider selection, model preferences, and UI settings. After v1.9.0, all of these are encrypted in `vault.db`. The only data remaining in localStorage is non-sensitive UI state (window size, panel layout).
+
+### Keystore Backup and Restore (v1.9.0)
+
+AeroFTP v1.9.0 introduces full vault export/import for disaster recovery and device migration.
+
+| Feature | Details |
+| ------- | ------- |
+| **Export format** | `.aeroftp-keystore` binary file |
+| **Encryption** | Argon2id (64 MB, t=3, p=4) + AES-256-GCM with user-chosen backup password |
+| **Contents** | Complete vault snapshot: server credentials, connection profiles, AI API keys, OAuth tokens, config entries |
+| **Category tracking** | Export summary shows count per category (e.g., "12 server credentials, 3 AI keys, 5 OAuth tokens") |
+| **Import merge strategies** | **Skip existing**: only import entries not already in the vault. **Overwrite all**: replace all entries with backup data |
+| **Integrity verification** | HMAC-SHA256 over the encrypted payload; import fails gracefully if file is corrupted or password is wrong |
+| **UI** | Settings > Security > Backup/Restore with progress indicator and category summary |
+
 ### Client-Side Encryption (v1.8.0)
 
 **AeroVault v2 (.aerovault containers) — Military-Grade Encryption**
@@ -163,14 +192,15 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - A warning banner recommending FTPS or SFTP
 - Fully localized (51 languages)
 
-### AI Tool Security (v1.6.0)
+### AI Tool Security (v1.6.0+)
 
-- **Tool name whitelist**: Only 24 allowed tool names accepted by the backend
+- **Tool name whitelist**: Only 27 allowed tool names accepted by the backend (25 built-in + `rag_index` + `rag_search`)
 - **Path validation**: Null byte rejection, path traversal prevention (`..`), 4096-char length limit
 - **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries
 - **Native function calling**: SEC-002 resolved — structured JSON tool calls replace regex parsing for OpenAI, Anthropic, Gemini
 - **Danger levels**: Safe (auto-execute), Medium (user confirmation), High (explicit approval for delete operations)
 - **Rate limiting**: 20 requests per minute per AI provider, frontend token bucket
+- **Plugin sandboxing** (v1.9.0): Custom tools run as isolated subprocesses with 30s timeout, 1MB output limit, and plugin ID validation (alphanumeric + underscore only). Plugin execution goes through a separate `execute_plugin_tool` command, not the built-in tool whitelist
 
 ### OAuth Session Security (v1.5.3)
 
@@ -187,11 +217,13 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 | **AeroVault v2** | Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade | Advanced encryption with nonce misuse resistance and cascade mode |
 | **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) | Only Cyberduck also supports this; FileZilla, WinSCP do not |
 | **Universal Vault** | Single AES-256-GCM vault with HKDF-SHA256, Argon2id master mode, no OS keyring dependency (v1.8.6) | Competitors store credentials in plaintext config files or depend on OS keyring |
+| **Unified Keystore** | ALL sensitive data (server profiles, AI config, OAuth tokens) migrated from localStorage to encrypted vault (v1.9.0) | No credentials exposed in browser storage; complete encryption coverage |
+| **Keystore Backup/Restore** | Full vault export/import as `.aeroftp-keystore` with Argon2id + AES-256-GCM protection (v1.9.0) | Secure disaster recovery and device migration; competitors offer no encrypted backup |
 | **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
 | **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
 | **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString | Prevents password leakage in memory dumps |
-| **AI Tool Sandboxing** | Whitelist + path validation + danger levels + rate limiting | AI cannot execute arbitrary commands or access restricted paths |
+| **AI Tool Sandboxing** | 27-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation | AI cannot execute arbitrary commands or access restricted paths |
 | **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS | Full control over encryption level per connection |
 
 ## Known Issues
@@ -218,4 +250,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.8.9 - 6 February 2026*
+*AeroFTP v1.9.0 - 6 February 2026*

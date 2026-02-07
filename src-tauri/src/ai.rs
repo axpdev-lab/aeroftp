@@ -492,23 +492,22 @@ mod openai_compat {
         let url = format!("{}{}", request.base_url, endpoint);
 
         let mut headers = reqwest::header::HeaderMap::new();
-        
+
         if let Some(api_key) = &request.api_key {
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", api_key).parse().unwrap(),
-            );
+            let val = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key))
+                .map_err(|e| AIError::InvalidResponse(format!("Invalid API key for header: {}", e)))?;
+            headers.insert(reqwest::header::AUTHORIZATION, val);
         }
 
         // OpenRouter requires additional headers
         if request.provider_type == AIProviderType::OpenRouter {
             headers.insert(
                 "HTTP-Referer",
-                "https://aeroftp.app".parse().unwrap(),
+                reqwest::header::HeaderValue::from_static("https://aeroftp.app"),
             );
             headers.insert(
                 "X-Title",
-                "AeroFTP".parse().unwrap(),
+                reqwest::header::HeaderValue::from_static("AeroFTP"),
             );
         }
 
@@ -557,7 +556,21 @@ mod openai_compat {
             .send()
             .await?;
 
-        let openai_response: OpenAIResponse = response.json().await?;
+        let status = response.status();
+        let body = response.text().await?;
+
+        if !status.is_success() {
+            // Try to extract error message from JSON body
+            if let Ok(err_resp) = serde_json::from_str::<OpenAIResponse>(&body) {
+                if let Some(error) = err_resp.error {
+                    return Err(AIError::Api(format!("[{}] {}", status, error.message)));
+                }
+            }
+            return Err(AIError::Api(format!("HTTP {} — {}", status, &body[..body.len().min(500)])));
+        }
+
+        let openai_response: OpenAIResponse = serde_json::from_str(&body)
+            .map_err(|e| AIError::InvalidResponse(format!("JSON parse error: {} — body: {}", e, &body[..body.len().min(200)])))?;
 
         if let Some(error) = openai_response.error {
             return Err(AIError::Api(error.message));

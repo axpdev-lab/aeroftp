@@ -25,7 +25,7 @@
     </ul>
     <p>AI Assistant:</p>
     <ul>
-      <li>AeroAgent: AI-powered assistant with 24 provider-agnostic tools</li>
+      <li>AeroAgent: AI-powered assistant with 27 provider-agnostic tools, RAG indexing, and plugin system</li>
       <li>7 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
@@ -39,6 +39,7 @@
       <li>Monaco code editor (VS Code engine) with syntax highlighting</li>
       <li>Integrated terminal with SSH remote shell and 8 themes</li>
       <li>51 languages with RTL support (Arabic, Hebrew, Persian, Urdu)</li>
+      <li>AeroPlayer: Built-in media player with 14 visualizer modes, WebGL GPU shaders, 10-band EQ, and beat detection</li>
     </ul>
     <p>
       Built with Rust (Tauri 2) and React 18/TypeScript. Open source under GPL-3.0.
@@ -130,6 +131,19 @@
   </languages>
 
   <releases>
+    <release version="1.9.0" date="2026-02-07">
+      <description>
+        <p>AeroAgent Super Powers, Unified Keystore &amp; AeroPlayer Engine — 17 new features spanning autonomous AI agent capabilities, RAG intelligence, extensibility, encrypted vault directories, enterprise-grade credential security, and a fully rewritten media player with WebGL GPU shaders.</p>
+        <ul>
+          <li>AeroPlayer: 14 visualizer modes (8 Canvas 2D + 6 WebGL GPU shaders), 10-band graphic EQ, beat detection, Cyber Mode</li>
+          <li>WebGL shaders: Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles (ported from CyberPulse)</li>
+          <li>AeroAgent: Multi-step autonomous tool calls, RAG workspace indexing, custom plugin system</li>
+          <li>Ollama auto-detection, conversation export, system prompt editor, Monaco-Agent live sync</li>
+          <li>Unified encrypted keystore with migration wizard and backup/restore</li>
+          <li>AeroVault v2: Directory support with hierarchical navigation and recursive delete</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.8.9" date="2026-02-06">
       <description>
         <p>Dynamic Version Info, Credential Fix and Dependency Updates</p>

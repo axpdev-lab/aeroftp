@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown } from 'lucide-react';
+import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { VaultIcon } from './icons/VaultIcon';
 import { ArchiveEntry, AeroVaultMeta } from '../types';
 import { useTranslation } from '../i18n';
@@ -89,6 +89,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
+    // Directory navigation state
+    const [currentDir, setCurrentDir] = useState('');
+    const [newDirName, setNewDirName] = useState('');
+    const [showNewDirDialog, setShowNewDirDialog] = useState(false);
+
     // New state for unified vault support
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
@@ -106,6 +111,9 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         setNewPassword('');
         setConfirmNewPassword('');
         setVaultSecurity(null);
+        setCurrentDir('');
+        setNewDirName('');
+        setShowNewDirDialog(false);
     };
 
     const detectVaultVersion = async (path: string): Promise<VaultSecurityInfo> => {
@@ -233,6 +241,31 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         }
     };
 
+    const refreshVaultEntries = async () => {
+        if (vaultSecurity?.version === 2) {
+            const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
+            const fileEntries: ArchiveEntry[] = info.files.map(f => ({
+                name: f.name,
+                size: f.size,
+                compressedSize: f.size,
+                isDir: f.is_dir,
+                isEncrypted: true,
+                modified: f.modified
+            }));
+            setEntries(fileEntries);
+            setMeta({
+                version: info.version,
+                description: info.description || null,
+                created: info.created,
+                modified: info.modified,
+                fileCount: info.file_count
+            });
+        } else {
+            const list = await invoke<ArchiveEntry[]>('vault_list', { vaultPath, password });
+            setEntries(list);
+        }
+    };
+
     const handleAddFiles = async () => {
         const selected = await open({ multiple: true });
         if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
@@ -242,29 +275,24 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         setError(null);
         try {
             if (vaultSecurity?.version === 2) {
-                // Add files to v2 vault
-                const result = await invoke<{ added: number; total: number }>('vault_v2_add_files', {
-                    vaultPath,
-                    password,
-                    filePaths: paths
-                });
-                // Re-open to refresh file list
-                const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
-                const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                    name: f.name,
-                    size: f.size,
-                    compressedSize: f.size,
-                    isDir: f.is_dir,
-                    isEncrypted: true,
-                    modified: f.modified
-                }));
-                setEntries(fileEntries);
+                // Add files to v2 vault (to current directory if browsing a subdirectory)
+                const result = currentDir
+                    ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                        targetDir: currentDir
+                    })
+                    : await invoke<{ added: number; total: number }>('vault_v2_add_files', {
+                        vaultPath,
+                        password,
+                        filePaths: paths
+                    });
+                await refreshVaultEntries();
                 setSuccess(`${result.added} file(s) added`);
             } else {
-                // Add files to v1 vault
                 await invoke('vault_add_files', { vaultPath, password, filePaths: paths });
-                const list = await invoke<ArchiveEntry[]>('vault_list', { vaultPath, password });
-                setEntries(list);
+                await refreshVaultEntries();
                 setSuccess(`${paths.length} file(s) added`);
             }
         } catch (e) {
@@ -274,34 +302,57 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         }
     };
 
-    const handleRemove = async (entryName: string) => {
+    const handleCreateDirectory = async () => {
+        const trimmed = newDirName.trim();
+        if (!trimmed) return;
+
+        setLoading(true);
+        setError(null);
+        try {
+            const fullPath = currentDir ? `${currentDir}/${trimmed}` : trimmed;
+            await invoke('vault_v2_create_directory', {
+                vaultPath,
+                password,
+                dirName: fullPath
+            });
+            await refreshVaultEntries();
+            setSuccess(`Directory "${trimmed}" created`);
+            setShowNewDirDialog(false);
+            setNewDirName('');
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRemove = async (entryName: string, isDir: boolean) => {
         setLoading(true);
         setError(null);
         try {
             if (vaultSecurity?.version === 2) {
-                // Delete from v2 vault
-                const result = await invoke<{ deleted: string; remaining: number }>('vault_v2_delete_entry', {
-                    vaultPath,
-                    password,
-                    entryName
-                });
-                // Re-open to refresh file list
-                const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
-                const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                    name: f.name,
-                    size: f.size,
-                    compressedSize: f.size,
-                    isDir: f.is_dir,
-                    isEncrypted: true,
-                    modified: f.modified
-                }));
-                setEntries(fileEntries);
-                setSuccess(`Deleted ${result.deleted}`);
+                if (isDir) {
+                    // Use recursive delete for directories
+                    const result = await invoke<{ deleted: string[]; remaining: number; removed_count: number }>('vault_v2_delete_entries', {
+                        vaultPath,
+                        password,
+                        entryNames: [entryName],
+                        recursive: true
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(`Deleted ${result.removed_count} item(s)`);
+                } else {
+                    await invoke<{ deleted: string; remaining: number }>('vault_v2_delete_entry', {
+                        vaultPath,
+                        password,
+                        entryName
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(`Deleted ${entryName.split('/').pop()}`);
+                }
             } else {
-                // Delete from v1 vault
                 await invoke('vault_remove_file', { vaultPath, password, entryName });
-                const list = await invoke<ArchiveEntry[]>('vault_list', { vaultPath, password });
-                setEntries(list);
+                await refreshVaultEntries();
                 setSuccess(`Deleted ${entryName}`);
             }
         } catch (e) {
@@ -565,17 +616,48 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 )}
 
                 {/* Browse */}
-                {mode === 'browse' && (
+                {mode === 'browse' && (() => {
+                    // Filter entries for the current directory
+                    const prefix = currentDir ? `${currentDir}/` : '';
+                    const visibleEntries = entries.filter(entry => {
+                        if (!prefix) {
+                            // Root: show entries without "/" or top-level dirs
+                            return !entry.name.includes('/');
+                        }
+                        // Inside a dir: show entries that start with prefix and have no further "/"
+                        if (!entry.name.startsWith(prefix)) return false;
+                        const rest = entry.name.slice(prefix.length);
+                        return rest.length > 0 && !rest.includes('/');
+                    });
+
+                    // Sort: directories first, then files
+                    const sortedEntries = [...visibleEntries].sort((a, b) => {
+                        if (a.isDir && !b.isDir) return -1;
+                        if (!a.isDir && b.isDir) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+
+                    // Breadcrumb parts
+                    const breadcrumbParts = currentDir ? currentDir.split('/') : [];
+
+                    // Display name: just the last segment of the path
+                    const displayName = (fullName: string) => fullName.split('/').pop() || fullName;
+
+                    return (
                     <>
                         {/* Toolbar */}
                         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                             <button onClick={handleAddFiles} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 rounded">
                                 <Plus size={14} /> {t('vault.addFiles') || 'Add Files'}
                             </button>
+                            {vaultSecurity?.version === 2 && (
+                                <button onClick={() => { setShowNewDirDialog(true); setNewDirName(''); }} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 rounded">
+                                    <FolderPlus size={14} /> {t('vault.newFolder') || 'New Folder'}
+                                </button>
+                            )}
                             <button onClick={() => setChangingPassword(!changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded">
                                 <Key size={14} /> {t('vault.changePassword') || 'Change Password'}
                             </button>
-                            {/* Security info badge */}
                             {currentLevelConfig && (
                                 <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-900/50`}>
                                     <LevelIcon size={12} />
@@ -588,6 +670,56 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                 </div>
                             )}
                         </div>
+
+                        {/* New folder dialog */}
+                        {showNewDirDialog && (
+                            <div className="px-4 py-2 border-b border-gray-700 flex gap-2 items-center">
+                                <FolderPlus size={14} className="text-yellow-400 shrink-0" />
+                                <input
+                                    autoFocus
+                                    value={newDirName}
+                                    onChange={e => setNewDirName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleCreateDirectory(); if (e.key === 'Escape') setShowNewDirDialog(false); }}
+                                    placeholder={t('vault.folderName') || 'Folder name'}
+                                    className="flex-1 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs"
+                                />
+                                <button onClick={handleCreateDirectory} disabled={loading || !newDirName.trim()} className="px-2 py-1 bg-yellow-700 hover:bg-yellow-600 rounded text-xs disabled:opacity-50">
+                                    {t('vault.create') || 'Create'}
+                                </button>
+                                <button onClick={() => setShowNewDirDialog(false)} className="px-2 py-1 hover:bg-gray-700 rounded text-xs">
+                                    {t('vault.cancel') || 'Cancel'}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Breadcrumb navigation */}
+                        {currentDir && (
+                            <div className="flex items-center gap-1 px-4 py-1.5 border-b border-gray-700 text-xs">
+                                <button onClick={() => setCurrentDir('')} className="hover:text-blue-400 text-gray-400 flex items-center gap-0.5">
+                                    <ArrowLeft size={12} />
+                                    <VaultIcon size={12} className="text-emerald-400" />
+                                </button>
+                                <ChevronRight size={10} className="text-gray-500" />
+                                {breadcrumbParts.map((part, idx) => {
+                                    const path = breadcrumbParts.slice(0, idx + 1).join('/');
+                                    const isLast = idx === breadcrumbParts.length - 1;
+                                    return (
+                                        <React.Fragment key={path}>
+                                            {isLast ? (
+                                                <span className="text-gray-200 font-medium">{part}</span>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => setCurrentDir(path)} className="hover:text-blue-400 text-gray-400">
+                                                        {part}
+                                                    </button>
+                                                    <ChevronRight size={10} className="text-gray-500" />
+                                                </>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* Change password form */}
                         {changingPassword && (
@@ -620,10 +752,10 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
 
                         {/* File list */}
                         <div className="flex-1 overflow-auto">
-                            {entries.length === 0 ? (
+                            {sortedEntries.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                                     <VaultIcon size={32} className="mb-2 opacity-50" />
-                                    <p className="text-sm">{t('vault.empty') || 'Vault is empty. Add files to get started.'}</p>
+                                    <p className="text-sm">{currentDir ? (t('vault.dirEmpty') || 'Directory is empty') : (t('vault.empty') || 'Vault is empty. Add files to get started.')}</p>
                                 </div>
                             ) : (
                                 <table className="w-full">
@@ -635,19 +767,26 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {entries.map(entry => (
+                                        {sortedEntries.map(entry => (
                                             <tr key={entry.name} className="hover:bg-gray-700/30 text-sm">
-                                                <td className="py-1.5 px-3 flex items-center gap-2">
-                                                    {entry.isDir ? <Folder size={14} className="text-yellow-400" /> : <File size={14} className="text-gray-400" />}
-                                                    <span className="truncate">{entry.name}</span>
+                                                <td className="py-1.5 px-3">
+                                                    <div
+                                                        className={`flex items-center gap-2 ${entry.isDir ? 'cursor-pointer' : ''}`}
+                                                        onDoubleClick={() => { if (entry.isDir) setCurrentDir(entry.name); }}
+                                                    >
+                                                        {entry.isDir ? <Folder size={14} className="text-yellow-400 shrink-0" /> : <File size={14} className="text-gray-400 shrink-0" />}
+                                                        <span className="truncate">{displayName(entry.name)}</span>
+                                                    </div>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-right text-gray-400">{formatSize(entry.size)}</td>
+                                                <td className="py-1.5 px-3 text-right text-gray-400">{entry.isDir ? '' : formatSize(entry.size)}</td>
                                                 <td className="py-1.5 px-3 text-right">
                                                     <div className="flex gap-1 justify-end">
-                                                        <button onClick={() => handleExtract(entry.name)} className="p-1 hover:bg-gray-600 rounded" title="Extract">
-                                                            <Download size={14} />
-                                                        </button>
-                                                        <button onClick={() => handleRemove(entry.name)} className="p-1 hover:bg-gray-600 rounded text-red-400" title="Remove">
+                                                        {!entry.isDir && (
+                                                            <button onClick={() => handleExtract(entry.name)} className="p-1 hover:bg-gray-600 rounded" title={t('vault.extract') || 'Extract'}>
+                                                                <Download size={14} />
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => handleRemove(entry.name, entry.isDir)} className="p-1 hover:bg-gray-600 rounded text-red-400" title={t('vault.remove') || 'Remove'}>
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
@@ -661,11 +800,12 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
 
                         {/* Footer */}
                         <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400 flex justify-between">
-                            <span>{entries.length} {t('vault.files') || 'files'}</span>
-                            {meta && <span>v{meta.version} | {t('vault.modified') || 'Modified'}: {meta.modified}</span>}
+                            <span>{sortedEntries.length} {t('vault.items') || 'items'}{currentDir ? ` in /${currentDir}` : ''}</span>
+                            {meta && <span>v{meta.version} | {entries.length} total</span>}
                         </div>
                     </>
-                )}
+                    );
+                })()}
 
                 {/* Loading overlay */}
                 {loading && mode === 'browse' && (

@@ -1,17 +1,16 @@
 /**
- * Audio Player Component - AeroPlayer CYBER EDITION 🔥
- * 
- * Full-featured audio player powered by Howler.js:
- * - Robust streaming and buffering for large files
- * - Playback controls (play/pause/seek/volume)
+ * Audio Player Component - AeroPlayer CYBER EDITION
+ *
+ * Full-featured audio player powered by native HTML5 Audio + Web Audio API:
+ * - Native browser streaming (no buffer issues with large files)
+ * - Real-time 10-band graphic equalizer via BiquadFilterNode
+ * - Stereo balance via StereoPannerNode
  * - Real-time visualizer with multiple modes
- * - 10-band graphic equalizer
  * - Keyboard shortcuts
  * - Playback speed control & Loop toggle
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Howl, Howler } from 'howler';
 import {
     Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
     Repeat, Gauge, Activity, BarChart2, Circle, Waves, Zap, ChevronDown, Loader2,
@@ -20,6 +19,8 @@ import {
 import { ViewerBaseProps, PlaybackState, EqualizerState, MediaMetadata } from '../types';
 import { formatDuration } from '../utils/fileTypes';
 import { AudioVisualizer, VisualizerMode } from '../controls/AudioVisualizer';
+import { WebGLVisualizer } from '../controls/WebGLVisualizer';
+import type { WebGLShaderName } from '../controls/shaders';
 import { AudioMixer, EQ_BANDS } from '../controls/AudioMixer';
 import { logger } from '../../../utils/logger';
 
@@ -47,11 +48,26 @@ const VISUALIZER_MODES: { value: VisualizerMode; label: string; icon: React.Reac
     { value: 'kaleidoscope', label: 'Kaleidoscope', icon: <Eye size={14} /> },
 ];
 
+// WebGL shader visualizer modes
+const GL_MODES: { name: string; shader: WebGLShaderName }[] = [
+    { name: 'GL: Wave Glitch', shader: 'wave_glitch' },
+    { name: 'GL: VHS', shader: 'glitch_vhs' },
+    { name: 'GL: Mandelbrot', shader: 'fractal_mandelbrot' },
+    { name: 'GL: Tunnel', shader: 'raymarch_tunnel' },
+    { name: 'GL: Metaball', shader: 'metaball_pulse' },
+    { name: 'GL: Particles', shader: 'particles_explosion' },
+];
+
+// EQ frequency values matching AudioMixer bands
+const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+
 // Global map to track audio elements already connected to MediaElementSource
-// This is necessary because once connected, an audio element cannot be reconnected
+// Once connected, an audio element cannot be reconnected to a new source node
 const connectedAudioElements = new WeakMap<HTMLMediaElement, {
     source: MediaElementAudioSourceNode;
     analyser: AnalyserNode;
+    eqNodes: BiquadFilterNode[];
+    panner: StereoPannerNode;
 }>();
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -60,12 +76,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     className = '',
 }) => {
     // Refs
-    const howlRef = useRef<Howl | null>(null);
-    const analyserRef = useRef<AnalyserNode | null>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
     const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-    const connectedElementRef = useRef<HTMLAudioElement | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const eqNodesRef = useRef<BiquadFilterNode[]>([]);
+    const pannerRef = useRef<StereoPannerNode | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const updateIntervalRef = useRef<number | null>(null);
+    const graphBuiltRef = useRef(false);
 
     // State
     const [playback, setPlayback] = useState<PlaybackState>({
@@ -81,6 +99,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const [eqState, setEQState] = useState<EqualizerState>(defaultEQState);
     const [metadata, setMetadata] = useState<MediaMetadata | null>(null);
     const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>('bars');
+    const [glShader, setGlShader] = useState<WebGLShaderName | null>(null);
     const [cyberMode, setCyberMode] = useState(false);
     const [showMixer, setShowMixer] = useState(false);
     const [showVisualizerMenu, setShowVisualizerMenu] = useState(false);
@@ -94,239 +113,172 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     // Audio source URL
     const audioSrc = file.blobUrl || file.content as string || '';
 
-    // Extract format from filename for Howler (blob URLs don't have extensions)
-    const audioFormat = file.name.split('.').pop()?.toLowerCase() || 'mp3';
+    // Build Web Audio graph once after mount
+    const buildAudioGraph = useCallback(() => {
+        const audioEl = audioRef.current;
+        if (!audioEl || graphBuiltRef.current) return;
 
-    // Initialize Howler
-    useEffect(() => {
-        if (!audioSrc) return;
-
-        // Cleanup previous instance
-        if (howlRef.current) {
-            howlRef.current.unload();
+        // Reuse existing connection if element was already connected
+        const existing = connectedAudioElements.get(audioEl);
+        if (existing) {
+            sourceNodeRef.current = existing.source;
+            analyserRef.current = existing.analyser;
+            eqNodesRef.current = existing.eqNodes;
+            pannerRef.current = existing.panner;
+            graphBuiltRef.current = true;
+            logger.debug('Reusing existing Web Audio graph connection');
+            return;
         }
 
-        // Create new Howl instance
-        // Large files (>10MB) use html5:true for streaming (no full decode needed)
-        // Small files use html5:false for better Web Audio API integration
-        const fileSizeBytes = file.size || 0;
-        const isLargeFile = fileSizeBytes > 10_000_000; // 10MB threshold
+        // Create or reuse AudioContext
+        let ctx = audioCtxRef.current;
+        if (!ctx) {
+            ctx = new AudioContext();
+            audioCtxRef.current = ctx;
+        }
 
-        logger.debug(`Audio: ${file.name}, Size: ${(fileSizeBytes / 1024 / 1024).toFixed(1)}MB, Mode: ${isLargeFile ? 'HTML5 Streaming' : 'Web Audio API'}`);
+        try {
+            // Source node from <audio> element
+            const source = ctx.createMediaElementSource(audioEl);
 
-        const howl = new Howl({
-            src: [audioSrc],
-            format: [audioFormat], // Specify format since blob URLs don't have extensions
-            html5: isLargeFile, // Large files use streaming, small files use Web Audio decoding
-            preload: true,
-            volume: playback.volume,
-            loop: playback.isLooping,
-            onload: () => {
-                setIsAudioReady(true);
-                setIsBuffering(false);
-                setLoadError(null);
-                setRetryCount(0);
-                setPlayback(prev => ({
-                    ...prev,
-                    duration: howl.duration(),
-                }));
-                setMetadata({
-                    title: file.name.replace(/\\.[^/.]+$/, ''),
-                });
+            // 10-band EQ: BiquadFilterNode chain (peaking type)
+            const eqNodes: BiquadFilterNode[] = EQ_FREQUENCIES.map((freq) => {
+                const filter = ctx!.createBiquadFilter();
+                filter.type = 'peaking';
+                filter.frequency.value = freq;
+                filter.Q.value = 1.4;
+                filter.gain.value = 0;
+                return filter;
+            });
 
-                // Setup Web Audio API analyser for visualizer
-                try {
-                    const ctx = Howler.ctx;
-                    if (ctx) {
-                        if (isLargeFile) {
-                            // HTML5 mode: Connect via MediaElementSource
-                            // @ts-ignore - accessing internal Howler structure
-                            const audioElement = howl._sounds?.[0]?._node as HTMLMediaElement | undefined;
+            // Stereo balance
+            const panner = ctx.createStereoPanner();
+            panner.pan.value = 0;
 
-                            if (audioElement && audioElement instanceof HTMLMediaElement) {
-                                // Check if this element was already connected (from a previous load)
-                                const existingConnection = connectedAudioElements.get(audioElement);
+            // Analyser for visualizer (fftSize 512 = 256 bins)
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 512;
+            analyser.smoothingTimeConstant = 0.82;
 
-                                if (existingConnection) {
-                                    // Reuse existing analyser from previous connection
-                                    analyserRef.current = existingConnection.analyser;
-                                    sourceNodeRef.current = existingConnection.source;
-                                    logger.debug('Reusing existing MediaElementSource connection for visualizer');
-                                } else {
-                                    // Create new connection
-                                    const analyser = ctx.createAnalyser();
-                                    analyser.fftSize = 256;
-                                    analyser.smoothingTimeConstant = 0.8;
-
-                                    try {
-                                        const source = ctx.createMediaElementSource(audioElement);
-                                        source.connect(analyser);
-                                        analyser.connect(ctx.destination);
-
-                                        // Store in global map for future reuse
-                                        connectedAudioElements.set(audioElement, { source, analyser });
-
-                                        analyserRef.current = analyser;
-                                        sourceNodeRef.current = source;
-                                        connectedElementRef.current = audioElement;
-                                        logger.debug('Visualizer connected via MediaElementSource (HTML5 streaming mode)');
-                                    } catch (sourceErr: any) {
-                                        if (sourceErr.name === 'InvalidStateError') {
-                                            // Element was connected outside our tracking, no visualizer possible
-                                            console.warn('Audio element already connected externally, visualizer disabled');
-                                            analyserRef.current = analyser; // Still set analyser for UI, but it won't have data
-                                        } else {
-                                            throw sourceErr;
-                                        }
-                                    }
-                                }
-                            } else {
-                                console.warn('No audio element found for HTML5 mode visualizer');
-                            }
-                        } else {
-                            // Web Audio mode: Connect via masterGain (works because audio flows through it)
-                            if (!analyserRef.current) {
-                                const analyser = ctx.createAnalyser();
-                                analyser.fftSize = 256;
-                                analyser.smoothingTimeConstant = 0.8;
-                                analyserRef.current = analyser;
-
-                                Howler.masterGain.connect(analyser);
-                                analyser.connect(ctx.destination);
-                                logger.debug('Visualizer connected via masterGain (Web Audio mode)');
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.warn('Failed to setup analyser:', err);
-                }
-            },
-            onloaderror: (_id, error) => {
-                console.error('Howler load error:', error);
-
-                // Auto-retry logic for intermittent failures
-                if (retryCount < maxRetries) {
-                    logger.debug(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
-                    setRetryCount(prev => prev + 1);
-                    // Delay retry slightly to allow blob URL to stabilize
-                    setTimeout(() => {
-                        if (howlRef.current) {
-                            howlRef.current.unload();
-                        }
-                        // Trigger re-render by updating a state
-                        setIsBuffering(true);
-                    }, 500 * (retryCount + 1)); // Increasing delay
-                    return;
-                }
-
-                // Max retries reached, show error
-                setIsBuffering(false);
-                setLoadError('Failed to load audio file. The file may be too large or the format is unsupported.');
-                onError?.('Failed to load audio file');
-            },
-            onplayerror: (_id, error) => {
-                console.error('Howler play error:', error);
-                // Try to unlock and play again
-                howl.once('unlock', () => {
-                    howl.play();
-                });
-            },
-            onplay: () => {
-                setPlayback(prev => ({ ...prev, isPlaying: true }));
-                // Start time update interval
-                updateIntervalRef.current = window.setInterval(() => {
-                    if (howlRef.current) {
-                        const seek = howlRef.current.seek() as number;
-                        setPlayback(prev => ({
-                            ...prev,
-                            currentTime: seek,
-                        }));
-                    }
-                }, 100);
-            },
-            onpause: () => {
-                setPlayback(prev => ({ ...prev, isPlaying: false }));
-                if (updateIntervalRef.current) {
-                    clearInterval(updateIntervalRef.current);
-                }
-            },
-            onstop: () => {
-                setPlayback(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
-                if (updateIntervalRef.current) {
-                    clearInterval(updateIntervalRef.current);
-                }
-            },
-            onend: () => {
-                if (!playback.isLooping) {
-                    setPlayback(prev => ({ ...prev, isPlaying: false }));
-                    if (updateIntervalRef.current) {
-                        clearInterval(updateIntervalRef.current);
-                    }
-                }
-            },
-            onseek: () => {
-                if (howlRef.current) {
-                    setPlayback(prev => ({
-                        ...prev,
-                        currentTime: howlRef.current!.seek() as number,
-                    }));
-                }
-            },
-        });
-
-        howlRef.current = howl;
-
-        // Cleanup on unmount
-        return () => {
-            if (updateIntervalRef.current) {
-                clearInterval(updateIntervalRef.current);
+            // Connect chain: source -> eq[0] -> eq[1] -> ... -> eq[9] -> panner -> analyser -> destination
+            source.connect(eqNodes[0]);
+            for (let i = 0; i < eqNodes.length - 1; i++) {
+                eqNodes[i].connect(eqNodes[i + 1]);
             }
-            if (howlRef.current) {
-                howlRef.current.unload();
-                howlRef.current = null;
+            eqNodes[eqNodes.length - 1].connect(panner);
+            panner.connect(analyser);
+            analyser.connect(ctx.destination);
+
+            // Store in WeakMap to prevent reconnection
+            connectedAudioElements.set(audioEl, { source, analyser, eqNodes, panner });
+
+            // Store in refs
+            sourceNodeRef.current = source;
+            analyserRef.current = analyser;
+            eqNodesRef.current = eqNodes;
+            pannerRef.current = panner;
+            graphBuiltRef.current = true;
+
+            logger.debug('Web Audio graph built: source -> EQ[10] -> panner -> analyser -> destination');
+        } catch (err: any) {
+            if (err.name === 'InvalidStateError') {
+                logger.warn('Audio element already connected externally');
+            } else {
+                console.error('Failed to build audio graph:', err);
             }
-            // Reset analyser refs so they get recreated on next audio load
-            analyserRef.current = null;
-            sourceNodeRef.current = null;
-            connectedElementRef.current = null;
-        };
-    }, [audioSrc, file.name, retryCount]); // Reinitialize when source changes or on retry
+        }
+    }, []);
+
+    // Set audio source when it changes
+    useEffect(() => {
+        const audioEl = audioRef.current;
+        if (!audioEl || !audioSrc) return;
+
+        // Reset state for new source
+        setIsAudioReady(false);
+        setIsBuffering(true);
+        setLoadError(null);
+
+        audioEl.src = audioSrc;
+        audioEl.volume = playback.volume;
+        audioEl.load();
+
+        logger.debug(`Audio source set: ${file.name}`);
+
+        // Resume AudioContext if suspended (autoplay policy)
+        if (audioCtxRef.current?.state === 'suspended') {
+            audioCtxRef.current.resume().catch(() => {});
+        }
+    }, [audioSrc, file.name]);
 
     // Update volume
     useEffect(() => {
-        if (howlRef.current) {
-            howlRef.current.volume(playback.isMuted ? 0 : playback.volume);
+        if (audioRef.current) {
+            audioRef.current.volume = playback.isMuted ? 0 : playback.volume;
         }
     }, [playback.volume, playback.isMuted]);
 
     // Update loop
     useEffect(() => {
-        if (howlRef.current) {
-            howlRef.current.loop(playback.isLooping);
+        if (audioRef.current) {
+            audioRef.current.loop = playback.isLooping;
         }
     }, [playback.isLooping]);
 
     // Update playback rate
     useEffect(() => {
-        if (howlRef.current) {
-            howlRef.current.rate(playback.playbackRate);
+        if (audioRef.current) {
+            audioRef.current.playbackRate = playback.playbackRate;
         }
     }, [playback.playbackRate]);
 
-    // Playback controls
-    const togglePlay = useCallback(() => {
-        if (!howlRef.current) return;
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.removeAttribute('src');
+                audioRef.current.load();
+            }
+            if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+                audioCtxRef.current.close();
+            }
+        };
+    }, []);
 
-        if (playback.isPlaying) {
-            howlRef.current.pause();
-        } else {
-            howlRef.current.play();
+    // Playback controls
+    const togglePlay = useCallback(async () => {
+        const audioEl = audioRef.current;
+        if (!audioEl) return;
+
+        // Resume AudioContext if suspended (autoplay policy)
+        if (audioCtxRef.current?.state === 'suspended') {
+            await audioCtxRef.current.resume();
         }
-    }, [playback.isPlaying]);
+
+        // Build audio graph on first user interaction (ensures AudioContext is allowed)
+        if (!graphBuiltRef.current) {
+            buildAudioGraph();
+        }
+
+        // Use actual DOM state, not React state
+        if (audioEl.paused) {
+            try {
+                await audioEl.play();
+            } catch (err: any) {
+                if (err.name !== 'AbortError') {
+                    console.error('Play failed:', err);
+                    setLoadError('Playback failed. Try clicking play again.');
+                }
+            }
+        } else {
+            audioEl.pause();
+        }
+    }, [buildAudioGraph]);
 
     const seek = useCallback((time: number) => {
-        if (howlRef.current) {
-            howlRef.current.seek(time);
+        if (audioRef.current) {
+            audioRef.current.currentTime = time;
             setPlayback(prev => ({ ...prev, currentTime: time }));
         }
     }, []);
@@ -354,6 +306,65 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const skipForward = useCallback(() => {
         seek(Math.min(playback.duration, playback.currentTime + 5));
     }, [playback.currentTime, playback.duration, seek]);
+
+    // Audio element event handlers
+    const handleLoadedMetadata = useCallback(() => {
+        if (audioRef.current) {
+            setIsAudioReady(true);
+            setIsBuffering(false);
+            setLoadError(null);
+            setRetryCount(0);
+            setPlayback(prev => ({
+                ...prev,
+                duration: audioRef.current!.duration,
+            }));
+            setMetadata({
+                title: file.name.replace(/\.[^/.]+$/, ''),
+            });
+
+            // Build audio graph now that audio element has valid source
+            if (!graphBuiltRef.current) {
+                buildAudioGraph();
+            }
+        }
+    }, [file.name, buildAudioGraph]);
+
+    const handleTimeUpdate = useCallback(() => {
+        if (audioRef.current) {
+            setPlayback(prev => ({
+                ...prev,
+                currentTime: audioRef.current!.currentTime,
+            }));
+        }
+    }, []);
+
+    const handleProgress = useCallback(() => {
+        const audioEl = audioRef.current;
+        if (audioEl && audioEl.buffered.length > 0) {
+            const bufferedEnd = audioEl.buffered.end(audioEl.buffered.length - 1);
+            const duration = audioEl.duration;
+            setPlayback(prev => ({
+                ...prev,
+                bufferedPercent: duration > 0 ? (bufferedEnd / duration) * 100 : 0,
+            }));
+        }
+    }, []);
+
+    const handleError = useCallback(() => {
+        if (retryCount < maxRetries) {
+            logger.debug(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
+            setRetryCount(prev => prev + 1);
+            setTimeout(() => {
+                if (audioRef.current) {
+                    audioRef.current.load();
+                }
+            }, 500 * (retryCount + 1));
+            return;
+        }
+        setIsBuffering(false);
+        setLoadError('Failed to load audio file. The file may be too large or the format is unsupported.');
+        onError?.('Failed to load audio file');
+    }, [retryCount, onError]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -400,12 +411,34 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     e.preventDefault();
                     setCyberMode(prev => !prev);
                     break;
+                case 'v':
+                    e.preventDefault();
+                    // Cycle through all 14 modes: 8 canvas + 6 GL
+                    if (!glShader) {
+                        const currentCanvasIdx = VISUALIZER_MODES.findIndex(m => m.value === visualizerMode);
+                        if (currentCanvasIdx < VISUALIZER_MODES.length - 1) {
+                            setVisualizerMode(VISUALIZER_MODES[currentCanvasIdx + 1].value);
+                        } else {
+                            // Switch to first GL mode
+                            setGlShader(GL_MODES[0].shader);
+                        }
+                    } else {
+                        const currentGlIdx = GL_MODES.findIndex(m => m.shader === glShader);
+                        if (currentGlIdx < GL_MODES.length - 1) {
+                            setGlShader(GL_MODES[currentGlIdx + 1].shader);
+                        } else {
+                            // Wrap back to first canvas mode
+                            setGlShader(null);
+                            setVisualizerMode('bars');
+                        }
+                    }
+                    break;
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [togglePlay, skipBackward, skipForward, setVolume, playback.volume, toggleMute, toggleLoop]);
+    }, [togglePlay, skipBackward, skipForward, setVolume, playback.volume, toggleMute, toggleLoop, visualizerMode, glShader]);
 
     // Mouse wheel volume control
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -430,17 +463,51 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             tabIndex={0}
             onWheel={handleWheel}
         >
+            {/* Hidden audio element - always present for stable Web Audio graph */}
+            <audio
+                ref={audioRef}
+                preload="auto"
+                onLoadedMetadata={handleLoadedMetadata}
+                onTimeUpdate={handleTimeUpdate}
+                onPlay={() => setPlayback(prev => ({ ...prev, isPlaying: true }))}
+                onPause={() => setPlayback(prev => ({ ...prev, isPlaying: false }))}
+                onEnded={() => {
+                    if (!playback.isLooping) {
+                        setPlayback(prev => ({ ...prev, isPlaying: false }));
+                    }
+                }}
+                onProgress={handleProgress}
+                onError={handleError}
+                onWaiting={() => setIsBuffering(true)}
+                onCanPlay={() => setIsBuffering(false)}
+                style={{ display: 'none' }}
+            />
+
             {/* Visualizer area - expands in fullscreen mode */}
             <div className={`flex-1 flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-6'}`}>
                 <div className={`w-full ${isFullscreen ? 'h-full' : 'max-w-4xl h-72'} relative`}>
                     {/* Visualizer */}
-                    <AudioVisualizer
-                        analyser={analyserRef.current}
-                        mode={visualizerMode}
-                        isPlaying={playback.isPlaying}
-                        cyberMode={cyberMode}
-                        className={isFullscreen ? '' : 'rounded-xl'}
-                    />
+                    {glShader ? (
+                        <WebGLVisualizer
+                            analyser={analyserRef.current}
+                            shader={glShader}
+                            isPlaying={playback.isPlaying}
+                            className={isFullscreen ? '' : 'rounded-xl'}
+                            onContextLost={() => {
+                                // Auto-fallback to Canvas 2D when WebGL context is lost
+                                logger.warn('WebGL context lost — falling back to Canvas 2D');
+                                setGlShader(null);
+                            }}
+                        />
+                    ) : (
+                        <AudioVisualizer
+                            analyser={analyserRef.current}
+                            mode={visualizerMode}
+                            isPlaying={playback.isPlaying}
+                            cyberMode={cyberMode}
+                            className={isFullscreen ? '' : 'rounded-xl'}
+                        />
+                    )}
 
                     {/* Buffering overlay */}
                     {isBuffering && !loadError && (
@@ -465,6 +532,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                         setLoadError(null);
                                         setRetryCount(0);
                                         setIsBuffering(true);
+                                        if (audioRef.current) {
+                                            audioRef.current.load();
+                                        }
                                     }}
                                     className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
                                 >
@@ -512,26 +582,48 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             <button
                                 onClick={() => setShowVisualizerMenu(prev => !prev)}
                                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-800/80 hover:bg-gray-700 rounded-lg transition-colors"
-                                title="Change visualizer mode"
+                                title="Change visualizer mode (V)"
                             >
-                                {VISUALIZER_MODES.find(m => m.value === visualizerMode)?.icon}
+                                {glShader
+                                    ? <span className="text-[10px] font-bold text-emerald-400 leading-none">GL</span>
+                                    : VISUALIZER_MODES.find(m => m.value === visualizerMode)?.icon
+                                }
                                 <ChevronDown size={12} className="text-gray-400" />
                             </button>
 
                             {showVisualizerMenu && (
-                                <div className="absolute top-full right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-10">
+                                <div className="absolute top-full right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-10 min-w-[160px]">
+                                    {/* Canvas 2D modes */}
                                     {VISUALIZER_MODES.map((mode) => (
                                         <button
                                             key={mode.value}
                                             onClick={() => {
                                                 setVisualizerMode(mode.value);
+                                                setGlShader(null);
                                                 setShowVisualizerMenu(false);
                                             }}
-                                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-700 transition-colors ${visualizerMode === mode.value ? 'text-cyan-400' : 'text-white'
+                                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-700 transition-colors ${!glShader && visualizerMode === mode.value ? 'text-cyan-400' : 'text-white'
                                                 }`}
                                         >
                                             {mode.icon}
                                             {mode.label}
+                                        </button>
+                                    ))}
+                                    {/* Separator */}
+                                    <div className="border-t border-gray-600 my-1" />
+                                    {/* WebGL shader modes */}
+                                    {GL_MODES.map((mode) => (
+                                        <button
+                                            key={mode.shader}
+                                            onClick={() => {
+                                                setGlShader(mode.shader);
+                                                setShowVisualizerMenu(false);
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-700 transition-colors ${glShader === mode.shader ? 'text-emerald-400' : 'text-white'
+                                                }`}
+                                        >
+                                            <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1 rounded">GL</span>
+                                            {mode.name.replace('GL: ', '')}
                                         </button>
                                     ))}
                                 </div>
@@ -542,7 +634,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     {/* AeroPlayer branding */}
                     <div className={`absolute bottom-2 right-2 text-xs font-mono transition-all ${cyberMode ? 'text-cyan-400/70 animate-pulse' : 'text-gray-600 opacity-50'
                         }`}>
-                        AeroPlayer{cyberMode ? ' // CYBER' : ''}
+                        AeroPlayer{cyberMode ? ' // CYBER' : ''}{glShader ? ` // ${GL_MODES.find(m => m.shader === glShader)?.name || 'GL'}` : ''}
                     </div>
                 </div>
             </div>
@@ -609,7 +701,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 <button
                     onClick={skipBackward}
                     className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                    title="Skip -5s (←)"
+                    title="Skip -5s"
                 >
                     <SkipBack size={20} className="text-gray-400" />
                 </button>
@@ -636,7 +728,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 <button
                     onClick={skipForward}
                     className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                    title="Skip +5s (→)"
+                    title="Skip +5s"
                 >
                     <SkipForward size={20} className="text-gray-400" />
                 </button>
@@ -706,6 +798,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                         <AudioMixer
                             state={eqState}
                             onStateChange={setEQState}
+                            eqNodes={eqNodesRef.current}
+                            pannerNode={pannerRef.current}
                             isExpanded={false}
                             onToggleExpand={() => setShowMixer(true)}
                         />
@@ -719,6 +813,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     <AudioMixer
                         state={eqState}
                         onStateChange={setEQState}
+                        eqNodes={eqNodesRef.current}
+                        pannerNode={pannerRef.current}
                         isExpanded={true}
                         onToggleExpand={() => setShowMixer(false)}
                     />
@@ -727,7 +823,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
             {/* Keyboard shortcuts hint */}
             <div className="text-center text-xs text-gray-600 pb-2">
-                Space: Play/Pause • ←→: Skip • ↑↓: Volume • E: EQ • C: Cyber Mode
+                Space: Play/Pause • ←→: Skip • ↑↓: Volume • E: EQ • C: Cyber Mode • V: Visualizer
             </div>
         </div>
     );

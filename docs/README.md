@@ -12,7 +12,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (13 protocols) |
 | **[COMPETITOR-ANALYSIS.md](./COMPETITOR-ANALYSIS.md)** | Market and competitor analysis |
-| **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture |
+| **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[UBUNTU-COMPATIBILITY.md](./UBUNTU-COMPATIBILITY.md)** | Ubuntu 22.04/24.04 LTS compatibility audit |
 | **[WINDOWS-COMPATIBILITY.md](./WINDOWS-COMPATIBILITY.md)** | Windows 10/11 compatibility audit |
 
@@ -65,8 +65,22 @@ Currently supported: **51 languages** at 100% coverage
 
 ---
 
-- **Documentation Version**: 1.8.7
-- **Last Update**: 2026-02-05
+## Security (v1.9.0)
+
+AeroFTP v1.9.0 introduces the **Unified Encrypted Keystore**: all sensitive data (server profiles, AI configuration, OAuth credentials) is now stored in the AES-256-GCM encrypted vault. The release also adds **keystore backup/restore** (`.aeroftp-keystore` format with Argon2id + AES-256-GCM) and a **migration wizard** that automatically moves legacy localStorage data to the encrypted vault on first launch. Dual security audit (Claude Opus 4.6 + GPT-5.2-Codex) with all findings resolved. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) and [SECURITY.md](../SECURITY.md) for full details.
+
+## AeroVault Directory Support (v1.9.0)
+
+AeroVault v2 encrypted containers now support **full directory hierarchies**: create nested folders inside vaults, navigate with breadcrumb UI, add files to specific directories, and recursively delete directories with all contents. Three new backend commands: `vault_v2_create_directory`, `vault_v2_delete_entries` (recursive), `vault_v2_add_files_to_dir`.
+
+## AeroAgent Intelligence (v1.9.0)
+
+AeroAgent now features **27 tools** (up from 25), including **RAG integration** (`rag_index` + `rag_search` for workspace-aware AI context) and a **plugin system** for custom tools via JSON manifest + shell scripts. See the [README](../README.md) AeroAgent section for details.
+
+---
+
+- **Documentation Version**: 1.9.0
+- **Last Update**: 2026-02-07
 
 ---
 

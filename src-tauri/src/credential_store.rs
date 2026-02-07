@@ -598,15 +598,45 @@ pub fn harden_config_directory() -> Result<(), CredentialError> {
     Ok(())
 }
 
-/// Securely delete a file (overwrite with zeros, then remove)
+/// Securely delete a file (overwrite in-place with zeros then random, then remove)
+/// Uses OpenOptions without truncate to preserve original file size on disk.
+/// Chunked writes (1 MiB) prevent OOM on large files.
 pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
+    use std::io::{Write, Seek, SeekFrom};
+    use std::fs::OpenOptions;
+
     if path.exists() {
-        let size = std::fs::metadata(path)?.len();
+        let size = std::fs::metadata(path)?.len() as usize;
         if size > 0 {
-            let zeros = vec![0u8; size as usize];
-            std::fs::write(path, &zeros)?;
-            let random = crate::crypto::random_bytes(size as usize);
-            std::fs::write(path, &random)?;
+            const CHUNK: usize = 1024 * 1024; // 1 MiB
+            let zeros = vec![0u8; CHUNK.min(size)];
+
+            // Pass 1: overwrite in-place with zeros (no truncate)
+            {
+                let mut f = OpenOptions::new().write(true).open(path)?;
+                f.seek(SeekFrom::Start(0))?;
+                let mut remaining = size;
+                while remaining > 0 {
+                    let n = remaining.min(CHUNK);
+                    f.write_all(&zeros[..n])?;
+                    remaining -= n;
+                }
+                f.sync_all()?;
+            }
+
+            // Pass 2: overwrite in-place with random data
+            {
+                let mut f = OpenOptions::new().write(true).open(path)?;
+                f.seek(SeekFrom::Start(0))?;
+                let mut remaining = size;
+                while remaining > 0 {
+                    let n = remaining.min(CHUNK);
+                    let random = crate::crypto::random_bytes(n);
+                    f.write_all(&random)?;
+                    remaining -= n;
+                }
+                f.sync_all()?;
+            }
         }
         std::fs::remove_file(path)?;
         info!("Securely deleted: {:?}", path);

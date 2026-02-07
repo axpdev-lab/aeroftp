@@ -47,6 +47,7 @@ import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { LockScreen } from './components/LockScreen';
+import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
@@ -64,6 +65,7 @@ import { VaultIcon } from './components/icons/VaultIcon';
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
 import { logger } from './utils/logger';
+import { secureGetWithFallback } from './utils/secureStorage';
 import { useTranslation } from './i18n';
 
 // Components
@@ -130,6 +132,7 @@ const App: React.FC = () => {
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
+  const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
   // === App Background Pattern ===
@@ -340,6 +343,21 @@ const App: React.FC = () => {
       }
     };
     initVault();
+  }, []);
+
+  // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
+  useEffect(() => {
+    const migrationDone = localStorage.getItem('keystore_migration_v2_done');
+    if (!migrationDone) {
+      const hasLegacy = localStorage.getItem('aeroftp-saved-servers')
+        || localStorage.getItem('aeroftp_ai_settings')
+        || localStorage.getItem('aeroftp_oauth_settings');
+      if (hasLegacy) {
+        setShowMigrationWizard(true);
+      } else {
+        localStorage.setItem('keystore_migration_v2_done', 'true');
+      }
+    }
   }, []);
 
   // Listen for app background pattern changes from Settings
@@ -1340,15 +1358,14 @@ const App: React.FC = () => {
           // Ignore if not connected
         }
 
-        // Get OAuth credentials from localStorage
+        // Get OAuth credentials from vault (with localStorage fallback)
         // Try new structured format first (aeroftp_oauth_settings)
         let clientId: string | null = null;
         let clientSecret: string | null = null;
 
         try {
-          const oauthSettingsJson = localStorage.getItem('aeroftp_oauth_settings');
-          if (oauthSettingsJson) {
-            const oauthSettings = JSON.parse(oauthSettingsJson);
+          const oauthSettings = await secureGetWithFallback<Record<string, { clientId: string; clientSecret: string }>>('oauth_clients', 'aeroftp_oauth_settings');
+          if (oauthSettings) {
             const providerKey = protocol === 'googledrive' ? 'googledrive' : protocol;
             if (oauthSettings[providerKey]) {
               clientId = oauthSettings[providerKey].clientId;
@@ -1405,9 +1422,8 @@ const App: React.FC = () => {
         // Safety check: recover missing S3 options
         if (protocol === 's3' && (!connectParams.options || !connectParams.options.bucket)) {
           try {
-            const savedJson = localStorage.getItem('aeroftp-saved-servers');
-            if (savedJson) {
-              const savedServers = JSON.parse(savedJson);
+            const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+            if (savedServers) {
               const found = savedServers.find((s: any) =>
                 (s.name === targetSession.serverName) ||
                 (s.host === connectParams.server && s.username === connectParams.username)
@@ -1582,15 +1598,14 @@ const App: React.FC = () => {
         return;
       }
 
-      // Get saved servers from localStorage (needed to check if same server)
-      const savedServersStr = localStorage.getItem('aeroftp-saved-servers');
-      if (!savedServersStr) {
+      // Get saved servers from vault (with localStorage fallback)
+      const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+      if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
         return;
       }
 
-      const savedServers = JSON.parse(savedServersStr);
       const cloudServer = savedServers.find((s: { name: string }) => s.name === cloudConfig.server_profile);
 
       if (!cloudServer) {
@@ -3478,6 +3493,14 @@ const App: React.FC = () => {
           onClose={() => setShowMasterPasswordSetup(false)}
         />
       )}
+
+      {/* Keystore Migration Wizard — one-time migration from localStorage to vault */}
+      <KeystoreMigrationWizard
+        isOpen={showMigrationWizard}
+        onComplete={() => setShowMigrationWizard(false)}
+        onSkip={() => setShowMigrationWizard(false)}
+        isLightTheme={theme === 'light'}
+      />
 
       <div className={`relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
       {/* App Background Pattern Overlay */}

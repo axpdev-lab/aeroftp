@@ -1,17 +1,18 @@
 /**
- * Audio Visualizer Component (Canvas-based) - CYBER ENHANCED 🔥
- * 
+ * Audio Visualizer Component (Canvas-based) - CYBER ENHANCED
+ *
  * Creates real-time audio visualization using Web Audio API AnalyserNode.
- * 
+ *
  * Features:
- * - Multiple visualization modes (bars, waveform, radial, spectrum)
+ * - Multiple visualization modes (bars, waveform, radial, spectrum, fractal, vortex, plasma, kaleidoscope)
+ * - Beat detection with onset energy threshold algorithm
+ * - Beat-reactive flash/pulse effects across all modes
  * - Cyber Mode with CRT scanlines and glitch effects
  * - Particle system following audio peaks
- * - Pulsing glow effects synchronized to bass
  * - Tokyo Night / Cyberpunk color theme
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 
 export type VisualizerMode = 'bars' | 'waveform' | 'radial' | 'spectrum' | 'fractal' | 'vortex' | 'plasma' | 'kaleidoscope';
 
@@ -45,6 +46,12 @@ const COLORS = {
     scanline: 'rgba(0, 255, 255, 0.03)',
 };
 
+// Beat detection constants
+const ENERGY_HISTORY_SIZE = 43; // ~720ms at 60fps
+const BEAT_THRESHOLD = 1.5;     // Current energy must be 1.5x average
+const BEAT_MIN_ENERGY = 0.15;   // Minimum absolute energy to count as beat
+const BEAT_COOLDOWN_MS = 100;   // Minimum ms between beats
+
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     analyser,
     mode = 'bars',
@@ -59,6 +66,14 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const frameCountRef = useRef(0);
     const glitchRef = useRef({ active: false, offset: 0, duration: 0 });
 
+    // Beat detection state
+    const energyHistoryRef = useRef<Float32Array>(new Float32Array(ENERGY_HISTORY_SIZE));
+    const energyIndexRef = useRef(0);
+    const energyCountRef = useRef(0);
+    const lastBeatTimeRef = useRef(0);
+    const isBeatRef = useRef(false);
+    const beatDecayRef = useRef(0); // 1.0 at beat, decays to 0
+
     // Initialize data array when analyser changes
     useEffect(() => {
         if (analyser) {
@@ -70,6 +85,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
     // Create particles on beat
     const createParticle = useCallback((x: number, y: number, intensity: number) => {
+        if (particlesRef.current.length >= 200) return;
         const colors = [COLORS.primary, COLORS.secondary, COLORS.accent, COLORS.hot];
         particlesRef.current.push({
             x,
@@ -128,7 +144,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
         if (glitch.active) {
             // RGB shift effect
-            const imageData = ctx.getImageData(0, 0, width, height);
             const shiftAmount = Math.floor(Math.abs(glitch.offset));
 
             // Draw with color separation
@@ -144,13 +159,96 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         }
     }, []);
 
+    // Draw vignette overlay (darkened edges)
+    const drawVignette = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) => {
+        const gradient = ctx.createRadialGradient(
+            width / 2, height / 2, Math.min(width, height) * 0.3,
+            width / 2, height / 2, Math.max(width, height) * 0.7
+        );
+        gradient.addColorStop(0, 'transparent');
+        gradient.addColorStop(1, `rgba(0, 0, 0, ${0.4 + intensity * 0.3})`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+    }, []);
+
+    // Draw chromatic aberration (RGB channel split)
+    const drawChromaticAberration = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) => {
+        if (intensity < 0.3) return;
+        const offset = Math.floor(intensity * 4);
+        if (offset < 1) return;
+        const imageData = ctx.getImageData(0, 0, width * window.devicePixelRatio, height * window.devicePixelRatio);
+        const data = imageData.data;
+        const w = imageData.width;
+        const shiftPixels = offset * window.devicePixelRatio;
+        // Shift red channel left, blue channel right
+        for (let y = 0; y < imageData.height; y++) {
+            for (let x = shiftPixels; x < w - shiftPixels; x++) {
+                const i = (y * w + x) * 4;
+                // Red from left
+                data[i] = data[(y * w + (x - shiftPixels)) * 4];
+                // Blue from right
+                data[i + 2] = data[(y * w + (x + shiftPixels)) * 4 + 2];
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }, []);
+
+    // Beat detection — returns true on onset
+    const detectBeat = useCallback((dataArray: Uint8Array): boolean => {
+        const bassEnd = Math.min(16, dataArray.length);
+        let bassSum = 0;
+        for (let i = 0; i < bassEnd; i++) {
+            bassSum += dataArray[i] / 255;
+        }
+        const currentEnergy = bassSum / bassEnd;
+
+        // Circular buffer write (O(1))
+        const history = energyHistoryRef.current;
+        const idx = energyIndexRef.current;
+        history[idx] = currentEnergy;
+        energyIndexRef.current = (idx + 1) % ENERGY_HISTORY_SIZE;
+        if (energyCountRef.current < ENERGY_HISTORY_SIZE) {
+            energyCountRef.current++;
+        }
+
+        // Need enough history
+        if (energyCountRef.current < 8) return false;
+
+        // Average over filled portion
+        let sum = 0;
+        for (let i = 0; i < energyCountRef.current; i++) {
+            sum += history[i];
+        }
+        const avgEnergy = sum / energyCountRef.current;
+
+        const now = performance.now();
+        const cooldownOk = (now - lastBeatTimeRef.current) > BEAT_COOLDOWN_MS;
+
+        if (currentEnergy > avgEnergy * BEAT_THRESHOLD && currentEnergy > BEAT_MIN_ENERGY && cooldownOk) {
+            lastBeatTimeRef.current = now;
+            return true;
+        }
+        return false;
+    }, []);
+
+    // Draw beat flash overlay
+    const drawBeatFlash = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, decay: number) => {
+        if (decay <= 0) return;
+        const alpha = decay * 0.12;
+        ctx.fillStyle = cyberMode
+            ? `rgba(0, 255, 255, ${alpha})`    // Cyan flash in cyber mode
+            : `rgba(122, 162, 247, ${alpha})`;  // Blue flash normally
+        ctx.fillRect(0, 0, width, height);
+    }, [cyberMode]);
+
     // Draw frequency bars
     const drawBars = useCallback((
         ctx: CanvasRenderingContext2D,
         width: number,
         height: number,
         dataArray: Uint8Array,
-        bassIntensity: number
+        bassIntensity: number,
+        beatDecay: number
     ) => {
         const barCount = 64;
         const barWidth = (width / barCount) - 2;
@@ -169,9 +267,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             gradient.addColorStop(0.5, COLORS.secondary);
             gradient.addColorStop(1, COLORS.accent);
 
-            // Dynamic glow based on bass
-            ctx.shadowBlur = 10 + bassIntensity * 20;
-            ctx.shadowColor = COLORS.glow;
+            // Dynamic glow based on bass + beat
+            ctx.shadowBlur = 10 + bassIntensity * 20 + beatDecay * 15;
+            ctx.shadowColor = beatDecay > 0.5 ? COLORS.hot : COLORS.glow;
 
             // Draw bar with rounded top
             ctx.fillStyle = gradient;
@@ -179,8 +277,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ctx.roundRect(x, y, barWidth, barHeight, [barWidth / 2, barWidth / 2, 0, 0]);
             ctx.fill();
 
-            // Spawn particles on high peaks
-            if (cyberMode && percent > 0.8 && Math.random() < 0.3) {
+            // Beat flash on bar tops
+            if (beatDecay > 0.3 && percent > 0.5) {
+                ctx.fillStyle = `rgba(247, 118, 142, ${beatDecay * 0.6})`;
+                ctx.fillRect(x, y, barWidth, 3);
+            }
+
+            // Spawn particles on high peaks (more during beats)
+            const particleChance = beatDecay > 0.5 ? 0.5 : 0.3;
+            if (cyberMode && percent > 0.8 && Math.random() < particleChance) {
                 createParticle(x + barWidth / 2, y, percent);
             }
 
@@ -194,7 +299,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         width: number,
         height: number,
         dataArray: Uint8Array,
-        bassIntensity: number
+        bassIntensity: number,
+        beatDecay: number
     ) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -205,10 +311,13 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.save();
         ctx.translate(centerX, centerY);
 
+        // Beat-reactive radius expansion
+        const beatExpand = 1 + beatDecay * 0.15;
+
         for (let i = 0; i < barCount; i++) {
             const value = dataArray[Math.floor(i * dataArray.length / barCount)];
             const percent = value / 255;
-            const barLength = baseRadius * percent * 0.8;
+            const barLength = baseRadius * percent * 0.8 * beatExpand;
             const angle = i * angleStep - Math.PI / 2;
 
             const innerRadius = baseRadius * (0.5 + bassIntensity * 0.2);
@@ -224,8 +333,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             gradient.addColorStop(0, COLORS.primary);
             gradient.addColorStop(1, percent > 0.7 ? COLORS.hot : COLORS.accent);
 
-            ctx.shadowBlur = 8 + bassIntensity * 15;
-            ctx.shadowColor = COLORS.glow;
+            ctx.shadowBlur = 8 + bassIntensity * 15 + beatDecay * 10;
+            ctx.shadowColor = beatDecay > 0.5 ? COLORS.hot : COLORS.glow;
             ctx.strokeStyle = gradient;
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -249,7 +358,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         width: number,
         height: number,
         dataArray: Uint8Array,
-        bassIntensity: number
+        bassIntensity: number,
+        beatDecay: number
     ) => {
         // Draw filled area under the curve
         ctx.beginPath();
@@ -277,20 +387,26 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.lineTo(width, height);
         ctx.closePath();
 
-        // Gradient fill
+        // Gradient fill — shifts warmer on beat
         const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, `${COLORS.accent}90`);
-        gradient.addColorStop(0.5, `${COLORS.secondary}60`);
-        gradient.addColorStop(1, `${COLORS.primary}20`);
+        if (beatDecay > 0.3) {
+            gradient.addColorStop(0, `${COLORS.hot}90`);
+            gradient.addColorStop(0.5, `${COLORS.secondary}60`);
+            gradient.addColorStop(1, `${COLORS.primary}20`);
+        } else {
+            gradient.addColorStop(0, `${COLORS.accent}90`);
+            gradient.addColorStop(0.5, `${COLORS.secondary}60`);
+            gradient.addColorStop(1, `${COLORS.primary}20`);
+        }
 
         ctx.fillStyle = gradient;
-        ctx.shadowBlur = 15 + bassIntensity * 20;
+        ctx.shadowBlur = 15 + bassIntensity * 20 + beatDecay * 10;
         ctx.shadowColor = COLORS.accent;
         ctx.fill();
 
         // Draw line on top
-        ctx.strokeStyle = COLORS.accent;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = beatDecay > 0.3 ? COLORS.hot : COLORS.accent;
+        ctx.lineWidth = 2 + beatDecay;
         ctx.beginPath();
         for (let i = 0; i < points.length; i++) {
             if (i === 0) {
@@ -311,18 +427,19 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         width: number,
         height: number,
         dataArray: Uint8Array,
-        bassIntensity: number
+        bassIntensity: number,
+        beatDecay: number
     ) => {
         const sliceWidth = width / dataArray.length;
         let x = 0;
 
-        // Glow effect
-        ctx.shadowBlur = 15 + bassIntensity * 25;
-        ctx.shadowColor = COLORS.accent;
+        // Glow effect — intensified on beat
+        ctx.shadowBlur = 15 + bassIntensity * 25 + beatDecay * 15;
+        ctx.shadowColor = beatDecay > 0.5 ? COLORS.hot : COLORS.accent;
 
         // Draw waveform line
-        ctx.lineWidth = 2 + bassIntensity * 2;
-        ctx.strokeStyle = COLORS.accent;
+        ctx.lineWidth = 2 + bassIntensity * 2 + beatDecay * 1.5;
+        ctx.strokeStyle = beatDecay > 0.3 ? COLORS.hot : COLORS.accent;
         ctx.beginPath();
 
         for (let i = 0; i < dataArray.length; i++) {
@@ -349,14 +466,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.shadowBlur = 0;
     }, []);
 
-    // Draw Lissajous fractal curves (Winamp style)
+    // Draw Lissajous fractal curves
     const drawFractal = useCallback((
         ctx: CanvasRenderingContext2D,
         width: number,
         height: number,
         dataArray: Uint8Array,
         bassIntensity: number,
-        frame: number
+        frame: number,
+        beatDecay: number
     ) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -372,7 +490,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const b = 2 + Math.floor(mid * 4);
         const delta = time + high * Math.PI;
 
-        const radius = Math.min(width, height) * 0.35 * (0.8 + bassIntensity * 0.4);
+        // Beat-reactive scale
+        const beatScale = 1 + beatDecay * 0.1;
+        const radius = Math.min(width, height) * 0.35 * (0.8 + bassIntensity * 0.4) * beatScale;
         const points = 360;
 
         // Draw multiple layers for depth
@@ -380,7 +500,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             const layerOffset = layer * 0.5;
             const alpha = 1 - layer * 0.25;
 
-            ctx.shadowBlur = 15 + bassIntensity * 30;
+            ctx.shadowBlur = 15 + bassIntensity * 30 + beatDecay * 15;
             ctx.shadowColor = layer === 0 ? COLORS.accent : layer === 1 ? COLORS.secondary : COLORS.hot;
             ctx.strokeStyle = layer === 0 ? COLORS.primary : layer === 1 ? COLORS.secondary : COLORS.accent;
             ctx.lineWidth = 2 - layer * 0.5;
@@ -409,7 +529,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         height: number,
         dataArray: Uint8Array,
         bassIntensity: number,
-        frame: number
+        frame: number,
+        beatDecay: number
     ) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -424,7 +545,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             const colorIndex = arm % 4;
             const colors = [COLORS.primary, COLORS.secondary, COLORS.accent, COLORS.hot];
 
-            ctx.shadowBlur = 12 + bassIntensity * 20;
+            ctx.shadowBlur = 12 + bassIntensity * 20 + beatDecay * 10;
             ctx.shadowColor = colors[colorIndex];
             ctx.strokeStyle = colors[colorIndex];
             ctx.lineWidth = 2 + bassIntensity * 2;
@@ -447,10 +568,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ctx.stroke();
         }
 
-        // Center pulse
-        const pulseRadius = 20 + bassIntensity * 40;
+        // Center pulse — bigger on beat
+        const pulseRadius = 20 + bassIntensity * 40 + beatDecay * 25;
         const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulseRadius);
-        gradient.addColorStop(0, COLORS.hot);
+        gradient.addColorStop(0, beatDecay > 0.5 ? COLORS.accent : COLORS.hot);
         gradient.addColorStop(0.5, `${COLORS.secondary}80`);
         gradient.addColorStop(1, 'transparent');
 
@@ -515,7 +636,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         height: number,
         dataArray: Uint8Array,
         bassIntensity: number,
-        frame: number
+        frame: number,
+        beatDecay: number
     ) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -527,8 +649,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const mid = dataArray.slice(16, 64).reduce((a, b) => a + b, 0) / 48 / 255;
         const high = dataArray.slice(64, 128).reduce((a, b) => a + b, 0) / 64 / 255;
 
+        // Beat-reactive scale
+        const beatScale = 1 + beatDecay * 0.08;
+
         ctx.save();
         ctx.translate(centerX, centerY);
+        ctx.scale(beatScale, beatScale);
 
         // Draw in each segment
         for (let seg = 0; seg < segments; seg++) {
@@ -560,7 +686,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
                 const hue = ((time * 50) + i * 10 + high * 100) % 360;
                 ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.6 + bassIntensity * 0.4})`;
                 ctx.lineWidth = 2 + bass * 3;
-                ctx.shadowBlur = 10 + bassIntensity * 20;
+                ctx.shadowBlur = 10 + bassIntensity * 20 + beatDecay * 10;
                 ctx.shadowColor = `hsla(${hue}, 80%, 60%, 0.8)`;
 
                 ctx.beginPath();
@@ -648,49 +774,83 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         }
         const bassIntensity = (bassSum / bassRange) / 255;
 
+        // Beat detection
+        const beatDetected = detectBeat(dataArrayRef.current);
+        if (beatDetected) {
+            isBeatRef.current = true;
+            beatDecayRef.current = 1.0;
+        }
+
+        // Decay beat intensity smoothly
+        if (beatDecayRef.current > 0) {
+            beatDecayRef.current *= 0.92;
+            if (beatDecayRef.current < 0.01) beatDecayRef.current = 0;
+        }
+        const beatDecay = beatDecayRef.current;
+
         // Draw based on mode
         switch (mode) {
             case 'bars':
-                drawBars(ctx, width, height, dataArrayRef.current, bassIntensity);
+                drawBars(ctx, width, height, dataArrayRef.current, bassIntensity, beatDecay);
                 break;
             case 'waveform':
                 analyser.getByteTimeDomainData(dataArrayRef.current);
-                drawWaveform(ctx, width, height, dataArrayRef.current, bassIntensity);
+                drawWaveform(ctx, width, height, dataArrayRef.current, bassIntensity, beatDecay);
                 break;
             case 'radial':
-                drawRadial(ctx, width, height, dataArrayRef.current, bassIntensity);
+                drawRadial(ctx, width, height, dataArrayRef.current, bassIntensity, beatDecay);
                 break;
             case 'spectrum':
-                drawSpectrum(ctx, width, height, dataArrayRef.current, bassIntensity);
+                drawSpectrum(ctx, width, height, dataArrayRef.current, bassIntensity, beatDecay);
                 break;
             case 'fractal':
-                drawFractal(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current);
+                drawFractal(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current, beatDecay);
                 break;
             case 'vortex':
-                drawVortex(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current);
+                drawVortex(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current, beatDecay);
                 break;
             case 'plasma':
                 drawPlasma(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current);
                 break;
             case 'kaleidoscope':
-                drawKaleidoscope(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current);
+                drawKaleidoscope(ctx, width, height, dataArrayRef.current, bassIntensity, frameCountRef.current, beatDecay);
                 break;
         }
 
+        // Beat flash overlay (subtle white/cyan flash)
+        drawBeatFlash(ctx, width, height, beatDecay);
+
         // Cyber mode effects
         if (cyberMode) {
+            // Spawn extra particles on beat
+            if (beatDetected) {
+                for (let i = 0; i < 5; i++) {
+                    createParticle(
+                        Math.random() * width,
+                        Math.random() * height * 0.5,
+                        1.5
+                    );
+                }
+            }
+
             updateParticles(ctx, width, height);
             drawScanlines(ctx, width, height);
 
-            // Occasional glitch
-            if (frameCountRef.current % 60 === 0) {
+            // Glitch on beat or random
+            if (beatDetected || frameCountRef.current % 60 === 0) {
                 drawGlitch(ctx, width, height);
             }
         }
 
+        // Post-processing effects
+        drawVignette(ctx, width, height, bassIntensity);
+        if (cyberMode && beatDecay > 0.4) {
+            drawChromaticAberration(ctx, width, height, beatDecay);
+        }
+
         frameCountRef.current++;
         animationRef.current = requestAnimationFrame(draw);
-    }, [analyser, mode, cyberMode, drawBars, drawWaveform, drawRadial, drawSpectrum, drawFractal, drawVortex, drawPlasma, drawKaleidoscope, updateParticles, drawScanlines, drawGlitch]);
+    }, [analyser, mode, cyberMode, detectBeat, drawBeatFlash, drawBars, drawWaveform, drawRadial, drawSpectrum, drawFractal, drawVortex, drawPlasma, drawKaleidoscope, updateParticles, drawScanlines, drawGlitch, createParticle, drawVignette, drawChromaticAberration]);
 
     // Start/stop animation based on playing state
     useEffect(() => {

@@ -117,10 +117,10 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'local_edit',
-        description: 'Find and replace text in a local file',
+        description: 'Find and replace text in a local file (literal match, not regex)',
         parameters: [
             { name: 'path', type: 'string', description: 'Local file path', required: true },
-            { name: 'find', type: 'string', description: 'Text to find', required: true },
+            { name: 'find', type: 'string', description: 'Exact text to find (literal string, no regex)', required: true },
             { name: 'replace', type: 'string', description: 'Replacement text', required: true },
             { name: 'replace_all', type: 'boolean', description: 'Replace all occurrences (default: true)', required: false },
         ],
@@ -128,10 +128,10 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'remote_edit',
-        description: 'Find and replace text in a remote file',
+        description: 'Find and replace text in a remote file (literal match, not regex)',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote file path', required: true },
-            { name: 'find', type: 'string', description: 'Text to find', required: true },
+            { name: 'find', type: 'string', description: 'Exact text to find (literal string, no regex)', required: true },
             { name: 'replace', type: 'string', description: 'Replacement text', required: true },
             { name: 'replace_all', type: 'boolean', description: 'Replace all occurrences (default: true)', required: false },
         ],
@@ -217,6 +217,36 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    {
+        name: 'terminal_execute',
+        description: 'Execute a command in the integrated terminal',
+        parameters: [
+            { name: 'command', type: 'string', description: 'Shell command to execute', required: true },
+        ],
+        dangerLevel: 'high',
+    },
+
+    // RAG — file indexing and content search
+    {
+        name: 'rag_index',
+        description: 'Index files in a directory for AI context. Returns file listing with types, sizes, and text previews for understanding the workspace structure.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Directory path to index', required: true },
+            { name: 'recursive', type: 'boolean', description: 'Recurse into subdirectories (default: true)', required: false },
+            { name: 'max_files', type: 'number', description: 'Maximum files to index (default: 200)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'rag_search',
+        description: 'Full-text search across files in a directory. Finds lines matching a query string in all text files, returning file paths, line numbers, and context.',
+        parameters: [
+            { name: 'query', type: 'string', description: 'Search string (case-insensitive)', required: true },
+            { name: 'path', type: 'string', description: 'Directory to search (default: current)', required: false },
+            { name: 'max_results', type: 'number', description: 'Maximum results (default: 20)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
 ];
 
 // Backwards compatibility
@@ -239,8 +269,8 @@ ${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}
   Parameters: ${t.parameters.map(p => `${p.name} (${p.type}${p.required ? ', required' : ''})`).join(', ')}`).join('\n\n')}
 
 RULES:
-1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically. Local filesystem tools require user confirmation.
-2. Medium/high risk tools require user confirmation. Always explain what you'll do first.
+1. Safe tools (remote_list, remote_read, remote_info, remote_search, rag_search) execute automatically.
+2. Medium/high risk tools need user approval — the system shows an approval prompt automatically. Do NOT ask for confirmation yourself — just call the tool directly and the UI will handle approval.
 3. Never delete files without explicit user request.
 
 When using a tool, respond with:

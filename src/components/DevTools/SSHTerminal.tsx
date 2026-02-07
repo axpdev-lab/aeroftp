@@ -773,6 +773,45 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         };
     }, []);
 
+    // Listen for terminal-execute events from AeroAgent
+    useEffect(() => {
+        const handleTerminalExecute = (e: Event) => {
+            const { command } = (e as CustomEvent).detail;
+            if (!command) return;
+
+            // Find active connected tab
+            const tabId = activeTabId;
+            if (!tabId || !connectedTabs.current.has(tabId)) {
+                // No active terminal — try to find any connected tab
+                const connectedTabIds = Array.from(connectedTabs.current);
+                if (connectedTabIds.length === 0) return; // No connected terminals
+                // Use the first connected tab
+                const targetTab = connectedTabIds[0];
+                const sessionId = ptySessionIds.current.get(targetTab);
+                const tab = tabs.find(t => t.id === targetTab);
+                if (tab?.type === 'ssh' && sessionId) {
+                    invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
+                } else {
+                    invoke('pty_write', { data: command + '\n', sessionId: sessionId || null }).catch(() => {});
+                }
+                setActiveTabId(targetTab);
+                return;
+            }
+
+            // Write to active tab
+            const sessionId = ptySessionIds.current.get(tabId);
+            const tab = tabs.find(t => t.id === tabId);
+            if (tab?.type === 'ssh' && sessionId) {
+                invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
+            } else {
+                invoke('pty_write', { data: command + '\n', sessionId: sessionId || null }).catch(() => {});
+            }
+        };
+
+        window.addEventListener('terminal-execute', handleTerminalExecute);
+        return () => window.removeEventListener('terminal-execute', handleTerminalExecute);
+    }, [activeTabId, tabs]);
+
     return (
         <div className={`flex flex-col h-full ${className}`} style={{ backgroundColor: currentTheme.colors.background }}>
             {/* Toolbar: tabs + controls */}

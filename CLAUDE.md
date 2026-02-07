@@ -150,7 +150,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v1.8.9
+## Versione corrente: v1.9.0
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -246,19 +246,52 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 - ~~2 nuove dipendenze Cargo: aes-gcm-siv 0.11, chacha20poly1305 0.10~~ Done
 - ~~Audit completo AeroVault v2 in docs/dev/AEROVAULT-V2-AUDIT.md~~ Done
 
-### Prossimi task (v1.9.0)
+### Completato in v1.9.0
 
-- Consolidare duplicati `formatBytes`, `getMimeType`, `UpdateInfo` (vedi audit report)
-- Gating console.log dietro debug mode (76 statement in 13 file)
-- CLI Foundation (`aeroftp connect/ls/get/put/sync`)
-- Vision/multimodal per GPT-4o, Gemini, Claude
-- Multi-step autonomous tool calls
+- ~~Consolidare duplicati `formatBytes`, `getMimeType`, `UpdateInfo`~~ Done (v1.8.7)
+- ~~Gating console.log dietro debug mode~~ Done (v1.8.7)
+- ~~Vision/multimodal per GPT-4o, Gemini, Claude, Ollama~~ Done (v1.8.8)
+- ~~Multi-step autonomous tool calls (fino a 10 step, safe=auto, medium/high=pause, stop button)~~ Done
+- ~~Ollama model auto-detection via `GET /api/tags` — pulsante "Detect" in AI Settings~~ Done
+- ~~Sliding window context management — token budget 70% di maxTokens, summary automatico~~ Done
+- ~~Conversation export (Markdown/JSON) — download icon in chat header~~ Done
+- ~~Full system prompt editor — 5a tab "System Prompt" in AI Settings con toggle e textarea~~ Done
+- ~~Monaco → Agent context menu "Ask AeroAgent" (Ctrl+Shift+A)~~ Done
+- ~~Agent → Monaco live sync — `file-changed` e `editor-reload` custom events~~ Done
+- ~~Agent → Terminal commands — `terminal_execute` tool, dispatch a PTY integrato~~ Done
+- ~~Unified Keystore Consolidation — server profiles, AI config, OAuth in vault.db (AES-256-GCM + Argon2id)~~ Done
+- ~~Keystore Backup/Restore — `keystore_export.rs`, file `.aeroftp-keystore` (Argon2id + AES-256-GCM)~~ Done
+- ~~Migration Wizard — 4 step (Detect → Preview → Migrate → Cleanup), auto-trigger al primo avvio~~ Done
+- ~~RAG Integration — `rag_index` (scansione dir + preview) + `rag_search` (full-text), auto-context nel system prompt~~ Done
+- ~~Plugin System — `plugins.rs` (list/execute/install/remove), JSON manifest + shell scripts, tab Plugins in AI Settings~~ Done
+- ~~Dual Security Audit — Claude Opus 4.6 (B+) + GPT-5.2-Codex (7 findings) — tutti risolti~~ Done
+- ~~AeroAgent tool count: da 25 a 27 (+ rag_index, rag_search)~~ Done
+- ~~AI Settings tabs: da 5 a 6 con nuova tab "Plugins"~~ Done
+- ~~Filen 2FA passthrough support — campo condizionale `twoFactorCode`~~ Done
+- ~~OpenAI header hardening — no panic su header invalidi + HTTP status check~~ Done
+- ~~URL scheme allowlist — solo http/https/mailto in `openUrl.ts`~~ Done
+- ~~Secure delete chunked — 1 MiB chunks con OpenOptions (no truncate)~~ Done
+- ~~AeroVault directory support — `vault_v2_create_directory` con auto-intermediate dirs, breadcrumb navigation, "New Folder" UI~~ Done
+- ~~AeroVault recursive delete — `vault_v2_delete_entries` con recursive support, `vault_v2_add_files_to_dir` per aggiunta file in subdirectory~~ Done
+- ~~AeroPlayer engine rewrite — Howler.js rimosso, native HTML5 `<audio>` + Web Audio API graph~~ Done
+- ~~AeroPlayer 10-band EQ reale — BiquadFilterNode per banda, 10 preset, StereoPannerNode balance~~ Done
+- ~~AeroPlayer beat detection — onset energy con circular buffer, exponential decay 0.92~~ Done
+- ~~AeroPlayer 6 WebGL shader — Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles (port da CyberPulse)~~ Done
+- ~~AeroPlayer post-processing — vignette, chromatic aberration, CRT scanlines, glitch on beat~~ Done
+- ~~AeroPlayer 14 modalita visualizer — 8 Canvas 2D + 6 WebGL 2 GPU, tasto V cicla tutte~~ Done
+
+### Prossimi task (v2.0.0 / v2.1.0)
+
+- CLI Foundation (`aeroftp connect/ls/get/put/sync`) — reuses `StorageProvider` trait
+- All 13 providers CLI support
+- JSON output (`--json`) per automation/CI
+- 2FA (TOTP) unlock — opzionale per utenti avanzati
+- Biometric unlock (macOS Touch ID, Windows Hello)
 
 ### Roadmap futura
 
 Dettagli completi in `docs/dev/ROADMAP.md`:
-- **v1.9.0**: AeroAgent Intelligence (vision, multi-step) + CLI Foundation
-- **v2.0.0**: Master Password + Unified Keystore + Settings Consolidation
+- **v2.0.0**: CLI Foundation + 2FA/Biometric unlock
 - **v2.1.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
 
 ---

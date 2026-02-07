@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -13,6 +13,7 @@ import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
+import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -278,6 +279,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [passwordBtnState, setPasswordBtnState] = useState<'idle' | 'encrypting' | 'done'>('idle');
     const [isSavingTimeout, setIsSavingTimeout] = useState(false);
 
+    // Vault Backup state
+    const [vaultEntriesCount, setVaultEntriesCount] = useState(0);
+    const [keystoreExportPassword, setKeystoreExportPassword] = useState('');
+    const [keystoreExportConfirm, setKeystoreExportConfirm] = useState('');
+    const [showKeystoreExportPassword, setShowKeystoreExportPassword] = useState(false);
+    const [keystoreExporting, setKeystoreExporting] = useState(false);
+    const [keystoreImporting, setKeystoreImporting] = useState(false);
+    const [keystoreImportPassword, setKeystoreImportPassword] = useState('');
+    const [showKeystoreImportPassword, setShowKeystoreImportPassword] = useState(false);
+    const [keystoreImportMerge, setKeystoreImportMerge] = useState<'skip' | 'overwrite'>('skip');
+    const [keystoreMetadata, setKeystoreMetadata] = useState<{
+        export_date: string;
+        aeroftp_version: string;
+        entries_count: number;
+        categories: {
+            server_credentials: number;
+            server_profiles: number;
+            ai_keys: number;
+            oauth_tokens: number;
+            config_entries: number;
+        };
+    } | null>(null);
+    const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
+    const [keystoreMessage, setKeystoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
 
@@ -287,8 +313,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             try {
                 const saved = localStorage.getItem(SETTINGS_KEY);
                 if (saved) setSettings({ ...defaultSettings, ...JSON.parse(saved) });
+                // Load servers: sync fallback first, then try vault
                 const savedServers = localStorage.getItem(SERVERS_KEY);
                 if (savedServers) setServers(JSON.parse(savedServers));
+                (async () => {
+                    const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_KEY);
+                    if (vaultServers && vaultServers.length > 0) setServers(vaultServers);
+                })();
                 // Load OAuth settings from secure credential store (fallback: localStorage)
                 const loadOAuthFromStore = async () => {
                     const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
@@ -315,7 +346,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
                 }
                 // Load credential store status
-                invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status')
+                invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number }>('get_credential_store_status')
                     .then(status => {
                         setMasterPasswordStatus({
                             is_set: status.master_mode,
@@ -324,6 +355,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         });
                         if (status.timeout_seconds > 0) {
                             setAutoLockTimeout(Math.floor(Number(status.timeout_seconds) / 60));
+                        }
+                        if (typeof status.accounts_count === 'number') {
+                            setVaultEntriesCount(status.accounts_count);
                         }
                     })
                     .catch(console.error);
@@ -340,6 +374,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const handleSave = async () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
+        // Persist servers to vault (async, removes localStorage copy on success)
+        secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});
         // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
         const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
         for (const p of providers) {
@@ -1056,6 +1092,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             setServers(updatedServers);
                                                             // Persist immediately so changes aren't lost if user closes without Save Changes
                                                             localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
+                                                            secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => {});
                                                             setEditingServer(null);
                                                             setShowEditPassword(false);
                                                             setHasChanges(true);
@@ -1995,6 +2032,330 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Vault Backup Section */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                <Shield size={14} className="text-blue-500" />
+                                                {t('settings.keystoreBackup')}
+                                            </h4>
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                <Key size={12} />
+                                                {t('settings.entriesInVault', { count: vaultEntriesCount })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        {/* Keystore message */}
+                                        {keystoreMessage && (
+                                            <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
+                                                keystoreMessage.type === 'success'
+                                                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
+                                                    : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
+                                            }`}>
+                                                {keystoreMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                                                {keystoreMessage.text}
+                                            </div>
+                                        )}
+
+                                        {/* Export */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                                                    <Download size={20} className="text-green-600 dark:text-green-400" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-sm">{t('settings.exportKeystore')}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('settings.exportKeystoreDesc')}</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1">
+                                                    <input
+                                                        type={showKeystoreExportPassword ? 'text' : 'password'}
+                                                        placeholder={t('settings.keystorePassword')}
+                                                        value={keystoreExportPassword}
+                                                        onChange={e => setKeystoreExportPassword(e.target.value)}
+                                                        className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        tabIndex={-1}
+                                                        onClick={() => setShowKeystoreExportPassword(!showKeystoreExportPassword)}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                    >
+                                                        {showKeystoreExportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    </button>
+                                                </div>
+                                                <div className="relative flex-1">
+                                                    <input
+                                                        type={showKeystoreExportPassword ? 'text' : 'password'}
+                                                        placeholder={t('settings.confirmPassword')}
+                                                        value={keystoreExportConfirm}
+                                                        onChange={e => setKeystoreExportConfirm(e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={async () => {
+                                                    setKeystoreMessage(null);
+                                                    if (keystoreExportPassword.length < 8) {
+                                                        setKeystoreMessage({ type: 'error', text: t('settings.passwordTooShort') });
+                                                        return;
+                                                    }
+                                                    if (keystoreExportPassword !== keystoreExportConfirm) {
+                                                        setKeystoreMessage({ type: 'error', text: t('settings.passwordMismatch') });
+                                                        return;
+                                                    }
+                                                    const filePath = await save({
+                                                        title: t('settings.exportKeystore'),
+                                                        filters: [{ name: 'AeroFTP Keystore', extensions: ['aeroftp-keystore'] }],
+                                                        defaultPath: `aeroftp_keystore_${new Date().toISOString().slice(0, 10)}.aeroftp-keystore`,
+                                                    });
+                                                    if (!filePath) return;
+                                                    setKeystoreExporting(true);
+                                                    try {
+                                                        const result = await invoke<{ entries_count: number }>('export_keystore', {
+                                                            password: keystoreExportPassword,
+                                                            filePath,
+                                                        });
+                                                        setKeystoreMessage({
+                                                            type: 'success',
+                                                            text: t('settings.keystoreExported', { count: result.entries_count }),
+                                                        });
+                                                        setKeystoreExportPassword('');
+                                                        setKeystoreExportConfirm('');
+                                                    } catch (err) {
+                                                        setKeystoreMessage({ type: 'error', text: String(err) });
+                                                    } finally {
+                                                        setKeystoreExporting(false);
+                                                    }
+                                                }}
+                                                disabled={keystoreExporting || keystoreExportPassword.length < 8}
+                                                className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                {keystoreExporting ? (
+                                                    <>
+                                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                        {t('common.loading')}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Download size={16} />
+                                                        {t('settings.exportKeystore')}
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        {/* Divider */}
+                                        <div className="border-t border-gray-200 dark:border-gray-700" />
+
+                                        {/* Import */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                                                    <Upload size={20} className="text-blue-600 dark:text-blue-400" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-sm">{t('settings.importKeystore')}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('settings.importKeystoreDesc')}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Step 1: Select file and show metadata */}
+                                            {!keystoreMetadata ? (
+                                                <button
+                                                    onClick={async () => {
+                                                        setKeystoreMessage(null);
+                                                        const filePath = await open({
+                                                            title: t('settings.importKeystore'),
+                                                            filters: [{ name: 'AeroFTP Keystore', extensions: ['aeroftp-keystore'] }],
+                                                            multiple: false,
+                                                        });
+                                                        if (!filePath) return;
+                                                        const path = typeof filePath === 'string' ? filePath : filePath;
+                                                        try {
+                                                            const meta = await invoke<{
+                                                                export_date: string;
+                                                                aeroftp_version: string;
+                                                                entries_count: number;
+                                                                categories: {
+                                                                    server_credentials: number;
+                                                                    server_profiles: number;
+                                                                    ai_keys: number;
+                                                                    oauth_tokens: number;
+                                                                    config_entries: number;
+                                                                };
+                                                            }>('read_keystore_metadata', { filePath: path });
+                                                            setKeystoreMetadata(meta);
+                                                            setKeystoreImportFilePath(path);
+                                                        } catch (err) {
+                                                            setKeystoreMessage({ type: 'error', text: String(err) });
+                                                        }
+                                                    }}
+                                                    className="w-full px-4 py-2 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <FolderOpen size={16} />
+                                                    {t('settings.importKeystore')}
+                                                </button>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {/* Metadata preview */}
+                                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm space-y-1.5">
+                                                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium">
+                                                            <Shield size={14} />
+                                                            {keystoreMetadata.entries_count} entries
+                                                        </div>
+                                                        <div className="text-xs text-blue-600/70 dark:text-blue-400/70 space-y-0.5">
+                                                            <div>AeroFTP {keystoreMetadata.aeroftp_version}</div>
+                                                            <div>{new Date(keystoreMetadata.export_date).toLocaleString()}</div>
+                                                            {keystoreMetadata.categories.server_credentials > 0 && (
+                                                                <div>{keystoreMetadata.categories.server_credentials} server credentials</div>
+                                                            )}
+                                                            {keystoreMetadata.categories.server_profiles > 0 && (
+                                                                <div>{keystoreMetadata.categories.server_profiles} server profiles</div>
+                                                            )}
+                                                            {keystoreMetadata.categories.ai_keys > 0 && (
+                                                                <div>{keystoreMetadata.categories.ai_keys} AI keys</div>
+                                                            )}
+                                                            {keystoreMetadata.categories.oauth_tokens > 0 && (
+                                                                <div>{keystoreMetadata.categories.oauth_tokens} OAuth tokens</div>
+                                                            )}
+                                                            {keystoreMetadata.categories.config_entries > 0 && (
+                                                                <div>{keystoreMetadata.categories.config_entries} config entries</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Password input */}
+                                                    <div className="relative">
+                                                        <input
+                                                            type={showKeystoreImportPassword ? 'text' : 'password'}
+                                                            placeholder={t('settings.keystorePassword')}
+                                                            value={keystoreImportPassword}
+                                                            onChange={e => setKeystoreImportPassword(e.target.value)}
+                                                            className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            tabIndex={-1}
+                                                            onClick={() => setShowKeystoreImportPassword(!showKeystoreImportPassword)}
+                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                        >
+                                                            {showKeystoreImportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Merge strategy */}
+                                                    <div className="space-y-1.5">
+                                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                                            {t('settings.mergeStrategy')}
+                                                        </label>
+                                                        <div className="flex gap-3">
+                                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="keystoreMerge"
+                                                                    checked={keystoreImportMerge === 'skip'}
+                                                                    onChange={() => setKeystoreImportMerge('skip')}
+                                                                    className="accent-blue-500"
+                                                                />
+                                                                {t('settings.skipExisting')}
+                                                            </label>
+                                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                <input
+                                                                    type="radio"
+                                                                    name="keystoreMerge"
+                                                                    checked={keystoreImportMerge === 'overwrite'}
+                                                                    onChange={() => setKeystoreImportMerge('overwrite')}
+                                                                    className="accent-blue-500"
+                                                                />
+                                                                {t('settings.overwriteAll')}
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Import / Cancel buttons */}
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!keystoreImportFilePath) return;
+                                                                setKeystoreMessage(null);
+                                                                if (keystoreImportPassword.length < 8) {
+                                                                    setKeystoreMessage({ type: 'error', text: t('settings.passwordTooShort') });
+                                                                    return;
+                                                                }
+                                                                setKeystoreImporting(true);
+                                                                try {
+                                                                    const result = await invoke<{
+                                                                        imported: number;
+                                                                        skipped: number;
+                                                                        total: number;
+                                                                    }>('import_keystore', {
+                                                                        password: keystoreImportPassword,
+                                                                        filePath: keystoreImportFilePath,
+                                                                        mergeStrategy: keystoreImportMerge,
+                                                                    });
+                                                                    setKeystoreMessage({
+                                                                        type: 'success',
+                                                                        text: t('settings.keystoreImported', {
+                                                                            imported: result.imported,
+                                                                            skipped: result.skipped,
+                                                                        }),
+                                                                    });
+                                                                    // Refresh vault count
+                                                                    setVaultEntriesCount(prev => prev + result.imported);
+                                                                    // Reset import state
+                                                                    setKeystoreMetadata(null);
+                                                                    setKeystoreImportFilePath(null);
+                                                                    setKeystoreImportPassword('');
+                                                                } catch (err) {
+                                                                    const errStr = String(err);
+                                                                    if (errStr.includes('Invalid password') || errStr.includes('decrypt')) {
+                                                                        setKeystoreMessage({ type: 'error', text: t('settings.invalidPassword') });
+                                                                    } else {
+                                                                        setKeystoreMessage({ type: 'error', text: errStr });
+                                                                    }
+                                                                } finally {
+                                                                    setKeystoreImporting(false);
+                                                                }
+                                                            }}
+                                                            disabled={keystoreImporting || keystoreImportPassword.length < 8}
+                                                            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                                        >
+                                                            {keystoreImporting ? (
+                                                                <>
+                                                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                                    {t('common.loading')}
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Upload size={16} />
+                                                                    {t('settings.importKeystore')}
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setKeystoreMetadata(null);
+                                                                setKeystoreImportFilePath(null);
+                                                                setKeystoreImportPassword('');
+                                                                setKeystoreMessage(null);
+                                                            }}
+                                                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                                                        >
+                                                            {t('common.cancel')}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -2132,6 +2493,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         const updated = [...servers, ...newServers];
                         setServers(updated);
                         localStorage.setItem(SERVERS_KEY, JSON.stringify(updated));
+                        secureStoreAndClean('server_profiles', SERVERS_KEY, updated).catch(() => {});
                         setShowExportImport(false);
                         onServersChanged?.();
                     }}
