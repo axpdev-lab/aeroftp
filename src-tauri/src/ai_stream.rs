@@ -120,6 +120,7 @@ async fn stream_openai(
     let supports_strict = matches!(
         request.provider_type,
         AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
+        | AIProviderType::Kimi | AIProviderType::Qwen | AIProviderType::DeepSeek
     );
     let tools = request.tools.as_ref().map(|defs| {
         defs.iter().map(|d| {

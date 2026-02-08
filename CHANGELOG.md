@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-08
+
+### Vault Unlock & Provider Expansion
+
+#### Fixed
+
+- **Saved servers empty after vault unlock**: Fixed race condition where saved servers list appeared empty after entering master password — servers were loaded before the vault was fully unlocked; now the list refreshes automatically after unlock
+
+#### Added
+
+- **3 Asian AI providers**: Kimi (Moonshot), Qwen (Alibaba Cloud), and DeepSeek added as direct providers with official SVG logos, provider profiles, and streaming support
+- **Custom provider preset**: Added Custom to the provider quick-add buttons for connecting to any OpenAI-compatible endpoint
+- **Official SVG provider logos**: All 10 AI providers now display their official brand logos instead of text/emoji icons in AI Settings and chat header
+
+---
+
 ## [2.0.0] - 2026-02-07
 
 ### AeroAgent Pro — Professional AI Experience

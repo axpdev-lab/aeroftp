@@ -28,6 +28,9 @@ pub enum AIProviderType {
     OpenRouter,
     Ollama,
     Custom,
+    Kimi,
+    Qwen,
+    DeepSeek,
 }
 
 // Image attachment for vision models
@@ -630,6 +633,7 @@ mod openai_compat {
         let supports_strict = matches!(
             request.provider_type,
             AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
+            | AIProviderType::Kimi | AIProviderType::Qwen | AIProviderType::DeepSeek
         );
         let tools = request.tools.as_ref().map(|defs| {
             defs.iter().map(|d| {
@@ -944,12 +948,10 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
 
     match request.provider_type {
         AIProviderType::Google => gemini::call(&client, &request).await,
-        AIProviderType::OpenAI => openai_compat::call(&client, &request, "/chat/completions").await,
-        AIProviderType::XAI => openai_compat::call(&client, &request, "/chat/completions").await,
-        AIProviderType::OpenRouter => openai_compat::call(&client, &request, "/chat/completions").await,
-        AIProviderType::Ollama => openai_compat::call(&client, &request, "/api/chat").await,
         AIProviderType::Anthropic => anthropic::call(&client, &request).await,
-        AIProviderType::Custom => openai_compat::call(&client, &request, "/chat/completions").await,
+        AIProviderType::Ollama => openai_compat::call(&client, &request, "/api/chat").await,
+        // OpenAI-compatible providers: OpenAI, xAI, OpenRouter, Kimi, Qwen, DeepSeek, Custom
+        _ => openai_compat::call(&client, &request, "/chat/completions").await,
     }
 }
 

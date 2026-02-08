@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon } from './AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
@@ -85,9 +85,13 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
         case 'google': return <GeminiIcon size={size} />;
         case 'openai': return <OpenAIIcon size={size} />;
         case 'anthropic': return <AnthropicIcon size={size} />;
-        case 'xai': return <span style={{ fontSize: size }}>𝕏</span>;
-        case 'openrouter': return <span style={{ fontSize: size }}>⬡</span>;
-        case 'ollama': return <span style={{ fontSize: size }}>🦙</span>;
+        case 'xai': return <XAIIcon size={size} />;
+        case 'openrouter': return <OpenRouterIcon size={size} />;
+        case 'ollama': return <OllamaIcon size={size} />;
+        case 'kimi': return <KimiIcon size={size} />;
+        case 'qwen': return <QwenIcon size={size} />;
+        case 'deepseek': return <DeepSeekIcon size={size} />;
+        case 'custom': return <Bot size={size} className="text-gray-400" />;
         default: return <Bot size={size} />;
     }
 };

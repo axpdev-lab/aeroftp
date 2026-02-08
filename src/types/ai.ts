@@ -1,6 +1,6 @@
 // AI Provider and Model Types for AeroFTP AI Agent
 
-export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom';
+export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek';
 
 export interface AIProvider {
     id: string;
@@ -126,6 +126,34 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
         isEnabled: false,
         isDefault: false,
     },
+    {
+        name: 'Kimi (Moonshot)',
+        type: 'kimi',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Qwen (Alibaba)',
+        type: 'qwen',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'DeepSeek',
+        type: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Custom',
+        type: 'custom',
+        baseUrl: '',
+        isEnabled: false,
+        isDefault: false,
+    },
 ];
 
 // Default models for each provider (empty — users add their own via Settings or "Models" button)
@@ -136,6 +164,9 @@ export const DEFAULT_MODELS: Record<AIProviderType, Omit<AIModel, 'id' | 'provid
     xai: [],
     openrouter: [],
     ollama: [],
+    kimi: [],
+    qwen: [],
+    deepseek: [],
     custom: [],
 };
 

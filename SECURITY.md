@@ -254,4 +254,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.0 - 7 February 2026*
+*AeroFTP v2.0.1 - 8 February 2026*

@@ -219,6 +219,24 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
         toolFormat: 'text',
         behaviorRules: OLLAMA_BEHAVIOR_RULES,
     },
+    kimi: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Moonshot Kimi. You support 13 storage protocols with strong long-context reasoning.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Leverage your long-context window for analyzing large files and complex directory structures. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    qwen: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Alibaba Qwen. You support 13 storage protocols with excellent multilingual capabilities.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Respond in the user\'s language naturally. Keep explanations concise and structured.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    deepseek: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by DeepSeek. You support 13 storage protocols with strong coding and reasoning abilities.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Excel at code analysis, debugging, and multi-step reasoning. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
     custom: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 13 storage protocols and prioritize getting things done.',
         style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
@@ -274,6 +292,9 @@ const PARAMETER_PRESETS: Record<AIProviderType, Record<TaskType | 'default', Par
     xai: OPENAI_PRESETS,
     openrouter: OPENAI_PRESETS,
     ollama: OLLAMA_PRESETS,
+    kimi: OPENAI_PRESETS,
+    qwen: OPENAI_PRESETS,
+    deepseek: OPENAI_PRESETS,
     custom: OPENAI_PRESETS,
 };
 

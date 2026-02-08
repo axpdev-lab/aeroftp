@@ -150,7 +150,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v2.0.0
+## Versione corrente: v2.0.1
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -344,6 +344,12 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ### Prossimi task (v2.1.0)
 
+- **Theme Enhancement**: 4 temi built-in (Light, Dark, Tokyo Night, Cyberpunk) con CSS custom properties e `data-theme` attribute
+- ~~**Asian AI Providers (base)**: Kimi, Qwen, DeepSeek integrati come provider diretti (Rust enum + TS type + presets + profiles + icons + streaming)~~ Done
+- **Asian AI Provider Features**: Kimi web search (`$web_search`) + file analysis + context caching; Qwen thinking mode (`enable_thinking`) + web search; DeepSeek thinking + FIM code completion + prefix completion
+- ~~**Provider SVG Logos**: Loghi SVG ufficiali per tutti i 10 provider in AIIcons.tsx~~ Done
+- **Provider Marketplace Selector**: Browser searchable con categorie, auto-detect endpoint OpenAI-compatible, one-click setup
+- **Additional Providers**: Mistral, Groq, Perplexity, Cohere, Together AI (tutti OpenAI-compatible → path Custom)
 - **Phase 5 Tier 3**: Anthropic extended thinking visualization (multi-block), prompt caching analytics dashboard, OpenAI strict mode toggle in UI, Ollama model template editor, Gemini code execution sandbox config
 - **CLI Foundation**: `aeroftp connect/ls/get/put/sync` command-line interface
 - **2FA/Biometric**: Two-factor authentication and biometric unlock for vault
@@ -353,7 +359,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 ### Roadmap futura
 
 Dettagli completi in `docs/dev/ROADMAP.md`:
-- **v2.1.0**: CLI Foundation (`aeroftp connect/ls/get/put/sync`) + 2FA/Biometric unlock
+- **v2.1.0**: Theme System (4 temi) + Asian AI Providers (Kimi, Qwen, DeepSeek) + CLI Foundation + 2FA/Biometric
 - **v2.2.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
 
 ---

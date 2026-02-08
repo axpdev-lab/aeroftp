@@ -79,7 +79,7 @@
 |---------|---------|-----------|-----------|--------|----------|----------|
 | AI Chat Assistant | **Yes (v2.0)** | No | No | No | No | No |
 | AI Tool Calling | **28 tools** | No | No | No | No | No |
-| Multi-Provider AI | **7 providers** | No | No | No | No | No |
+| Multi-Provider AI | **10 providers** | No | No | No | No | No |
 | Vision/Multimodal | **Yes** | No | No | No | No | No |
 | RAG Indexing | **Yes** | No | No | No | No | No |
 | Prompt Templates | **15 built-in** | No | No | No | No | No |
@@ -160,7 +160,7 @@
 | **Monaco Editor** | VS Code engine for remote file editing |
 | **AeroVault v2** | Military-grade containers: AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade |
 | **Cryptomator Format 8** | Open, browse, decrypt, encrypt files in Cryptomator vaults (scrypt + AES-SIV + AES-GCM) |
-| **AeroAgent Pro (v2.0)** | AI assistant with 28 tools, DAG pipeline, diff preview, RAG indexing, agent memory, conversation branching, streaming markdown, prompt templates, 7 AI providers |
+| **AeroAgent Pro (v2.0)** | AI assistant with 28 tools, DAG pipeline, diff preview, RAG indexing, agent memory, conversation branching, streaming markdown, prompt templates, 10 AI providers |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
 | **Tray Background Sync** | Continuous sync without main window |
 | **Sync Index Cache** | Persistent cache for faster re-scans and true conflict detection |

@@ -26,7 +26,7 @@
     <p>AI Assistant:</p>
     <ul>
       <li>AeroAgent Pro: AI-powered assistant with 28 provider-agnostic tools, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
-      <li>7 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom</li>
+      <li>10 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
     </ul>
@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.1" date="2026-02-08">
+      <description>
+        <p>Vault Unlock Fix and Provider Expansion: Fixed saved servers list appearing empty after master password entry. Added 3 Asian AI providers (Kimi, Qwen, DeepSeek) with official SVG logos. Added Custom provider preset for any OpenAI-compatible endpoint.</p>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-02-07">
       <description>
         <p>AeroAgent Pro: Professional AI assistant with 5-phase enhancement. Streaming markdown, code block actions, prompt templates, cost budget tracking, chat search. Anthropic prompt caching, OpenAI structured outputs, Ollama model templates and GPU monitoring. Gemini code execution and context caching. Context intelligence with project detection, smart context injection, and token budget optimization. DAG-based parallel tool execution, diff preview, intelligent retry, and composite macros.</p>

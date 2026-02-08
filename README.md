@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 27 tools, 7 providers, vision, RAG indexing, and plugin system. Unified encrypted keystore for all credentials. Built-in media player with 14 visualizer modes, WebGL GPU shaders, and 10-band EQ.
+  Cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and cloud providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols, 30 presets, one app. AES-256 encrypted vaults, Cryptomator support, AI assistant with 28 tools, 10 providers, vision, RAG indexing, and plugin system. Unified encrypted keystore for all credentials. Built-in media player with 14 visualizer modes, WebGL GPU shaders, and 10-band EQ.
 </p>
 
 <p align="center">
@@ -107,8 +107,8 @@ More languages than any other FTP client. RTL support for Arabic, Hebrew, Persia
 - **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
 
 ### AeroAgent AI (v1.7.0+)
-AI-powered assistant with **27 provider-agnostic tools** that work across all 13 protocols:
-- **7 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Custom
+AI-powered assistant with **28 provider-agnostic tools** that work across all 13 protocols:
+- **10 AI providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Custom
 - **RAG integration** (v1.9.0): `rag_index` auto-indexes workspace files with type/size/preview summaries; `rag_search` performs full-text search across files — AI automatically understands your codebase
 - **Plugin system** (v1.9.0): Extend AeroAgent with custom tools via JSON manifest + shell scripts. Plugins run as sandboxed subprocesses with 30s timeout and 1MB output limit. 6th tab "Plugins" in AI Settings
 - **Multi-step autonomous tools** (v1.9.0): Agent chains multiple tool calls to complete complex tasks. Auto-resumes after user approval of medium/high-risk tools — no need to manually prompt "continue"
@@ -190,7 +190,7 @@ AI-powered assistant with **27 provider-agnostic tools** that work across all 13
 | Languages | **51** | 47 | ~10 | ~15 |
 | FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
 | Code Editor | Monaco (VS Code) | No | No | Basic |
-| AI Assistant | **27 tools, 7 providers, vision, RAG, plugins** | No | No | No |
+| AI Assistant | **28 tools, 10 providers, vision, RAG, plugins** | No | No | No |
 | Cryptomator | **Yes (format 8)** | No | Yes | No |
 | Encrypted Vaults | **AeroVault (AES-256-GCM-SIV)** | No | No | No |
 | Folder Conflict Resolution | **Per-file comparison** | Basic overwrite | No | Timestamp-based |

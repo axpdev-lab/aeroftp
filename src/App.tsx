@@ -3480,7 +3480,7 @@ const App: React.FC = () => {
     <>
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && masterPasswordSet && (
-        <LockScreen onUnlock={() => setIsAppLocked(false)} />
+        <LockScreen onUnlock={() => { setIsAppLocked(false); setServersRefreshKey(k => k + 1); }} />
       )}
 
       {/* Master Password Setup Dialog (standalone from header button) */}

@@ -9,6 +9,7 @@ import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from '../DevTools/AIIcons';
 import {
     AIProvider, AIModel, AISettings, AIProviderType,
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
@@ -26,12 +27,16 @@ interface AISettingsPanelProps {
 // Provider type icons
 const getProviderIcon = (type: AIProviderType): React.ReactNode => {
     switch (type) {
-        case 'google': return <span className="text-blue-500">G</span>;
-        case 'openai': return <span className="text-green-500">◯</span>;
-        case 'anthropic': return <span className="text-orange-500">A</span>;
-        case 'xai': return <span className="text-white">𝕏</span>;
-        case 'openrouter': return <span className="text-purple-500">⬡</span>;
-        case 'ollama': return <span className="text-cyan-500">🦙</span>;
+        case 'google': return <GeminiIcon size={16} />;
+        case 'openai': return <OpenAIIcon size={16} />;
+        case 'anthropic': return <AnthropicIcon size={16} />;
+        case 'xai': return <XAIIcon size={16} />;
+        case 'openrouter': return <OpenRouterIcon size={16} />;
+        case 'ollama': return <OllamaIcon size={16} />;
+        case 'kimi': return <KimiIcon size={16} />;
+        case 'qwen': return <QwenIcon size={16} />;
+        case 'deepseek': return <DeepSeekIcon size={16} />;
+        case 'custom': return <Server size={14} className="text-gray-400" />;
         default: return <Server size={14} />;
     }
 };
