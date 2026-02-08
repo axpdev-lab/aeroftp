@@ -20,11 +20,12 @@ interface UseCloudSyncOptions {
   humanLog: any;
   t: (key: string, params?: Record<string, string>) => string;
   checkForUpdate: (manual?: boolean) => void;
+  isAppLocked: boolean;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function useCloudSync(options: UseCloudSyncOptions) {
-  const { activityLog, humanLog, t, checkForUpdate } = options;
+  const { activityLog, humanLog, t, checkForUpdate, isAppLocked } = options;
 
   // Cloud state
   const [showCloudPanel, setShowCloudPanel] = useState(false);
@@ -63,17 +64,6 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         if (config.local_folder) setCloudLocalFolder(config.local_folder);
         if (config.remote_folder) setCloudRemoteFolder(config.remote_folder);
         if (config.public_url_base) setCloudPublicUrlBase(config.public_url_base);
-
-        // Auto-start background sync if cloud is enabled
-        if (config.enabled) {
-          logger.debug('Cloud enabled, starting background sync...');
-          try {
-            await invoke('start_background_sync');
-            logger.debug('Background sync started');
-          } catch (syncError) {
-            logger.debug('Background sync start error (may already be running):', syncError);
-          }
-        }
       } catch (e) {
         console.error('Failed to check cloud config:', e);
       }
@@ -183,6 +173,22 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       unlistenSyncComplete.then(fn => fn());
     };
   }, []);
+
+  // Auto-start background sync only after vault is unlocked
+  useEffect(() => {
+    if (isAppLocked || !isCloudActive) return;
+
+    const startSync = async () => {
+      logger.debug('Vault unlocked and cloud enabled, starting background sync...');
+      try {
+        await invoke('start_background_sync');
+        logger.debug('Background sync started');
+      } catch (syncError) {
+        logger.debug('Background sync start error (may already be running):', syncError);
+      }
+    };
+    startSync();
+  }, [isAppLocked, isCloudActive]);
 
   return {
     showCloudPanel,

@@ -468,7 +468,11 @@
             "queue": "Опашка",
             "aerocloudTitle": "AeroCloud - Синхронизация",
             "activityLog": "Дневник на активността",
-            "log": "Дневник"
+            "log": "Дневник",
+            "aerofileTitle": "[NEEDS TRANSLATION] AeroFile - Local File Manager",
+            "aerofile": "[NEEDS TRANSLATION] AeroFile",
+            "aeroagentTitle": "[NEEDS TRANSLATION] AeroAgent - AI Assistant",
+            "aeroagent": "[NEEDS TRANSLATION] AeroAgent"
         },
         "dialogs": {
             "confirmTitle": "Потвърждение",
@@ -1215,6 +1219,12 @@
                 "output": "[NEEDS TRANSLATION] Output",
                 "ok": "[NEEDS TRANSLATION] OK",
                 "failed": "[NEEDS TRANSLATION] Failed"
+            },
+            "webSearch": {
+                "title": "[NEEDS TRANSLATION] Web Search",
+                "description": "[NEEDS TRANSLATION] Allow the AI to search the web for current information. Supported by Kimi (Moonshot) and Qwen (Alibaba).",
+                "enable": "[NEEDS TRANSLATION] Enable web search",
+                "providerNote": "[NEEDS TRANSLATION] Only active when using Kimi or Qwen providers. Other providers ignore this setting."
             }
         },
         "archive": {
@@ -1373,6 +1383,44 @@
             "patternIsometric": "[NEEDS TRANSLATION] Isometric",
             "patternBubbles": "[NEEDS TRANSLATION] Bubbles",
             "patternNone": "[NEEDS TRANSLATION] None"
+        },
+        "sidebar": {
+            "places": "[NEEDS TRANSLATION] Places",
+            "folders": "[NEEDS TRANSLATION] Folders",
+            "recent": "[NEEDS TRANSLATION] Recent",
+            "home": "[NEEDS TRANSLATION] Home",
+            "desktop": "[NEEDS TRANSLATION] Desktop",
+            "documents": "[NEEDS TRANSLATION] Documents",
+            "pictures": "[NEEDS TRANSLATION] Pictures",
+            "music": "[NEEDS TRANSLATION] Music",
+            "downloads": "[NEEDS TRANSLATION] Downloads",
+            "videos": "[NEEDS TRANSLATION] Videos",
+            "trash": "[NEEDS TRANSLATION] Trash",
+            "other_locations": "[NEEDS TRANSLATION] Other Locations",
+            "add_to_sidebar": "[NEEDS TRANSLATION] Add to Sidebar",
+            "remove_from_sidebar": "[NEEDS TRANSLATION] Remove from Sidebar",
+            "eject": "[NEEDS TRANSLATION] Eject",
+            "free_of_total": "[NEEDS TRANSLATION] {free} free of {total}",
+            "switch_to_tree": "[NEEDS TRANSLATION] Switch to folder tree",
+            "switch_to_places": "[NEEDS TRANSLATION] Switch to places",
+            "custom_locations": "[NEEDS TRANSLATION] Custom Locations",
+            "open_in_terminal": "[NEEDS TRANSLATION] Open in Terminal",
+            "copy_path": "[NEEDS TRANSLATION] Copy Path",
+            "new_folder": "[NEEDS TRANSLATION] New Folder"
+        },
+        "viewMode": {
+            "list": "[NEEDS TRANSLATION] List",
+            "grid": "[NEEDS TRANSLATION] Icons",
+            "large": "[NEEDS TRANSLATION] Large Icons"
+        },
+        "breadcrumb": {
+            "confirm": "[NEEDS TRANSLATION] Confirm",
+            "editPath": "[NEEDS TRANSLATION] Edit path",
+            "pathMismatch": "[NEEDS TRANSLATION] Path mismatch",
+            "showAll": "[NEEDS TRANSLATION] Show collapsed segments",
+            "browseSiblings": "[NEEDS TRANSLATION] Browse sibling directories",
+            "loading": "[NEEDS TRANSLATION] Loading...",
+            "noSubdirectories": "[NEEDS TRANSLATION] No subdirectories"
         }
     }
 }

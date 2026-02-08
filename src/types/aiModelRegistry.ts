@@ -322,6 +322,21 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         toolCallQuality: 3,
         bestFor: ['general', 'code'],
     },
+
+    // Kimi (Moonshot)
+    'moonshot-v1-8k': { displayName: 'Moonshot v1 8K', maxTokens: 4096, maxContextTokens: 8192, inputCostPer1k: 0.0012, outputCostPer1k: 0.0012, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
+    'moonshot-v1-32k': { displayName: 'Moonshot v1 32K', maxTokens: 4096, maxContextTokens: 32768, inputCostPer1k: 0.0024, outputCostPer1k: 0.0024, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'long-context'] },
+    'moonshot-v1-128k': { displayName: 'Moonshot v1 128K', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.006, outputCostPer1k: 0.006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['long-context', 'analysis'] },
+
+    // Qwen (Alibaba Cloud)
+    'qwen-max': { displayName: 'Qwen Max', maxTokens: 8192, maxContextTokens: 32768, inputCostPer1k: 0.016, outputCostPer1k: 0.064, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: true, supportsParallelTools: true, toolCallQuality: 5, bestFor: ['reasoning', 'analysis'] },
+    'qwen-plus': { displayName: 'Qwen Plus', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0004, outputCostPer1k: 0.0012, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: true, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
+    'qwen-turbo': { displayName: 'Qwen Turbo', maxTokens: 8192, maxContextTokens: 1000000, inputCostPer1k: 0.00018, outputCostPer1k: 0.00072, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['fast'] },
+    'qwen-long': { displayName: 'Qwen Long', maxTokens: 8192, maxContextTokens: 10000000, inputCostPer1k: 0.00018, outputCostPer1k: 0.00072, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['long-context'] },
+
+    // DeepSeek
+    'deepseek-chat': { displayName: 'DeepSeek V3', maxTokens: 8192, maxContextTokens: 65536, inputCostPer1k: 0.00014, outputCostPer1k: 0.00028, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
+    'deepseek-reasoner': { displayName: 'DeepSeek R1', maxTokens: 8192, maxContextTokens: 65536, inputCostPer1k: 0.00055, outputCostPer1k: 0.0022, supportsStreaming: true, supportsTools: false, supportsVision: false, supportsThinking: true, supportsParallelTools: false, toolCallQuality: 1, bestFor: ['reasoning', 'math'] },
 };
 
 /**

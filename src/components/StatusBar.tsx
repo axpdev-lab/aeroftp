@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
@@ -26,8 +26,12 @@ interface StatusBarProps {
     showActivityLog?: boolean;
     activityLogCount?: number;
     updateAvailable?: UpdateInfo | null;
+    aeroFileActive?: boolean;
+    aeroAgentOpen?: boolean;
     debugMode?: boolean;
     storageQuota?: StorageQuota | null;
+    onToggleAeroFile?: () => void;
+    onToggleAeroAgent?: () => void;
     onToggleDebug?: () => void;
     onToggleDevTools?: () => void;
     onToggleSync?: () => void;
@@ -52,8 +56,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     showActivityLog = true,
     activityLogCount = 0,
     updateAvailable,
+    aeroFileActive = false,
+    aeroAgentOpen = false,
     debugMode = false,
     storageQuota,
+    onToggleAeroFile,
+    onToggleAeroAgent,
     onToggleDebug,
     onToggleDevTools,
     onToggleSync,
@@ -178,6 +186,21 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     </button>
                 )}
 
+                {/* AeroFile Button */}
+                {onToggleAeroFile && (
+                    <button
+                        onClick={onToggleAeroFile}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${aeroFileActive
+                            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+                            : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        title={t('statusBar.aerofileTitle')}
+                    >
+                        <FolderOpen size={12} />
+                        <span>{t('statusBar.aerofile')}</span>
+                    </button>
+                )}
+
                 {/* Cloud Button */}
                 {onToggleCloud && (
                     <button
@@ -225,6 +248,21 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 {activityLogCount > 99 ? '99+' : activityLogCount}
                             </span>
                         )}
+                    </button>
+                )}
+
+                {/* AeroAgent Button */}
+                {onToggleAeroAgent && (
+                    <button
+                        onClick={onToggleAeroAgent}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${aeroAgentOpen
+                            ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400'
+                            : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        title={t('statusBar.aeroagentTitle')}
+                    >
+                        <Bot size={12} />
+                        <span>{t('statusBar.aeroagent')}</span>
                     </button>
                 )}
 

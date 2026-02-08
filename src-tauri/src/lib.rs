@@ -37,6 +37,7 @@ mod aerovault_v2;
 mod cryptomator;
 mod master_password;
 mod windows_acl;
+mod filesystem;
 
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
@@ -4778,6 +4779,9 @@ pub fn run() {
             ai::ollama_pull_model,
             ai::gemini_create_cache,
             ai::ollama_list_running,
+            ai::kimi_create_cache,
+            ai::kimi_upload_file,
+            ai::deepseek_fim_complete,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::provider_disconnect,
@@ -4861,6 +4865,11 @@ pub fn run() {
             plugins::execute_plugin_tool,
             plugins::install_plugin,
             plugins::remove_plugin,
+            // Filesystem (Places Sidebar)
+            filesystem::get_user_directories,
+            filesystem::list_mounted_volumes,
+            filesystem::list_subdirectories,
+            filesystem::eject_volume,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1070,6 +1070,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
                 ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
                 ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
+                ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
             };
 
             if (useStreaming) {

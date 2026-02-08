@@ -44,7 +44,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   const [universalPreviewFile, setUniversalPreviewFile] = useState<PreviewFileData | null>(null);
 
   // View mode
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'large'>('list');
 
   // Track current blob URL for cleanup on replacement
   const currentBlobUrlRef = useRef<string | null>(null);

@@ -119,16 +119,6 @@ AeroVault v2 implements a state-of-the-art encryption stack:
 | **Chunk size** | 64 KB | Per-chunk random nonce + auth tag |
 | **Container format** | Binary | 512-byte header, encrypted manifest, chunked data |
 
-**Security advantages over Cryptomator:**
-
-| Feature | AeroVault v2 | Cryptomator |
-| ------- | ------------ | ----------- |
-| Nonce misuse resistance | Yes (GCM-SIV) | No (GCM) |
-| KDF memory | 128 MiB | 64-128 MiB |
-| KDF algorithm | Argon2id | scrypt |
-| Header integrity hash | SHA-512 | SHA-256 |
-| Cascade encryption | Optional | No |
-
 **AeroVault v1 (legacy)**
 
 | Parameter | Value |
@@ -213,22 +203,22 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 ---
 
-## Unique Security Advantages
+## Security Highlights
 
-| Feature | Description | Why It Matters |
-| ------- | ----------- | -------------- |
-| **AeroVault v2** | Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade | Advanced encryption with nonce misuse resistance and cascade mode |
-| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) | Only Cyberduck also supports this; FileZilla, WinSCP do not |
-| **Universal Vault** | Single AES-256-GCM vault with HKDF-SHA256, Argon2id master mode, no OS keyring dependency (v1.8.6) | Competitors store credentials in plaintext config files or depend on OS keyring |
-| **Unified Keystore** | ALL sensitive data (server profiles, AI config, OAuth tokens) migrated from localStorage to encrypted vault (v1.9.0) | No credentials exposed in browser storage; complete encryption coverage |
-| **Keystore Backup/Restore** | Full vault export/import as `.aeroftp-keystore` with Argon2id + AES-256-GCM protection (v1.9.0) | Secure disaster recovery and device migration; competitors offer no encrypted backup |
-| **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback | Fixed ports allow local processes to intercept tokens |
-| **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
-| **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
-| **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString | Prevents password leakage in memory dumps |
-| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation | AI cannot execute arbitrary commands or access restricted paths |
-| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis (v2.0.0) | AI operations validated before execution with visual preview of changes |
-| **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS | Full control over encryption level per connection |
+| Feature | Description |
+| ------- | ----------- |
+| **AeroVault v2** | Military-grade containers with AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade |
+| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) |
+| **Universal Vault** | Single AES-256-GCM vault with HKDF-SHA256, Argon2id master mode, no OS keyring dependency |
+| **Unified Keystore** | ALL sensitive data (server profiles, AI config, OAuth tokens) in encrypted vault — no credentials in browser storage |
+| **Keystore Backup/Restore** | Full vault export/import as `.aeroftp-keystore` with Argon2id + AES-256-GCM protection |
+| **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback — prevents token interception |
+| **FTP Insecure Warning** | Visual red badge and warning banner on plaintext FTP selection |
+| **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords and keys from RAM on drop |
+| **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString |
+| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation |
+| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis |
+| **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS for full control over encryption level |
 
 ## Known Issues
 

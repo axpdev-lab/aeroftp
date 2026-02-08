@@ -575,6 +575,10 @@
             "transferQueue": "Transfer Queue",
             "queue": "Queue",
             "aerocloudTitle": "AeroCloud - Personal Cloud Sync",
+            "aerofileTitle": "AeroFile - Local File Manager",
+            "aerofile": "AeroFile",
+            "aeroagentTitle": "AeroAgent - AI Assistant",
+            "aeroagent": "AeroAgent",
             "activityLog": "Activity Log",
             "log": "Log"
         },
@@ -868,6 +872,30 @@
             "add": "Add",
             "remove": "Remove",
             "none": "No permissions set"
+        },
+        "sidebar": {
+            "places": "Places",
+            "folders": "Folders",
+            "recent": "Recent",
+            "home": "Home",
+            "desktop": "Desktop",
+            "documents": "Documents",
+            "pictures": "Pictures",
+            "music": "Music",
+            "downloads": "Downloads",
+            "videos": "Videos",
+            "trash": "Trash",
+            "other_locations": "Other Locations",
+            "add_to_sidebar": "Add to Sidebar",
+            "remove_from_sidebar": "Remove from Sidebar",
+            "eject": "Eject",
+            "free_of_total": "{free} free of {total}",
+            "switch_to_tree": "Switch to folder tree",
+            "switch_to_places": "Switch to places",
+            "custom_locations": "Custom Locations",
+            "open_in_terminal": "Open in Terminal",
+            "copy_path": "Copy Path",
+            "new_folder": "New Folder"
         },
         "locking": {
             "lock": "Lock File",
@@ -1241,6 +1269,12 @@
                 "maximum": "Maximum",
                 "tokens": "tokens"
             },
+            "webSearch": {
+                "title": "Web Search",
+                "description": "Allow the AI to search the web for current information. Supported by Kimi (Moonshot) and Qwen (Alibaba).",
+                "enable": "Enable web search",
+                "providerNote": "Only active when using Kimi or Qwen providers. Other providers ignore this setting."
+            },
             "modelFamily": {
                 "detected": "Model family detected",
                 "unknown": "Unknown model family"
@@ -1377,6 +1411,20 @@
             "noChange": "(no change)",
             "conflictWarning": "Some files would have the same name. Please adjust the pattern.",
             "apply": "Apply"
+        },
+        "breadcrumb": {
+            "confirm": "Confirm",
+            "editPath": "Edit path",
+            "pathMismatch": "Path mismatch",
+            "showAll": "Show collapsed segments",
+            "browseSiblings": "Browse sibling directories",
+            "loading": "Loading...",
+            "noSubdirectories": "No subdirectories"
+        },
+        "viewMode": {
+            "list": "List",
+            "grid": "Icons",
+            "large": "Large Icons"
         }
     }
 }

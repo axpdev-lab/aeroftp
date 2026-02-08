@@ -59,6 +59,7 @@ export interface AISettings {
         customSystemPrompt?: string;
         useCustomPrompt?: boolean;
         thinkingBudget?: number;    // Extended thinking budget tokens (0 = disabled, default 10000)
+        webSearchEnabled?: boolean;    // Provider web search (Kimi $web_search, Qwen enable_search)
     };
     defaultModelId: string | null;
 }

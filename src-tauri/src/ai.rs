@@ -78,6 +78,9 @@ pub struct AIRequest {
     /// Gemini cached content name (e.g. "cachedContents/abc123")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_content: Option<String>,
+    /// Enable provider web search (Kimi $web_search, Qwen enable_search)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<bool>,
 }
 
 // AI Response to frontend
@@ -681,6 +684,73 @@ mod openai_compat {
             }
         }
 
+        // Qwen thinking mode: enable_thinking + thinking_budget parameters
+        if matches!(request.provider_type, AIProviderType::Qwen) {
+            if let Some(budget) = request.thinking_budget {
+                if budget > 0 {
+                    body["enable_thinking"] = serde_json::json!(true);
+                    body["thinking_budget"] = serde_json::json!(budget);
+                }
+            }
+        }
+
+        // DeepSeek thinking mode: enable_thinking parameter
+        // Response uses reasoning_content field (already parsed in stream_openai)
+        if matches!(request.provider_type, AIProviderType::DeepSeek) {
+            if let Some(budget) = request.thinking_budget {
+                if budget > 0 {
+                    body["enable_thinking"] = serde_json::json!(true);
+                }
+            }
+        }
+
+        // Kimi web search: inject $web_search as builtin_function tool
+        if matches!(request.provider_type, AIProviderType::Kimi) {
+            if request.web_search.unwrap_or(false) {
+                let web_tool = serde_json::json!({
+                    "type": "builtin_function",
+                    "function": { "name": "$web_search" }
+                });
+                if let Some(tools_arr) = body["tools"].as_array_mut() {
+                    tools_arr.push(web_tool);
+                } else {
+                    body["tools"] = serde_json::json!([web_tool]);
+                }
+            }
+        }
+
+        // Kimi context caching: inject cache_id if provided
+        if matches!(request.provider_type, AIProviderType::Kimi) {
+            if let Some(ref cache_id) = request.cached_content {
+                if !cache_id.is_empty() {
+                    body["context"] = serde_json::json!({ "cache_id": cache_id });
+                }
+            }
+        }
+
+        // Qwen web search: enable_search + search_options
+        if matches!(request.provider_type, AIProviderType::Qwen) {
+            if request.web_search.unwrap_or(false) {
+                body["enable_search"] = serde_json::json!(true);
+                body["search_options"] = serde_json::json!({
+                    "search_strategy": "pro"
+                });
+            }
+        }
+
+        // DeepSeek prefix completion: add prefix:true to last assistant message
+        if matches!(request.provider_type, AIProviderType::DeepSeek) {
+            if let Some(msgs) = body["messages"].as_array_mut() {
+                if let Some(last) = msgs.last_mut() {
+                    if last.get("role").and_then(|r| r.as_str()) == Some("assistant") {
+                        if let Some(obj) = last.as_object_mut() {
+                            obj.insert("prefix".to_string(), serde_json::json!(true));
+                        }
+                    }
+                }
+            }
+        }
+
         let response = client
             .post(&url)
             .headers(headers)
@@ -1274,4 +1344,153 @@ pub async fn ollama_list_running(base_url: String) -> Result<Vec<OllamaRunningMo
         .unwrap_or_default();
 
     Ok(models)
+}
+
+/// Kimi context caching: create a reusable context cache for long conversations
+#[tauri::command]
+pub async fn kimi_create_cache(
+    api_key: String,
+    base_url: String,
+    model: String,
+    messages: Vec<ChatMessage>,
+    ttl: Option<u64>,
+) -> Result<String, String> {
+    let client = Client::new();
+    let url = format!("{}/caching", base_url);
+
+    let openai_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
+        serde_json::json!({ "role": m.role, "content": m.to_openai_content() })
+    }).collect();
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": openai_messages,
+    });
+    if let Some(ttl_val) = ttl {
+        body["ttl"] = serde_json::json!(ttl_val);
+    }
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Kimi cache request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Kimi cache creation failed [{}]: {}", status, text));
+    }
+
+    let result: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse cache response: {}", e))?;
+
+    result["id"].as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No cache ID in response".to_string())
+}
+
+/// Kimi file analysis: upload a file for context in conversations
+#[tauri::command]
+pub async fn kimi_upload_file(
+    api_key: String,
+    base_url: String,
+    file_path: String,
+    purpose: Option<String>,
+) -> Result<String, String> {
+    let client = Client::new();
+    let url = format!("{}/files", base_url);
+
+    let file_name = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
+
+    let file_bytes = tokio::fs::read(&file_path).await
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // Limit file size to 100MB
+    if file_bytes.len() > 100 * 1024 * 1024 {
+        return Err("File too large (max 100MB)".to_string());
+    }
+
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name(file_name)
+        .mime_str("application/octet-stream")
+        .map_err(|e| format!("MIME error: {}", e))?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("purpose", purpose.unwrap_or_else(|| "file-extract".to_string()))
+        .part("file", part);
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Kimi file upload failed: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Kimi file upload failed [{}]: {}", status, text));
+    }
+
+    let result: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse file response: {}", e))?;
+
+    result["id"].as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No file ID in response".to_string())
+}
+
+/// DeepSeek FIM (Fill-In-the-Middle) code completion
+#[tauri::command]
+pub async fn deepseek_fim_complete(
+    api_key: String,
+    base_url: String,
+    model: String,
+    prompt: String,
+    suffix: String,
+    max_tokens: Option<u32>,
+) -> Result<String, String> {
+    let client = Client::new();
+    // FIM uses the beta completions endpoint
+    let url = format!("{}/beta/completions", base_url.trim_end_matches("/v1"));
+
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "suffix": suffix,
+        "max_tokens": max_tokens.unwrap_or(128),
+        "temperature": 0,
+        "stop": ["\n\n", "\r\n\r\n"],
+    });
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("DeepSeek FIM request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("DeepSeek FIM failed [{}]: {}", status, text));
+    }
+
+    let result: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse FIM response: {}", e))?;
+
+    result["choices"][0]["text"].as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No completion text in response".to_string())
 }

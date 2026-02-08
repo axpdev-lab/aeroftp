@@ -554,7 +554,11 @@
             "queue": "Coda",
             "aerocloudTitle": "AeroCloud - Cloud Personale",
             "activityLog": "Registro Attività",
-            "log": "Log"
+            "log": "Log",
+            "aerofileTitle": "AeroFile - Gestore File Locale",
+            "aerofile": "AeroFile",
+            "aeroagentTitle": "AeroAgent - Assistente AI",
+            "aeroagent": "AeroAgent"
         },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",
@@ -1262,6 +1266,12 @@
                 "output": "[NEEDS TRANSLATION] Output",
                 "ok": "[NEEDS TRANSLATION] OK",
                 "failed": "[NEEDS TRANSLATION] Failed"
+            },
+            "webSearch": {
+                "title": "Ricerca Web",
+                "description": "Permetti all'AI di cercare informazioni aggiornate sul web. Supportato da Kimi (Moonshot) e Qwen (Alibaba).",
+                "enable": "Abilita ricerca web",
+                "providerNote": "Attivo solo con i provider Kimi o Qwen. Gli altri provider ignorano questa impostazione."
             }
         },
         "archive": {
@@ -1373,6 +1383,44 @@
             "fast": "[NEEDS TRANSLATION] Fast",
             "normal": "[NEEDS TRANSLATION] Normal",
             "maximum": "[NEEDS TRANSLATION] Maximum"
+        },
+        "sidebar": {
+            "places": "[NEEDS TRANSLATION] Places",
+            "folders": "[NEEDS TRANSLATION] Folders",
+            "recent": "[NEEDS TRANSLATION] Recent",
+            "home": "[NEEDS TRANSLATION] Home",
+            "desktop": "[NEEDS TRANSLATION] Desktop",
+            "documents": "[NEEDS TRANSLATION] Documents",
+            "pictures": "[NEEDS TRANSLATION] Pictures",
+            "music": "[NEEDS TRANSLATION] Music",
+            "downloads": "[NEEDS TRANSLATION] Downloads",
+            "videos": "[NEEDS TRANSLATION] Videos",
+            "trash": "[NEEDS TRANSLATION] Trash",
+            "other_locations": "[NEEDS TRANSLATION] Other Locations",
+            "add_to_sidebar": "[NEEDS TRANSLATION] Add to Sidebar",
+            "remove_from_sidebar": "[NEEDS TRANSLATION] Remove from Sidebar",
+            "eject": "[NEEDS TRANSLATION] Eject",
+            "free_of_total": "[NEEDS TRANSLATION] {free} free of {total}",
+            "switch_to_tree": "[NEEDS TRANSLATION] Switch to folder tree",
+            "switch_to_places": "[NEEDS TRANSLATION] Switch to places",
+            "custom_locations": "[NEEDS TRANSLATION] Custom Locations",
+            "open_in_terminal": "[NEEDS TRANSLATION] Open in Terminal",
+            "copy_path": "[NEEDS TRANSLATION] Copy Path",
+            "new_folder": "[NEEDS TRANSLATION] New Folder"
+        },
+        "viewMode": {
+            "list": "[NEEDS TRANSLATION] List",
+            "grid": "[NEEDS TRANSLATION] Icons",
+            "large": "[NEEDS TRANSLATION] Large Icons"
+        },
+        "breadcrumb": {
+            "confirm": "[NEEDS TRANSLATION] Confirm",
+            "editPath": "[NEEDS TRANSLATION] Edit path",
+            "pathMismatch": "[NEEDS TRANSLATION] Path mismatch",
+            "showAll": "[NEEDS TRANSLATION] Show collapsed segments",
+            "browseSiblings": "[NEEDS TRANSLATION] Browse sibling directories",
+            "loading": "[NEEDS TRANSLATION] Loading...",
+            "noSubdirectories": "[NEEDS TRANSLATION] No subdirectories"
         }
     }
 }

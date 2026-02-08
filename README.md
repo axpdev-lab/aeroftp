@@ -52,7 +52,7 @@
 ## Key Features
 
 ### FTP-First Design
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). More FTP options than FileZilla.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE).
 
 ### AeroCloud - Your Personal Cloud
 Turn **any FTP server** into a private personal cloud with bidirectional sync, tray background sync, share links, and per-project local folders. Sync index cache enables faster re-scans and true conflict detection across all 13 protocols.
@@ -128,17 +128,20 @@ AI-powered assistant with **28 provider-agnostic tools** that work across all 13
 - **Collapsible messages**: Long AI responses auto-collapse with gradient fade and "Show more" toggle — keeps chat tidy
 - **Chat history**: Persistent conversations with cost tracking per message
 
-### Advanced File Management
-- **AeroFile Mode**: Local-only file manager with resizable preview panel showing image thumbnails, file info, and dimensions
+### Advanced File Management (AeroFile Pro)
+- **AeroFile Mode**: Full-featured local file manager with resizable preview panel, image thumbnails, file info, and dimensions
+- **Places Sidebar** (v2.0.1): Nautilus-style sidebar with user directories (Home, Documents, Downloads, etc.), custom locations, mounted drives with usage bars, and folder tree toggle (Ctrl+B)
+- **Breadcrumb Navigation** (v2.0.1): Clickable path segments with chevron dropdown for sibling directory browsing, overflow collapse for deep paths, and edit mode (Ctrl+L)
+- **3 View Modes** (v2.0.1): List (detailed table), Grid (icon thumbnails), and Large Icons (96px with full thumbnails for image browsing). Toggle via toolbar or Ctrl+1/2/3
+- **Drive Detection** (v2.0.1): Cross-platform volume detection (internal, removable, network, optical) with filesystem type, free/total space, and colored usage bars
 - **CompressDialog**: Unified compression UI with format selection, compression levels, password, and file info
 - **Smart Sync** (v1.8.0): Intelligent conflict resolution — overwrite if newer, overwrite if different, skip if identical (timestamp tolerance 1s)
 - **Batch Rename** (v1.8.0): Rename multiple files with Find/Replace, Add Prefix, Add Suffix, or Sequential numbering — live preview with conflict detection
 - **Inline Rename** (v1.8.0): Click on filename or press F2 to rename directly in file list
 - **Smart Overwrite Dialog**: File conflict resolution with comparison view
 - **Properties Dialog**: Detailed metadata with checksum calculation (MD5/SHA-256)
-- **Keyboard Shortcuts**: 12 shortcuts including F2 inline rename, Delete, Ctrl+C/V, Tab panel switch
+- **Keyboard Shortcuts**: 15+ shortcuts including F2 inline rename, Delete, Ctrl+C/V, Ctrl+B sidebar, Ctrl+L edit path
 - **Drag and Drop**: Cross-panel drag for upload/download, intra-panel drag for move
-- **List/Grid view** with thumbnails, sortable columns (name, size, type, date), **media player**
 
 ### AeroPlayer Media Engine (v1.9.0)
 - **14 visualizer modes**: 8 Canvas 2D (bars, waveform, radial, spectrum, fractal, vortex, plasma, kaleidoscope) + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
@@ -178,30 +181,6 @@ AI-powered assistant with **28 provider-agnostic tools** that work across all 13
 - In-app update download with progress bar showing speed and ETA
 - AppImage auto-install with "Install & Restart" button
 - Periodic background check every 24 hours + tray menu manual check
-
----
-
-## Competitor Comparison
-
-| Feature | AeroFTP | FileZilla | Cyberduck | WinSCP |
-|---------|---------|-----------|-----------|--------|
-| Protocols | **13** | 3 | 6 | 4 |
-| Cloud Providers | **8** (GDrive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Filen) | 0 | 3 | 0 |
-| Languages | **51** | 47 | ~10 | ~15 |
-| FTPS TLS Modes | Explicit + Implicit + Auto | Explicit + Implicit | Implicit | Explicit + Implicit |
-| Code Editor | Monaco (VS Code) | No | No | Basic |
-| AI Assistant | **28 tools, 10 providers, vision, RAG, plugins** | No | No | No |
-| Cryptomator | **Yes (format 8)** | No | Yes | No |
-| Encrypted Vaults | **AeroVault (AES-256-GCM-SIV)** | No | No | No |
-| Folder Conflict Resolution | **Per-file comparison** | Basic overwrite | No | Timestamp-based |
-| Archive Browser | **ZIP/7z/TAR/RAR** | No | No | No |
-| Personal Cloud | AeroCloud | No | No | No |
-| Storage Quota | 9 providers | No | Yes | No |
-| Sync Index Cache | Yes | No | No | No |
-| Dark Mode | Yes | No | Yes | No |
-| Archive Encryption | ZIP AES-256, 7z AES-256 | No | No | No |
-| Media Player | **14 modes, WebGL shaders, 10-band EQ** | No | No | No |
-| Memory Zeroization | Yes (Rust) | No | No | No |
 
 ---
 

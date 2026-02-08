@@ -60,9 +60,14 @@ snapcraft.login
 
 # AI tool configs (developer-local)
 .kilocodemodes
+.orchids/
 
-# Internal development docs (not for public GitHub)
+# Internal development docs and config (not for public GitHub)
 docs/dev/
+CLAUDE.md
+
+# Local dev scripts (hardcoded paths)
+run-clean.sh
 
 # One-time translation scripts
 scripts/i18n/
@@ -70,3 +75,6 @@ scripts/i18n/
 # Temporary output files
 check_output*.txt
 src-tauri/check_output*.txt
+
+# Package manager lock files (bun)
+bun.lock

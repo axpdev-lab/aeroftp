@@ -172,6 +172,73 @@ async fn stream_openai(
         }
     }
 
+    // Qwen thinking mode: enable_thinking + thinking_budget parameters
+    if matches!(request.provider_type, AIProviderType::Qwen) {
+        if let Some(budget) = request.thinking_budget {
+            if budget > 0 {
+                body["enable_thinking"] = serde_json::json!(true);
+                body["thinking_budget"] = serde_json::json!(budget);
+            }
+        }
+    }
+
+    // DeepSeek thinking mode: enable_thinking parameter
+    // Response uses reasoning_content field (already parsed in stream_openai)
+    if matches!(request.provider_type, AIProviderType::DeepSeek) {
+        if let Some(budget) = request.thinking_budget {
+            if budget > 0 {
+                body["enable_thinking"] = serde_json::json!(true);
+            }
+        }
+    }
+
+    // Kimi web search: inject $web_search as builtin_function tool
+    if matches!(request.provider_type, AIProviderType::Kimi) {
+        if request.web_search.unwrap_or(false) {
+            let web_tool = serde_json::json!({
+                "type": "builtin_function",
+                "function": { "name": "$web_search" }
+            });
+            if let Some(tools_arr) = body["tools"].as_array_mut() {
+                tools_arr.push(web_tool);
+            } else {
+                body["tools"] = serde_json::json!([web_tool]);
+            }
+        }
+    }
+
+    // Kimi context caching: inject cache_id if provided
+    if matches!(request.provider_type, AIProviderType::Kimi) {
+        if let Some(ref cache_id) = request.cached_content {
+            if !cache_id.is_empty() {
+                body["context"] = serde_json::json!({ "cache_id": cache_id });
+            }
+        }
+    }
+
+    // Qwen web search: enable_search + search_options
+    if matches!(request.provider_type, AIProviderType::Qwen) {
+        if request.web_search.unwrap_or(false) {
+            body["enable_search"] = serde_json::json!(true);
+            body["search_options"] = serde_json::json!({
+                "search_strategy": "pro"
+            });
+        }
+    }
+
+    // DeepSeek prefix completion: add prefix:true to last assistant message
+    if matches!(request.provider_type, AIProviderType::DeepSeek) {
+        if let Some(msgs) = body["messages"].as_array_mut() {
+            if let Some(last) = msgs.last_mut() {
+                if last.get("role").and_then(|r| r.as_str()) == Some("assistant") {
+                    if let Some(obj) = last.as_object_mut() {
+                        obj.insert("prefix".to_string(), serde_json::json!(true));
+                    }
+                }
+            }
+        }
+    }
+
     let response = client.post(&url).headers(headers).json(&body).send().await?;
     if !response.status().is_success() {
         let status = response.status();

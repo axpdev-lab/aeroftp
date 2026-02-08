@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 7 February 2026
-> Version: v2.0.0 (AeroAgent Pro — Provider Intelligence, Advanced Tool Execution, Context Intelligence, Professional UX, Provider-Specific Features)
+> Last Updated: 8 February 2026
+> Version: v2.0.1 (Vault Unlock Fix, Asian AI Providers, AeroFile Pro Navigation)
 
 ---
 
@@ -283,6 +283,9 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 | **xAI (Grok)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **OpenRouter** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **Ollama** | No (text fallback) | Yes (NDJSON) | Yes (`eval_count`) | None |
+| **Kimi (Moonshot)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Qwen (Alibaba)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **DeepSeek** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **Custom** | No (text fallback) | Yes (SSE) | Varies | API Key |
 
 ### AI Tool Support by Protocol
@@ -350,6 +353,14 @@ All 28 tools work identically across all 13 protocols via the `StorageProvider` 
 | Ollama model templates | Done (v2.0.0) | 8 family profiles with tailored prompts |
 | Ollama pull from UI | Done (v2.0.0) | NDJSON streaming progress in AI Settings |
 | Gemini code execution | Done (v2.0.0) | executableCode/codeExecutionResult parsing |
+| Kimi web search | Done (v2.0.1) | `$web_search` builtin_function tool injection |
+| Kimi context caching | Done (v2.0.1) | `/v1/caching` endpoint, cache_id passthrough |
+| Kimi file analysis | Done (v2.0.1) | `/v1/files` upload, fileid:// references |
+| Qwen thinking mode | Done (v2.0.1) | `enable_thinking` + `thinking_budget` parameters |
+| Qwen web search | Done (v2.0.1) | `enable_search` + `search_options.search_strategy` |
+| DeepSeek thinking mode | Done (v2.0.1) | `reasoning_content` streaming (shared with o3) |
+| DeepSeek FIM completion | Done (v2.0.1) | `/beta/completions` with prompt + suffix |
+| DeepSeek prefix completion | Done (v2.0.1) | `prefix: true` on last assistant message |
 
 ---
 
@@ -357,18 +368,22 @@ All 28 tools work identically across all 13 protocols via the `StorageProvider` 
 
 ### AI Provider Feature Matrix
 
-| Feature | OpenAI | Anthropic | Google Gemini | xAI | OpenRouter | Ollama | Custom |
-|---------|--------|-----------|---------------|-----|------------|--------|--------|
-| Native Tool Calling | Yes | Yes | Yes | Yes | Yes | Text format | Yes |
-| Streaming | SSE | SSE | SSE | SSE | SSE | NDJSON | SSE |
-| Vision/Multimodal | Yes | Yes | Yes | Yes | Via model | Yes | Via model |
-| Structured Outputs | **strict: true** | N/A | N/A | **strict: true** | **strict: true** | N/A | N/A |
-| Prompt Caching | N/A | **Ephemeral** | **cachedContent** | N/A | N/A | N/A | N/A |
-| Extended Thinking | o3/o3-mini | Claude 3.5+ | Gemini 2.0+ | N/A | Via model | deepseek-r1 | N/A |
-| Code Execution | N/A | N/A | **Python sandbox** | N/A | N/A | N/A | N/A |
-| Model Pull from UI | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A |
-| GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A |
-| Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A |
+| Feature | OpenAI | Anthropic | Google Gemini | xAI | OpenRouter | Ollama | Kimi | Qwen | DeepSeek | Custom |
+|---------|--------|-----------|---------------|-----|------------|--------|------|------|----------|--------|
+| Native Tool Calling | Yes | Yes | Yes | Yes | Yes | Text format | Yes | Yes | Yes | Yes |
+| Streaming | SSE | SSE | SSE | SSE | SSE | NDJSON | SSE | SSE | SSE | SSE |
+| Vision/Multimodal | Yes | Yes | Yes | Yes | Via model | Yes | Yes | Yes | N/A | Via model |
+| Structured Outputs | **strict: true** | N/A | N/A | **strict: true** | **strict: true** | N/A | N/A | N/A | N/A | N/A |
+| Prompt Caching | N/A | **Ephemeral** | **cachedContent** | N/A | N/A | N/A | **Context cache** | N/A | N/A | N/A |
+| Extended Thinking | o3/o3-mini | Claude 3.5+ | Gemini 2.0+ | N/A | Via model | deepseek-r1 | N/A | **enable_thinking** | **reasoning_content** | N/A |
+| Web Search | N/A | N/A | N/A | N/A | N/A | N/A | **$web_search** | **enable_search** | N/A | N/A |
+| Code Execution | N/A | N/A | **Python sandbox** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| FIM Completion | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | **beta/completions** | N/A |
+| File Analysis | N/A | N/A | N/A | N/A | N/A | N/A | **v1/files** | N/A | N/A | N/A |
+| Prefix Completion | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | **prefix: true** | N/A |
+| Model Pull from UI | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
+| GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
+| Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
 ### AeroAgent Tool Categories (28 tools)
 
@@ -447,13 +462,14 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v1.8.8 | Vision/multimodal AI, auto panel refresh, XSS hardening, security audit | Done |
 | v1.9.0 | **Unified Keystore** (localStorage to vault migration), **keystore backup/restore** (.aeroftp-keystore), **migration wizard**, AI multi-step tools, Ollama auto-detection, conversation export, Monaco bidirectional sync, terminal command execution | Done |
 | v2.0.0 | **AeroAgent Pro** — Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
+| v2.0.1 | **3 Asian AI Providers** (Kimi, Qwen, DeepSeek) with thinking modes, web search, FIM, context caching, file analysis. **AeroFile Pro** Places Sidebar, BreadcrumbBar, Large Icons, drive detection, custom sidebar locations. Official SVG provider logos for all 10 providers | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.1.0 | CLI Foundation (`aeroftp connect/ls/get/put/sync`), 2FA/Biometric unlock |
-| v2.2.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
+| v2.1.0 | Theme System (4 themes), Provider Marketplace, CLI Foundation, 2FA/Biometric |
+| v2.2.0 | AeroFile Phase B (tabs, Quick Look, recent locations), Remote vault, Cryptomator creation |
 
 ---
 

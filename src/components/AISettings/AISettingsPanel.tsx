@@ -1398,6 +1398,36 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     <span>100K</span>
                                 </div>
                             </div>
+
+                            {/* Web Search (Kimi / Qwen only) */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.webSearch.title')}</h4>
+                                <p className="text-[10px] text-gray-500 mb-3">
+                                    {t('ai.webSearch.description')}
+                                </p>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.advancedSettings?.webSearchEnabled || false}
+                                        onChange={(e) => {
+                                            const newSettings = {
+                                                ...settings,
+                                                advancedSettings: {
+                                                    ...settings.advancedSettings,
+                                                    webSearchEnabled: e.target.checked,
+                                                },
+                                            };
+                                            setSettings(newSettings);
+                                            saveSettings(newSettings);
+                                        }}
+                                        className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <span className="text-gray-300">{t('ai.webSearch.enable')}</span>
+                                </label>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">
+                                    {t('ai.webSearch.providerNote')}
+                                </p>
+                            </div>
                         </div>
                     )}
 

@@ -58,9 +58,12 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3
 } from 'lucide-react';
 import { VaultIcon } from './components/icons/VaultIcon';
+import { PlacesSidebar } from './components/PlacesSidebar';
+import { BreadcrumbBar } from './components/BreadcrumbBar';
+import { LargeIconsGrid } from './components/LargeIconsGrid';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
@@ -219,6 +222,15 @@ const App: React.FC = () => {
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
+  // AeroFile sidebar state (persisted in localStorage)
+  const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
+  const toggleSidebar = useCallback(() => {
+    setShowSidebar(prev => {
+      const next = !prev;
+      localStorage.setItem('aerofile_show_sidebar', String(next));
+      return next;
+    });
+  }, []);
   // Multi-Session Tabs (Hybrid Cache Architecture)
   const [sessions, setSessions] = useState<FtpSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -437,7 +449,7 @@ const App: React.FC = () => {
     cloudLocalFolder, setCloudLocalFolder,
     cloudRemoteFolder, setCloudRemoteFolder,
     cloudPublicUrlBase, setCloudPublicUrlBase,
-  } = useCloudSync({ activityLog, humanLog, t, checkForUpdate });
+  } = useCloudSync({ activityLog, humanLog, t, checkForUpdate, isAppLocked });
 
   // showToastNotifications provided by useSettings
 
@@ -4098,9 +4110,10 @@ const App: React.FC = () => {
                 // Then switch session (async reconnect happens in background)
                 await switchSession(lastSession.id);
               } else {
-                // No existing sessions - just show local file manager
+                // No existing sessions - enter AeroFile mode with sidebar
                 setShowConnectionScreen(false);
                 setActivePanel('local');
+                setShowSidebar(true);
                 await loadLocalFiles(currentLocalPath || '/');
               }
             }}
@@ -4142,13 +4155,23 @@ const App: React.FC = () => {
                     <FolderOpen size={16} /> {t('common.open')}
                   </button>
                 )}
-                {/* View Mode Toggle */}
+                {/* Sidebar Toggle (AeroFile mode only) */}
+                {(!isConnected || !showRemotePanel) && (
+                  <button
+                    onClick={toggleSidebar}
+                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showSidebar ? 'bg-blue-500/20 text-blue-400 dark:text-blue-400' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                    title={showSidebar ? t('sidebar.places') : t('sidebar.places')}
+                  >
+                    <PanelLeft size={16} />
+                  </button>
+                )}
+                {/* View Mode Toggle (3-way: list → grid → large) */}
                 <button
-                  onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+                  onClick={() => setViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list')}
                   className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5"
-                  title={viewMode === 'list' ? 'Switch to Grid View' : 'Switch to List View'}
+                  title={t(`viewMode.${viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list'}`)}
                 >
-                  {viewMode === 'list' ? <LayoutGrid size={16} /> : <List size={16} />}
+                  {viewMode === 'list' ? <LayoutGrid size={16} /> : viewMode === 'grid' ? <Rows3 size={16} /> : <List size={16} />}
                 </button>
                 {/* Upload / Download dynamic button */}
                 {isConnected && showRemotePanel && (
@@ -4644,54 +4667,95 @@ const App: React.FC = () => {
                 onDragLeave={handlePanelDragLeave}
               >
                 <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-                    {/* Local icon inside address bar (like Chrome favicon) */}
-                    <div
-                      className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
-                      title={isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
-                    >
-                      {isLocalPathCoherent ? (
-                        <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
-                      ) : (
-                        <AlertTriangle size={14} className="text-amber-500" />
-                      )}
+                  {(!isConnected || !showRemotePanel) ? (
+                    /* AeroFile mode: BreadcrumbBar with search button */
+                    <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <BreadcrumbBar
+                          currentPath={currentLocalPath}
+                          onNavigate={changeLocalDirectory}
+                          isCoherent={isLocalPathCoherent}
+                          t={t}
+                        />
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          const btn = e.currentTarget;
+                          btn.querySelector('svg')?.classList.add('animate-spin');
+                          setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                          loadLocalFiles(currentLocalPath);
+                        }}
+                        className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        title={t('common.refresh')}
+                      >
+                        <RefreshCw size={13} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (localSearchFilter) {
+                            setLocalSearchFilter('');
+                            setShowLocalSearchBar(false);
+                          } else {
+                            setShowLocalSearchBar(prev => !prev);
+                          }
+                        }}
+                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                        title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
+                      >
+                        <Search size={13} />
+                      </button>
                     </div>
-                    <input
-                      type="text"
-                      value={currentLocalPath}
-                      onChange={(e) => setCurrentLocalPath(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
-                      className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                      title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "⚠️ Local path doesn't match the connected server"}
-                      placeholder="/path/to/local/directory"
-                    />
-                    <button
-                      onClick={(e) => {
-                        const btn = e.currentTarget;
-                        btn.querySelector('svg')?.classList.add('animate-spin');
-                        setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
-                        loadLocalFiles(currentLocalPath);
-                      }}
-                      className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      title={t('common.refresh')}
-                    >
-                      <RefreshCw size={13} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (localSearchFilter) {
-                          setLocalSearchFilter('');
-                          setShowLocalSearchBar(false);
-                        } else {
-                          setShowLocalSearchBar(prev => !prev);
-                        }
-                      }}
-                      className={`flex-shrink-0 px-2 flex items-center transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
-                      title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
-                    >
-                      <Search size={13} />
-                    </button>
-                  </div>
+                  ) : (
+                    /* Connected mode: classic input address bar */
+                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
+                      {/* Local icon inside address bar (like Chrome favicon) */}
+                      <div
+                        className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
+                        title={isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
+                      >
+                        {isLocalPathCoherent ? (
+                          <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
+                        ) : (
+                          <AlertTriangle size={14} className="text-amber-500" />
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={currentLocalPath}
+                        onChange={(e) => setCurrentLocalPath(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
+                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                        title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "\u26a0\ufe0f Local path doesn't match the connected server"}
+                        placeholder="/path/to/local/directory"
+                      />
+                      <button
+                        onClick={(e) => {
+                          const btn = e.currentTarget;
+                          btn.querySelector('svg')?.classList.add('animate-spin');
+                          setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                          loadLocalFiles(currentLocalPath);
+                        }}
+                        className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        title={t('common.refresh')}
+                      >
+                        <RefreshCw size={13} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (localSearchFilter) {
+                            setLocalSearchFilter('');
+                            setShowLocalSearchBar(false);
+                          } else {
+                            setShowLocalSearchBar(prev => !prev);
+                          }
+                        }}
+                        className={`flex-shrink-0 px-2 flex items-center transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                        title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
+                      >
+                        <Search size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {showLocalSearchBar && (
                   <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
@@ -4724,11 +4788,21 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <div className="flex-1 overflow-auto" onContextMenu={(e) => {
-                  const target = e.target as HTMLElement;
-                  const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
-                  if (!isFileRow) showLocalEmptyContextMenu(e);
-                }}>
+                {/* Sidebar + Content flex row */}
+                <div className="flex flex-1 overflow-hidden">
+                  {/* AeroFile Places Sidebar */}
+                  {showSidebar && (!isConnected || !showRemotePanel) && (
+                    <PlacesSidebar
+                      currentPath={currentLocalPath}
+                      onNavigate={changeLocalDirectory}
+                      t={t}
+                    />
+                  )}
+                  <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                    const target = e.target as HTMLElement;
+                    const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
+                    if (!isFileRow) showLocalEmptyContextMenu(e);
+                  }}>
                   {viewMode === 'list' ? (
                     <table className="w-full">
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
@@ -4855,7 +4929,7 @@ const App: React.FC = () => {
                         ))}
                       </tbody>
                     </table>
-                  ) : (
+                  ) : viewMode === 'grid' ? (
                     /* Grid View */
                     <div className="file-grid">
                       {/* Go Up Item - always visible, disabled at root */}
@@ -4978,8 +5052,81 @@ const App: React.FC = () => {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    /* Large Icons View */
+                    <LargeIconsGrid
+                      files={sortedLocalFiles}
+                      selectedFiles={selectedLocalFiles}
+                      currentPath={currentLocalPath}
+                      onFileClick={(file, e) => {
+                        setActivePanel('local');
+                        const i = sortedLocalFiles.indexOf(file);
+                        if (e.shiftKey && lastSelectedLocalIndex !== null) {
+                          const start = Math.min(lastSelectedLocalIndex, i);
+                          const end = Math.max(lastSelectedLocalIndex, i);
+                          const rangeNames = sortedLocalFiles.slice(start, end + 1).map(f => f.name);
+                          setSelectedLocalFiles(new Set(rangeNames));
+                        } else if (e.ctrlKey || e.metaKey) {
+                          setSelectedLocalFiles(prev => {
+                            const next = new Set(prev);
+                            if (next.has(file.name)) next.delete(file.name);
+                            else next.add(file.name);
+                            return next;
+                          });
+                          setLastSelectedLocalIndex(i);
+                        } else {
+                          if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
+                            setSelectedLocalFiles(new Set());
+                            setPreviewFile(null);
+                          } else {
+                            setSelectedLocalFiles(new Set([file.name]));
+                            setPreviewFile(file);
+                          }
+                          setLastSelectedLocalIndex(i);
+                        }
+                      }}
+                      onFileDoubleClick={(file) => {
+                        if (file.is_dir) {
+                          changeLocalDirectory(file.path);
+                        } else {
+                          if (doubleClickAction === 'preview') {
+                            const category = getPreviewCategory(file.name);
+                            if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+                              openUniversalPreview(file, false);
+                            } else if (isPreviewable(file.name)) {
+                              openDevToolsPreview(file, false);
+                            }
+                          } else {
+                            if (isConnected) {
+                              uploadFile(file.path, file.name, false);
+                            } else {
+                              openInFileManager(file.path);
+                            }
+                          }
+                        }
+                      }}
+                      onNavigateUp={() => changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
+                      isAtRoot={currentLocalPath === '/'}
+                      getFileIcon={(name, isDir) => {
+                        if (isDir) return { icon: <Folder size={64} className="text-yellow-500" />, color: 'text-yellow-500' };
+                        return getFileIcon(name, 48);
+                      }}
+                      onContextMenu={(e, file) => file ? showLocalContextMenu(e, file) : showLocalEmptyContextMenu(e)}
+                      onDragStart={(e, file) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
+                      onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, false)}
+                      onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, false)}
+                      onDragLeave={handleDragLeave}
+                      onDragEnd={handleDragEnd}
+                      dragOverTarget={dropTargetPath}
+                      inlineRename={inlineRename}
+                      onInlineRenameChange={setInlineRenameValue}
+                      onInlineRenameCommit={commitInlineRename}
+                      onInlineRenameCancel={() => setInlineRename(null)}
+                      formatBytes={formatBytes}
+                    />
                   )}
                 </div>
+                </div>{/* close sidebar+content flex row */}
               </div>
 
               {/* Preview Panel - only in local-only (AeroFile) mode */}
@@ -5273,7 +5420,38 @@ const App: React.FC = () => {
           localFileCount={localFiles.length}
           activePanel={activePanel}
           devToolsOpen={devToolsOpen}
+          aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
+          onToggleAeroFile={async () => {
+            if (showConnectionScreen) {
+              // On connection screen: enter AeroFile mode (same as "Local files >" button)
+              setShowConnectionScreen(false);
+              setActivePanel('local');
+              setShowSidebar(true);
+              await loadLocalFiles(currentLocalPath || '/');
+            } else if (isConnected) {
+              // Connected: toggle remote panel off/on (entering/exiting AeroFile mode)
+              setShowRemotePanel(prev => {
+                if (prev) { setActivePanel('local'); setShowSidebar(true); }
+                else { setShowLocalPreview(false); }
+                return !prev;
+              });
+            } else {
+              // Already in AeroFile mode (not connected, not on connection screen) — toggle sidebar
+              toggleSidebar();
+            }
+          }}
           onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
+          aeroAgentOpen={devToolsOpen}
+          onToggleAeroAgent={() => {
+            if (!devToolsOpen) {
+              setDevToolsOpen(true);
+              // Ensure agent panel is visible after DevTools opens
+              setTimeout(() => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), 50);
+            } else {
+              // DevTools already open — toggle agent panel
+              window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }));
+            }
+          }}
           onToggleSync={() => setShowSyncPanel(true)}
           onToggleCloud={() => setShowCloudPanel(true)}
           cloudEnabled={isCloudActive}

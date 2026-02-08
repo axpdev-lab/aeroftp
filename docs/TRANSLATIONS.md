@@ -1,8 +1,8 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 5 February 2026
-> Version: v1.8.6
-> Languages: 51 | Keys: 1020 | Coverage: 100%
+> Last Updated: 8 February 2026
+> Version: v2.0.1
+> Languages: 51 | Keys: 1278 | Coverage: 100%
 
 ---
 
@@ -125,9 +125,9 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ---
 
-## Translation Keys (531)
+## Translation Keys (1278)
 
-Translations are organized by 24 namespaces:
+Translations are organized by 30+ namespaces:
 
 | Namespace | Description | Keys |
 |-----------|-------------|------|
@@ -155,6 +155,13 @@ Translations are organized by 24 namespaces:
 | `versions` | File versions | Version history (v1.4.0) |
 | `sharing` | Share permissions | Sharing dialog (v1.4.0) |
 | `locking` | File locking | Lock/unlock (v1.4.0) |
+| `ai` | AI assistant | Chat, tools, cost, templates (v1.6.0+) |
+| `archive` | Archive operations | Browse, compress, extract (v1.7.0) |
+| `vault` | AeroVault | Create, open, extract, security (v1.7.0) |
+| `cryptomator` | Cryptomator support | Unlock, browse, errors (v1.7.0) |
+| `compress` | Compression dialog | Format, level, password (v1.7.0) |
+| `sidebar` | Places Sidebar | Sections, actions, locations (v2.0.1) |
+| `breadcrumb` | Breadcrumb bar | Navigation, edit, siblings (v2.0.1) |
 
 ---
 
@@ -166,7 +173,7 @@ src/i18n/
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
 ├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (51)
 └── locales/
-    ├── en.json           # English (base, 531 keys)
+    ├── en.json           # English (base, 1278 keys)
     ├── it.json           # Italian (manually translated)
     ├── ar.json           # Arabic (RTL)
     ├── ...               # 48 more languages
@@ -290,4 +297,4 @@ const { t, language, setLanguage } = useI18n();
 ---
 
 **Maintainer**: axpdev
-**Last Updated**: 31 January 2026
+**Last Updated**: 8 February 2026
