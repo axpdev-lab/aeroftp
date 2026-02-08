@@ -1428,6 +1428,40 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     {t('ai.webSearch.providerNote')}
                                 </p>
                             </div>
+
+                            {/* Streaming Timeout */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.streamingTimeout.title')}</h4>
+                                <p className="text-[10px] text-gray-500 mb-3">
+                                    {t('ai.streamingTimeout.description')}
+                                </p>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="number"
+                                        min={30}
+                                        max={600}
+                                        step={10}
+                                        value={settings.advancedSettings?.streamingTimeoutSecs ?? 120}
+                                        onChange={(e) => {
+                                            const val = Math.max(30, Math.min(600, parseInt(e.target.value) || 120));
+                                            const newSettings = {
+                                                ...settings,
+                                                advancedSettings: {
+                                                    ...settings.advancedSettings,
+                                                    streamingTimeoutSecs: val,
+                                                },
+                                            };
+                                            setSettings(newSettings);
+                                            saveSettings(newSettings);
+                                        }}
+                                        className="w-24 px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-sm text-white focus:border-purple-500 focus:outline-none"
+                                    />
+                                    <span className="text-sm text-gray-400">{t('ai.streamingTimeout.seconds')}</span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">
+                                    {t('ai.streamingTimeout.hint')}
+                                </p>
+                            </div>
                         </div>
                     )}
 

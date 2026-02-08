@@ -31,7 +31,12 @@ export interface AppSettings {
   showActivityLog: boolean;
   showConnectionScreen: boolean;
   debugMode: boolean;
+  visibleColumns: string[];
+  sortFoldersFirst: boolean;
+  showFileExtensions: boolean;
 }
+
+export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
 
 const DEFAULTS: AppSettings = {
   compactMode: false,
@@ -48,6 +53,9 @@ const DEFAULTS: AppSettings = {
   showActivityLog: false,
   showConnectionScreen: true,
   debugMode: false,
+  visibleColumns: ALL_COLUMNS,
+  sortFoldersFirst: true,
+  showFileExtensions: true,
 };
 
 export const useSettings = () => {
@@ -65,6 +73,9 @@ export const useSettings = () => {
   const [showActivityLog, setShowActivityLog] = useState(DEFAULTS.showActivityLog);
   const [showConnectionScreen, setShowConnectionScreen] = useState(DEFAULTS.showConnectionScreen);
   const [debugMode, setDebugMode] = useState(DEFAULTS.debugMode);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULTS.visibleColumns);
+  const [sortFoldersFirst, setSortFoldersFirst] = useState(DEFAULTS.sortFoldersFirst);
+  const [showFileExtensions, setShowFileExtensions] = useState(DEFAULTS.showFileExtensions);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -82,6 +93,9 @@ export const useSettings = () => {
     }
     if (typeof parsed.rememberLastFolder === 'boolean') setRememberLastFolder(parsed.rememberLastFolder);
     if (typeof parsed.debugMode === 'boolean') setDebugMode(parsed.debugMode);
+    if (Array.isArray(parsed.visibleColumns)) setVisibleColumns(parsed.visibleColumns.filter((c: unknown) => typeof c === 'string' && ALL_COLUMNS.includes(c as string)));
+    if (typeof parsed.sortFoldersFirst === 'boolean') setSortFoldersFirst(parsed.sortFoldersFirst);
+    if (typeof parsed.showFileExtensions === 'boolean') setShowFileExtensions(parsed.showFileExtensions);
   }, []);
 
   // Load settings on mount + listen for changes
@@ -137,6 +151,9 @@ export const useSettings = () => {
     showActivityLog,
     showConnectionScreen,
     debugMode,
+    visibleColumns,
+    sortFoldersFirst,
+    showFileExtensions,
     showSettingsPanel,
 
     // Setters
@@ -154,6 +171,9 @@ export const useSettings = () => {
     setShowActivityLog,
     setShowConnectionScreen,
     setDebugMode,
+    setVisibleColumns,
+    setSortFoldersFirst,
+    setShowFileExtensions,
     setShowSettingsPanel,
 
     // Constants

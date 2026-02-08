@@ -41,7 +41,7 @@ interface UseDragAndDropParams {
     currentRemotePath: string;
     currentLocalPath: string;
     loadRemoteFiles: () => Promise<void>;
-    loadLocalFiles: (path: string) => Promise<void>;
+    loadLocalFiles: (path: string) => Promise<boolean | void>;
     // Provider detection
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;

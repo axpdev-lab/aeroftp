@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [2.0.2] - 2026-02-08
+
+### AeroFile Pro, Security Hardening & AI Provider Audit
+
+AeroFTP v2.0.2 brings the AeroFile local file manager to professional-grade with Quick Look, Trash Browser, and Enhanced Properties, alongside a massive security audit that resolved 70 findings across AeroAgent, AI providers, and AeroFile systems.
+
+#### Added
+
+- **Spacebar Quick Look**: Finder-style instant preview overlay for images, video, audio, code, and markdown — activated with Space, navigate with arrow keys, close with Escape
+- **Recent Locations**: Sidebar section showing last 10 visited folders with one-click navigation, clear button, and localStorage persistence
+- **Trash Browser**: Full trash management with table view showing original path, deletion date, and restore/empty actions — soft delete replaces permanent delete by default
+- **Enhanced Properties Dialog**: 3-tab interface (General, Permissions, Checksum) with extended metadata including timestamps (created/modified/accessed), owner:group, symlink target, inode, hard links, and permission matrix
+- **Folder Size Calculation**: Recursive size calculation via context menu "Calculate Size" with in-session caching for instant re-display
+- **4-Algorithm Checksum**: MD5, SHA-1, SHA-256, and SHA-512 on-demand calculation with copy buttons in Properties dialog
+- **Disk Usage Treemap**: Visual disk usage analysis with interactive treemap, depth control, and file type breakdown
+- **Duplicate Finder**: Find and manage duplicate files by content hash with batch delete and size recovery display
+- **6 new Rust commands**: `get_file_properties`, `calculate_folder_size`, `delete_to_trash`, `list_trash_items`, `restore_trash_item`, `empty_trash` in filesystem.rs
+- **Alt+Enter shortcut**: Open Properties dialog for selected file
+- **31 new i18n keys**: trash, quickLook, properties, sidebar, and contextMenu sections across all 51 languages
+
+#### Fixed
+
+- **AeroAgent security audit** (22 fixes across 13 files, grade B- to A-): HTTP client singletons with timeouts, Gemini API key sanitization in errors, token counts in OpenAI-compatible streaming, plugin tool name hijacking prevention, plugin process kill on timeout, disabled plugin execution guard, fail-closed tool validation, Ollama non-streaming endpoint fix, agent memory prompt injection defense, default models for Asian providers
+- **AeroFile security audit** (48 fixes across 16 files, grade C+ to A-): Command injection in `eject_volume`, path traversal in `restore_trash_item`, resource exhaustion protections (depth/entry limits), symlink safety (`symlink_metadata` consistently), `validate_path` for all filesystem commands, blob URL memory leak fixes, async race condition prevention, stale scan result prevention, iframe sandbox hardening, filename validation in inline rename
+- **QuickLook race condition**: Per-load cancellation flag prevents wrong file content from rapid navigation
+- **QuickLook sorted file mapping**: Space handler now uses sorted file list for correct visual-to-data mapping
+- **QuickLook media playback**: Spacebar no longer closes overlay during video/audio playback
+- **QuickLook directory skip**: Arrow navigation skips directory entries automatically
+- **TextViewer iframe security**: Removed `allow-scripts` from sandbox attribute
+- **ImageThumbnail OOM protection**: Added 5MB size limit for thumbnail loading
+- **DiskUsageTreemap stale results**: Scan ID pattern prevents applying results from previous directory
+- **DuplicateFinderDialog confirmation**: Added confirmation dialog before batch delete operations
+- **usePreview memory leak**: Blob URLs properly revoked on component unmount
+- **Keyboard shortcuts in contentEditable**: Shortcuts no longer fire while typing in rich text fields
+- **changeLocalDirectory validation**: Failed navigation no longer corrupts recent locations list
+- **Inline rename validation**: Rejects path separators, traversal patterns, and null bytes in filenames
+- **Folder size stale closure**: Ref pattern prevents reading outdated state in useCallback
+- **Macro step danger bypass**: High-danger tools now require approval even within macros
+- **Anthropic multi-block response**: All text blocks collected instead of only the first
+- **Gemini thinking transition**: `thinking_done` event properly emitted on thought-to-content transition
+- **AI deny-list expansion**: Added `~/.ssh/`, `~/.gnupg/`, `~/.aws/`, `~/.kube/`, `~/.config/gcloud` to blocked paths
+- **local_read memory efficiency**: Reads only needed bytes instead of full file up to 10MB
+- **Kimi upload path validation**: Null byte, traversal, and system path checks before file upload
+
+#### Changed
+
+- **Plugin danger level enforcement**: All plugin tools forced to `medium` minimum danger level (both Rust and TypeScript)
+- **OpenAI strict mode restriction**: `strict: true` now only sent to providers that document support (OpenAI, xAI, OpenRouter)
+- **Dead code cleanup**: Removed unused `highlightSearchMatches`, hardcoded English labels replaced with i18n
+
+---
+
 ## [2.0.1] - 2026-02-08
 
 ### Vault Unlock & Provider Expansion

@@ -3,6 +3,25 @@
 
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
+use std::sync::LazyLock;
+use std::time::Duration;
+
+/// Shared HTTP client with connection pooling and timeouts for AI provider requests.
+pub static AI_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .expect("Failed to create AI HTTP client")
+});
+
+/// Shared HTTP client for streaming (no read timeout, only connect timeout).
+pub static AI_STREAM_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .expect("Failed to create AI stream HTTP client")
+});
 
 /// Safely truncate a string at a UTF-8 character boundary
 pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
@@ -15,6 +34,12 @@ pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
         end -= 1;
     }
     &s[..end]
+}
+
+/// Strip query parameters from URLs in error messages to prevent API key leakage.
+pub(crate) fn sanitize_error_message(msg: &str) -> String {
+    let re = regex::Regex::new(r"[?&]key=[^&\s\)]*").unwrap_or_else(|_| regex::Regex::new(r"$^").unwrap());
+    re.replace_all(msg, "").to_string()
 }
 
 // Provider types
@@ -214,7 +239,7 @@ impl Serialize for AIError {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        serializer.serialize_str(&sanitize_error_message(&self.to_string()))
     }
 }
 
@@ -636,7 +661,6 @@ mod openai_compat {
         let supports_strict = matches!(
             request.provider_type,
             AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
-            | AIProviderType::Kimi | AIProviderType::Qwen | AIProviderType::DeepSeek
         );
         let tools = request.tools.as_ref().map(|defs| {
             defs.iter().map(|d| {
@@ -955,15 +979,16 @@ mod anthropic {
 
         let blocks = anthropic_response.content.as_ref();
 
-        // Extract text content
+        // Extract ALL text content blocks (not just the first)
         let content = blocks
-            .and_then(|b| {
+            .map(|b| {
                 b.iter()
                     .filter(|c| c.content_type.as_deref() == Some("text") || c.content_type.is_none())
                     .filter_map(|c| c.text.as_ref())
-                    .next()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("")
             })
-            .cloned()
             .unwrap_or_default();
 
         // Extract tool_use blocks
@@ -1014,20 +1039,21 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
         ..request
     };
 
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
 
     match request.provider_type {
-        AIProviderType::Google => gemini::call(&client, &request).await,
-        AIProviderType::Anthropic => anthropic::call(&client, &request).await,
-        AIProviderType::Ollama => openai_compat::call(&client, &request, "/api/chat").await,
+        AIProviderType::Google => gemini::call(client, &request).await,
+        AIProviderType::Anthropic => anthropic::call(client, &request).await,
+        // Ollama 0.5+ supports OpenAI-compat format at /v1/chat/completions
+        AIProviderType::Ollama => openai_compat::call(client, &request, "/v1/chat/completions").await,
         // OpenAI-compatible providers: OpenAI, xAI, OpenRouter, Kimi, Qwen, DeepSeek, Custom
-        _ => openai_compat::call(&client, &request, "/chat/completions").await,
+        _ => openai_compat::call(client, &request, "/chat/completions").await,
     }
 }
 
 // Test provider connection
 pub async fn test_provider(provider_type: AIProviderType, base_url: String, api_key: Option<String>) -> Result<bool, AIError> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
 
     match provider_type {
         AIProviderType::Ollama => {
@@ -1059,7 +1085,7 @@ pub async fn test_provider(provider_type: AIProviderType, base_url: String, api_
 
 /// List available models from a provider API
 pub async fn list_models(provider_type: AIProviderType, base_url: String, api_key: Option<String>) -> Result<Vec<String>, AIError> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
 
     match provider_type {
         AIProviderType::Ollama => {
@@ -1156,7 +1182,7 @@ pub async fn ollama_pull_model(
     }
 
     let event_name = format!("ollama-pull-{}", stream_id);
-    let client = Client::new();
+    let client = &*AI_STREAM_CLIENT;
     let url = format!("{}/api/pull", base_url);
 
     let response = client
@@ -1254,7 +1280,7 @@ pub async fn gemini_create_cache(
     context_content: String,
     ttl_seconds: u32,
 ) -> Result<GeminiCacheInfo, String> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
     let url = format!("{}/cachedContents?key={}", base_url, api_key);
 
     let body = serde_json::json!({
@@ -1311,7 +1337,7 @@ pub struct OllamaRunningModel {
 /// List currently running Ollama models with GPU/VRAM info
 #[tauri::command]
 pub async fn ollama_list_running(base_url: String) -> Result<Vec<OllamaRunningModel>, String> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
     let url = format!("{}/api/ps", base_url);
 
     let response = client
@@ -1355,7 +1381,7 @@ pub async fn kimi_create_cache(
     messages: Vec<ChatMessage>,
     ttl: Option<u64>,
 ) -> Result<String, String> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
     let url = format!("{}/caching", base_url);
 
     let openai_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
@@ -1401,8 +1427,33 @@ pub async fn kimi_upload_file(
     file_path: String,
     purpose: Option<String>,
 ) -> Result<String, String> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
     let url = format!("{}/files", base_url);
+
+    // Validate path: reject null bytes, traversal, and sensitive system paths
+    if file_path.contains('\0') {
+        return Err("Invalid file path: contains null bytes".to_string());
+    }
+    let fp = std::path::Path::new(&file_path);
+    for component in fp.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err("Invalid file path: parent directory traversal not allowed".to_string());
+        }
+    }
+    let denied = ["/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/etc/ssh"];
+    if let Ok(canonical) = fp.canonicalize() {
+        let cs = canonical.to_string_lossy();
+        if denied.iter().any(|d| cs.starts_with(d)) {
+            return Err("Access to system path denied".to_string());
+        }
+    }
+
+    // Size pre-check before reading into memory
+    let metadata = tokio::fs::metadata(&file_path).await
+        .map_err(|_| "Failed to read file metadata".to_string())?;
+    if metadata.len() > 100 * 1024 * 1024 {
+        return Err("File too large (max 100MB)".to_string());
+    }
 
     let file_name = std::path::Path::new(&file_path)
         .file_name()
@@ -1412,11 +1463,6 @@ pub async fn kimi_upload_file(
 
     let file_bytes = tokio::fs::read(&file_path).await
         .map_err(|e| format!("Failed to read file: {}", e))?;
-
-    // Limit file size to 100MB
-    if file_bytes.len() > 100 * 1024 * 1024 {
-        return Err("File too large (max 100MB)".to_string());
-    }
 
     let part = reqwest::multipart::Part::bytes(file_bytes)
         .file_name(file_name)
@@ -1459,7 +1505,7 @@ pub async fn deepseek_fim_complete(
     suffix: String,
     max_tokens: Option<u32>,
 ) -> Result<String, String> {
-    let client = Client::new();
+    let client = &*AI_HTTP_CLIENT;
     // FIM uses the beta completions endpoint
     let url = format!("{}/beta/completions", base_url.trim_end_matches("/v1"));
 

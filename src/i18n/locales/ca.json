@@ -51,7 +51,11 @@
             "open": "Open",
             "sync": "Sync",
             "synced": "Synced",
-            "preview": "Preview"
+            "preview": "Preview",
+            "calculating": "[NEEDS TRANSLATION] Calculating...",
+            "actions": "[NEEDS TRANSLATION] Actions",
+            "copied": "[NEEDS TRANSLATION] Copied",
+            "folder": "[NEEDS TRANSLATION] Folder"
         },
         "connection": {
             "title": "Connectar al Servidor",
@@ -110,7 +114,9 @@
             "securityKeyring": "[NEEDS TRANSLATION] OS Keyring storage (libsecret on Linux, Keychain on macOS, Credential Manager on Windows)",
             "securityEncryption": "[NEEDS TRANSLATION] AES-256-GCM encryption with Argon2id key derivation for local storage",
             "securityNoSend": "[NEEDS TRANSLATION] Credentials never leave your device — no cloud sync, no telemetry",
-            "securityTLS": "[NEEDS TRANSLATION] All connections use TLS 1.3 / SSH encryption when available"
+            "securityTLS": "[NEEDS TRANSLATION] All connections use TLS 1.3 / SSH encryption when available",
+            "twoFactorCode": "[NEEDS TRANSLATION] 2FA Code",
+            "twoFactorOptional": "[NEEDS TRANSLATION] 6-digit code (optional)"
         },
         "browser": {
             "remote": "Remot",
@@ -207,7 +213,10 @@
             "moved": "[NEEDS TRANSLATION] Moved",
             "newFolder": "[NEEDS TRANSLATION] New Folder",
             "refresh": "[NEEDS TRANSLATION] Refresh",
-            "selectAll": "[NEEDS TRANSLATION] Select All"
+            "selectAll": "[NEEDS TRANSLATION] Select All",
+            "calculateSize": "[NEEDS TRANSLATION] Calculate Size",
+            "findDuplicates": "[NEEDS TRANSLATION] Find Duplicates",
+            "diskUsage": "[NEEDS TRANSLATION] Disk Usage"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -397,7 +406,18 @@
             "migrationStep": "[NEEDS TRANSLATION] Step {current} of {total}",
             "duplicatesSkipped": "[NEEDS TRANSLATION] duplicates skipped",
             "invalidPassword": "[NEEDS TRANSLATION] Invalid password",
-            "backup": "[NEEDS TRANSLATION] Backup"
+            "backup": "[NEEDS TRANSLATION] Backup",
+            "visibleColumns": "[NEEDS TRANSLATION] Visible Columns",
+            "visibleColumnsDesc": "[NEEDS TRANSLATION] Choose which columns to display in the file list view",
+            "columnName": "[NEEDS TRANSLATION] Name",
+            "columnSize": "[NEEDS TRANSLATION] Size",
+            "columnType": "[NEEDS TRANSLATION] Type",
+            "columnPermissions": "[NEEDS TRANSLATION] Permissions",
+            "columnModified": "[NEEDS TRANSLATION] Modified",
+            "sortFoldersFirst": "[NEEDS TRANSLATION] Sort folders first",
+            "sortFoldersFirstDesc": "[NEEDS TRANSLATION] Show directories before files in the file list",
+            "showFileExtensions": "[NEEDS TRANSLATION] Show file extensions",
+            "showFileExtensionsDesc": "[NEEDS TRANSLATION] Display file name extensions (.txt, .jpg, etc.)"
         },
         "devtools": {
             "title": "Eines de Desenvolupament",
@@ -1108,7 +1128,8 @@
                 "allow": "[NEEDS TRANSLATION] Allow",
                 "loadingDiff": "[NEEDS TRANSLATION] Loading diff preview...",
                 "previewUnavailable": "[NEEDS TRANSLATION] Preview unavailable:",
-                "memoryWrite": "[NEEDS TRANSLATION] Memory"
+                "memoryWrite": "[NEEDS TRANSLATION] Memory",
+                "validationBlocked": "[NEEDS TRANSLATION] Blocked: validation failed"
             },
             "budget": {
                 "system": "[NEEDS TRANSLATION] System",
@@ -1225,6 +1246,13 @@
                 "description": "[NEEDS TRANSLATION] Allow the AI to search the web for current information. Supported by Kimi (Moonshot) and Qwen (Alibaba).",
                 "enable": "[NEEDS TRANSLATION] Enable web search",
                 "providerNote": "[NEEDS TRANSLATION] Only active when using Kimi or Qwen providers. Other providers ignore this setting."
+            },
+            "webSearchUsed": "[NEEDS TRANSLATION] Web search enabled",
+            "streamingTimeout": {
+                "title": "[NEEDS TRANSLATION] Streaming Timeout",
+                "description": "[NEEDS TRANSLATION] Maximum time to wait for a streaming response before timing out.",
+                "seconds": "[NEEDS TRANSLATION] seconds",
+                "hint": "[NEEDS TRANSLATION] Increase this value when using extended thinking budgets (50K+ tokens). Range: 30-600 seconds."
             }
         },
         "archive": {
@@ -1406,7 +1434,9 @@
             "custom_locations": "[NEEDS TRANSLATION] Custom Locations",
             "open_in_terminal": "[NEEDS TRANSLATION] Open in Terminal",
             "copy_path": "[NEEDS TRANSLATION] Copy Path",
-            "new_folder": "[NEEDS TRANSLATION] New Folder"
+            "new_folder": "[NEEDS TRANSLATION] New Folder",
+            "clear_recent": "[NEEDS TRANSLATION] Clear Recent",
+            "no_recent": "[NEEDS TRANSLATION] No recent locations"
         },
         "viewMode": {
             "list": "[NEEDS TRANSLATION] List",
@@ -1421,6 +1451,95 @@
             "browseSiblings": "[NEEDS TRANSLATION] Browse sibling directories",
             "loading": "[NEEDS TRANSLATION] Loading...",
             "noSubdirectories": "[NEEDS TRANSLATION] No subdirectories"
+        },
+        "trash": {
+            "title": "[NEEDS TRANSLATION] Trash",
+            "empty": "[NEEDS TRANSLATION] Empty Trash",
+            "restore": "[NEEDS TRANSLATION] Restore",
+            "restoreAll": "[NEEDS TRANSLATION] Restore All",
+            "deletePermanently": "[NEEDS TRANSLATION] Delete Permanently",
+            "emptyConfirm": "[NEEDS TRANSLATION] Are you sure you want to permanently delete all items in the Trash?",
+            "originalPath": "[NEEDS TRANSLATION] Original Path",
+            "deletedAt": "[NEEDS TRANSLATION] Deleted",
+            "emptyTrash": "[NEEDS TRANSLATION] Trash is empty",
+            "itemCount": "[NEEDS TRANSLATION] {count} items in Trash",
+            "moveToTrash": "[NEEDS TRANSLATION] Move to Trash",
+            "restoreConfirm": "[NEEDS TRANSLATION] Restore {name} to its original location?"
+        },
+        "quickLook": {
+            "noPreview": "[NEEDS TRANSLATION] No preview available",
+            "title": "[NEEDS TRANSLATION] Quick Look"
+        },
+        "properties": {
+            "general": "[NEEDS TRANSLATION] General",
+            "permissions": "[NEEDS TRANSLATION] Permissions",
+            "checksum": "[NEEDS TRANSLATION] Checksum",
+            "created": "[NEEDS TRANSLATION] Created",
+            "accessed": "[NEEDS TRANSLATION] Last Accessed",
+            "owner": "[NEEDS TRANSLATION] Owner",
+            "group": "[NEEDS TRANSLATION] Group",
+            "symlink": "[NEEDS TRANSLATION] Symlink Target",
+            "inode": "[NEEDS TRANSLATION] Inode",
+            "hardLinks": "[NEEDS TRANSLATION] Hard Links",
+            "folderContents": "[NEEDS TRANSLATION] {files} files, {dirs} folders",
+            "notAvailable": "[NEEDS TRANSLATION] Not available",
+            "name": "[NEEDS TRANSLATION] Name",
+            "path": "[NEEDS TRANSLATION] Path",
+            "size": "[NEEDS TRANSLATION] Size",
+            "type": "[NEEDS TRANSLATION] Type",
+            "modified": "[NEEDS TRANSLATION] Modified",
+            "file": "[NEEDS TRANSLATION] File",
+            "folder": "[NEEDS TRANSLATION] Folder",
+            "files": "[NEEDS TRANSLATION] files",
+            "folders": "[NEEDS TRANSLATION] folders",
+            "remote": "[NEEDS TRANSLATION] Remote",
+            "local": "[NEEDS TRANSLATION] Local",
+            "linkTarget": "[NEEDS TRANSLATION] Symlink Target",
+            "permissionsText": "[NEEDS TRANSLATION] Permissions",
+            "permissionsOctal": "[NEEDS TRANSLATION] Octal",
+            "calculate": "[NEEDS TRANSLATION] Calculate",
+            "calculating": "[NEEDS TRANSLATION] Calculating...",
+            "calculateSize": "[NEEDS TRANSLATION] Calculate Size",
+            "checksumVerification": "[NEEDS TRANSLATION] Click to compute file checksum",
+            "checksumFolderNA": "[NEEDS TRANSLATION] Checksums are not available for folders"
+        },
+        "duplicates": {
+            "title": "[NEEDS TRANSLATION] Find Duplicates",
+            "scanning": "[NEEDS TRANSLATION] Scanning for duplicates...",
+            "summary": "[NEEDS TRANSLATION] {groups} groups, {files} duplicate files, {size} wasted",
+            "noDuplicates": "[NEEDS TRANSLATION] No duplicates found",
+            "keep": "[NEEDS TRANSLATION] Keep",
+            "group": "[NEEDS TRANSLATION] Group {n}",
+            "selectAll": "[NEEDS TRANSLATION] Select All Duplicates",
+            "deselectAll": "[NEEDS TRANSLATION] Deselect All",
+            "deleteSelected": "[NEEDS TRANSLATION] Delete Selected ({count})",
+            "deleting": "[NEEDS TRANSLATION] Deleting duplicates...",
+            "deleted": "[NEEDS TRANSLATION] {count} duplicate files deleted",
+            "scanFailed": "[NEEDS TRANSLATION] Scan failed",
+            "retry": "[NEEDS TRANSLATION] Retry",
+            "groups": "[NEEDS TRANSLATION] groups",
+            "duplicateFiles": "[NEEDS TRANSLATION] duplicate files",
+            "wasted": "[NEEDS TRANSLATION] wasted",
+            "copies": "[NEEDS TRANSLATION] copies",
+            "delete": "[NEEDS TRANSLATION] DELETE",
+            "skip": "[NEEDS TRANSLATION] SKIP",
+            "deleteConfirm": "[NEEDS TRANSLATION] Are you sure you want to delete {count} duplicate files?"
+        },
+        "diskUsage": {
+            "title": "[NEEDS TRANSLATION] Disk Usage",
+            "scanning": "[NEEDS TRANSLATION] Analyzing disk usage...",
+            "totalItems": "[NEEDS TRANSLATION] Total: {size} across {count} items",
+            "percentOfParent": "[NEEDS TRANSLATION] {percent}% of parent",
+            "backToParent": "[NEEDS TRANSLATION] Back to parent",
+            "items": "[NEEDS TRANSLATION] {count} items",
+            "scanFailed": "[NEEDS TRANSLATION] Analysis failed",
+            "retry": "[NEEDS TRANSLATION] Retry",
+            "drillDown": "[NEEDS TRANSLATION] Click to explore",
+            "back": "[NEEDS TRANSLATION] Back",
+            "total": "[NEEDS TRANSLATION] Total",
+            "across": "[NEEDS TRANSLATION] across",
+            "empty": "[NEEDS TRANSLATION] This directory is empty",
+            "hoverHint": "[NEEDS TRANSLATION] Hover over a block to see details"
         }
     }
 }

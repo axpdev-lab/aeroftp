@@ -86,6 +86,9 @@ export interface ProviderOptions {
 
   // pCloud-specific
   pcloudRegion?: 'us' | 'eu';
+
+  // Filen-specific
+  two_factor_code?: string;  // Optional TOTP 2FA code
 }
 
 export interface ConnectionParams {

@@ -260,9 +260,11 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
 
   // Breadcrumb mode
   return (
-    <div
+    <nav
       ref={containerRef}
       className="flex items-center h-8 bg-gray-800/50 rounded-md border border-gray-700 px-2 gap-0.5 overflow-hidden w-full relative"
+      role="navigation"
+      aria-label="Breadcrumb"
     >
       {/* Coherence warning icon */}
       {!isCoherent && (
@@ -387,6 +389,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                     : 'text-gray-300 hover:text-blue-400 hover:underline hover:bg-gray-700/50'
                 }`}
                 title={seg.fullPath}
+                {...(isLast ? { 'aria-current': 'page' as const } : {})}
               >
                 {seg.segment}
               </button>
@@ -403,7 +406,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
       >
         <Pencil size={12} />
       </button>
-    </div>
+    </nav>
   );
 };
 

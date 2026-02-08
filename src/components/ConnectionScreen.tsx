@@ -665,6 +665,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
 
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.options?.two_factor_code || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder={t('connection.twoFactorOptional')}
+                                                maxLength={6}
+                                                inputMode="numeric"
+                                                autoComplete="one-time-code"
+                                            />
+                                        </div>
+
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
                                             <p className="font-medium mb-1">Zero-Knowledge Encryption</p>
                                             <p className="opacity-80">

@@ -11,6 +11,7 @@ export async function validateToolArgs(toolName: string, args: Record<string, un
         const result = await invoke<ValidationResult>('validate_tool_args', { toolName, args });
         return result;
     } catch {
-        return { valid: true, errors: [], warnings: ['Validation unavailable \u2014 tool args could not be verified'] };
+        // Fail-closed: require manual approval when backend validation is unavailable
+        return { valid: false, errors: ['Tool validation failed \u2014 manual approval required'], warnings: ['Backend validation unavailable, verify parameters before approving'] };
     }
 }

@@ -49,6 +49,16 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   // Track current blob URL for cleanup on replacement
   const currentBlobUrlRef = useRef<string | null>(null);
 
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (currentBlobUrlRef.current) {
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+        currentBlobUrlRef.current = null;
+      }
+    };
+  }, []);
+
   // Load preview image as base64
   useEffect(() => {
     const loadPreview = async () => {
@@ -59,7 +69,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
       }
       if (/\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name)) {
         try {
-          const base64: string = await invoke('read_file_base64', { path: previewFile.path });
+          const base64: string = await invoke('read_file_base64', { path: previewFile.path, maxSizeMb: 20 });
           const ext = previewFile.name.split('.').pop()?.toLowerCase() || '';
           const mimeTypes: Record<string, string> = {
             jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -74,7 +84,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
           img.onerror = () => setPreviewImageDimensions(null);
           img.src = dataUrl;
         } catch (error) {
-          console.error('Failed to load preview:', error);
+          logger.error('Failed to load preview:', error);
           setPreviewImageBase64(null);
           setPreviewImageDimensions(null);
         }

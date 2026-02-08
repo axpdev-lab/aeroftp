@@ -36,6 +36,7 @@ interface LargeIconsGridProps {
   onInlineRenameCancel: () => void;
   // Formatters
   formatBytes: (bytes: number) => string;
+  showFileExtensions?: boolean;
 }
 
 // --- Individual file card (memoized) ---
@@ -59,6 +60,7 @@ interface LargeIconCardProps {
   onInlineRenameCommit: LargeIconsGridProps['onInlineRenameCommit'];
   onInlineRenameCancel: LargeIconsGridProps['onInlineRenameCancel'];
   formatBytes: (bytes: number) => string;
+  showFileExtensions?: boolean;
 }
 
 const LargeIconCard = React.memo<LargeIconCardProps>(({
@@ -80,6 +82,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   onInlineRenameCommit,
   onInlineRenameCancel,
   formatBytes,
+  showFileExtensions = true,
 }) => {
   const renameRef = useRef<HTMLInputElement>(null);
   const isRenaming = inlineRename?.path === file.path;
@@ -191,7 +194,9 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
         />
       ) : (
         <span className="text-xs text-center leading-tight mt-1.5 line-clamp-2 max-w-full break-all">
-          {file.name}
+          {!file.is_dir && !showFileExtensions && file.name.lastIndexOf('.') > 0
+            ? file.name.substring(0, file.name.lastIndexOf('.'))
+            : file.name}
         </span>
       )}
 
@@ -230,6 +235,7 @@ export function LargeIconsGrid({
   onInlineRenameCommit,
   onInlineRenameCancel,
   formatBytes,
+  showFileExtensions = true,
 }: LargeIconsGridProps) {
   const handleNavigateUp = useCallback(() => {
     if (!isAtRoot) onNavigateUp();
@@ -273,6 +279,7 @@ export function LargeIconsGrid({
           onInlineRenameCommit={onInlineRenameCommit}
           onInlineRenameCancel={onInlineRenameCancel}
           formatBytes={formatBytes}
+          showFileExtensions={showFileExtensions}
         />
       ))}
     </div>

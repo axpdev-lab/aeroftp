@@ -5,7 +5,7 @@ import {
   Home, Monitor, FileText, Image, Music, Download, Video,
   Trash2, Folder, HardDrive, Usb, Disc, Globe,
   LayoutList, FolderTree as FolderTreeIcon, ChevronDown, ChevronRight,
-  Plus, X, Power, Loader2,
+  Plus, X, Power, Loader2, Clock,
   type LucideIcon,
 } from 'lucide-react';
 import { UserDirectory, VolumeInfo, SidebarMode } from '../types/aerofile';
@@ -53,6 +53,10 @@ interface PlacesSidebarProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
+  recentPaths?: string[];
+  onClearRecent?: () => void;
+  isTrashView?: boolean;
+  onNavigateTrash?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +137,10 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   currentPath,
   onNavigate,
   t,
+  recentPaths = [],
+  onClearRecent,
+  isTrashView = false,
+  onNavigateTrash,
 }) => {
   // -----------------------------------------------------------------------
   // State
@@ -183,7 +191,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, [customLocations]);
 
   // -----------------------------------------------------------------------
-  // Fetch user directories on mount
+  // Fetch user directories on mount + global cleanup on unmount
   // -----------------------------------------------------------------------
 
   useEffect(() => {
@@ -197,7 +205,14 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       }
     };
     load();
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // Defense-in-depth: clear volume polling interval on unmount
+      if (volumeIntervalRef.current) {
+        clearInterval(volumeIntervalRef.current);
+        volumeIntervalRef.current = null;
+      }
+    };
   }, []);
 
   // -----------------------------------------------------------------------
@@ -300,18 +315,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, [removeMenu.visible, closeRemoveMenu]);
 
   // -----------------------------------------------------------------------
-  // Trash path — derived from the home directory entry returned by Rust
-  // Linux: ~/.local/share/Trash/files
+  // Trash — uses the cross-platform trash view mechanism via onNavigateTrash
+  // No hardcoded path; the backend handles platform-specific trash locations.
   // -----------------------------------------------------------------------
-
-  const trashPath = React.useMemo(() => {
-    const homeDir = userDirs.find((d) => d.key === 'home');
-    if (homeDir) {
-      return `${homeDir.path}/.local/share/Trash/files`;
-    }
-    // Fallback when user dirs have not loaded yet
-    return '/tmp';
-  }, [userDirs]);
 
   // -----------------------------------------------------------------------
   // Render helpers
@@ -354,13 +360,18 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
       {/* Trash */}
       <div className="py-0.5">
-        <SidebarItem
-          icon={<Trash2 size={16} className="opacity-70 flex-shrink-0" />}
-          label={t('sidebar.trash')}
-          path={trashPath}
-          currentPath={currentPath}
-          onNavigate={onNavigate}
-        />
+        <button
+          onClick={() => onNavigateTrash ? onNavigateTrash() : undefined}
+          className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+            isTrashView
+              ? 'bg-blue-600/20 text-blue-400'
+              : 'text-gray-300 hover:bg-gray-700/50'
+          }`}
+          title={t('sidebar.trash')}
+        >
+          <Trash2 size={16} className="opacity-70 flex-shrink-0" />
+          <span className="truncate">{t('sidebar.trash')}</span>
+        </button>
       </div>
 
       {/* Separator */}
@@ -387,6 +398,46 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {/* Separator (only if custom locations present) */}
       {customLocations.length > 0 && (
         <div className="border-b border-gray-700 my-1 mx-2" />
+      )}
+
+      {/* Recent Locations */}
+      {recentPaths.length > 0 && (
+        <>
+          <div className="flex items-center justify-between px-2 pt-3 pb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              {t('sidebar.recent')}
+            </span>
+            {onClearRecent && (
+              <button
+                onClick={onClearRecent}
+                className="text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+                title={t('sidebar.clear_recent')}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {recentPaths.slice(0, 10).map((recentPath) => {
+            const folderName = recentPath.split('/').filter(Boolean).pop() || recentPath;
+            const isActive = currentPath === recentPath;
+            return (
+              <button
+                key={recentPath}
+                onClick={() => onNavigate(recentPath)}
+                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                  isActive
+                    ? 'bg-blue-600/20 text-blue-400'
+                    : 'text-gray-300 hover:bg-gray-700/50'
+                }`}
+                title={recentPath}
+              >
+                <Clock size={14} className="text-gray-500 shrink-0" />
+                <span className="truncate">{folderName}</span>
+              </button>
+            );
+          })}
+          <div className="border-b border-gray-700 my-1 mx-2" />
+        </>
       )}
 
       {/* Other Locations toggle */}

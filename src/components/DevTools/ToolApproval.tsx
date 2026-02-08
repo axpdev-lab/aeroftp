@@ -156,10 +156,13 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                     <div className="ml-auto flex items-center gap-1">
                         <button
                             onClick={onApprove}
+                            disabled={toolCall.validation && !toolCall.validation.valid}
                             className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                                dangerLevel === 'high'
-                                    ? 'bg-red-600/80 hover:bg-red-500 text-white'
-                                    : 'bg-green-600/80 hover:bg-green-500 text-white'
+                                toolCall.validation && !toolCall.validation.valid
+                                    ? 'opacity-50 cursor-not-allowed bg-gray-600 text-gray-400'
+                                    : dangerLevel === 'high'
+                                        ? 'bg-red-600/80 hover:bg-red-500 text-white'
+                                        : 'bg-green-600/80 hover:bg-green-500 text-white'
                             }`}
                             aria-label={dangerLevel === 'high' ? 'Confirm dangerous action' : 'Allow tool execution'}
                         >

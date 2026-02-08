@@ -86,13 +86,20 @@ pub async fn list_plugins(app: tauri::AppHandle) -> Result<Vec<PluginManifest>, 
         }
         match std::fs::read_to_string(&manifest_path) {
             Ok(content) => match serde_json::from_str::<PluginManifest>(&content) {
-                Ok(manifest) => {
+                Ok(mut manifest) => {
                     // Validate: id must be alphanumeric + underscore
                     if manifest
                         .id
                         .chars()
                         .all(|c| c.is_alphanumeric() || c == '_')
                     {
+                        // GPT-F02: Enforce minimum dangerLevel of "medium" for all plugin tools.
+                        // Plugin authors must not bypass the approval gate by declaring "safe".
+                        for tool in &mut manifest.tools {
+                            if tool.danger_level == "safe" {
+                                tool.danger_level = "medium".to_string();
+                            }
+                        }
                         plugins.push(manifest);
                     }
                 }
@@ -158,6 +165,7 @@ pub async fn execute_plugin_tool(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true) // Ensure process is killed on timeout or drop
         .spawn()
         .map_err(|e| format!("Failed to spawn plugin process: {}", e))?;
 

@@ -137,8 +137,13 @@ const BatchToolItem: React.FC<{
                 {tc.status === 'pending' && (
                     <button
                         onClick={() => onApproveSingle(tc.id)}
-                        className="ml-auto p-1 rounded hover:bg-gray-700 text-green-400 hover:text-green-300"
-                        title={t('ai.batch.allowThis') || 'Allow this tool'}
+                        disabled={tc.validation && !tc.validation.valid}
+                        className={`ml-auto p-1 rounded ${
+                            tc.validation && !tc.validation.valid
+                                ? 'opacity-50 cursor-not-allowed text-gray-500'
+                                : 'hover:bg-gray-700 text-green-400 hover:text-green-300'
+                        }`}
+                        title={tc.validation && !tc.validation.valid ? (t('ai.tool.validationBlocked') || 'Blocked: validation failed') : (t('ai.batch.allowThis') || 'Allow this tool')}
                         aria-label="Approve this tool call"
                     >
                         <Check size={11} />
@@ -242,6 +247,8 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
         return tool?.dangerLevel === 'high';
     });
 
+    const hasInvalidPending = toolCalls.some(tc => tc.status === 'pending' && tc.validation && !tc.validation.valid);
+
     return (
         <div className="my-2 border border-gray-700/50 rounded-lg overflow-hidden bg-gray-800/30" role="region" aria-label="Tool approval panel">
             {/* Header */}
@@ -275,11 +282,13 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
                 <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-700/50 bg-gray-800/40">
                     <button
                         onClick={handleApproveAll}
-                        disabled={justApproved}
+                        disabled={justApproved || hasInvalidPending}
                         className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-medium transition-colors ${
-                            hasHigh
-                                ? 'bg-red-600/80 hover:bg-red-500 text-white'
-                                : 'bg-green-600/80 hover:bg-green-500 text-white'
+                            justApproved || hasInvalidPending
+                                ? 'opacity-50 cursor-not-allowed bg-gray-600 text-gray-400'
+                                : hasHigh
+                                    ? 'bg-red-600/80 hover:bg-red-500 text-white'
+                                    : 'bg-green-600/80 hover:bg-green-500 text-white'
                         }`}
                         aria-label="Allow all tool calls"
                     >

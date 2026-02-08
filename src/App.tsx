@@ -64,6 +64,10 @@ import { VaultIcon } from './components/icons/VaultIcon';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
+import { QuickLookOverlay } from './components/QuickLookOverlay';
+import DuplicateFinderDialog from './components/DuplicateFinderDialog';
+import DiskUsageTreemap from './components/DiskUsageTreemap';
+import type { TrashItem, FolderSizeResult } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
@@ -123,7 +127,8 @@ const App: React.FC = () => {
   const settings = useSettings();
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
-    showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder,
+    showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder, visibleColumns,
+    sortFoldersFirst, showFileExtensions,
     systemMenuVisible, showMenuBar, showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowMenuBar, setSystemMenuVisible, setShowActivityLog,
@@ -186,7 +191,7 @@ const App: React.FC = () => {
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
 
   // Dialogs
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
@@ -231,6 +236,31 @@ const App: React.FC = () => {
       return next;
     });
   }, []);
+  // Recent locations
+  const [recentPaths, setRecentPaths] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('aerofile_recent_paths');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
+  // Quick Look
+  const [quickLookOpen, setQuickLookOpen] = useState(false);
+  const [quickLookIndex, setQuickLookIndex] = useState(0);
+
+  // Trash view
+  const [isTrashView, setIsTrashView] = useState(false);
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
+
+  // Folder size cache
+  const [folderSizeCache, setFolderSizeCache] = useState<Map<string, FolderSizeResult>>(new Map());
+  const [folderSizeCalculating, setFolderSizeCalculating] = useState<Set<string>>(new Set());
+  const folderSizeCalculatingRef = useRef<Set<string>>(new Set());
+
+  // Duplicate Finder & Disk Usage dialogs
+  const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
+  const [diskUsagePath, setDiskUsagePath] = useState<string | null>(null);
+
   // Multi-Session Tabs (Hybrid Cache Architecture)
   const [sessions, setSessions] = useState<FtpSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -240,6 +270,10 @@ const App: React.FC = () => {
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
 
   const localSearchRef = React.useRef<HTMLInputElement>(null);
+
+  // Race condition guard for loadLocalFiles — increments on each call,
+  // stale responses are discarded when callId !== current counter value.
+  const loadLocalCallIdRef = React.useRef(0);
 
   // File clipboard for Cut/Copy/Paste
   const fileClipboardRef = React.useRef<{
@@ -618,36 +652,62 @@ const App: React.FC = () => {
       }
     },
 
-    // Space key: Open preview for selected file
+    // Space key: Quick Look toggle (local panel) or preview (remote panel)
     'Space': () => {
-      const selectedRemoteName = Array.from(selectedRemoteFiles)[0];
-      const selectedLocalName = Array.from(selectedLocalFiles)[0];
-
-      if (selectedRemoteName) {
-        const file = remoteFiles.find(f => f.name === selectedRemoteName);
-        if (file && !file.is_dir) {
-          const category = getPreviewCategory(file.name);
-          if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-            openUniversalPreview(file, true);
-          } else if (isPreviewable(file.name)) {
-            openDevToolsPreview(file, true);
+      if (activePanel === 'local') {
+        if (quickLookOpen) {
+          setQuickLookOpen(false);
+          return;
+        }
+        const selectedLocal = [...selectedLocalFiles];
+        if (selectedLocal.length === 1) {
+          const localName = selectedLocal[0];
+          const localFile = sortedLocalFiles.find(f => f.name === localName);
+          if (localFile && !localFile.is_dir) {
+            const idx = sortedLocalFiles.findIndex(f => f.name === localName);
+            if (idx !== -1) {
+              setQuickLookIndex(idx);
+              setQuickLookOpen(true);
+            }
           }
         }
-      } else if (selectedLocalName) {
-        const file = localFiles.find(f => f.name === selectedLocalName);
-        if (file && !file.is_dir) {
-          const category = getPreviewCategory(file.name);
-          if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-            openUniversalPreview(file, false);
-          } else if (isPreviewable(file.name)) {
-            openDevToolsPreview(file, false);
+      } else {
+        const selectedRemoteName = Array.from(selectedRemoteFiles)[0];
+        if (selectedRemoteName) {
+          const file = remoteFiles.find(f => f.name === selectedRemoteName);
+          if (file && !file.is_dir) {
+            const category = getPreviewCategory(file.name);
+            if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+              openUniversalPreview(file, true);
+            } else if (isPreviewable(file.name)) {
+              openDevToolsPreview(file, true);
+            }
           }
         }
       }
     },
 
+    // Alt+Enter: open properties for selected file
+    'Alt+Enter': () => {
+      if (activePanel === 'local' && selectedLocalFiles.size === 1) {
+        const fileName = [...selectedLocalFiles][0];
+        const file = localFiles.find(f => f.name === fileName);
+        if (file) {
+          setPropertiesDialog({
+            name: file.name,
+            path: file.path || `${currentLocalPath}/${file.name}`,
+            size: file.size,
+            is_dir: file.is_dir,
+            modified: file.modified,
+            isRemote: false,
+          });
+        }
+      }
+    },
+
     'Escape': () => {
-      if (universalPreviewOpen) closeUniversalPreview();
+      if (quickLookOpen) setQuickLookOpen(false);
+      else if (universalPreviewOpen) closeUniversalPreview();
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
@@ -655,7 +715,7 @@ const App: React.FC = () => {
       else if (confirmDialog) setConfirmDialog(null);
     }
   }, [showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
-    universalPreviewOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
+    universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
 
@@ -739,11 +799,20 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, connectionParams.server, connectionParams.protocol, activeSessionId]);
 
+  // Display file name (strip extension when setting is off)
+  const displayName = (name: string, isDir: boolean) => {
+    if (isDir || showFileExtensions) return name;
+    const lastDot = name.lastIndexOf('.');
+    return lastDot > 0 ? name.substring(0, lastDot) : name;
+  };
+
   // Sorting
   const sortFiles = <T extends { name: string; size: number | null; modified: string | null; is_dir: boolean }>(files: T[], field: SortField, order: SortOrder): T[] => {
     return [...files].sort((a, b) => {
-      if (a.is_dir && !b.is_dir) return -1;
-      if (!a.is_dir && b.is_dir) return 1;
+      if (sortFoldersFirst) {
+        if (a.is_dir && !b.is_dir) return -1;
+        if (!a.is_dir && b.is_dir) return 1;
+      }
       if (a.name === '..') return -1;
       if (b.name === '..') return 1;
       let cmp = 0;
@@ -762,8 +831,8 @@ const App: React.FC = () => {
   const sortedRemoteFiles = useMemo(() => {
     const source = remoteSearchResults !== null ? remoteSearchResults : remoteFiles;
     return sortFiles(source, remoteSortField, remoteSortOrder);
-  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder]);
-  const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder]);
+  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder, sortFoldersFirst]);
+  const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFoldersFirst]);
 
   const handleRemoteSort = (field: SortField) => {
     if (remoteSortField === field) setRemoteSortOrder(remoteSortOrder === 'asc' ? 'desc' : 'asc');
@@ -774,6 +843,91 @@ const App: React.FC = () => {
     if (localSortField === field) setLocalSortOrder(localSortOrder === 'asc' ? 'desc' : 'asc');
     else { setLocalSortField(field); setLocalSortOrder('asc'); }
   };
+
+  // Quick Look toggle
+  const toggleQuickLook = useCallback(() => {
+    if (activePanel !== 'local') return;
+    if (quickLookOpen) {
+      setQuickLookOpen(false);
+      return;
+    }
+    const selected = [...selectedLocalFiles];
+    if (selected.length !== 1) return;
+    const fileName = selected[0];
+    const fileIndex = sortedLocalFiles.findIndex(f => f.name === fileName);
+    if (fileIndex === -1) return;
+    const file = sortedLocalFiles[fileIndex];
+    if (file.is_dir) return;
+    setQuickLookIndex(fileIndex);
+    setQuickLookOpen(true);
+  }, [activePanel, quickLookOpen, selectedLocalFiles, sortedLocalFiles]);
+
+  // Recent paths persistence
+  useEffect(() => {
+    localStorage.setItem('aerofile_recent_paths', JSON.stringify(recentPaths));
+  }, [recentPaths]);
+
+  const addRecentPath = useCallback((path: string) => {
+    setRecentPaths(prev => {
+      const filtered = prev.filter(p => p !== path);
+      return [path, ...filtered].slice(0, 20);
+    });
+  }, []);
+
+  // Trash functions
+  const loadTrashItems = useCallback(async () => {
+    try {
+      const items = await invoke<TrashItem[]>('list_trash_items');
+      setTrashItems(items);
+    } catch (err) {
+      notify.error('Failed to load trash', String(err));
+    }
+  }, [notify]);
+
+  const handleNavigateTrash = useCallback(() => {
+    setIsTrashView(true);
+    loadTrashItems();
+  }, [loadTrashItems]);
+
+  const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
+    try {
+      await invoke('restore_trash_item', { id: item.id, originalPath: item.original_path });
+      notify.success(t('trash.restore'), item.name);
+      loadTrashItems();
+    } catch (err) {
+      notify.error('Restore failed', String(err));
+    }
+  }, [loadTrashItems, notify, t]);
+
+  const handleEmptyTrash = useCallback(async () => {
+    try {
+      const count = await invoke<number>('empty_trash');
+      notify.success(t('trash.empty'), `${count} items deleted`);
+      setTrashItems([]);
+    } catch (err) {
+      notify.error('Empty trash failed', String(err));
+    }
+  }, [notify, t]);
+
+  // Folder size calculation
+  const calculateFolderSize = useCallback(async (path: string) => {
+    if (folderSizeCalculatingRef.current.has(path)) return;
+    folderSizeCalculatingRef.current.add(path);
+    setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+    try {
+      const result = await invoke<FolderSizeResult>('calculate_folder_size', { path });
+      setFolderSizeCache(prev => {
+        const next = new Map(prev);
+        next.set(path, result);
+        return next;
+      });
+    } catch (err) {
+      notify.error('Size calculation failed', String(err));
+    } finally {
+      folderSizeCalculatingRef.current.delete(path);
+      setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+    }
+  }, [notify]);
 
   // Timeout to auto-hide transfer popup if stuck (30 seconds of no updates)
   const lastProgressUpdate = React.useRef<number>(Date.now());
@@ -872,15 +1026,21 @@ const App: React.FC = () => {
     return () => { unlisten.then(fn => fn()); };
   }, [isConnected, currentLocalPath, theme, debugMode]);
 
-  // File loading
-  const loadLocalFiles = useCallback(async (path: string) => {
+  // File loading (race-condition safe: stale responses are discarded)
+  const loadLocalFiles = useCallback(async (path: string): Promise<boolean> => {
+    const callId = ++loadLocalCallIdRef.current;
     try {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
+      // Discard stale response if a newer call was issued while awaiting
+      if (callId !== loadLocalCallIdRef.current) return false;
       setLocalFiles(files);
       setCurrentLocalPath(path);
       setSelectedLocalFiles(new Set());
+      return true;
     } catch (error) {
+      if (callId !== loadLocalCallIdRef.current) return false;
       notify.error('Error', `Failed to list local files: ${error}`);
+      return false;
     }
   }, [showHiddenFiles]);
 
@@ -1131,6 +1291,8 @@ const App: React.FC = () => {
           // FTP/FTPS-specific options
           tls_mode: connectionParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
           verify_cert: connectionParams.options?.verifyCert !== undefined ? connectionParams.options.verifyCert : true,
+          // Filen-specific options
+          two_factor_code: connectionParams.options?.two_factor_code || null,
         };
 
 
@@ -1469,6 +1631,7 @@ const App: React.FC = () => {
           timeout: connectParams.options?.timeout || 30,
           tls_mode: connectParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
           verify_cert: connectParams.options?.verifyCert !== undefined ? connectParams.options.verifyCert : true,
+          two_factor_code: connectParams.options?.two_factor_code || null,
         };
 
         logger.debug('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
@@ -1829,8 +1992,12 @@ const App: React.FC = () => {
   };
 
   const changeLocalDirectory = async (path: string) => {
-    await loadLocalFiles(path);
+    const success = await loadLocalFiles(path);
+    if (!success) return; // Don't record failed navigations
     humanLog.logNavigate(path, false);
+    addRecentPath(path);
+    // Exit trash view when navigating to a regular path
+    if (isTrashView) setIsTrashView(false);
 
     // Save last local path if remember folder is enabled
     if (rememberLastFolder) {
@@ -2550,8 +2717,9 @@ const App: React.FC = () => {
             } else {
               deletedFiles.push(name);
             }
-            // Individual logs removed - summary handles all
-          } catch { }
+          } catch (err) {
+            notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
+          }
         }
       }
       await loadRemoteFiles();
@@ -2602,18 +2770,21 @@ const App: React.FC = () => {
       const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: false });
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
+      const failedFiles: string[] = [];
       for (const name of names) {
         const file = localFiles.find(f => f.name === name);
         if (file) {
           try {
-            await invoke('delete_local_file', { path: file.path });
+            await invoke('delete_to_trash', { path: file.path });
             if (file.is_dir) {
               deletedFolders.push(name);
             } else {
               deletedFiles.push(name);
             }
-            // Individual logs removed - summary handles all
-          } catch { }
+          } catch (err) {
+            failedFiles.push(name);
+            notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
+          }
         }
       }
       await loadLocalFiles(currentLocalPath);
@@ -2700,7 +2871,7 @@ const App: React.FC = () => {
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: fileName });
       try {
-        await invoke('delete_local_file', { path });
+        await invoke('delete_to_trash', { path });
         humanLog.logSuccess('DELETE', { filename: fileName }, logId);
         notify.success(t('toast.deleted'), fileName);
         await loadLocalFiles(currentLocalPath);
@@ -2730,7 +2901,7 @@ const App: React.FC = () => {
     const fileName = path.split(/[\\/]/).pop() || path;
     const logId = humanLog.logStart('DELETE', { filename: fileName });
     try {
-      await invoke('delete_local_file', { path });
+      await invoke('delete_to_trash', { path });
       humanLog.logSuccess('DELETE', { filename: fileName }, logId);
       notify.success(t('toast.deleted'), fileName);
       await loadLocalFiles(currentLocalPath);
@@ -2747,6 +2918,13 @@ const App: React.FC = () => {
       onConfirm: async (newName: string) => {
         setInputDialog(null);
         if (!newName || newName === currentName) return;
+
+        // Reject path separators and traversal in filename
+        if (newName.includes('/') || newName.includes('\\') || newName.includes('..') || newName.includes('\0')) {
+          notify.error(t('common.error'), t('rename.invalidCharacters') || 'Filename cannot contain / \\ .. or null characters');
+          return;
+        }
+
         const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName });
         try {
           // Get parent directory from the file's path
@@ -2807,6 +2985,13 @@ const App: React.FC = () => {
 
     // Cancel if empty or unchanged
     if (!newName || newName === name) {
+      setInlineRename(null);
+      return;
+    }
+
+    // Reject path separators and traversal in filename
+    if (newName.includes('/') || newName.includes('\\') || newName.includes('..') || newName.includes('\0')) {
+      notify.error(t('common.error'), t('rename.invalidCharacters') || 'Filename cannot contain / \\ .. or null characters');
       setInlineRename(null);
       return;
     }
@@ -3203,14 +3388,36 @@ const App: React.FC = () => {
         }
       }] : []),
       {
-        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
-          name: file.name,
-          path: file.path,
-          size: file.size,
-          is_dir: file.is_dir,
-          modified: file.modified,
-          isRemote: false,
-        }), disabled: count > 1
+        label: t('contextMenu.properties'), icon: <Info size={14} />, action: async () => {
+          const filePath = file.path || `${currentLocalPath}/${file.name}`;
+          setPropertiesDialog({
+            name: file.name,
+            path: filePath,
+            size: file.size,
+            is_dir: file.is_dir,
+            modified: file.modified,
+            isRemote: false,
+          });
+          // Load extended properties asynchronously
+          try {
+            const detailed = await invoke<any>('get_file_properties', { path: filePath });
+            setPropertiesDialog(prev => prev ? {
+              ...prev,
+              created: detailed.created,
+              accessed: detailed.accessed,
+              owner: detailed.owner,
+              group: detailed.group,
+              permissions: detailed.permissions_text,
+              permissions_mode: detailed.permissions_mode,
+              is_symlink: detailed.is_symlink,
+              link_target: detailed.link_target,
+              inode: detailed.inode,
+              hard_links: detailed.hard_links,
+            } : null);
+          } catch {
+            // Silently fail - basic properties are still shown
+          }
+        }, disabled: count > 1
       },
       { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
       {
@@ -3234,6 +3441,24 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
+      // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage
+      ...(file.is_dir ? [
+        {
+          label: t('contextMenu.calculateSize'),
+          icon: <HardDrive size={14} />,
+          action: () => calculateFolderSize(file.path || `${currentLocalPath}/${file.name}`),
+        },
+        {
+          label: t('contextMenu.findDuplicates'),
+          icon: <Copy size={14} />,
+          action: () => setDuplicateFinderPath(file.path || `${currentLocalPath}/${file.name}`),
+        },
+        {
+          label: t('contextMenu.diskUsage'),
+          icon: <HardDrive size={14} />,
+          action: () => setDiskUsagePath(file.path || `${currentLocalPath}/${file.name}`),
+        },
+      ] : []),
     ];
 
     // Helper: get paths for compression
@@ -3635,7 +3860,7 @@ const App: React.FC = () => {
       />
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
       {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
-      {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(null)} />}
+      {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
       {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
       {batchRenameDialog && (
         <BatchRenameDialog
@@ -3650,7 +3875,7 @@ const App: React.FC = () => {
         <PropertiesDialog
           file={propertiesDialog}
           onClose={() => setPropertiesDialog(null)}
-          onCalculateChecksum={async (algorithm) => {
+          onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => {
             if (!propertiesDialog || propertiesDialog.isRemote) return;
             setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
             try {
@@ -3671,6 +3896,60 @@ const App: React.FC = () => {
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
             }
           }}
+        />
+      )}
+      {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
+        <QuickLookOverlay
+          file={sortedLocalFiles[quickLookIndex]}
+          allFiles={sortedLocalFiles}
+          currentIndex={quickLookIndex}
+          currentPath={currentLocalPath}
+          onClose={() => setQuickLookOpen(false)}
+          onNavigate={(idx) => {
+            setQuickLookIndex(idx);
+            setSelectedLocalFiles(new Set([sortedLocalFiles[idx].name]));
+          }}
+          t={t}
+        />
+      )}
+      {duplicateFinderPath && (
+        <DuplicateFinderDialog
+          isOpen={true}
+          scanPath={duplicateFinderPath}
+          onClose={() => setDuplicateFinderPath(null)}
+          onDeleteFiles={async (paths) => {
+            // Respect confirmBeforeDelete setting
+            if (confirmBeforeDelete) {
+              const confirmed = await new Promise<boolean>(resolve => {
+                setConfirmDialog({
+                  message: t('duplicates.deleteConfirm', { count: paths.length }),
+                  onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                  onCancel: () => { setConfirmDialog(null); resolve(false); },
+                });
+              });
+              if (!confirmed) return;
+            }
+            for (const p of paths) {
+              try {
+                await invoke('delete_to_trash', { path: p });
+              } catch {
+                try {
+                  await invoke('delete_local_file', { path: p });
+                } catch (err) {
+                  const fileName = p.split(/[\\/]/).pop() || p;
+                  notify.error(t('toast.deleteFail'), `${fileName}: ${String(err)}`);
+                }
+              }
+            }
+            loadLocalFiles(currentLocalPath);
+          }}
+        />
+      )}
+      {diskUsagePath && (
+        <DiskUsageTreemap
+          isOpen={true}
+          scanPath={diskUsagePath}
+          onClose={() => setDiskUsagePath(null)}
         />
       )}
       {syncNavDialog && (
@@ -4002,6 +4281,8 @@ const App: React.FC = () => {
                     // FTP/FTPS-specific options
                     tls_mode: params.options?.tlsMode || (params.protocol === 'ftps' ? 'implicit' : undefined),
                     verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
+                    // Filen-specific options
+                    two_factor_code: params.options?.two_factor_code || null,
                   };
 
                   logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
@@ -4439,10 +4720,10 @@ const App: React.FC = () => {
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                         <tr>
                           <SortableHeader label="Name" field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
-                          <SortableHeader label="Size" field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
-                          <SortableHeader label="Type" field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Perms</th>
-                          <SortableHeader label="Modified" field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
+                          {visibleColumns.includes('size') && <SortableHeader label="Size" field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
+                          {visibleColumns.includes('type') && <SortableHeader label="Type" field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
+                          {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Perms</th>}
+                          {visibleColumns.includes('modified') && <SortableHeader label="Modified" field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -4455,10 +4736,10 @@ const App: React.FC = () => {
                             <FolderUp size={16} />
                             <span className="italic">Go up</span>
                           </td>
-                          <td className="px-4 py-2 text-xs text-gray-400">—</td>
-                          <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>
-                          <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>
-                          <td className="px-4 py-2 text-xs text-gray-400">—</td>
+                          {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                          {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
+                          {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
+                          {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
                         </tr>
                         {sortedRemoteFiles.map((file, i) => (
                           <tr
@@ -4531,16 +4812,16 @@ const App: React.FC = () => {
                                     }
                                   }}
                                 >
-                                  {file.name}
+                                  {displayName(file.name, file.is_dir)}
                                 </span>
                               )}
                               {lockedFiles.has(file.path) && <span title="Locked"><Lock size={12} className="text-orange-500" /></span>}
                               {getSyncBadge(file.path, file.modified || undefined, false)}
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>
-                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
-                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>
-                            <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>
+                            {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
+                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
+                            {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>}
+                            {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                           </tr>
                         ))}
                       </tbody>
@@ -4646,7 +4927,7 @@ const App: React.FC = () => {
                                 }
                               }}
                             >
-                              {file.name}
+                              {displayName(file.name, file.is_dir)}
                             </span>
                           )}
                           {!file.is_dir && file.size && (
@@ -4796,6 +5077,10 @@ const App: React.FC = () => {
                       currentPath={currentLocalPath}
                       onNavigate={changeLocalDirectory}
                       t={t}
+                      recentPaths={recentPaths}
+                      onClearRecent={() => setRecentPaths([])}
+                      isTrashView={isTrashView}
+                      onNavigateTrash={handleNavigateTrash}
                     />
                   )}
                   <div className="flex-1 overflow-auto" onContextMenu={(e) => {
@@ -4803,14 +5088,77 @@ const App: React.FC = () => {
                     const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
                     if (!isFileRow) showLocalEmptyContextMenu(e);
                   }}>
-                  {viewMode === 'list' ? (
+                  {isTrashView ? (
+                    <div className="flex-1 overflow-auto">
+                      {/* Trash toolbar */}
+                      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {t('trash.title')} — {t('trash.itemCount', { count: trashItems.length })}
+                        </span>
+                        <div className="flex-1" />
+                        {trashItems.length > 0 && (
+                          <button
+                            onClick={handleEmptyTrash}
+                            className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                          >
+                            {t('trash.empty')}
+                          </button>
+                        )}
+                      </div>
+
+                      {trashItems.length === 0 ? (
+                        <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+                          {t('trash.emptyTrash')}
+                        </div>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                              <th className="text-left px-4 py-2 font-medium">{t('browser.name')}</th>
+                              <th className="text-left px-4 py-2 font-medium">{t('trash.originalPath')}</th>
+                              <th className="text-right px-4 py-2 font-medium">{t('browser.size')}</th>
+                              <th className="text-left px-4 py-2 font-medium">{t('trash.deletedAt')}</th>
+                              <th className="text-center px-4 py-2 font-medium">{t('common.actions')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {trashItems.map((item) => (
+                              <tr key={item.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td className="px-4 py-2 flex items-center gap-2">
+                                  {item.is_dir ? <Folder size={16} className="text-yellow-500" /> : <FileText size={16} className="text-blue-500" />}
+                                  <span className="truncate">{item.name}</span>
+                                </td>
+                                <td className="px-4 py-2 text-gray-500 text-xs truncate max-w-[200px]" title={item.original_path}>
+                                  {item.original_path}
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-500">
+                                  {item.is_dir ? '\u2014' : formatBytes(item.size)}
+                                </td>
+                                <td className="px-4 py-2 text-gray-500 text-xs">
+                                  {item.deleted_at ? new Date(item.deleted_at).toLocaleString() : '\u2014'}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  <button
+                                    onClick={() => handleRestoreTrashItem(item)}
+                                    className="px-2 py-0.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                  >
+                                    {t('trash.restore')}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  ) : viewMode === 'list' ? (
                     <table className="w-full">
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                         <tr>
                           <SortableHeader label="Name" field="name" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
-                          <SortableHeader label="Size" field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
-                          <SortableHeader label="Type" field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />
-                          <SortableHeader label="Modified" field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
+                          {visibleColumns.includes('size') && <SortableHeader label="Size" field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
+                          {visibleColumns.includes('type') && <SortableHeader label="Type" field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />}
+                          {visibleColumns.includes('modified') && <SortableHeader label="Modified" field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -4823,9 +5171,9 @@ const App: React.FC = () => {
                             <FolderUp size={16} />
                             <span className="italic">Go up</span>
                           </td>
-                          <td className="px-4 py-2 text-sm text-gray-400">—</td>
-                          <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>
-                          <td className="px-4 py-2 text-sm text-gray-400">—</td>
+                          {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
+                          {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>}
+                          {visibleColumns.includes('modified') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
                         </tr>
                         {sortedLocalFiles.map((file, i) => (
                           <tr
@@ -4917,14 +5265,14 @@ const App: React.FC = () => {
                                     }
                                   }}
                                 >
-                                  {file.name}
+                                  {displayName(file.name, file.is_dir)}
                                 </span>
                               )}
                               {getSyncBadge(file.path, file.modified || undefined, true)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>
-                            <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>
-                            <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>
+                            {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>}
+                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
+                            {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                           </tr>
                         ))}
                       </tbody>
@@ -5043,7 +5391,7 @@ const App: React.FC = () => {
                                 }
                               }}
                             >
-                              {file.name}
+                              {displayName(file.name, file.is_dir)}
                             </span>
                           )}
                           {!file.is_dir && file.size !== null && (
@@ -5123,6 +5471,7 @@ const App: React.FC = () => {
                       onInlineRenameCommit={commitInlineRename}
                       onInlineRenameCancel={() => setInlineRename(null)}
                       formatBytes={formatBytes}
+                      showFileExtensions={showFileExtensions}
                     />
                   )}
                 </div>

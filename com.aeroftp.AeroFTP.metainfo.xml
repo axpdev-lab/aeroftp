@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.2" date="2026-02-08">
+      <description>
+        <p>AeroFile Pro, Security Hardening and AI Provider Audit: Professional local file manager with Quick Look (Space), Trash Browser, Enhanced Properties (3-tab with permissions and 4-algorithm checksums), Disk Usage Treemap, and Duplicate Finder. Massive security audit resolving 70 findings across AeroAgent AI system (22 fixes, A-) and AeroFile file manager (48 fixes, A-) — including path traversal prevention, resource exhaustion limits, memory leak fixes, iframe sandbox hardening, and prompt injection defense.</p>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-02-08">
       <description>
         <p>Vault Unlock Fix and Provider Expansion: Fixed saved servers list appearing empty after master password entry. Added 3 Asian AI providers (Kimi, Qwen, DeepSeek) with official SVG logos. Added Custom provider preset for any OpenAI-compatible endpoint.</p>

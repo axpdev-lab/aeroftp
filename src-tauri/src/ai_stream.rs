@@ -6,7 +6,7 @@ use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 use futures_util::StreamExt;
 
-use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe};
+use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, AI_STREAM_CLIENT};
 
 /// Maximum SSE buffer size (50 MB) to prevent unbounded memory growth
 const MAX_BUFFER_SIZE: usize = 50 * 1024 * 1024;
@@ -50,14 +50,14 @@ pub async fn ai_chat_stream(
         ..request
     };
 
-    let client = Client::new();
+    let client = &*AI_STREAM_CLIENT;
 
     let result = match request.provider_type {
-        AIProviderType::Google => stream_gemini(&client, &request, &app, &event_name).await,
-        AIProviderType::Anthropic => stream_anthropic(&client, &request, &app, &event_name).await,
-        AIProviderType::Ollama => stream_ollama(&client, &request, &app, &event_name).await,
+        AIProviderType::Google => stream_gemini(client, &request, &app, &event_name).await,
+        AIProviderType::Anthropic => stream_anthropic(client, &request, &app, &event_name).await,
+        AIProviderType::Ollama => stream_ollama(client, &request, &app, &event_name).await,
         // OpenAI, xAI, OpenRouter, Custom all use OpenAI-compatible SSE
-        _ => stream_openai(&client, &request, &app, &event_name).await,
+        _ => stream_openai(client, &request, &app, &event_name).await,
     };
 
     match result {
@@ -120,7 +120,6 @@ async fn stream_openai(
     let supports_strict = matches!(
         request.provider_type,
         AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
-        | AIProviderType::Kimi | AIProviderType::Qwen | AIProviderType::DeepSeek
     );
     let tools = request.tools.as_ref().map(|defs| {
         defs.iter().map(|d| {
@@ -158,6 +157,9 @@ async fn stream_openai(
     // Convert to Value so we can inject reasoning_effort for o3
     let mut body = serde_json::to_value(&stream_req)
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { format!("Failed to serialize request: {}", e).into() })?;
+
+    // Request token usage in the final streaming chunk (OpenAI-compat providers)
+    body["stream_options"] = serde_json::json!({ "include_usage": true });
 
     // OpenAI o3/o3-mini thinking support: map budget to reasoning_effort levels
     if let Some(budget) = request.thinking_budget {
@@ -251,6 +253,8 @@ async fn stream_openai(
     let mut accumulated_tool_calls: Vec<PartialToolCall> = Vec::new();
     let mut done_emitted = false;
     let mut had_reasoning = false;
+    let mut stream_input_tokens: Option<u32> = None;
+    let mut stream_output_tokens: Option<u32> = None;
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
@@ -281,7 +285,7 @@ async fn stream_openai(
 
         while let Some(line_end) = buffer.find('\n') {
             let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            buffer.drain(..=line_end);
 
             if line.is_empty() || line == "data: [DONE]" {
                 if line == "data: [DONE]" {
@@ -312,8 +316,8 @@ async fn stream_openai(
                         content: String::new(),
                         done: true,
                         tool_calls,
-                        input_tokens: None,
-                        output_tokens: None,
+                        input_tokens: stream_input_tokens,
+                        output_tokens: stream_output_tokens,
                         thinking: None,
                         thinking_done: None,
                         cache_creation_input_tokens: None,
@@ -326,6 +330,15 @@ async fn stream_openai(
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    // Extract usage from the final chunk (requires stream_options.include_usage)
+                    if let Some(usage) = parsed.get("usage") {
+                        if let Some(prompt) = usage.get("prompt_tokens").and_then(|v| v.as_u64()) {
+                            stream_input_tokens = Some(prompt as u32);
+                        }
+                        if let Some(completion) = usage.get("completion_tokens").and_then(|v| v.as_u64()) {
+                            stream_output_tokens = Some(completion as u32);
+                        }
+                    }
                     if let Some(delta) = parsed["choices"][0]["delta"].as_object() {
                         // Text content
                         if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
@@ -577,7 +590,7 @@ async fn stream_anthropic(
 
         while let Some(line_end) = buffer.find('\n') {
             let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            buffer.drain(..=line_end);
 
             if line.is_empty() { continue; }
 
@@ -875,6 +888,7 @@ async fn stream_gemini(
     let mut final_tool_calls: Vec<AIToolCall> = Vec::new();
     let mut tool_call_counter: usize = 0;
     let mut input_tokens: Option<u32> = None;
+    let mut gemini_was_thinking = false;
     let mut output_tokens: Option<u32> = None;
 
     while let Some(chunk) = stream.next().await {
@@ -906,7 +920,7 @@ async fn stream_gemini(
 
         while let Some(line_end) = buffer.find('\n') {
             let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            buffer.drain(..=line_end);
 
             if line.is_empty() { continue; }
 
@@ -916,23 +930,37 @@ async fn stream_gemini(
                     if let Some(parts) = parsed["candidates"][0]["content"]["parts"].as_array() {
                         for part in parts {
                             // Detect Gemini thinking/reasoning parts
-                            if let Some(thought) = part.get("thought").and_then(|t| t.as_bool()) {
-                                if thought {
-                                    if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                        let _ = app.emit(event_name, StreamChunk {
-                                            content: String::new(),
-                                            done: false,
-                                            tool_calls: None,
-                                            input_tokens: None,
-                                            output_tokens: None,
-                                            thinking: Some(text.to_string()),
-                                            thinking_done: None,
-                                            cache_creation_input_tokens: None,
-                                            cache_read_input_tokens: None,
-                                        });
-                                        continue; // Skip adding to regular content
-                                    }
+                            let is_thought = part.get("thought").and_then(|t| t.as_bool()).unwrap_or(false);
+                            if is_thought {
+                                gemini_was_thinking = true;
+                                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                    let _ = app.emit(event_name, StreamChunk {
+                                        content: String::new(),
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: Some(text.to_string()),
+                                        thinking_done: None,
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    });
+                                    continue; // Skip adding to regular content
                                 }
+                            } else if gemini_was_thinking {
+                                // Transitioned from thinking to non-thinking: emit thinking_done
+                                gemini_was_thinking = false;
+                                let _ = app.emit(event_name, StreamChunk {
+                                    content: String::new(),
+                                    done: false,
+                                    tool_calls: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    thinking: None,
+                                    thinking_done: Some(true),
+                                    cache_creation_input_tokens: None,
+                                    cache_read_input_tokens: None,
+                                });
                             }
                             if let Some(text) = part["text"].as_str() {
                                 let _ = app.emit(event_name, StreamChunk {
@@ -1179,7 +1207,7 @@ async fn stream_ollama(
 
         while let Some(line_end) = buffer.find('\n') {
             let line = buffer[..line_end].trim().to_string();
-            buffer = buffer[line_end + 1..].to_string();
+            buffer.drain(..=line_end);
 
             if line.is_empty() { continue; }
 

@@ -92,7 +92,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const [panels, setPanels] = useState<PanelVisibility>({
         editor: true,
         terminal: false,
-        chat: true,
+        chat: false,
     });
 
     // Track container width for responsive layout

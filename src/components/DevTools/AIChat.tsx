@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from './AIIcons';
@@ -460,14 +460,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     };
 
     // Execute a tool via unified provider-agnostic command (built-in or plugin)
+    // SECURITY: Check built-in tools FIRST to prevent plugin name hijacking
     const executeToolByName = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {
-        const plugin = findPluginForTool(pluginManifests, toolName);
-        if (plugin) {
-            return await invoke('execute_plugin_tool', {
-                pluginId: plugin.id,
-                toolName,
-                argsJson: JSON.stringify(args),
-            });
+        const isBuiltIn = AGENT_TOOLS.some(t => t.name === toolName);
+        if (!isBuiltIn) {
+            const plugin = findPluginForTool(pluginManifests, toolName);
+            if (plugin) {
+                return await invoke('execute_plugin_tool', {
+                    pluginId: plugin.id,
+                    toolName,
+                    argsJson: JSON.stringify(args),
+                });
+            }
         }
         return await invoke('execute_ai_tool', { toolName, args });
     };
@@ -539,6 +543,25 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     setMessages(prev => [...prev, errMsg]);
                     setPendingToolCalls([]);
                     return null;
+                }
+                // SECURITY: Check if step tool has high danger level — require explicit approval
+                const stepTool = getToolByName(step.toolName) || getToolByNameFromAll(step.toolName, allTools);
+                if (stepTool && stepTool.dangerLevel === 'high') {
+                    const pendingStep: AgentToolCall = {
+                        id: crypto.randomUUID(),
+                        toolName: step.toolName,
+                        args: step.args,
+                        status: 'pending',
+                    };
+                    setPendingToolCalls(prev => [...prev, pendingStep]);
+                    const warnMsg: Message = {
+                        id: crypto.randomUUID(),
+                        role: 'assistant',
+                        content: `Macro step "${step.toolName}" requires approval (danger: high)`,
+                        timestamp: new Date(),
+                    };
+                    setMessages(prev => [...prev, warnMsg]);
+                    return lastResult; // Pause macro execution, user must approve remaining steps
                 }
                 const stepCall: AgentToolCall = {
                     id: crypto.randomUUID(),
@@ -987,7 +1010,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 fileImports: fileImportsRef.current,
                 smartContextBlock: smartContextBlock || undefined,
             });
-            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName);
+            // Build extra tool definitions for system prompt (plugin + macro, not built-in)
+            const extraToolDefs = toNativeDefinitions([...pluginTools, ...macrosToToolDefinitions(macros)]);
+            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, extraToolDefs);
 
             // Build message history (images only on the current user message)
             const currentUserMsg: Record<string, unknown> = {
@@ -1073,6 +1098,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
             };
 
+            const webSearchActive = !!settings.advancedSettings?.webSearchEnabled;
+
             if (useStreaming) {
                 // Streaming mode: incremental rendering
                 const streamId = `stream_${crypto.randomUUID()}`;
@@ -1096,6 +1123,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     content: '',
                     timestamp: new Date(),
                     modelInfo,
+                    ...(webSearchActive ? { webSearchUsed: true } : {}),
                 };
                 setMessages(prev => [...prev, streamMsg]);
 
@@ -1164,15 +1192,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 });
 
                 // Wait for the done event with timeout, then unlisten
-                const STREAM_TIMEOUT_MS = 120_000; // 2 minutes
+                const streamTimeoutMs = (settings.advancedSettings?.streamingTimeoutSecs ?? 120) * 1000;
                 const timeoutPromise = new Promise<void>((_, reject) =>
-                    setTimeout(() => reject(new Error('Stream timeout after 120s')), STREAM_TIMEOUT_MS)
+                    setTimeout(() => reject(new Error(`Stream timeout after ${Math.round(streamTimeoutMs / 1000)}s`)), streamTimeoutMs)
                 );
                 try {
                     await Promise.race([streamDone, timeoutPromise]);
                 } catch (timeoutErr) {
                     // Timeout occurred - add error message and clean up
-                    streamContent += '\n\n[Stream timeout - no response received for 2 minutes]';
+                    streamContent += `\n\n[Stream timeout - no response received for ${Math.round(streamTimeoutMs / 1000)} seconds]`;
                     setMessages(prev => prev.map(m =>
                         m.id === msgId ? { ...m, content: streamContent } : m
                     ));
@@ -1350,6 +1378,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         timestamp: new Date(),
                         modelInfo,
                         tokenInfo,
+                        ...(webSearchActive ? { webSearchUsed: true } : {}),
                     };
                     setMessages(prev => [...prev, assistantMessage]);
                 }
@@ -1561,6 +1590,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             thinkingTokens={message.tokenInfo?.outputTokens}
                                             responseTokens={message.tokenInfo?.inputTokens}
                                         />
+                                    )}
+                                    {message.webSearchUsed && (
+                                        <span className="text-[10px] text-zinc-500 flex items-center gap-1 mb-1">
+                                            <Globe size={10} /> {t('ai.webSearchUsed')}
+                                        </span>
                                     )}
                                     <div className="relative">
                                         <div

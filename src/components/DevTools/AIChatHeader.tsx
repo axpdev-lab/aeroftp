@@ -35,16 +35,16 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
                     <Plus size={14} />
                 </button>
                 <div className="relative">
-                    <button onClick={onToggleExportMenu} disabled={!hasMessages} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="Export Chat">
+                    <button onClick={onToggleExportMenu} disabled={!hasMessages} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title={t('ai.exportChat')}>
                         <Download size={14} />
                     </button>
                     {showExportMenu && (
                         <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-20 py-1 min-w-[180px]">
                             <button onClick={() => onExport('markdown')} className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2">
-                                <span>Export as Markdown</span>
+                                <span>{t('ai.exportMarkdown')}</span>
                             </button>
                             <button onClick={() => onExport('json')} className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2">
-                                <span>Export as JSON</span>
+                                <span>{t('ai.exportJSON')}</span>
                             </button>
                         </div>
                     )}

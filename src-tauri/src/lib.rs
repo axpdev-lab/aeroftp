@@ -39,6 +39,7 @@ mod master_password;
 mod windows_acl;
 mod filesystem;
 
+use filesystem::validate_path;
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
 use ssh_shell::{create_ssh_shell_state, ssh_shell_open, ssh_shell_write, ssh_shell_resize, ssh_shell_close};
@@ -1794,6 +1795,7 @@ fn get_system_info() -> SystemInfo {
 
 #[tauri::command]
 async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<LocalFileInfo>, String> {
+    validate_path(&path)?;
     let path = PathBuf::from(&path);
     let show_hidden = show_hidden.unwrap_or(true);  // Developer-first: show all files by default
     
@@ -1855,6 +1857,7 @@ async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<
 
 #[tauri::command]
 async fn open_in_file_manager(path: String) -> Result<(), String> {
+    validate_path(&path)?;
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
@@ -2114,6 +2117,7 @@ async fn delete_remote_file(
 /// Delete a local file or folder with detailed event emission for each deleted item.
 #[tauri::command]
 async fn delete_local_file(app: AppHandle, path: String) -> Result<String, String> {
+    validate_path(&path)?;
     let path_buf = std::path::PathBuf::from(&path);
     let file_name = path_buf.file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -2177,18 +2181,33 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
         let mut files_to_delete: Vec<DeleteItem> = Vec::new();
         let mut dirs_to_delete: Vec<std::path::PathBuf> = Vec::new();
         let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![path_buf.clone()];
-        
+        let mut entry_count: u64 = 0;
+
         while let Some(current_dir) = dirs_to_scan.pop() {
             let mut read_dir = match tokio::fs::read_dir(&current_dir).await {
                 Ok(rd) => rd,
                 Err(_) => continue,
             };
-            
+
             while let Ok(Some(entry)) = read_dir.next_entry().await {
+                entry_count += 1;
+                if entry_count > 1_000_000 {
+                    return Err("Directory contains too many entries (max 1,000,000). Use terminal for large deletions.".to_string());
+                }
+
                 let entry_path = entry.path();
                 let entry_name = entry.file_name().to_string_lossy().to_string();
-                
-                if entry_path.is_dir() {
+
+                // Use symlink_metadata to avoid following symlinks
+                let metadata = tokio::fs::symlink_metadata(&entry_path).await
+                    .map_err(|e| format!("Failed to read metadata: {}", e))?;
+                if metadata.is_symlink() {
+                    // For symlinks, delete the link itself, not the target
+                    files_to_delete.push(DeleteItem {
+                        path: entry_path,
+                        name: entry_name,
+                    });
+                } else if metadata.is_dir() {
                     dirs_to_scan.push(entry_path.clone());
                 } else {
                     files_to_delete.push(DeleteItem {
@@ -2197,7 +2216,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                     });
                 }
             }
-            
+
             dirs_to_delete.push(current_dir);
         }
         
@@ -2330,6 +2349,8 @@ async fn chmod_remote_file(state: State<'_, AppState>, path: String, mode: Strin
 
 #[tauri::command]
 async fn rename_local_file(from: String, to: String) -> Result<(), String> {
+    validate_path(&from)?;
+    validate_path(&to)?;
     // Check for Windows reserved filenames
     #[cfg(windows)]
     {
@@ -2351,13 +2372,15 @@ async fn rename_local_file(from: String, to: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn copy_local_file(from: String, to: String) -> Result<(), String> {
+    validate_path(&from)?;
+    validate_path(&to)?;
     let from_path = std::path::Path::new(&from);
     if !from_path.exists() {
         return Err(format!("Source does not exist: {}", from));
     }
     if from_path.is_dir() {
         // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to)).await?;
+        copy_dir_recursive(from_path, std::path::Path::new(&to), 0).await?;
     } else {
         tokio::fs::copy(&from, &to)
             .await
@@ -2366,7 +2389,10 @@ async fn copy_local_file(from: String, to: String) -> Result<(), String> {
     Ok(())
 }
 
-async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path, depth: u32) -> Result<(), String> {
+    if depth > 50 {
+        return Err("Directory nesting too deep (max 50 levels)".to_string());
+    }
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -2376,8 +2402,15 @@ async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Res
     while let Some(entry) = entries.next_entry().await.map_err(|e| format!("Failed to read entry: {}", e))? {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
+        // Use symlink_metadata to avoid following symlinks
+        let metadata = tokio::fs::symlink_metadata(&src_path).await
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        if metadata.is_symlink() {
+            // Skip symlinks for security
+            continue;
+        }
+        if metadata.is_dir() {
+            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1)).await?;
         } else {
             tokio::fs::copy(&src_path, &dst_path)
                 .await
@@ -2389,6 +2422,7 @@ async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Res
 
 #[tauri::command]
 async fn create_local_folder(path: String) -> Result<(), String> {
+    validate_path(&path)?;
     tokio::fs::create_dir_all(&path)
         .await
         .map_err(|e| format!("Failed to create folder: {}", e))?;
@@ -2397,19 +2431,34 @@ async fn create_local_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn read_file_base64(path: String) -> Result<String, String> {
+async fn read_file_base64(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
+    validate_path(&path)?;
     use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    // Size cap to prevent OOM on large files (default 50MB)
+    let max_size: u64 = (max_size_mb.unwrap_or(50) as u64) * 1024 * 1024;
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| "Failed to read file metadata".to_string())?;
+    if metadata.len() > max_size {
+        return Err(format!(
+            "File too large for preview ({:.1} MB). Max: {} MB",
+            metadata.len() as f64 / (1024.0 * 1024.0),
+            max_size / (1024 * 1024)
+        ));
+    }
 
     let data = tokio::fs::read(&path)
         .await
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+        .map_err(|_| "Failed to read file".to_string())?;
 
     Ok(STANDARD.encode(data))
 }
 
-/// Calculate checksum (MD5 or SHA-256) for a local file
+/// Calculate checksum (MD5, SHA-1, SHA-256, or SHA-512) for a local file
 #[tauri::command]
 async fn calculate_checksum(path: String, algorithm: String) -> Result<String, String> {
+    validate_path(&path)?;
     use md5::Md5;
     use sha2::{Sha256, Digest};
     use tokio::io::AsyncReadExt;
@@ -2447,13 +2496,48 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             let result = hasher.finalize();
             Ok(hex::encode(result))
         }
-        _ => Err(format!("Unsupported algorithm: {}. Use 'md5' or 'sha256'", algorithm))
+        "sha1" => {
+            use sha1::Digest;
+            let mut hasher = sha1::Sha1::new();
+            let mut buffer = vec![0u8; 64 * 1024];
+
+            loop {
+                let bytes_read = file.read(&mut buffer).await
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                if bytes_read == 0 { break; }
+                hasher.update(&buffer[..bytes_read]);
+            }
+
+            let result = hasher.finalize();
+            Ok(hex::encode(result))
+        }
+        "sha512" => {
+            use sha2::{Sha512, Digest};
+            let mut hasher = Sha512::new();
+            let mut buffer = vec![0u8; 64 * 1024];
+
+            loop {
+                let bytes_read = file.read(&mut buffer).await
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                if bytes_read == 0 { break; }
+                hasher.update(&buffer[..bytes_read]);
+            }
+
+            let result = hasher.finalize();
+            Ok(hex::encode(result))
+        }
+        _ => Err(format!("Unsupported algorithm: {}. Use 'md5', 'sha1', 'sha256', or 'sha512'", algorithm))
     }
 }
 
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
 async fn compress_files(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+    validate_path(&output_path)?;
+    for p in &paths {
+        validate_path(p)?;
+    }
+
     use std::fs::File;
     use std::io::{Read, Write};
     use zip::write::SimpleFileOptions;
@@ -3069,19 +3153,41 @@ async fn ftp_read_file_base64(state: State<'_, AppState>, path: String) -> Resul
 // ============ DevTools Commands ============
 
 #[tauri::command]
-async fn read_local_file(path: String) -> Result<String, String> {
-    // Read local file content as UTF-8 string
-    let content = tokio::fs::read_to_string(&path)
+async fn read_local_file(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
+    validate_path(&path)?;
+    // Size cap to prevent OOM on large text files (default 10MB)
+    let max_size: u64 = (max_size_mb.unwrap_or(10) as u64) * 1024 * 1024;
+    let metadata = tokio::fs::metadata(&path)
         .await
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    
-    Ok(content)
+        .map_err(|_| "Failed to read file metadata".to_string())?;
+    if metadata.len() > max_size {
+        return Err(format!(
+            "File too large for text preview ({:.1} MB). Max: {} MB",
+            metadata.len() as f64 / (1024.0 * 1024.0),
+            max_size / (1024 * 1024)
+        ));
+    }
+
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Detect binary content (null bytes in first 8KB)
+    let check_len = bytes.len().min(8192);
+    let null_count = bytes[..check_len].iter().filter(|&&b| b == 0).count();
+    if null_count > 0 {
+        return Err("Binary file detected (contains null bytes). Use read_file_base64 for binary files.".to_string());
+    }
+
+    String::from_utf8(bytes)
+        .map_err(|_| "File contains invalid UTF-8. Use read_file_base64 for binary files.".to_string())
 }
 
 #[tauri::command]
 async fn read_local_file_base64(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
+    validate_path(&path)?;
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    
+
     // Default max size is 50MB for media files (audio/video)
     let max_size: u64 = (max_size_mb.unwrap_or(50) as u64) * 1024 * 1024;
     
@@ -3144,6 +3250,7 @@ async fn preview_remote_file(state: State<'_, AppState>, path: String) -> Result
 
 #[tauri::command]
 async fn save_local_file(path: String, content: String) -> Result<(), String> {
+    validate_path(&path)?;
     // Write content to local file
     tokio::fs::write(&path, content)
         .await
@@ -3550,7 +3657,7 @@ async fn ai_execute_tool(
             validate_tool_path(path, "path")?;
 
             if location == "local" {
-                let content = read_local_file(path.to_string())
+                let content = read_local_file(path.to_string(), Some(5))
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(serde_json::json!({
@@ -4865,11 +4972,19 @@ pub fn run() {
             plugins::execute_plugin_tool,
             plugins::install_plugin,
             plugins::remove_plugin,
-            // Filesystem (Places Sidebar)
+            // Filesystem (Places Sidebar + AeroFile)
             filesystem::get_user_directories,
             filesystem::list_mounted_volumes,
             filesystem::list_subdirectories,
             filesystem::eject_volume,
+            filesystem::get_file_properties,
+            filesystem::calculate_folder_size,
+            filesystem::delete_to_trash,
+            filesystem::list_trash_items,
+            filesystem::restore_trash_item,
+            filesystem::empty_trash,
+            filesystem::find_duplicate_files,
+            filesystem::scan_disk_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

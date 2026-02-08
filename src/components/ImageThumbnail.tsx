@@ -26,7 +26,7 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
         const loadImage = async () => {
             try {
                 const command = isRemote ? 'ftp_read_file_base64' : 'read_file_base64';
-                const base64: string = await invoke(command, { path });
+                const base64: string = await invoke(command, { path, maxSizeMb: 5 });
                 if (cancelled) return;
                 const ext = name.split('.').pop()?.toLowerCase() || '';
                 const mimeTypes: Record<string, string> = {

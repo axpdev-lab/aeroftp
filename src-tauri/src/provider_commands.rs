@@ -75,6 +75,8 @@ pub struct ProviderConnectionParams {
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
     pub verify_cert: Option<bool>,
+    /// Filen: Optional TOTP 2FA code
+    pub two_factor_code: Option<String>,
 }
 
 impl ProviderConnectionParams {
@@ -145,6 +147,15 @@ impl ProviderConnectionParams {
                 extra.insert("endpoint".to_string(), endpoint.clone());
             }
             // account_name comes from username field
+        }
+
+        // Add Filen-specific options
+        if provider_type == ProviderType::Filen {
+            if let Some(ref code) = self.two_factor_code {
+                if !code.is_empty() {
+                    extra.insert("two_factor_code".to_string(), code.clone());
+                }
+            }
         }
 
         // Add pCloud-specific options

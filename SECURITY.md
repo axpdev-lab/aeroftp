@@ -192,14 +192,70 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - **Danger levels**: Safe (auto-execute), Medium (user confirmation), High (explicit approval for delete operations)
 - **Rate limiting**: 20 requests per minute per AI provider, frontend token bucket
 - **Context intelligence security** (v2.0.x): All 5 `context_intelligence.rs` commands use `validate_context_path()`. Agent memory writes protected by `MEMORY_WRITE_LOCK` Mutex (TOCTOU prevention). Category input sanitized (alphanumeric + underscore/hyphen, max 30 chars). Config file reads capped at 5MB. Git status output limited to 100 entries
-- **Plugin sandboxing** (v1.9.0): Custom tools run as isolated subprocesses with 30s timeout, 1MB output limit, and plugin ID validation (alphanumeric + underscore only). Plugin execution goes through a separate `execute_plugin_tool` command, not the built-in tool whitelist
-- **Provider-specific hardening** (v2.0.0): Anthropic prompt caching uses ephemeral cache control. OpenAI tools enforce `strict: true` with `additionalProperties: false` for schema validation. Gemini requests use `systemInstruction` top-level field (not in-message). Ollama pull model streams are validated NDJSON. Tool argument pre-validation via `validate_tool_args` checks file existence, permissions, and dangerous paths before execution
+- **Plugin sandboxing** (v1.9.0): Custom tools run as isolated subprocesses with 30s timeout, 1MB output limit, and plugin ID validation (alphanumeric + underscore only). Plugin execution goes through a separate `execute_plugin_tool` command, not the built-in tool whitelist. Plugin processes killed on timeout via `kill_on_drop(true)` (v2.0.2)
+- **Provider-specific hardening** (v2.0.0): Anthropic prompt caching uses ephemeral cache control. OpenAI tools enforce `strict: true` with `additionalProperties: false` for schema validation (restricted to supporting providers only). Gemini requests use `systemInstruction` top-level field (not in-message). Ollama pull model streams are validated NDJSON. Tool argument pre-validation via `validate_tool_args` checks file existence, permissions, and dangerous paths before execution
+- **AI audit hardening** (v2.0.2): HTTP client singletons with connection pooling and timeouts (120s/15s). Gemini API key sanitized from error messages. Token counts in OpenAI-compatible streaming via `stream_options`. Plugin tool name hijacking prevention (built-in tools checked first). Fail-closed tool validation. Agent memory prompt injection defense (7-pattern sanitization + XML delimiters). Macro step danger level enforcement. Anthropic multi-block text collection. Expanded deny-list (~/.ssh, ~/.gnupg, ~/.aws, ~/.kube)
+
+### File System Hardening (v2.0.2)
+
+- **Path validation**: All filesystem commands in `lib.rs` validated via `validate_path()` — null bytes, `..` traversal, 4096 length limit. Applied to: `save_local_file`, `calculate_checksum`, `compress_files`, and all `filesystem.rs` commands
+- **Symlink safety**: `symlink_metadata()` used consistently in `copy_dir_recursive` and `delete_local_file` — symlinks not followed during recursive operations, preventing escape from target directory
+- **Resource exhaustion limits**: `copy_dir_recursive` max depth 50, `delete_local_file` max 1M entries, `calculate_folder_size` max depth 100 + 1M files, `calculate_disk_usage` max depth 50 + 500K entries, `find_duplicates` max 100K files
+- **Command injection prevention**: `eject_volume` validates device path against `/dev/[a-zA-Z0-9/_-]+` regex
+- **Trash item traversal guard**: `restore_trash_item` validates ID contains no `/`, `\`, `..`, or null bytes
+- **Preview size caps**: Images 20MB, video/audio 20MB, text 5MB, thumbnails 5MB — all enforced at Rust backend level
+- **iframe sandbox**: HTML preview uses `sandbox=""` (maximum restriction, no script execution)
 
 ### OAuth Session Security (v1.5.3)
 
 - OAuth credentials resolved from OS keyring on session switch (no plaintext fallback)
 - Tokens refreshed automatically on tab switching with proper PKCE re-authentication
 - Stale quota/connection state cleared before reconnection
+
+---
+
+## Privacy Features
+
+AeroFTP is designed as a **privacy-enhanced** file manager. While no software can guarantee complete anonymity, AeroFTP incorporates meaningful privacy protections that go beyond what traditional file managers and FTP clients offer.
+
+### Data-at-Rest Protection
+
+| Feature | Details |
+| ------- | ------- |
+| **Master Password** | Optional Argon2id (128 MiB, t=4, p=4) encrypted vault. When enabled, all credentials are locked behind a single master password — without it, no server profiles, API keys, or tokens are accessible |
+| **Encrypted Vault** | All sensitive data (server profiles, AI config, OAuth tokens) stored in AES-256-GCM encrypted `vault.db` — zero plaintext credentials on disk |
+| **Memory Zeroization** | Passwords, keys, and tokens are cleared from RAM immediately after use via `zeroize` and `secrecy` crates. No credential residue in memory dumps |
+
+### Minimal Footprint
+
+| Feature | Details |
+| ------- | ------- |
+| **Zero Telemetry** | AeroFTP collects no usage data, sends no analytics, and makes no network requests beyond user-initiated connections. No phone-home behavior |
+| **Clearable History** | Recent locations list is user-controlled and one-click clearable. No persistent browsing history beyond what the user explicitly saves |
+| **No Cloud Dependency** | Credential storage is entirely local (`~/.config/aeroftp/`). No third-party cloud services involved in authentication or settings sync |
+| **Minimal localStorage** | Only non-sensitive UI state (window size, panel layout) remains in browser storage. All credentials migrated to encrypted vault (v1.9.0) |
+
+### Portable Deployment
+
+| Feature | Details |
+| ------- | ------- |
+| **AppImage** | Self-contained Linux binary that runs from any location without installation. When removed, no traces remain on the system beyond the user's config directory |
+| **Config Isolation** | All application data lives in `~/.config/aeroftp/`. Deleting this directory removes all AeroFTP data from the system |
+| **No Registry Entries** | Linux/macOS: no system-wide modifications. AppImage runs entirely in userspace |
+
+### Privacy Comparison
+
+| Feature | AeroFTP | FileZilla | WinSCP | Cyberduck |
+| ------- | ------- | --------- | ------ | --------- |
+| Encrypted credential vault | AES-256-GCM | Plaintext XML | AES-256 (master pw) | OS Keychain |
+| Master password protection | Argon2id 128 MiB | Not available | Available | OS-level |
+| Zero telemetry | Yes | Opt-out analytics | Yes | Opt-out analytics |
+| Memory zeroization | `zeroize` + `secrecy` | No | No | No |
+| Portable deployment | AppImage | Portable ZIP | Portable EXE | Not available |
+| Clearable browsing history | One-click clear | Manual deletion | Manual deletion | Manual deletion |
+| Client-side encryption | AeroVault (AES-256-GCM-SIV) | Not available | Not available | Cryptomator (plugin) |
+
+> **Note**: AeroFTP is privacy-enhanced, not anonymous. Network connections to servers are visible to network observers. For true anonymity, combine AeroFTP with network-level privacy tools (VPN, Tor). AeroFTP's privacy features protect local data at rest and minimize traces on the host system.
 
 ---
 
@@ -216,8 +272,10 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 | **FTP Insecure Warning** | Visual red badge and warning banner on plaintext FTP selection |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords and keys from RAM on drop |
 | **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString |
-| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation |
-| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis |
+| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation + kill-on-timeout |
+| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis + fail-closed validation |
+| **AeroFile Hardening** | Path validation on all commands + symlink safety + resource exhaustion limits + preview size caps + iframe sandbox + filename validation |
+| **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
 | **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS for full control over encryption level |
 
 ## Known Issues
@@ -244,4 +302,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.1 - 8 February 2026*
+*AeroFTP v2.0.2 - 8 February 2026*

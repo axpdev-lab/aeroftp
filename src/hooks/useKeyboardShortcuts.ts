@@ -13,7 +13,7 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: any[] = []) =
             // Actually, for F-keys we might want to allow it.
             // For now, let's just let the specific handlers decide, or block specific inputs.
             const target = event.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
                 // Allow F-keys and Escape even in inputs
                 if (!event.key.startsWith('F') && event.key !== 'Escape') {
                     return;

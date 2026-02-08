@@ -430,7 +430,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <iframe
                             ref={iframeRef}
                             srcDoc={processedHtml || content}
-                            sandbox="allow-scripts"
+                            sandbox=""
                             className="w-full h-full bg-white border border-gray-700 rounded"
                             title="HTML Preview"
                         />

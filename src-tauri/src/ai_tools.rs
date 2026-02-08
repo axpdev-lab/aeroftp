@@ -53,9 +53,21 @@ fn validate_path(path: &str, param: &str) -> Result<(), String> {
     if let Ok(canonical) = resolved {
         let s = canonical.to_string_lossy();
         // Block sensitive system paths (deny-list)
-        let denied = ["/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/etc/ssh"];
+        let denied = [
+            "/proc", "/sys", "/dev", "/boot", "/root",
+            "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers",
+        ];
         if denied.iter().any(|d| s.starts_with(d)) {
             return Err(format!("{}: access to system path denied: {}", param, s));
+        }
+        // Block sensitive home-relative paths
+        if let Ok(home) = std::env::var("HOME") {
+            let home_denied = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud"];
+            for sensitive in &home_denied {
+                if s.starts_with(&format!("{}/{}", home, sensitive)) {
+                    return Err(format!("{}: access to sensitive path denied: {}", param, s));
+                }
+            }
         }
     }
     Ok(())
@@ -546,16 +558,23 @@ pub async fn execute_ai_tool(
                 return Err(format!("File too large for local_read: {:.1} MB (max 10 MB)", meta.len() as f64 / 1_048_576.0));
             }
 
-            let bytes = std::fs::read(&path)
+            // Only read the first 5KB instead of the entire file
+            let max_bytes: usize = 5120;
+            let file_size = meta.len() as usize;
+            let read_size = std::cmp::min(file_size, max_bytes);
+            let mut file = std::fs::File::open(&path)
+                .map_err(|e| format!("Failed to open file: {}", e))?;
+            let mut buf = vec![0u8; read_size];
+            use std::io::Read;
+            file.read_exact(&mut buf)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
 
-            let max_bytes = 5120;
-            let truncated = bytes.len() > max_bytes;
-            let content = String::from_utf8_lossy(&bytes[..bytes.len().min(max_bytes)]).to_string();
+            let truncated = file_size > max_bytes;
+            let content = String::from_utf8_lossy(&buf).to_string();
 
             Ok(json!({
                 "content": content,
-                "size": bytes.len(),
+                "size": file_size,
                 "truncated": truncated,
             }))
         }

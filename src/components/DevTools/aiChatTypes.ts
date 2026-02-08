@@ -20,6 +20,7 @@ export interface Message {
     images?: VisionImage[];
     thinking?: string;
     thinkingDuration?: number;
+    webSearchUsed?: boolean;
     modelInfo?: {
         modelName: string;
         providerName: string;

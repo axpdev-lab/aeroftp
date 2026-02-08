@@ -136,6 +136,11 @@ interface AppSettings {
     compactMode: boolean;
     showSystemMenu: boolean;
     fontSize: 'small' | 'medium' | 'large';
+    // Columns
+    visibleColumns: string[];
+    // File browser
+    sortFoldersFirst: boolean;
+    showFileExtensions: boolean;
     // Notifications
     showToastNotifications: boolean;
     // Privacy
@@ -162,6 +167,9 @@ const defaultSettings: AppSettings = {
     compactMode: false,
     showSystemMenu: false,
     fontSize: 'medium',
+    visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
+    sortFoldersFirst: true,
+    showFileExtensions: true,
     showToastNotifications: false,  // Default off - use Activity Log instead
     analyticsEnabled: false,
 };
@@ -522,7 +530,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             onChange={e => updateSetting('confirmBeforeDelete', e.target.checked)}
                                             className="w-4 h-4 rounded"
                                         />
-                                        <span className="text-sm">Confirm before deleting files</span>
+                                        <span className="text-sm">{t('settings.confirmBeforeDelete')}</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.sortFoldersFirst !== false}
+                                            onChange={e => updateSetting('sortFoldersFirst', e.target.checked)}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        <div>
+                                            <p className="text-sm">{t('settings.sortFoldersFirst')}</p>
+                                            <p className="text-xs text-gray-500">{t('settings.sortFoldersFirstDesc')}</p>
+                                        </div>
+                                    </label>
+
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.showFileExtensions !== false}
+                                            onChange={e => updateSetting('showFileExtensions', e.target.checked)}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        <div>
+                                            <p className="text-sm">{t('settings.showFileExtensions')}</p>
+                                            <p className="text-xs text-gray-500">{t('settings.showFileExtensionsDesc')}</p>
+                                        </div>
                                     </label>
 
                                     <label className="flex items-center gap-3 cursor-pointer">
@@ -1557,6 +1591,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
                                         </div>
                                     </label>
+                                </div>
+
+                                {/* Visible Columns */}
+                                <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">{t('settings.visibleColumns')}</label>
+                                    <p className="text-xs text-gray-500 mb-3">{t('settings.visibleColumnsDesc')}</p>
+                                    <div className="space-y-2">
+                                        {[
+                                            { key: 'name', label: t('settings.columnName'), disabled: true },
+                                            { key: 'size', label: t('settings.columnSize'), disabled: false },
+                                            { key: 'type', label: t('settings.columnType'), disabled: false },
+                                            { key: 'permissions', label: t('settings.columnPermissions'), disabled: false },
+                                            { key: 'modified', label: t('settings.columnModified'), disabled: false },
+                                        ].map(col => (
+                                            <label key={col.key} className={`flex items-center gap-3 ${col.disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={col.disabled || (settings.visibleColumns || []).includes(col.key)}
+                                                    disabled={col.disabled}
+                                                    onChange={() => {
+                                                        const current = settings.visibleColumns || ['name', 'size', 'type', 'permissions', 'modified'];
+                                                        const updated = current.includes(col.key)
+                                                            ? current.filter((c: string) => c !== col.key)
+                                                            : [...current, col.key];
+                                                        updateSetting('visibleColumns', updated);
+                                                    }}
+                                                    className="w-4 h-4 rounded"
+                                                />
+                                                <span className="text-sm">{col.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* App Background Pattern */}

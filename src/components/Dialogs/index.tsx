@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2 } from 'lucide-react';
 import { formatBytes } from '../../utils/formatters';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 
@@ -257,10 +257,22 @@ export interface FileProperties {
     permissions?: string | null;
     isRemote: boolean;
     protocol?: string;
+    // Enhanced properties (optional, populated when available)
+    created?: string | null;
+    accessed?: string | null;
+    owner?: string | null;
+    group?: string | null;
+    is_symlink?: boolean;
+    link_target?: string | null;
+    inode?: number | null;
+    hard_links?: number | null;
+    permissions_mode?: number | null;
     // Checksum (optional, calculated on demand)
     checksum?: {
         md5?: string;
+        sha1?: string;
         sha256?: string;
+        sha512?: string;
         calculating?: boolean;
     };
 }
@@ -268,16 +280,23 @@ export interface FileProperties {
 interface PropertiesDialogProps {
     file: FileProperties;
     onClose: () => void;
-    onCalculateChecksum?: (algorithm: 'md5' | 'sha256') => void;
+    onCalculateChecksum?: (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => void;
+    onCalculateFolderSize?: () => void;
+    folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
+    folderSizeCalculating?: boolean;
 }
 
 export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     file,
     onClose,
-    onCalculateChecksum
+    onCalculateChecksum,
+    onCalculateFolderSize,
+    folderSize,
+    folderSizeCalculating = false,
 }) => {
     const t = useTranslation();
     const [copiedField, setCopiedField] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'general' | 'permissions' | 'checksum'>('general');
 
     const copyToClipboard = (text: string, field: string) => {
         navigator.clipboard.writeText(text);
@@ -285,7 +304,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         setTimeout(() => setCopiedField(null), 2000);
     };
 
-    const formatDate = (dateStr: string | null): string => {
+    const formatDate = (dateStr: string | null | undefined): string => {
         if (!dateStr) return '—';
         try {
             const date = new Date(dateStr);
@@ -304,7 +323,6 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
 
         // If it's already in rwx format
         if (perms.match(/^[d\-l][rwx\-]{9}$/)) {
-            // Calculate octal from rwx
             const toOctal = (r: string, w: string, x: string) =>
                 (r === 'r' ? 4 : 0) + (w === 'w' ? 2 : 0) + (x === 'x' ? 1 : 0);
             const owner = toOctal(perms[1], perms[2], perms[3]);
@@ -326,7 +344,18 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         return { display: perms };
     };
 
-    const permInfo = parsePermissions(file.permissions);
+    // Also parse octal from permissions_mode if available
+    const getPermissionsInfo = (): { display: string; octal?: string } => {
+        if (file.permissions) return parsePermissions(file.permissions);
+        if (file.permissions_mode != null) {
+            const mode = file.permissions_mode & 0o777;
+            const octal = mode.toString(8).padStart(3, '0');
+            return parsePermissions(octal);
+        }
+        return { display: '—' };
+    };
+
+    const permInfo = getPermissionsInfo();
 
     const PropertyRow: React.FC<{ icon: React.ReactNode; label: string; value: string; copyable?: boolean; mono?: boolean }> =
         ({ icon, label, value, copyable = false, mono = false }) => (
@@ -345,9 +374,45 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                     title="Copy"
                 >
                     {copiedField === label ? (
-                        <span className="text-green-500 text-xs">Copied!</span>
+                        <span className="text-green-500 text-xs">{t('common.copied')}</span>
                     ) : (
                         <Copy size={14} />
+                    )}
+                </button>
+            )}
+        </div>
+    );
+
+    // Checksum row helper
+    const ChecksumRow: React.FC<{ label: string; value?: string; algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512'; truncate?: boolean }> =
+        ({ label, value, algorithm, truncate: shouldTruncate = false }) => (
+        <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-gray-500 w-16 shrink-0">{label}:</span>
+            {value ? (
+                <code
+                    className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded truncate"
+                    title={value}
+                >
+                    {shouldTruncate && value.length > 32 ? `${value.substring(0, 32)}...` : value}
+                </code>
+            ) : (
+                <button
+                    onClick={() => onCalculateChecksum?.(algorithm)}
+                    disabled={file.checksum?.calculating}
+                    className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
+                >
+                    {file.checksum?.calculating ? t('properties.calculating') : t('properties.calculate')}
+                </button>
+            )}
+            {value && (
+                <button
+                    onClick={() => copyToClipboard(value, label)}
+                    className="text-gray-400 hover:text-blue-500 shrink-0"
+                >
+                    {copiedField === label ? (
+                        <span className="text-green-500 text-[10px]">{t('common.copied')}</span>
+                    ) : (
+                        <Copy size={12} />
                     )}
                 </button>
             )}
@@ -373,7 +438,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                 {file.name}
                             </h3>
                             <span className="text-xs text-gray-500">
-                                {file.is_dir ? 'Folder' : 'File'} • {file.isRemote ? `Remote (${file.protocol?.toUpperCase() || 'FTP'})` : 'Local'}
+                                {file.is_dir ? t('properties.folder') : t('properties.file')} {' \u2022 '} {file.isRemote ? `${t('properties.remote')} (${file.protocol?.toUpperCase() || 'FTP'})` : t('properties.local')}
                             </span>
                         </div>
                     </div>
@@ -385,113 +450,215 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                     </button>
                 </div>
 
-                {/* Properties List */}
-                <div className="p-4 overflow-y-auto max-h-[calc(80vh-120px)]">
-                    {/* Basic Info */}
-                    <PropertyRow
-                        icon={<FileText size={16} />}
-                        label="Name"
-                        value={file.name}
-                        copyable
-                    />
-                    <PropertyRow
-                        icon={<HardDrive size={16} />}
-                        label="Path"
-                        value={file.path}
-                        copyable
-                        mono
-                    />
+                {/* Tab Bar */}
+                <div className="flex border-b border-gray-200 dark:border-gray-700">
+                    {(['general', 'permissions', 'checksum'] as const).map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
+                                activeTab === tab
+                                    ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            {tab === 'general' ? t('properties.general') : tab === 'permissions' ? t('properties.permissions') : t('properties.checksum')}
+                        </button>
+                    ))}
+                </div>
 
-                    {!file.is_dir && (
+                {/* Tab Content */}
+                <div className="p-4 overflow-y-auto max-h-[calc(80vh-180px)]">
+
+                    {/* General Tab */}
+                    {activeTab === 'general' && (
                         <>
                             <PropertyRow
-                                icon={<Hash size={16} />}
-                                label="Size"
-                                value={`${formatBytes(file.size)}${file.size ? ` (${file.size.toLocaleString()} bytes)` : ''}`}
+                                icon={<FileText size={16} />}
+                                label={t('properties.name')}
+                                value={file.name}
+                                copyable
                             />
                             <PropertyRow
-                                icon={<FileType size={16} />}
-                                label="Type"
-                                value={`${mimeType}${extension ? ` (.${extension})` : ''}`}
+                                icon={<HardDrive size={16} />}
+                                label={t('properties.path')}
+                                value={file.path}
+                                copyable
+                                mono
                             />
+
+                            {!file.is_dir && (
+                                <>
+                                    <PropertyRow
+                                        icon={<Hash size={16} />}
+                                        label={t('properties.size')}
+                                        value={`${formatBytes(file.size)}${file.size ? ` (${file.size.toLocaleString()} bytes)` : ''}`}
+                                    />
+                                    <PropertyRow
+                                        icon={<FileType size={16} />}
+                                        label={t('properties.type')}
+                                        value={`${mimeType}${extension ? ` (.${extension})` : ''}`}
+                                    />
+                                </>
+                            )}
+
+                            {/* Folder size */}
+                            {file.is_dir && (
+                                <div className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                                    <div className="text-gray-400 mt-0.5"><Hash size={16} /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('properties.size')}</div>
+                                        {folderSize ? (
+                                            <div className="text-sm text-gray-900 dark:text-gray-100">
+                                                {formatBytes(folderSize.total_bytes)} ({folderSize.file_count.toLocaleString()} {t('properties.files')}, {folderSize.dir_count.toLocaleString()} {t('properties.folders')})
+                                            </div>
+                                        ) : onCalculateFolderSize ? (
+                                            <button
+                                                onClick={onCalculateFolderSize}
+                                                disabled={folderSizeCalculating}
+                                                className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400 flex items-center gap-1"
+                                            >
+                                                {folderSizeCalculating ? (
+                                                    <><Loader2 size={12} className="animate-spin" /> {t('properties.calculating')}</>
+                                                ) : (
+                                                    t('properties.calculateSize')
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <span className="text-sm text-gray-500">—</span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <PropertyRow
+                                icon={<Calendar size={16} />}
+                                label={t('properties.modified')}
+                                value={formatDate(file.modified)}
+                            />
+                            {file.created !== undefined && (
+                                <PropertyRow
+                                    icon={<Calendar size={16} />}
+                                    label={t('properties.created')}
+                                    value={formatDate(file.created)}
+                                />
+                            )}
+                            {file.accessed !== undefined && (
+                                <PropertyRow
+                                    icon={<Clock size={16} />}
+                                    label={t('properties.accessed')}
+                                    value={formatDate(file.accessed)}
+                                />
+                            )}
+                            {file.is_symlink && file.link_target && (
+                                <PropertyRow
+                                    icon={<LinkIcon size={16} />}
+                                    label={t('properties.linkTarget')}
+                                    value={file.link_target}
+                                    copyable
+                                    mono
+                                />
+                            )}
                         </>
                     )}
 
-                    <PropertyRow
-                        icon={<Calendar size={16} />}
-                        label="Modified"
-                        value={formatDate(file.modified)}
-                    />
+                    {/* Permissions Tab */}
+                    {activeTab === 'permissions' && (
+                        <>
+                            {(file.permissions || file.permissions_mode != null) ? (
+                                <>
+                                    <PropertyRow
+                                        icon={<Shield size={16} />}
+                                        label={t('properties.permissionsText')}
+                                        value={permInfo.display}
+                                        mono
+                                    />
+                                    {permInfo.octal && (
+                                        <PropertyRow
+                                            icon={<Hash size={16} />}
+                                            label={t('properties.permissionsOctal')}
+                                            value={permInfo.octal}
+                                            mono
+                                            copyable
+                                        />
+                                    )}
+                                </>
+                            ) : (
+                                <div className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                                    <div className="text-gray-400 mt-0.5"><Shield size={16} /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('properties.permissions')}</div>
+                                        <div className="text-sm text-gray-500">—</div>
+                                    </div>
+                                </div>
+                            )}
 
-                    {/* Permissions (remote files only) */}
-                    {file.isRemote && file.permissions && (
-                        <PropertyRow
-                            icon={<Shield size={16} />}
-                            label="Permissions"
-                            value={`${permInfo.display}${permInfo.octal ? ` (${permInfo.octal})` : ''}`}
-                            mono
-                        />
+                            {(file.owner || file.group) && (
+                                <>
+                                    {file.owner && (
+                                        <PropertyRow
+                                            icon={<User size={16} />}
+                                            label={t('properties.owner')}
+                                            value={file.owner}
+                                        />
+                                    )}
+                                    {file.group && (
+                                        <PropertyRow
+                                            icon={<Users size={16} />}
+                                            label={t('properties.group')}
+                                            value={file.group}
+                                        />
+                                    )}
+                                </>
+                            )}
+
+                            {file.inode != null && (
+                                <PropertyRow
+                                    icon={<Hash size={16} />}
+                                    label={t('properties.inode')}
+                                    value={file.inode.toString()}
+                                />
+                            )}
+                            {file.hard_links != null && (
+                                <PropertyRow
+                                    icon={<LinkIcon size={16} />}
+                                    label={t('properties.hardLinks')}
+                                    value={file.hard_links.toString()}
+                                />
+                            )}
+
+                            {/* Show message when no permission data at all */}
+                            {!file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && (
+                                <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                                    {t('properties.notAvailable')}
+                                </div>
+                            )}
+                        </>
                     )}
 
-                    {/* Checksum Section (files only) */}
-                    {!file.is_dir && onCalculateChecksum && (
-                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                                Checksum Verification
-                            </div>
-
-                            {/* MD5 */}
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs text-gray-500 w-16">MD5:</span>
-                                {file.checksum?.md5 ? (
-                                    <code className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded truncate">
-                                        {file.checksum.md5}
-                                    </code>
-                                ) : (
-                                    <button
-                                        onClick={() => onCalculateChecksum('md5')}
-                                        disabled={file.checksum?.calculating}
-                                        className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
-                                    >
-                                        {file.checksum?.calculating ? 'Calculating...' : 'Calculate'}
-                                    </button>
-                                )}
-                                {file.checksum?.md5 && (
-                                    <button
-                                        onClick={() => copyToClipboard(file.checksum!.md5!, 'MD5')}
-                                        className="text-gray-400 hover:text-blue-500"
-                                    >
-                                        <Copy size={12} />
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* SHA-256 */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500 w-16">SHA-256:</span>
-                                {file.checksum?.sha256 ? (
-                                    <code className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded truncate" title={file.checksum.sha256}>
-                                        {file.checksum.sha256.substring(0, 32)}...
-                                    </code>
-                                ) : (
-                                    <button
-                                        onClick={() => onCalculateChecksum('sha256')}
-                                        disabled={file.checksum?.calculating}
-                                        className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
-                                    >
-                                        {file.checksum?.calculating ? 'Calculating...' : 'Calculate'}
-                                    </button>
-                                )}
-                                {file.checksum?.sha256 && (
-                                    <button
-                                        onClick={() => copyToClipboard(file.checksum!.sha256!, 'SHA-256')}
-                                        className="text-gray-400 hover:text-blue-500"
-                                    >
-                                        <Copy size={12} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                    {/* Checksum Tab */}
+                    {activeTab === 'checksum' && (
+                        <>
+                            {!file.is_dir && onCalculateChecksum ? (
+                                <div className="space-y-1">
+                                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">
+                                        {t('properties.checksumVerification')}
+                                    </div>
+                                    <ChecksumRow label="MD5" value={file.checksum?.md5} algorithm="md5" />
+                                    <ChecksumRow label="SHA-1" value={file.checksum?.sha1} algorithm="sha1" truncate />
+                                    <ChecksumRow label="SHA-256" value={file.checksum?.sha256} algorithm="sha256" truncate />
+                                    <ChecksumRow label="SHA-512" value={file.checksum?.sha512} algorithm="sha512" truncate />
+                                </div>
+                            ) : file.is_dir ? (
+                                <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                                    {t('properties.checksumFolderNA')}
+                                </div>
+                            ) : (
+                                <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                                    {t('properties.notAvailable')}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -501,7 +668,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                         onClick={onClose}
                         className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
                     >
-                        Close
+                        {t('common.close')}
                     </button>
                 </div>
             </div>
