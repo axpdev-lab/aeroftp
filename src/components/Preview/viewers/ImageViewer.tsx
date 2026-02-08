@@ -10,7 +10,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette } from 'lucide-react';
 import { ViewerBaseProps, ImageMetadata } from '../types';
 
 interface ImageViewerProps extends ViewerBaseProps {
@@ -40,6 +40,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [metadata, setMetadata] = useState<ImageMetadata | null>(null);
+    const [colorPickMode, setColorPickMode] = useState(false);
+    const [pickedColor, setPickedColor] = useState<string | null>(null);
 
     // Image source URL
     const imageSrc = file.blobUrl || file.content as string || '';
@@ -139,6 +141,31 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         setIsDragging(false);
     }, []);
 
+    // Color picker: draw image on canvas and read pixel at click position
+    const handleColorPick = useCallback((e: React.MouseEvent) => {
+        if (!colorPickMode || !imageRef.current) return;
+        e.stopPropagation();
+        const img = imageRef.current;
+        const rect = img.getBoundingClientRect();
+        // Map click position to image natural coordinates
+        const scaleX = img.naturalWidth / rect.width;
+        const scaleY = img.naturalHeight / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top) * scaleY);
+        // Draw on offscreen canvas to read pixel
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const pixel = ctx.getImageData(x, y, 1, 1).data;
+        const hex = `#${pixel[0].toString(16).padStart(2, '0')}${pixel[1].toString(16).padStart(2, '0')}${pixel[2].toString(16).padStart(2, '0')}`;
+        setPickedColor(hex);
+        setColorPickMode(false);
+        navigator.clipboard.writeText(hex).catch(() => {});
+    }, [colorPickMode]);
+
     // Render loading state
     if (!imageSrc) {
         return (
@@ -195,6 +222,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             <Minimize2 size={18} className="text-gray-400" />
                         )}
                     </button>
+
+                    <div className="w-px h-6 bg-gray-700 mx-2" />
+
+                    {/* Color Picker */}
+                    <button
+                        onClick={() => { setColorPickMode(p => !p); setPickedColor(null); }}
+                        className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${colorPickMode ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-gray-700 text-gray-400'}`}
+                        title={colorPickMode ? 'Cancel Color Pick' : 'Pick Color from Image'}
+                    >
+                        <Pipette size={18} />
+                        {pickedColor && (
+                            <span className="flex items-center gap-1 text-xs font-mono">
+                                <span className="w-4 h-4 rounded border border-gray-600 inline-block" style={{ backgroundColor: pickedColor }} />
+                                {pickedColor}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
                 {/* Image info */}
@@ -208,7 +252,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {/* Image container */}
             <div
                 ref={containerRef}
-                className={`flex-1 overflow-hidden flex items-center justify-center ${isDragging ? 'cursor-grabbing' : zoom > 1 ? 'cursor-grab' : 'cursor-default'
+                className={`flex-1 overflow-hidden flex items-center justify-center ${colorPickMode ? 'cursor-crosshair' : isDragging ? 'cursor-grabbing' : zoom > 1 ? 'cursor-grab' : 'cursor-default'
                     }`}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
@@ -236,6 +280,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     ref={imageRef}
                     src={imageSrc}
                     alt={file.name}
+                    onClick={handleColorPick}
                     className={`max-w-full max-h-full transition-opacity duration-300 select-none ${imageLoaded ? 'opacity-100' : 'opacity-0'
                         }`}
                     style={{

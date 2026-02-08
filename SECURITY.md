@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 1.9.x   | Yes (current) |
+| 2.0.x   | Yes (current) |
+| 1.9.x   | Security fixes only |
 | 1.8.x   | Security fixes only |
-| 1.7.x   | Security fixes only |
-| < 1.7   | No  |
+| < 1.8   | No  |
 
 ## Security Architecture
 
@@ -100,7 +100,7 @@ AeroFTP v1.9.0 introduces full vault export/import for disaster recovery and dev
 | **Category tracking** | Export summary shows count per category (e.g., "12 server credentials, 3 AI keys, 5 OAuth tokens") |
 | **Import merge strategies** | **Skip existing**: only import entries not already in the vault. **Overwrite all**: replace all entries with backup data |
 | **Integrity verification** | HMAC-SHA256 over the encrypted payload; import fails gracefully if file is corrupted or password is wrong |
-| **UI** | Settings > Security > Backup/Restore with progress indicator and category summary |
+| **UI** | Settings > Backup tab with progress indicator and category summary |
 
 ### Client-Side Encryption (v1.8.0)
 
@@ -194,13 +194,16 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 ### AI Tool Security (v1.6.0+)
 
-- **Tool name whitelist**: Only 27 allowed tool names accepted by the backend (25 built-in + `rag_index` + `rag_search`)
-- **Path validation**: Null byte rejection, path traversal prevention (`..`), 4096-char length limit
-- **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries
+- **Tool name whitelist**: Only 28 allowed tool names accepted by the backend (25 built-in + `rag_index` + `rag_search` + `agent_memory_write`)
+- **Path validation**: Null byte rejection, path traversal prevention (component-level `..` detection via `std::path::Component::ParentDir`), 4096-char length limit. Applied in both `ai_tools.rs` (`validate_path`) and `context_intelligence.rs` (`validate_context_path`)
+- **Tool argument validation** (v2.0.x): Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits before tool execution
+- **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries, agent memory 50KB, config files 5MB
 - **Native function calling**: SEC-002 resolved — structured JSON tool calls replace regex parsing for OpenAI, Anthropic, Gemini
 - **Danger levels**: Safe (auto-execute), Medium (user confirmation), High (explicit approval for delete operations)
 - **Rate limiting**: 20 requests per minute per AI provider, frontend token bucket
+- **Context intelligence security** (v2.0.x): All 5 `context_intelligence.rs` commands use `validate_context_path()`. Agent memory writes protected by `MEMORY_WRITE_LOCK` Mutex (TOCTOU prevention). Category input sanitized (alphanumeric + underscore/hyphen, max 30 chars). Config file reads capped at 5MB. Git status output limited to 100 entries
 - **Plugin sandboxing** (v1.9.0): Custom tools run as isolated subprocesses with 30s timeout, 1MB output limit, and plugin ID validation (alphanumeric + underscore only). Plugin execution goes through a separate `execute_plugin_tool` command, not the built-in tool whitelist
+- **Provider-specific hardening** (v2.0.0): Anthropic prompt caching uses ephemeral cache control. OpenAI tools enforce `strict: true` with `additionalProperties: false` for schema validation. Gemini requests use `systemInstruction` top-level field (not in-message). Ollama pull model streams are validated NDJSON. Tool argument pre-validation via `validate_tool_args` checks file existence, permissions, and dangerous paths before execution
 
 ### OAuth Session Security (v1.5.3)
 
@@ -223,7 +226,8 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 | **FTP Insecure Warning** | Visual red badge and warning banner on FTP selection | No competitor warns users about plaintext FTP risks |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords from RAM | Rust-exclusive advantage over C++/Java competitors |
 | **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString | Prevents password leakage in memory dumps |
-| **AI Tool Sandboxing** | 27-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation | AI cannot execute arbitrary commands or access restricted paths |
+| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation | AI cannot execute arbitrary commands or access restricted paths |
+| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis (v2.0.0) | AI operations validated before execution with visual preview of changes |
 | **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS | Full control over encryption level per connection |
 
 ## Known Issues
@@ -250,4 +254,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v1.9.0 - 6 February 2026*
+*AeroFTP v2.0.0 - 7 February 2026*

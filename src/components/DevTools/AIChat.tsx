@@ -1,74 +1,82 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Sparkles, Settings2, Mic, MicOff, ChevronDown, Plus, Trash2, MessageSquare, PanelLeftClose, PanelLeftOpen, Copy, Check, ImageIcon, X, Download } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { open, save } from '@tauri-apps/plugin-dialog';
-import { readFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
-import { AISettings, AIProviderType, TaskType } from '../../types/ai';
-import { AgentToolCall, AGENT_TOOLS, generateToolsPrompt, toNativeDefinitions, requiresApproval, getToolByName } from '../../types/tools';
+import { AISettings, AIProviderType } from '../../types/ai';
+import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
-import { Conversation, ConversationMessage, loadHistory, saveConversation, deleteConversation, createConversation } from '../../utils/chatHistory';
+import { BatchToolApproval } from './BatchToolApproval';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { ThinkingBlock } from './ThinkingBlock';
+import type { Conversation } from '../../utils/chatHistory';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
+import { logger } from '../../utils/logger';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS } from './aiChatTypes';
+import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult } from './aiChatUtils';
+import { analyzeToolError } from './aiChatToolRetry';
+import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
+import { ToolMacro, resolveMacroSteps, macrosToToolDefinitions, isMacroCall, getMacroName, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
+import { validateToolArgs } from './aiChatToolValidation';
+import { computeTokenInfo } from './aiChatTokenInfo';
+import { useAIChatImages } from './useAIChatImages';
+import { useAIChatConversations } from './useAIChatConversations';
+import { useAgentMemory } from './useAgentMemory';
+import { buildContextBlock, buildSystemPrompt } from './aiChatSystemPrompt';
+import { getParameterPreset } from './aiProviderProfiles';
+import { detectProjectContext, invalidateProjectCache, fetchFileImports, fetchGitContext } from './aiChatProjectContext';
+import { buildSmartContext, formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
+import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
+import { BranchSelector } from './ConversationBranch';
+import type { ProjectContext } from '../../types/contextIntelligence';
+import { AIChatHeader } from './AIChatHeader';
+import { DEFAULT_TEMPLATES, loadCustomTemplates, resolveTemplate } from './aiChatPromptTemplates';
+import type { PromptTemplate } from './aiChatPromptTemplates';
+import PromptTemplateSelector from './PromptTemplateSelector';
+import { ChatSearchOverlay, type SearchMatch } from './ChatSearchOverlay';
+import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
+import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
+import { CostBudgetIndicator } from './CostBudgetIndicator';
 
-// Vision constants
-const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
-const MAX_IMAGES = 5;
-const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_DIMENSION = 2048;
+/** Maximum autonomous tool-call steps before stopping */
+const MAX_AUTO_STEPS = 10;
 
-interface VisionImage {
-    data: string;       // base64 (no data URI prefix)
-    mediaType: string;  // "image/jpeg" etc.
-    preview: string;    // "data:image/jpeg;base64,..." for local display
-}
+/** Dynamic thinking messages shown during AI response loading */
+const THINKING_MESSAGES = [
+    'Thinking...', 'Analyzing...', 'Processing...', 'Reasoning...',
+    'Connecting the dots...', 'Almost there...', 'Crafting response...',
+    'Exploring options...', 'Percolating...', 'Synthesizing...',
+    'Evaluating...', 'Formulating...', 'Brainstorming...',
+    'Crunching data...', 'Pondering...', 'Cooking up ideas...',
+];
 
-interface Message {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
-    images?: VisionImage[];
-    modelInfo?: {
-        modelName: string;
-        providerName: string;
-        providerType: AIProviderType;
-    };
-    tokenInfo?: {
-        inputTokens?: number;
-        outputTokens?: number;
-        totalTokens?: number;
-        cost?: number;
-    };
-}
+/** 3×3 grid-dots animated spinner */
+const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 105 105" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width={size} height={size} className={className}>
+        <circle cx="12.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="0s" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="12.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="100ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="300ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="600ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="800ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="400ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="12.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="200ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="500ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="700ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+    </svg>
+);
 
-interface AIChatProps {
-    className?: string;
-    remotePath?: string;
-    localPath?: string;
-    /** Theme hint - AI Chat stays dark but may use for future enhancements */
-    isLightTheme?: boolean;
-    /** Active protocol type (e.g. 'sftp', 'ftp', 'googledrive') */
-    providerType?: string;
-    /** Whether currently connected to remote */
-    isConnected?: boolean;
-    /** Currently selected files in the file panel */
-    selectedFiles?: string[];
-    /** Server hostname for connection context */
-    serverHost?: string;
-    /** Server port for connection context */
-    serverPort?: number;
-    /** Username for connection context */
-    serverUser?: string;
-    /** Callback to refresh file panels after AI tool mutations */
-    onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
-    /** Currently open file name in the code editor */
-    editorFileName?: string;
-    /** Currently open file path in the code editor */
-    editorFilePath?: string;
+/** Hook: cycle through thinking messages while loading */
+function useThinkingMessage(isActive: boolean, intervalMs = 3000): string {
+    const [index, setIndex] = useState(0);
+    useEffect(() => {
+        if (!isActive) { setIndex(0); return; }
+        const id = setInterval(() => setIndex(i => (i + 1) % THINKING_MESSAGES.length), intervalMs);
+        return () => clearInterval(id);
+    }, [isActive, intervalMs]);
+    return THINKING_MESSAGES[index];
 }
 
 // Get provider icon based on type
@@ -84,178 +92,62 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
     }
 };
 
-// Rate limiter: tracks request timestamps per provider
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_RPM = 20; // max requests per minute per provider
-
-function checkRateLimit(providerId: string): { allowed: boolean; waitSeconds: number } {
-    const now = Date.now();
-    const windowMs = 60_000;
-    const timestamps = (rateLimitMap.get(providerId) || []).filter(t => now - t < windowMs);
-    rateLimitMap.set(providerId, timestamps);
-    if (timestamps.length >= RATE_LIMIT_RPM) {
-        const oldest = timestamps[0];
-        const waitMs = windowMs - (now - oldest);
-        return { allowed: false, waitSeconds: Math.ceil(waitMs / 1000) };
-    }
-    return { allowed: true, waitSeconds: 0 };
-}
-
-function recordRequest(providerId: string) {
-    const timestamps = rateLimitMap.get(providerId) || [];
-    timestamps.push(Date.now());
-    rateLimitMap.set(providerId, timestamps);
-}
-
-// Retry with exponential backoff
-async function withRetry<T>(
-    fn: () => Promise<T>,
-    maxAttempts: number = 3,
-    baseDelayMs: number = 1000,
-): Promise<T> {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            return await fn();
-        } catch (error: unknown) {
-            lastError = error;
-            const errStr = String(error).toLowerCase();
-            // Only retry on transient errors (network, rate limit, server errors)
-            const isRetryable = errStr.includes('rate limit') ||
-                errStr.includes('timeout') ||
-                errStr.includes('429') ||
-                errStr.includes('500') ||
-                errStr.includes('502') ||
-                errStr.includes('503') ||
-                errStr.includes('network') ||
-                errStr.includes('fetch');
-            if (!isRetryable || attempt === maxAttempts - 1) throw error;
-            const delay = baseDelayMs * Math.pow(2, attempt);
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
-    throw lastError;
-}
-
-// Estimate token count for a string (~4 chars per token heuristic)
-function estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
-}
-
-// Build a context-aware message window within a token budget
-function buildMessageWindow(
-    allMessages: Message[],
-    systemPromptTokens: number,
-    currentUserTokens: number,
-    maxContextTokens: number,
-): { messages: Array<{ role: string; content: string }>; summarized: boolean } {
-    // Reserve tokens: system prompt + current message + response buffer
-    const responseBuffer = 1024; // reserve for the AI response
-    const availableTokens = maxContextTokens - systemPromptTokens - currentUserTokens - responseBuffer;
-
-    if (availableTokens <= 0) {
-        // Not enough budget — just include last 2 messages
-        return {
-            messages: allMessages.slice(-2).map(m => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: m.content,
-            })),
-            summarized: false,
-        };
-    }
-
-    // Walk backwards from most recent, accumulating tokens
-    let usedTokens = 0;
-    let lastIncludedIndex = allMessages.length;
-
-    for (let i = allMessages.length - 1; i >= 0; i--) {
-        const msgTokens = estimateTokens(allMessages[i].content);
-        if (usedTokens + msgTokens > availableTokens) {
-            lastIncludedIndex = i + 1;
-            break;
-        }
-        usedTokens += msgTokens;
-        lastIncludedIndex = i;
-    }
-
-    // If all messages fit, return them as-is
-    if (lastIncludedIndex === 0) {
-        return {
-            messages: allMessages.map(m => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: m.content,
-            })),
-            summarized: false,
-        };
-    }
-
-    // Some messages were excluded — generate a summary placeholder
-    const excludedMessages = allMessages.slice(0, lastIncludedIndex);
-    const includedMessages = allMessages.slice(lastIncludedIndex);
-
-    // Build a compact summary of excluded messages
-    const summaryParts: string[] = [];
-    for (const msg of excludedMessages) {
-        const preview = msg.content.slice(0, 100) + (msg.content.length > 100 ? '...' : '');
-        summaryParts.push(`[${msg.role}]: ${preview}`);
-    }
-
-    const summaryText = `Previous conversation summary (${excludedMessages.length} messages):\n${summaryParts.slice(-5).join('\n')}`;
-
-    const result: Array<{ role: string; content: string }> = [];
-    result.push({ role: 'assistant', content: summaryText });
-
-    for (const m of includedMessages) {
-        result.push({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.content,
-        });
-    }
-
-    return { messages: result, summarized: true };
-}
-
-// Selected model state
-interface SelectedModel {
-    providerId: string;
-    providerName: string;
-    providerType: AIProviderType;
-    modelId: string;
-    modelName: string;
-    displayName: string;
-}
-
-// Tool names that mutate the filesystem and should trigger a panel refresh
-const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
-    remote_delete: 'remote', remote_rename: 'remote', remote_mkdir: 'remote',
-    remote_upload: 'remote', remote_edit: 'remote', upload_files: 'remote',
-    download_files: 'local', remote_download: 'local',
-    local_write: 'local', local_delete: 'local', local_rename: 'local',
-    local_mkdir: 'local', local_edit: 'local',
-    archive_create: 'both', archive_extract: 'both',
-};
-
 export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation, editorFileName, editorFilePath }) => {
     const t = useTranslation();
-    const [messages, setMessages] = useState<Message[]>([]);
+
+    // Conversation management (hook)
+    const {
+        messages, setMessages, conversations, activeConversationId,
+        showHistory, setShowHistory, showExportMenu, setShowExportMenu,
+        expandedMessages, setExpandedMessages,
+        messagesRef, conversationsRef,
+        persistConversation, startNewChat: startNewChatBase, switchConversation: switchConversationBase,
+        handleDeleteConversation, loadChatHistory, exportConversation,
+        activeBranchId, forkConversation, switchBranch, deleteBranch,
+    } = useAIChatConversations();
+
+    // Image/vision handling (hook)
+    const { attachedImages, handleImagePick, handlePaste, removeImage, clearImages } = useAIChatImages();
+
     const [input, setInput] = useState('');
     const [showModelSelector, setShowModelSelector] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const thinkingMessage = useThinkingMessage(isLoading);
     const [isListening, setIsListening] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [availableModels, setAvailableModels] = useState<SelectedModel[]>([]);
     const [selectedModel, setSelectedModel] = useState<SelectedModel | null>(null);
-    const [pendingToolCall, setPendingToolCall] = useState<AgentToolCall | null>(null);
-    const [conversations, setConversations] = useState<Conversation[]>([]);
-    const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-    const [showHistory, setShowHistory] = useState(false);
-    const [attachedImages, setAttachedImages] = useState<VisionImage[]>([]);
-    const [showExportMenu, setShowExportMenu] = useState(false);
+    const [pendingToolCalls, setPendingToolCalls] = useState<AgentToolCall[]>([]);
     const [isAutoExecuting, setIsAutoExecuting] = useState(false);
     const [autoStepCount, setAutoStepCount] = useState(0);
-    const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+    const [macros] = useState<ToolMacro[]>(DEFAULT_MACROS);
+
+    // Phase 4: Search, Templates, Cost Budget
+    const [showSearch, setShowSearch] = useState(false);
+    const [showTemplates, setShowTemplates] = useState(false);
+    const [allTemplates, setAllTemplates] = useState<PromptTemplate[]>(DEFAULT_TEMPLATES);
+    const [conversationCost, setConversationCost] = useState<ConversationCost | null>(null);
+    const [budgetCheck, setBudgetCheck] = useState<BudgetCheckResult | null>(null);
+    const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
+    const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+    const messageListRef = useRef<HTMLDivElement>(null);
+
+    // Wrap startNewChat to also clear pending tool calls, token budget, and cost
+    const startNewChat = useCallback(() => {
+        startNewChatBase();
+        setPendingToolCalls([]);
+        setTokenBudgetData(null);
+        setConversationCost(null);
+        setBudgetCheck(null);
+    }, [startNewChatBase]);
+
+    // Wrap switchConversation to also clear pending tool calls
+    const switchConversation = useCallback((conv: Conversation) => {
+        switchConversationBase(conv);
+        setPendingToolCalls([]);
+    }, [switchConversationBase]);
     // AI settings cached from vault (sync init from localStorage, then async vault refresh)
     const [cachedAiSettings, setCachedAiSettings] = useState<AISettings | null>(() => {
         try {
@@ -268,13 +160,23 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>;
         messageHistory: Array<Record<string, unknown>>;
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType };
-        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
     } | null>(null);
+    const streamingMsgIdRef = useRef<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const historyLoadedRef = useRef(false);
     const ragIndexRef = useRef<Record<string, unknown> | null>(null);
+    const ragIndexedPathRef = useRef<string | null>(null);
     const [pluginManifests, setPluginManifests] = useState<PluginManifest[]>([]);
+
+    // Phase 3: Context Intelligence
+    const projectPath = localPath || remotePath;
+    const { memory: agentMemory, appendMemory: appendAgentMemory } = useAgentMemory(projectPath);
+    const projectContextRef = useRef<ProjectContext | null>(null);
+    const gitSummaryRef = useRef<string | null>(null);
+    const gitBranchRef = useRef<string | null>(null);
+    const fileImportsRef = useRef<string[]>([]);
+    const [tokenBudgetData, setTokenBudgetData] = useState<TokenBudgetData | null>(null);
 
     // Refresh AI settings from vault (async, with localStorage fallback)
     const refreshAiSettings = useCallback(async () => {
@@ -292,206 +194,82 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             .catch(() => setPluginManifests([]));
     }, []);
 
-    // Merge built-in tools with plugin tools
-    const pluginTools = allPluginTools(pluginManifests);
-    const allTools = [...AGENT_TOOLS, ...pluginTools];
+    // Phase 4: Init budget manager + load custom templates on mount
+    useEffect(() => {
+        initBudgetManager();
+        loadCustomTemplates().then(custom => {
+            if (custom.length > 0) setAllTemplates([...DEFAULT_TEMPLATES, ...custom]);
+        });
+    }, []);
+
+    // Merge built-in tools with plugin tools (enforce minimum medium danger for plugins)
+    const pluginTools = allPluginTools(pluginManifests).map(t => ({
+        ...t,
+        dangerLevel: t.dangerLevel === 'safe' ? 'medium' as const : t.dangerLevel,
+    }));
+    const allTools = [...AGENT_TOOLS, ...pluginTools, ...macrosToToolDefinitions(macros)];
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // Resize image to max dimension using canvas
-    const resizeImage = (dataUrl: string, maxDim: number): Promise<string> => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                if (img.width <= maxDim && img.height <= maxDim) {
-                    resolve(dataUrl);
-                    return;
-                }
-                const scale = Math.min(maxDim / img.width, maxDim / img.height);
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.round(img.width * scale);
-                canvas.height = Math.round(img.height * scale);
-                const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.85));
-            };
-            img.src = dataUrl;
+    // Phase 4: Keyboard shortcuts (#79)
+    const shortcuts = getDefaultShortcuts({
+        clearChat: startNewChat,
+        newChat: startNewChat,
+        exportChat: () => exportConversation('markdown'),
+        toggleSearch: () => setShowSearch(prev => !prev),
+        focusInput: () => inputRef.current?.focus(),
+    });
+    useKeyboardShortcuts(shortcuts);
+
+    // Phase 4: Handle search highlight navigation
+    const handleSearchHighlightMessage = useCallback((messageId: string) => {
+        const msgEl = messageListRef.current?.querySelector(`[data-message-id="${messageId}"]`);
+        if (msgEl) msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, []);
+
+    const handleSearchResults = useCallback((matches: SearchMatch[], activeIndex: number) => {
+        setSearchMatches(matches);
+        setActiveSearchIndex(activeIndex);
+    }, []);
+
+    // Phase 4: Template selection handler (#75)
+    const handleTemplateSelect = useCallback((template: PromptTemplate) => {
+        const resolved = resolveTemplate(template, {
+            selection: input.startsWith('/') ? '' : input,
+            fileName: editorFileName,
+            filePath: editorFilePath,
         });
-    };
-
-    // Add an image from a data URL
-    const addImage = async (dataUrl: string, mediaType: string) => {
-        if (attachedImages.length >= MAX_IMAGES) return;
-
-        // Resize if needed
-        const resized = await resizeImage(dataUrl, MAX_DIMENSION);
-        const base64 = resized.split(',')[1] || resized;
-        const finalMediaType = resized.startsWith('data:image/jpeg') ? 'image/jpeg' : mediaType;
-
-        // Check size
-        const sizeBytes = Math.round(base64.length * 0.75);
-        if (sizeBytes > MAX_IMAGE_SIZE) return;
-
-        setAttachedImages(prev => [...prev, {
-            data: base64,
-            mediaType: finalMediaType,
-            preview: resized.startsWith('data:') ? resized : `data:${finalMediaType};base64,${base64}`,
-        }]);
-    };
-
-    // Pick image from filesystem
-    const handleImagePick = async () => {
-        if (attachedImages.length >= MAX_IMAGES) return;
-        try {
-            const selected = await open({
-                multiple: true,
-                filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
-            });
-            if (!selected) return;
-            const paths = Array.isArray(selected) ? selected : [selected];
-            for (const filePath of paths.slice(0, MAX_IMAGES - attachedImages.length)) {
-                const bytes = await readFile(filePath);
-                const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-                const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
-                const mediaType = mimeMap[ext] || 'image/png';
-
-                // Convert Uint8Array to base64
-                let binary = '';
-                const len = bytes.length;
-                for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
-                const base64 = btoa(binary);
-                const dataUrl = `data:${mediaType};base64,${base64}`;
-                await addImage(dataUrl, mediaType);
+        setInput(resolved);
+        setShowTemplates(false);
+        setTimeout(() => {
+            if (inputRef.current) {
+                inputRef.current.focus();
+                inputRef.current.style.height = 'auto';
+                inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
             }
-        } catch { /* dialog cancelled */ }
-    };
+        }, 50);
+    }, [input, editorFileName, editorFilePath]);
 
-    // Handle clipboard paste for images
-    const handlePaste = (e: React.ClipboardEvent) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-        for (const item of Array.from(items)) {
-            if (item.type.startsWith('image/') && SUPPORTED_IMAGE_TYPES.includes(item.type)) {
-                e.preventDefault();
-                const blob = item.getAsFile();
-                if (!blob) continue;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const dataUrl = reader.result as string;
-                    const mediaType = item.type;
-                    addImage(dataUrl, mediaType);
-                };
-                reader.readAsDataURL(blob);
-                return; // Only handle first image
-            }
-        }
-    };
-
-    // Friendly tool labels for display
-    const toolLabels: Record<string, string> = {
-        remote_list: 'Listing remote files',
-        remote_read: 'Reading remote file',
-        remote_write: 'Writing remote file',
-        remote_rename: 'Renaming remote file',
-        remote_delete: 'Deleting remote file',
-        remote_mkdir: 'Creating remote folder',
-        remote_upload: 'Uploading file',
-        remote_download: 'Downloading file',
-        remote_search: 'Searching remote files',
-        remote_move: 'Moving remote file',
-        local_list: 'Listing local files',
-        local_read: 'Reading local file',
-        local_write: 'Writing local file',
-        local_search: 'Searching local files',
-        local_mkdir: 'Creating local folder',
-        local_delete: 'Deleting local item',
-        local_rename: 'Renaming local item',
-        upload_files: 'Uploading files',
-        download_files: 'Downloading files',
-        local_edit: 'Editing local file',
-        remote_edit: 'Editing remote file',
-        sync_preview: 'Comparing directories',
-        archive_create: 'Creating archive',
-        archive_extract: 'Extracting archive',
-        terminal_execute: 'Running command in terminal',
-    };
-
-    // Simple markdown renderer with strict HTML sanitization.
-    // DOMPurify strips ALL raw HTML from AI responses, then markdown syntax is safe.
-    const renderMarkdown = (text: string): string => {
-        // Escape raw HTML first to prevent XSS from AI content
-        const escaped = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        return escaped
-            // Code blocks (```...```)
-            .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="bg-gray-900 rounded p-2 my-2 overflow-x-auto text-xs"><code>$2</code></pre>')
-            // Inline code (`...`)
-            .replace(/`([^`]+)`/g, '<code class="bg-gray-700 px-1 rounded text-purple-300">$1</code>')
-            // Bold (**...**)
-            .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
-            // Italic (*...* but not **)
-            .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-            // Line breaks
-            .replace(/\n/g, '<br/>');
-    };
-
-    // Escape dynamic values before inserting into tool chip HTML
-    const escapeChipHtml = (value: string): string =>
-        value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-
-    // Replace raw TOOL/ARGS blocks with styled chip using Tailwind classes.
-    // Runs AFTER renderMarkdown so tool chip HTML is trusted (never sanitized).
-    const formatToolCallDisplay = (text: string): string => {
-        return text.replace(
-            /TOOL:\s*(\w+)\s*(?:<br\s*\/?>)\s*ARGS:\s*(\{[^}]*\})/gi,
-            (_match, toolName: string, argsJson: string) => {
-                const label = toolLabels[toolName] || toolName;
-                let detail = '';
-                try {
-                    const decoded = argsJson.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-                    const args = JSON.parse(decoded);
-                    const path = args.path || args.remote_path || args.local_path || '';
-                    if (path) detail = `<span class="opacity-70 ml-1.5">${escapeChipHtml(String(path))}</span>`;
-                    if (args.local_path && args.remote_path) {
-                        const left = escapeChipHtml(String(args.local_path));
-                        const right = escapeChipHtml(String(args.remote_path));
-                        detail = `<span class="opacity-70 ml-1.5">${left} &#8596; ${right}</span>`;
-                    }
-                } catch { /* ignore */ }
-                const isPluginTool = !getToolByName(toolName);
-                const icon = isPluginTool ? '&#129513;' : '&#9881;';
-                const borderColor = isPluginTool ? 'border-cyan-500' : 'border-purple-500';
-                const iconColor = isPluginTool ? 'text-cyan-400' : 'text-purple-400';
-                return `<div class="inline-flex items-center gap-1.5 bg-gray-700 rounded-md px-2.5 py-0.5 my-1 text-xs border-l-[3px] ${borderColor}"><span class="${iconColor}">${icon}</span><strong>${label}</strong>${detail}</div>`;
-            }
-        );
-    };
+    // Tool labels and markdown rendering moved to MarkdownRenderer.tsx
 
     useEffect(() => {
         scrollToBottom();
-        // Persist conversation whenever there's at least 1 message
-        if (messages.length > 0) {
-            persistConversation(messages);
-        }
     }, [messages]);
 
+    // Debounced persist (fix H-004: stale closure + rapid fire)
+    // Note: persistConversation handles activeConversationId === null by creating a new ID
+    useEffect(() => {
+        if (messages.length === 0) return;
+        const timer = setTimeout(() => persistConversation(messages), 1500);
+        return () => clearTimeout(timer);
+    }, [messages, persistConversation]);
+
     // Save conversation on unmount (component destroyed when DevTools closes)
-    const messagesRef = useRef(messages);
-    messagesRef.current = messages;
     useEffect(() => {
         return () => {
-            if (messagesRef.current.length > 0) {
-                persistConversation(messagesRef.current);
-            }
+            if (messagesRef.current.length > 0) persistConversation(messagesRef.current);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -551,7 +329,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     setSelectedModel(defaultModel);
                 }
             } catch (e) {
-                console.error('Failed to load AI settings:', e);
+                logger.error('[AIChat] Failed to load AI settings:', e);
             }
         }
     };
@@ -567,23 +345,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [showSettings]);
 
     // Load chat history on mount
-    useEffect(() => {
-        if (historyLoadedRef.current) return;
-        historyLoadedRef.current = true;
-        loadHistory().then(history => {
-            setConversations(history);
-            // Restore last active conversation
-            if (history.length > 0) {
-                const last = history[0];
-                setActiveConversationId(last.id);
-                setMessages(last.messages.map(m => ({
-                    ...m,
-                    timestamp: new Date(m.timestamp),
-                    modelInfo: m.modelInfo ? { ...m.modelInfo, providerType: m.modelInfo.providerType as AIProviderType } : undefined,
-                })));
-            }
-        }).catch(() => {});
-    }, []);
+    useEffect(() => { loadChatHistory(); }, [loadChatHistory]);
 
     // Listen for "Ask AeroAgent" events from Monaco editor
     useEffect(() => {
@@ -606,80 +368,62 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         return () => window.removeEventListener('aeroagent-ask', handleAskAgent);
     }, []);
 
-    // Auto-index workspace for RAG context
+    // Auto-index workspace for RAG context (fix M-011: debounce + cache by path)
     useEffect(() => {
-        const indexPath = localPath || remotePath;
-        if (!indexPath) { ragIndexRef.current = null; return; }
+        const indexPath = localPath; // Only index local paths - remote paths are not accessible to rag_index
+        if (!indexPath) { ragIndexRef.current = null; ragIndexedPathRef.current = null; return; }
+        // Cache: don't re-index same path
+        if (ragIndexedPathRef.current === indexPath) return;
+        const timer = setTimeout(() => {
+            invoke('execute_ai_tool', {
+                toolName: 'rag_index',
+                args: { path: indexPath, recursive: true, max_files: 100 },
+            }).then((result: unknown) => {
+                ragIndexRef.current = result as Record<string, unknown>;
+                ragIndexedPathRef.current = indexPath;
+            }).catch(() => {
+                ragIndexRef.current = null;
+                ragIndexedPathRef.current = null;
+            });
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [localPath]);
 
-        invoke('execute_ai_tool', {
-            toolName: 'rag_index',
-            args: { path: indexPath, recursive: true, max_files: 100 },
-        }).then((result: unknown) => {
-            ragIndexRef.current = result as Record<string, unknown>;
-        }).catch(() => {
-            ragIndexRef.current = null;
+    // Phase 3: Auto-detect project context (#66)
+    useEffect(() => {
+        if (!projectPath) { projectContextRef.current = null; return; }
+        const timer = setTimeout(() => {
+            detectProjectContext(projectPath).then(ctx => {
+                projectContextRef.current = ctx;
+            });
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [projectPath]);
+
+    // Phase 3: Fetch git context (#70)
+    useEffect(() => {
+        if (!projectPath) { gitSummaryRef.current = null; gitBranchRef.current = null; return; }
+        const timer = setTimeout(() => {
+            fetchGitContext(projectPath).then(result => {
+                if (result) {
+                    gitSummaryRef.current = result.summary;
+                    gitBranchRef.current = result.branch;
+                } else {
+                    gitSummaryRef.current = null;
+                    gitBranchRef.current = null;
+                }
+            });
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [projectPath]);
+
+    // Phase 3: Scan file imports when editor file changes (#67)
+    useEffect(() => {
+        if (!editorFilePath) { fileImportsRef.current = []; return; }
+        fetchFileImports(editorFilePath).then(imports => {
+            fileImportsRef.current = imports;
         });
-    }, [localPath, remotePath]);
-
-    // Save conversation after messages change
-    const persistConversation = useCallback(async (msgs: Message[]) => {
-        if (msgs.length === 0) return;
-        const convId = activeConversationId || createConversation(msgs[0]?.content).id;
-        if (!activeConversationId) setActiveConversationId(convId);
-
-        const convMessages: ConversationMessage[] = msgs.map(m => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString(),
-            modelInfo: m.modelInfo,
-            tokenInfo: m.tokenInfo,
-        }));
-
-        const totalTokens = msgs.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0);
-        const totalCost = msgs.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0);
-
-        const conv: Conversation = {
-            id: convId,
-            title: msgs.find(m => m.role === 'user')?.content.slice(0, 60) || 'New Chat',
-            messages: convMessages,
-            createdAt: conversations.find(c => c.id === convId)?.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            totalTokens,
-            totalCost,
-        };
-
-        const updated = await saveConversation(conversations, conv);
-        setConversations(updated);
-    }, [activeConversationId, conversations]);
-
-    // New chat
-    const startNewChat = useCallback(() => {
-        setMessages([]);
-        setActiveConversationId(null);
-        setPendingToolCall(null);
-    }, []);
-
-    // Switch conversation
-    const switchConversation = useCallback((conv: Conversation) => {
-        setActiveConversationId(conv.id);
-        setMessages(conv.messages.map(m => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-            modelInfo: m.modelInfo ? { ...m.modelInfo, providerType: m.modelInfo.providerType as AIProviderType } : undefined,
-        })));
-        setPendingToolCall(null);
-        setShowHistory(false);
-    }, []);
-
-    // Delete conversation
-    const handleDeleteConversation = useCallback(async (convId: string) => {
-        const updated = await deleteConversation(conversations, convId);
-        setConversations(updated);
-        if (convId === activeConversationId) {
-            startNewChat();
-        }
-    }, [conversations, activeConversationId, startNewChat]);
+    }, [editorFilePath]);
 
     // Speech recognition for audio input
     const toggleListening = () => {
@@ -697,7 +441,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = false;
-        recognition.lang = 'en-US';
+        recognition.lang = navigator.language || 'en-US';
 
         recognition.onstart = () => setIsListening(true);
         recognition.onend = () => setIsListening(false);
@@ -709,58 +453,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         };
 
         recognition.start();
-    };
-
-    // Detect task type from user input for auto-routing
-    const detectTaskType = (input: string): TaskType => {
-        // Code generation patterns
-        if (/\b(create|write|generate|build|implement|make|add)\b.*\b(function|class|component|code|file|script)\b/i.test(input) ||
-            /\b(new|create)\b.*\b(file|folder|directory)\b/i.test(input)) {
-            return 'code_generation';
-        }
-
-        // Code review patterns
-        if (/\b(review|refactor|improve|optimize|fix|debug|check)\b.*\b(code|function|class|file)\b/i.test(input) ||
-            /\bwhat('s| is)\b.*\b(wrong|issue|bug|problem)\b/i.test(input)) {
-            return 'code_review';
-        }
-
-        // File analysis patterns
-        if (/\b(read|show|display|analyze|explain|what)\b.*\b(file|content|code)\b/i.test(input) ||
-            /\b(list|show|display)\b.*\b(files|folders|directory)\b/i.test(input)) {
-            return 'file_analysis';
-        }
-
-        // Terminal command patterns
-        if (/\b(run|execute|terminal|command|shell|bash|npm|git|chmod)\b/i.test(input) ||
-            /\b(how to|how do i)\b.*\b(install|run|start|build)\b/i.test(input)) {
-            return 'terminal_command';
-        }
-
-        // Quick answer patterns
-        if (/^(what|how|why|when|where|who|is|are|can|could|would|should)\b/i.test(input) &&
-            input.length < 100) {
-            return 'quick_answer';
-        }
-
-        return 'general';
-    };
-
-    // Parse tool calls from AI response
-    const parseToolCall = (content: string): { tool: string; args: Record<string, unknown> } | null => {
-        const toolMatch = content.match(/TOOL:\s*(\w+)/i);
-        // Match ARGS with nested braces and multiline JSON
-        const argsMatch = content.match(/ARGS:\s*(\{[\s\S]*\})/i);
-
-        if (toolMatch) {
-            try {
-                const args = argsMatch ? JSON.parse(argsMatch[1]) : {};
-                return { tool: toolMatch[1], args };
-            } catch {
-                return { tool: toolMatch[1], args: {} };
-            }
-        }
-        return null;
     };
 
     // Execute a tool via unified provider-agnostic command (built-in or plugin)
@@ -776,90 +468,110 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         return await invoke('execute_ai_tool', { toolName, args });
     };
 
-    // Format tool result for display
-    const formatToolResult = (_toolName: string, result: unknown): string => {
-        if (result && typeof result === 'object') {
-            const r = result as Record<string, unknown>;
-            // List results
-            if (r.entries && Array.isArray(r.entries)) {
-                const entries = r.entries as Array<{ name: string; is_dir: boolean; size: number }>;
-                const lines = entries.map(e => `${e.is_dir ? '/' : ' '} ${e.name}${e.is_dir ? '' : ` (${e.size} bytes)`}`);
-                let output = lines.join('\n');
-                if (r.truncated) output += `\n_...truncated (${r.total} total)_`;
-                return `\`\`\`\n${output}\n\`\`\``;
-            }
-            // Read results
-            if (typeof r.content === 'string') {
-                let output = r.content as string;
-                if (r.truncated) output += `\n\n_...truncated (${r.size} bytes total)_`;
-                return `\`\`\`\n${output}\n\`\`\``;
-            }
-            // Sync preview results
-            if (r.synced !== undefined) {
-                const lines: string[] = [];
-                lines.push(`**Local:** ${r.local_files} files | **Remote:** ${r.remote_files} files | **Identical:** ${r.identical}`);
-                if (r.synced) {
-                    lines.push('\n**Folders are in sync.**');
-                } else {
-                    const onlyLocal = r.only_local as Array<{ name: string; size: number }>;
-                    const onlyRemote = r.only_remote as Array<{ name: string; size: number }>;
-                    const sizeDiff = r.size_different as Array<{ name: string; local_size: number; remote_size: number }>;
-                    if (onlyLocal?.length) {
-                        lines.push(`\n**Only local** (${onlyLocal.length}):`);
-                        onlyLocal.forEach(f => lines.push(`  + ${f.name} (${f.size} bytes)`));
-                    }
-                    if (onlyRemote?.length) {
-                        lines.push(`\n**Only remote** (${onlyRemote.length}):`);
-                        onlyRemote.forEach(f => lines.push(`  - ${f.name} (${f.size} bytes)`));
-                    }
-                    if (sizeDiff?.length) {
-                        lines.push(`\n**Size differs** (${sizeDiff.length}):`);
-                        sizeDiff.forEach(f => lines.push(`  ~ ${f.name} (local: ${f.local_size}, remote: ${f.remote_size})`));
-                    }
-                }
-                return lines.join('\n');
-            }
-            // Batch upload/download results
-            if (typeof r.uploaded === 'number' || typeof r.downloaded === 'number') {
-                const count = (r.uploaded ?? r.downloaded) as number;
-                const action = r.uploaded !== undefined ? 'Uploaded' : 'Downloaded';
-                const files = r.files as string[] | undefined;
-                const errors = r.errors as Array<{ file: string; error: string }> | undefined;
-                const lines: string[] = [];
-                lines.push(`**${action} ${count} file(s)**`);
-                if (files?.length) lines.push(files.map(f => `  + ${f}`).join('\n'));
-                if (errors?.length) {
-                    lines.push(`\n**Failed (${errors.length}):**`);
-                    errors.forEach(e => lines.push(`  - ${e.file}: ${e.error}`));
-                }
-                return lines.join('\n');
-            }
-            // Edit results
-            if (r.replaced !== undefined) {
-                return r.success
-                    ? `**Replaced ${r.replaced} occurrence(s)** in \`${(r as any).message?.split(' in ').pop() || 'file'}\``
-                    : String(r.message || 'String not found in file');
-            }
-            // Success message
-            if (r.message) return String(r.message);
-            // Search results
-            if (r.results && Array.isArray(r.results)) {
-                const results = r.results as Array<{ name: string; path: string; is_dir: boolean }>;
-                return results.map(e => `${e.is_dir ? '/' : ' '} ${e.path}`).join('\n') || 'No results found.';
-            }
-        }
-        return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
-    };
-
     // Execute a tool
-    const executeTool = async (toolCall: AgentToolCall): Promise<string | null> => {
-        const tool = getToolByName(toolCall.toolName);
+    const executeTool = async (toolCall: AgentToolCall, _macroDepth = 0, _stepCounter?: MacroStepCounter): Promise<string | null> => {
+        const tool = getToolByName(toolCall.toolName) || getToolByNameFromAll(toolCall.toolName, allTools);
+
+        // Handle macro tool calls
+        if (isMacroCall(toolCall.toolName)) {
+            if (_macroDepth >= 5) {
+                const errMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: 'Macro recursion limit exceeded (max depth: 5)',
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, errMsg]);
+                setPendingToolCalls([]);
+                return null;
+            }
+
+            // Initialize step counter at top-level macro call
+            const stepCounter = _stepCounter || createMacroStepCounter();
+
+            const macroName = getMacroName(toolCall.toolName);
+            const macro = macros.find(m => m.name === macroName);
+            if (!macro) {
+                const errMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: `Unknown macro: ${macroName}`,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, errMsg]);
+                setPendingToolCalls([]);
+                return null;
+            }
+
+            // Resolve template variables and execute steps sequentially
+            const steps = resolveMacroSteps(macro, toolCall.args);
+            // Check for unresolved template variables
+            const unresolvedVars = steps.flatMap(s =>
+                Object.entries(s.args)
+                    .filter(([_, v]) => /\{\{\w+\}\}/.test(v))
+                    .map(([k, v]) => `${s.toolName}.${k}=${v}`)
+            );
+            if (unresolvedVars.length > 0) {
+                const errMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: `Macro "${macroName}" has unresolved variables: ${unresolvedVars.join(', ')}`,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, errMsg]);
+                setPendingToolCalls([]);
+                return null;
+            }
+
+            let lastResult: string | null = null;
+            for (const step of steps) {
+                if (++stepCounter.total > MAX_TOTAL_MACRO_STEPS) {
+                    const errMsg: Message = {
+                        id: crypto.randomUUID(),
+                        role: 'assistant',
+                        content: `Maximum macro execution steps (${MAX_TOTAL_MACRO_STEPS}) exceeded`,
+                        timestamp: new Date(),
+                    };
+                    setMessages(prev => [...prev, errMsg]);
+                    setPendingToolCalls([]);
+                    return null;
+                }
+                const stepCall: AgentToolCall = {
+                    id: crypto.randomUUID(),
+                    toolName: step.toolName,
+                    args: step.args,
+                    status: 'approved',
+                };
+                lastResult = await executeTool(stepCall, _macroDepth + 1, stepCounter);
+                if (!lastResult) break; // Stop on failure
+            }
+            return lastResult;
+        }
+
         if (!tool) {
-            setPendingToolCall(null);
+            // Only remove the unknown tool from pending, not the entire batch
+            setPendingToolCalls(prev => prev.filter(tc => tc.toolName !== toolCall.toolName || tc.id !== toolCall.id));
             return null;
         }
 
         try {
+            // Special case: agent_memory_write — inject project path and refresh memory
+            if (toolCall.toolName === 'agent_memory_write') {
+                const entry = (toolCall.args.entry as string) || '';
+                const category = (toolCall.args.category as string) || 'general';
+                if (!entry) throw new Error('No entry specified');
+                await appendAgentMemory(entry, category);
+                const resultMessage: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: `Memory saved: [${category}] ${entry}`,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, resultMessage]);
+                setPendingToolCalls([]);
+                return `Memory saved: ${entry}`;
+            }
+
             // Special case: terminal_execute is frontend-only (not sent to Rust backend)
             if (toolCall.toolName === 'terminal_execute') {
                 const command = (toolCall.args.command as string) || '';
@@ -872,20 +584,46 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
 
                 const resultMessage: Message = {
-                    id: Date.now().toString(),
+                    id: crypto.randomUUID(),
                     role: 'assistant',
                     content: `Command sent to terminal: \`${command}\``,
                     timestamp: new Date(),
                 };
                 setMessages(prev => [...prev, resultMessage]);
-                setPendingToolCall(null);
+                setPendingToolCalls([]);
                 return 'Command sent to terminal';
             }
 
             const result = await executeToolByName(toolCall.toolName, toolCall.args);
             const formattedResult = formatToolResult(toolCall.toolName, result);
+
+            // Check for soft failures (tool returned success: false)
+            if (result && typeof result === 'object' && 'success' in (result as Record<string, unknown>) && !(result as Record<string, unknown>).success) {
+                const softError = String((result as Record<string, unknown>).message || 'Operation failed');
+                const strategy = analyzeToolError(toolCall.toolName, toolCall.args, softError);
+
+                const errorMessage: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: `Tool returned failure: ${softError}\n\n**Suggestion**: ${strategy.suggestion}`,
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, errorMessage]);
+
+                // Inject suggestion into multi-step context if active
+                if (strategy.suggestedTool && multiStepContextRef.current) {
+                    multiStepContextRef.current.messageHistory.push({
+                        role: 'assistant',
+                        content: `Tool "${toolCall.toolName}" failed: ${softError}. Suggested recovery: use "${strategy.suggestedTool}".`,
+                    });
+                }
+
+                setPendingToolCalls([]);
+                return formattedResult; // Still return so multi-step can continue with the error info
+            }
+
             const resultMessage: Message = {
-                id: Date.now().toString(),
+                id: crypto.randomUUID(),
                 role: 'assistant',
                 content: formattedResult,
                 timestamp: new Date(),
@@ -903,20 +641,74 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const changedPath = (toolCall.args.path as string) || '';
                 if (changedPath) {
                     window.dispatchEvent(new CustomEvent('file-changed', { detail: { path: changedPath } }));
+                    // Invalidate cached project context when config files are modified
+                    const configFiles = ['package.json', 'Cargo.toml', 'composer.json', 'pyproject.toml', 'go.mod', 'pom.xml', 'build.gradle'];
+                    if (configFiles.some(cf => changedPath.endsWith(cf))) {
+                        invalidateProjectCache();
+                    }
                 }
             }
 
-            setPendingToolCall(null);
+            setPendingToolCalls([]);
             return formattedResult;
         } catch (error: any) {
+            const errorStr = error.message || error.toString();
+            const strategy = analyzeToolError(toolCall.toolName, toolCall.args, errorStr);
+
+            // Auto-retry for transient errors
+            if (strategy.autoRetry && strategy.canRetry) {
+                try {
+                    const retryResult = await withRetry(
+                        () => executeToolByName(toolCall.toolName, toolCall.args),
+                        strategy.maxRetries || 3,
+                    );
+                    const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
+                    const retryMsg: Message = {
+                        id: crypto.randomUUID(),
+                        role: 'assistant',
+                        content: retryFormatted,
+                        timestamp: new Date(),
+                    };
+                    setMessages(prev => [...prev, retryMsg]);
+
+                    const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+                    if (mutationTarget && onFileMutation) onFileMutation(mutationTarget);
+
+                    setPendingToolCalls([]);
+                    return retryFormatted;
+                } catch (retryError: any) {
+                    // Retry exhausted, fall through to error display
+                    const exhaustedStr = retryError.message || retryError.toString();
+                    const errorMessage: Message = {
+                        id: crypto.randomUUID(),
+                        role: 'assistant',
+                        content: `Tool failed after retries: ${exhaustedStr}\n\n**Suggestion**: ${strategy.suggestion}`,
+                        timestamp: new Date(),
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                    setPendingToolCalls([]);
+                    return null;
+                }
+            }
+
+            // Non-retryable error
             const errorMessage: Message = {
-                id: Date.now().toString(),
+                id: crypto.randomUUID(),
                 role: 'assistant',
-                content: `Tool failed: ${error.message || error.toString()}`,
+                content: `Tool failed: ${errorStr}\n\n**Suggestion**: ${strategy.suggestion}`,
                 timestamp: new Date(),
             };
             setMessages(prev => [...prev, errorMessage]);
-            setPendingToolCall(null);
+
+            // Inject suggestion into multi-step context
+            if (strategy.suggestedTool && multiStepContextRef.current) {
+                multiStepContextRef.current.messageHistory.push({
+                    role: 'assistant',
+                    content: `Tool "${toolCall.toolName}" failed: ${errorStr}. Suggested recovery: use "${strategy.suggestedTool}" with args ${JSON.stringify(strategy.suggestedArgs || {})}.`,
+                });
+            }
+
+            setPendingToolCalls([]);
             return null;
         }
     };
@@ -927,9 +719,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>,
         messageHistory: Array<Record<string, unknown>>,
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType },
-        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; inputCostPer1k?: number; outputCostPer1k?: number } | undefined,
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined,
     ) => {
-        const MAX_STEPS = 10;
         let stepCount = 1;
         let lastToolResult = initialToolResult;
         setIsAutoExecuting(true);
@@ -937,7 +728,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         autoStopRef.current = false;
 
         try {
-            while (stepCount < MAX_STEPS && !autoStopRef.current) {
+            while (stepCount < MAX_AUTO_STEPS && !autoStopRef.current) {
                 // Add tool result to message history for next AI call
                 messageHistory.push({ role: 'assistant', content: `Tool result:\n${lastToolResult}` });
                 messageHistory.push({ role: 'user', content: 'Continue with the next step based on the tool result above. If the task is complete, respond normally without calling a tool.' });
@@ -949,33 +740,36 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     tokens_used?: number;
                     input_tokens?: number;
                     output_tokens?: number;
+                    cache_creation_input_tokens?: number;
+                    cache_read_input_tokens?: number;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
                 }>('ai_chat', { request: { ...aiRequest, messages: messageHistory } });
 
-                // Parse tool call from response
-                let toolParsed: { tool: string; args: Record<string, unknown> } | null = null;
+                // Parse ALL tool calls from response (parallel support)
+                let allToolsParsedMS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
                 if (response.tool_calls && response.tool_calls.length > 0) {
-                    const tc = response.tool_calls[0];
-                    const args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments;
-                    toolParsed = { tool: tc.name, args: args as Record<string, unknown> };
+                    allToolsParsedMS = response.tool_calls.map((tc: { id: string; name: string; arguments: unknown }) => ({
+                        tool: tc.name,
+                        args: (() => {
+                            if (typeof tc.arguments === 'string') {
+                                try { return JSON.parse(tc.arguments) as Record<string, unknown>; }
+                                catch { return {} as Record<string, unknown>; }
+                            }
+                            return tc.arguments as Record<string, unknown>;
+                        })(),
+                        id: tc.id || crypto.randomUUID(),
+                    }));
                 } else {
-                    toolParsed = parseToolCall(response.content);
+                    const fallbacks = parseToolCalls(response.content);
+                    if (fallbacks.length > 0) allToolsParsedMS = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
                 }
 
-                if (!toolParsed) {
+                if (allToolsParsedMS.length === 0) {
                     // AI responded without a tool call - show final response and stop
-                    const tokenInfo: Message['tokenInfo'] = response.input_tokens || response.output_tokens ? {
-                        inputTokens: response.input_tokens,
-                        outputTokens: response.output_tokens,
-                        totalTokens: (response.input_tokens || 0) + (response.output_tokens || 0),
-                        cost: modelDef?.inputCostPer1k && modelDef?.outputCostPer1k
-                            ? ((response.input_tokens || 0) / 1000) * modelDef.inputCostPer1k +
-                              ((response.output_tokens || 0) / 1000) * modelDef.outputCostPer1k
-                            : undefined,
-                    } : undefined;
+                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, undefined, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
                     const finalMsg: Message = {
-                        id: Date.now().toString(),
+                        id: crypto.randomUUID(),
                         role: 'assistant',
                         content: response.content,
                         timestamp: new Date(),
@@ -986,61 +780,62 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     break;
                 }
 
-                // Tool call found - check if it requires approval
-                const tool = getToolByName(toolParsed.tool);
-                if (!tool) break;
+                // Separate safe vs approval-required
+                const safeMS = allToolsParsedMS.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                const approvalMS = allToolsParsedMS.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
 
-                const needsApproval = requiresApproval(toolParsed.tool);
-                if (needsApproval) {
+                if (approvalMS.length > 0) {
                     // Pause multi-step for user approval
-                    const toolCall: AgentToolCall = {
-                        id: Date.now().toString(),
-                        toolName: toolParsed.tool,
-                        args: toolParsed.args,
-                        status: 'pending',
-                    };
                     const pendingMsg: Message = {
-                        id: (Date.now() + 1).toString(),
+                        id: crypto.randomUUID(),
                         role: 'assistant',
                         content: response.content || '',
                         timestamp: new Date(),
                         modelInfo,
                     };
                     setMessages(prev => [...prev, pendingMsg]);
+                    const pending = approvalMS.map(ac => ({
+                        id: ac.id, toolName: ac.tool, args: ac.args, status: 'pending' as const,
+                    }));
+                    // Validate tool arguments in parallel
+                    const pendingWithValidation = await Promise.all(
+                        pending.map(async (tc) => {
+                            const validation = await validateToolArgs(tc.toolName, tc.args);
+                            return { ...tc, validation };
+                        })
+                    );
                     multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
-                    setPendingToolCall(toolCall);
-                    break; // Stop auto-loop, user must approve manually
+                    setPendingToolCalls(pendingWithValidation);
+                    break; // Stop auto-loop, user must approve
                 }
 
-                // Safe tool - auto-execute
+                // All safe tools — execute in parallel
                 stepCount++;
                 setAutoStepCount(stepCount);
 
-                const toolCall: AgentToolCall = {
-                    id: Date.now().toString(),
-                    toolName: toolParsed.tool,
-                    args: toolParsed.args,
-                    status: 'approved',
-                };
+                const safeToolCalls = safeMS.map(sc => ({
+                    id: sc.id, toolName: sc.tool, args: sc.args, status: 'approved' as const,
+                }));
+                const levels = buildExecutionLevels(safeToolCalls);
+                const results = await executePipeline(levels, executeTool);
+                const combinedResult = results.filter(Boolean).join('\n---\n');
+                if (!combinedResult) break;
 
-                const result = await executeTool(toolCall);
-                if (!result) break; // Tool failed, stop loop
-
-                lastToolResult = result;
+                lastToolResult = combinedResult;
             }
 
-            if (stepCount >= MAX_STEPS) {
+            if (stepCount >= MAX_AUTO_STEPS) {
                 const maxMsg: Message = {
-                    id: Date.now().toString(),
+                    id: crypto.randomUUID(),
                     role: 'assistant',
-                    content: `Multi-step execution completed after ${MAX_STEPS} steps (maximum reached).`,
+                    content: `Multi-step execution completed after ${MAX_AUTO_STEPS} steps (maximum reached).`,
                     timestamp: new Date(),
                 };
                 setMessages(prev => [...prev, maxMsg]);
             }
         } catch (error: unknown) {
             const errMsg: Message = {
-                id: Date.now().toString(),
+                id: crypto.randomUUID(),
                 role: 'assistant',
                 content: `Multi-step execution error: ${String(error)}`,
                 timestamp: new Date(),
@@ -1053,76 +848,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
     };
 
-    // Export conversation
-    const exportConversation = async (format: 'markdown' | 'json') => {
-        setShowExportMenu(false);
-        if (messages.length === 0) return;
-
-        try {
-            const timestamp = new Date().toISOString().slice(0, 10);
-            const title = conversations.find(c => c.id === activeConversationId)?.title || 'AeroAgent Chat';
-
-            if (format === 'markdown') {
-                const lines: string[] = [
-                    `# ${title}`,
-                    `*Exported on ${new Date().toLocaleString()}*`,
-                    '',
-                ];
-                for (const msg of messages) {
-                    const role = msg.role === 'user' ? 'User' : 'AeroAgent';
-                    const modelTag = msg.modelInfo ? ` *(${msg.modelInfo.modelName})*` : '';
-                    lines.push(`### ${role}${modelTag}`);
-                    lines.push(msg.content);
-                    if (msg.tokenInfo?.totalTokens) {
-                        lines.push(`> ${msg.tokenInfo.totalTokens} tokens${msg.tokenInfo.cost ? ` · $${msg.tokenInfo.cost.toFixed(4)}` : ''}`);
-                    }
-                    lines.push('');
-                }
-                lines.push('---');
-                lines.push('*Exported from AeroFTP AeroAgent*');
-
-                const filePath = await save({
-                    defaultPath: `aerochat-${timestamp}.md`,
-                    filters: [{ name: 'Markdown', extensions: ['md'] }],
-                });
-                if (filePath) {
-                    await writeTextFile(filePath, lines.join('\n'));
-                }
-            } else {
-                const conv = conversations.find(c => c.id === activeConversationId);
-                const exportData = {
-                    title,
-                    exportedAt: new Date().toISOString(),
-                    messageCount: messages.length,
-                    totalTokens: messages.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0),
-                    totalCost: messages.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0),
-                    messages: messages.map(m => ({
-                        role: m.role,
-                        content: m.content,
-                        timestamp: m.timestamp.toISOString(),
-                        modelInfo: m.modelInfo || null,
-                        tokenInfo: m.tokenInfo || null,
-                    })),
-                    metadata: conv ? {
-                        conversationId: conv.id,
-                        createdAt: conv.createdAt,
-                        updatedAt: conv.updatedAt,
-                    } : null,
-                };
-
-                const filePath = await save({
-                    defaultPath: `aerochat-${timestamp}.json`,
-                    filters: [{ name: 'JSON', extensions: ['json'] }],
-                });
-                if (filePath) {
-                    await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
-                }
-            }
-        } catch {
-            // Dialog cancelled or write error — silent
-        }
-    };
-
     const handleSend = async () => {
         if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
 
@@ -1130,7 +855,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         const messageImages = attachedImages.length > 0 ? [...attachedImages] : undefined;
 
         const userMessage: Message = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             role: 'user',
             content: input || (messageImages ? 'Analyze this image' : ''),
             timestamp: new Date(),
@@ -1139,15 +864,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
         setMessages(prev => [...prev, userMessage]);
         setInput('');
-        setAttachedImages([]);
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+        clearImages();
         setIsLoading(true);
 
         let streamingMsgId: string | null = null;
         try {
-            if (!selectedModel) {
-                throw new Error('No model selected. Click ⚙️ to configure a provider.');
-            }
-
             // Load settings from vault (with localStorage fallback)
             const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
             if (!settings) {
@@ -1155,9 +877,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
             setCachedAiSettings(settings);
 
-            // Auto-routing: detect task type and potentially override model
+            // Auto-routing: detect task type and resolve model (fix M-010: resolve before null guard)
             let activeModel = selectedModel;
-            if (settings.autoRouting.enabled) {
+            if (!activeModel && settings.autoRouting?.enabled) {
                 const taskType = detectTaskType(input);
                 const rule = settings.autoRouting.rules.find(r => r.taskType === taskType);
                 if (rule) {
@@ -1176,6 +898,29 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         }
                     }
                 }
+                // Fallback: use default model if auto-routing didn't resolve
+                if (!activeModel && settings.defaultModelId) {
+                    const defaultModel = settings.models.find(m => m.id === settings.defaultModelId);
+                    if (defaultModel) {
+                        const defaultProvider = settings.providers.find(p => p.id === defaultModel.providerId);
+                        if (defaultProvider) {
+                            activeModel = {
+                                providerId: defaultProvider.id,
+                                providerName: defaultProvider.name,
+                                providerType: defaultProvider.type,
+                                modelId: defaultModel.id,
+                                modelName: defaultModel.name,
+                                displayName: defaultModel.displayName,
+                            };
+                        }
+                    }
+                }
+            }
+            // When user has explicitly selected a model (activeModel is set),
+            // do NOT apply auto-routing — respect the user's choice.
+
+            if (!activeModel) {
+                throw new Error('No model selected. Click ⚙️ to configure a provider.');
             }
 
             const provider = settings.providers.find(p => p.id === activeModel.providerId);
@@ -1191,152 +936,54 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
             }
 
-            // Build context block
-            const contextLines: string[] = [];
-            if (providerType) contextLines.push(`- Protocol: ${providerType.toUpperCase()} (${isConnected ? 'connected' : 'disconnected'})`);
-            if (serverHost) contextLines.push(`- Server: ${serverHost}${serverPort ? ':' + serverPort : ''}`);
-            if (serverUser) contextLines.push(`- User: ${serverUser}`);
-            if (remotePath) contextLines.push(`- Remote path: ${remotePath}`);
-            if (localPath) contextLines.push(`- Local path: ${localPath}`);
-            if (selectedFiles && selectedFiles.length > 0) contextLines.push(`- Selected files: ${selectedFiles.slice(0, 10).join(', ')}${selectedFiles.length > 10 ? ` (+${selectedFiles.length - 10} more)` : ''}`);
-            if (editorFileName) contextLines.push(`- Editor: currently editing "${editorFileName}"${editorFilePath ? ` (${editorFilePath})` : ''}`);
+            // Check model capabilities (needed for context budget calculation)
+            const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+            const modelContextWindow = modelDef?.maxContextTokens || modelDef?.maxTokens || 4096;
 
-            // Auto-index workspace for RAG context (cached, non-blocking)
-            if (ragIndexRef.current) {
-                const idx = ragIndexRef.current;
-                const extSummary = Object.entries(idx.extensions || {})
-                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+            // Phase 3: Determine budget mode and build smart context (#70, #71)
+            const budgetMode = determineBudgetMode(modelContextWindow);
+            const taskType = detectTaskType(userMessage.content);
+
+            // Build RAG summary from index
+            const ragSummary = ragIndexRef.current ? (() => {
+                const idx = ragIndexRef.current!;
+                const extSummary = Object.entries((idx.extensions || {}) as Record<string, number>)
+                    .sort((a, b) => b[1] - a[1])
                     .slice(0, 8)
                     .map(([ext, count]) => `${count} .${ext}`)
                     .join(', ');
-                contextLines.push(`- Workspace indexed: ${idx.files_count} files (${extSummary})`);
-            }
+                return `- Workspace indexed: ${idx.files_count} files (${extSummary})`;
+            })() : null;
 
-            const contextBlock = contextLines.length > 0
-                ? `\n\nCURRENT CONTEXT:\n${contextLines.join('\n')}`
-                : '';
+            // Build smart context with priority-based allocation
+            const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
+            const smartCtx = buildSmartContext(
+                userMessage.content,
+                taskType,
+                projectContextRef.current,
+                gitSummaryRef.current,
+                agentMemory,
+                fileImportsRef.current,
+                ragSummary,
+                contextTokenBudget,
+            );
+            const smartContextBlock = formatSmartContextForPrompt(smartCtx);
 
-            // Build system prompt - use custom if configured
-            const customPrompt = settings.advancedSettings?.useCustomPrompt && settings.advancedSettings?.customSystemPrompt?.trim();
-
-            const systemPrompt = customPrompt
-                ? `${settings.advancedSettings.customSystemPrompt}
-
-## Tools
-When you need to use a tool, respond with:
-TOOL: tool_name
-ARGS: {"param": "value"}
-
-Available tools:
-${generateToolsPrompt()}${contextBlock}`
-                : `You are AeroAgent, the built-in AI assistant for AeroFTP — a multi-protocol file manager supporting FTP, FTPS, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
-
-## Identity & Tone
-- Professional yet approachable. Be concise and action-oriented.
-- Respond in the same language the user writes in.
-- Use short paragraphs. Use bold for key terms. Use bullet lists for multiple items.
-- Use minimal emoji (one per section header max) for readability, never excessive.
-
-## Capabilities
-You can browse, search, upload, download, rename, delete, move, and sync files across all connected providers. You can also create and extract archives (ZIP, 7z, TAR).
-
-When you need to use a tool, respond with:
-TOOL: tool_name
-ARGS: {"param": "value"}
-
-Available tools:
-${generateToolsPrompt()}
-
-## Protocol & Provider Expertise
-You are an expert on every protocol and cloud provider AeroFTP supports. When users ask how to configure or troubleshoot a connection, provide accurate, step-by-step guidance.
-
-### FTP / FTPS
-- **Port**: 21 (FTP), 21 or 990 (FTPS explicit/implicit)
-- **TLS**: AeroFTP defaults to FTPS (explicit TLS). Implicit TLS uses port 990.
-- **Passive mode**: enabled by default; required behind NAT/firewalls.
-- **Features**: MLSD/MLST for accurate listings, FEAT negotiation, UTF-8.
-
-### SFTP
-- **Port**: 22 (SSH)
-- **Auth**: password or SSH key (OpenSSH format). Key passphrase supported.
-- **Host key verification**: first-connect trust with fingerprint stored locally.
-- **Differs from FTPS**: SFTP runs over SSH, not FTP+TLS. Different protocol entirely.
-
-### S3 (Amazon S3 & compatible)
-- **Required fields**: Endpoint URL, Access Key ID, Secret Access Key, Bucket name, Region.
-- **Compatible services**: MinIO, Backblaze B2, Wasabi, DigitalOcean Spaces, Cloudflare R2.
-- **Endpoint examples**: \`https://s3.amazonaws.com\`, \`https://s3.eu-west-1.amazonaws.com\`, \`https://play.min.io\`.
-- **Path style**: enable for MinIO/self-hosted. Virtual-hosted style for AWS default.
-
-### WebDAV
-- **URL format**: full URL including path, e.g. \`https://cloud.example.com/remote.php/dav/files/username/\`
-- **Nextcloud/ownCloud**: use the DAV endpoint above with your username/password or app password.
-- **Auth**: Basic or Digest. HTTPS strongly recommended.
-
-### Google Drive
-- **Auth**: OAuth 2.0 with PKCE. Click "Connect", authorize in browser, token stored securely.
-- **Scopes**: full drive access for file management.
-- **Shared drives**: accessible after authorization.
-
-### Dropbox
-- **Auth**: OAuth 2.0 with PKCE. Authorize via browser.
-- **Scopes**: files.content.read, files.content.write, sharing.write.
-- **Limits**: 150MB per single upload, chunked for larger files.
-
-### OneDrive
-- **Auth**: OAuth 2.0 via Microsoft identity platform.
-- **Endpoint**: Microsoft Graph API.
-- **Personal vs Business**: both supported.
-
-### MEGA
-- **Auth**: email + password. No OAuth.
-- **Encryption**: client-side AES encryption (MEGA's own protocol).
-- **2FA**: not yet supported in AeroFTP.
-
-### Box
-- **Auth**: OAuth 2.0 with PKCE.
-- **Upload limit**: 150MB single upload (chunked upload for larger files planned).
-
-### pCloud
-- **Auth**: OAuth 2.0 with PKCE.
-- **Regions**: US (api.pcloud.com) or EU (eapi.pcloud.com). Choose based on account region.
-
-### Azure Blob Storage
-- **Required**: Account Name, Access Key, Container name.
-- **Endpoint**: \`https://<account>.blob.core.windows.net\`
-- **Block size**: 256MB max per block.
-
-### Filen
-- **Auth**: email + password (encrypted).
-- **Encryption**: zero-knowledge, client-side AES-256.
-- **2FA**: not yet supported in AeroFTP.
-
-### Archives & Encryption
-- **ZIP**: AES-256 encryption, compression levels 0-9.
-- **7z**: LZMA2 compression, AES-256 encryption.
-- **TAR**: no encryption, combined with GZ/XZ/BZ2 for compression.
-- **AeroVault**: AES-256 encrypted containers (.aerovault files). Create, add, extract, change password.
-- **Cryptomator**: format 8 support. Unlock, browse, decrypt, encrypt files.
-
-## Behavior Rules
-1. **Explain before acting**: briefly state what you will do, then execute the tool.
-2. **Summarize after**: report the result clearly (file count, sizes, errors).
-3. **Never delete or overwrite without confirmation**: if a tool would destroy data, ask the user first.
-4. **Suggest next steps**: after completing a task, suggest related actions when useful.
-5. **Handle errors gracefully**: if a tool fails, explain why and suggest alternatives.
-6. **Stay in scope**: you are a file management and protocol configuration assistant. Politely decline unrelated requests.
-7. **Be honest about limits**: if you cannot do something, say so clearly.
-8. **Configuration help**: when a user asks how to set up a provider, give the exact fields needed, common pitfalls, and example values.
-
-## Response Format
-- For file listings: use a compact table or numbered list with name, size, date.
-- For comparisons (sync_preview): highlight differences clearly with +/−/~ markers.
-- For errors: quote the error message and explain in plain language.
-- For configuration help: list required fields, then optional fields, with examples.
-- Keep responses under 500 words unless the user asks for detail.${contextBlock}`;
-
-            // Check model capabilities (needed for context budget calculation)
-            const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+            // Build context-aware system prompt with Phase 3 data
+            const contextBlock = buildContextBlock({
+                providerType, isConnected, serverHost, serverPort, serverUser,
+                remotePath, localPath, selectedFiles,
+                editorFileName, editorFilePath,
+                ragIndex: ragIndexRef.current,
+                macros,
+                projectContext: projectContextRef.current,
+                gitBranch: gitBranchRef.current || undefined,
+                gitSummary: gitSummaryRef.current || undefined,
+                agentMemory,
+                fileImports: fileImportsRef.current,
+                smartContextBlock: smartContextBlock || undefined,
+            });
+            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName);
 
             // Build message history (images only on the current user message)
             const currentUserMsg: Record<string, unknown> = {
@@ -1350,14 +997,24 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 }));
             }
 
-            // Build context-aware message window based on model's token limit
-            const modelMaxTokens = modelDef?.maxTokens || 4096;
-            const contextBudget = Math.floor(modelMaxTokens * 0.7); // 70% for context
+            // Build context-aware message window based on model's context window
+            const contextBudget = Math.floor(modelContextWindow * 0.7); // 70% for context
             const systemTokens = estimateTokens(systemPrompt);
             const currentMsgTokens = estimateTokens(userMessage.content);
-            const { messages: windowMessages } = buildMessageWindow(
-                messages, systemTokens, currentMsgTokens, contextBudget,
+            const { messages: windowMessages, historyTokens } = buildMessageWindow(
+                messages, systemTokens, currentMsgTokens, contextBudget, smartCtx.totalEstimatedTokens,
             );
+
+            // Phase 3: Update token budget indicator (#71)
+            const budgetData: TokenBudgetData = {
+                modelMaxTokens: modelContextWindow,
+                systemPromptTokens: systemTokens,
+                contextTokens: smartCtx.totalEstimatedTokens,
+                historyTokens: historyTokens || 0,
+                currentMessageTokens: currentMsgTokens,
+                responseBuffer: Math.min(2048, Math.floor(modelContextWindow * 0.15)),
+            };
+            setTokenBudgetData(budgetData);
 
             const messageHistory = [
                 { role: 'system', content: systemPrompt },
@@ -1372,6 +1029,13 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
             }
             recordRequest(provider.id);
 
+            // Phase 4: Budget check before sending
+            const budgetResult = checkBudget(provider.id);
+            setBudgetCheck(budgetResult);
+            if (!budgetResult.allowed) {
+                throw new Error(budgetResult.message || 'Monthly budget exceeded.');
+            }
+
             const useNativeTools = modelDef?.supportsTools === true;
             const useStreaming = modelDef?.supportsStreaming === true;
 
@@ -1382,29 +1046,43 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 providerType: activeModel.providerType,
             };
 
+            // Build thinking budget if model supports it
+            const thinkingBudget = modelDef?.supportsThinking && settings.advancedSettings?.thinkingBudget
+                ? settings.advancedSettings.thinkingBudget
+                : undefined;
+
+            // Resolve task-specific parameter preset (provider + detected task type)
+            const preset = getParameterPreset(activeModel.providerType, taskType);
+
             const aiRequest = {
                 provider_type: activeModel.providerType,
                 model: activeModel.modelName,
                 api_key: apiKey,
                 base_url: provider.baseUrl,
                 messages: messageHistory,
-                max_tokens: settings.advancedSettings?.maxTokens || 4096,
-                temperature: settings.advancedSettings?.temperature || 0.7,
+                max_tokens: settings.advancedSettings?.maxTokens ?? preset.maxTokens,
+                temperature: settings.advancedSettings?.temperature ?? preset.temperature,
+                ...(() => { const rawTopP = settings.advancedSettings?.topP ?? preset.topP; return rawTopP != null ? { top_p: Math.max(0, Math.min(1, rawTopP)) } : {}; })(),
+                ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
                 ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
+                ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
             };
 
             if (useStreaming) {
                 // Streaming mode: incremental rendering
-                const streamId = `stream_${Date.now()}`;
-                const msgId = (Date.now() + 1).toString();
+                const streamId = `stream_${crypto.randomUUID()}`;
+                const msgId = crypto.randomUUID();
                 streamingMsgId = msgId;
+                streamingMsgIdRef.current = msgId;
                 let streamContent = '';
                 type ToolCallEntry = { id: string; name: string; arguments: unknown };
                 const streamResult: {
                     toolCalls: ToolCallEntry[] | null;
                     inputTokens: number | undefined;
                     outputTokens: number | undefined;
-                } = { toolCalls: null, inputTokens: undefined, outputTokens: undefined };
+                    cacheCreationTokens: number | undefined;
+                    cacheReadTokens: number | undefined;
+                } = { toolCalls: null, inputTokens: undefined, outputTokens: undefined, cacheCreationTokens: undefined, cacheReadTokens: undefined };
 
                 // Add placeholder message
                 const streamMsg: Message = {
@@ -1416,15 +1094,44 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 };
                 setMessages(prev => [...prev, streamMsg]);
 
-                // Listen for stream chunks
+                // Extended thinking state
+                let thinkingContent = '';
+                let thinkingStartTime = 0;
+
+                // Promise to track stream completion (fix H-003: unlisten race)
+                let resolveStream: () => void;
+                const streamDone = new Promise<void>(resolve => { resolveStream = resolve; });
+
+                // Listen for stream chunks (with thinking + tool calls support)
                 const unlisten: UnlistenFn = await listen<{
                     content: string;
                     done: boolean;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
                     input_tokens?: number;
                     output_tokens?: number;
+                    cache_creation_input_tokens?: number;
+                    cache_read_input_tokens?: number;
+                    thinking?: string;
+                    thinking_done?: boolean;
                 }>(`ai-stream-${streamId}`, (event) => {
                     const chunk = event.payload;
+
+                    // Handle thinking blocks (Claude extended thinking)
+                    if (chunk.thinking) {
+                        if (thinkingStartTime === 0) thinkingStartTime = Date.now();
+                        thinkingContent += chunk.thinking;
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, thinking: thinkingContent } : m
+                        ));
+                    }
+                    if (chunk.thinking_done) {
+                        const duration = Math.round((Date.now() - thinkingStartTime) / 1000);
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, thinking: thinkingContent, thinkingDuration: duration } : m
+                        ));
+                    }
+
+                    // Handle content
                     if (chunk.content) {
                         streamContent += chunk.content;
                         setMessages(prev => prev.map(m =>
@@ -1435,58 +1142,110 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                         if (chunk.tool_calls) streamResult.toolCalls = chunk.tool_calls;
                         if (chunk.input_tokens) streamResult.inputTokens = chunk.input_tokens;
                         if (chunk.output_tokens) streamResult.outputTokens = chunk.output_tokens;
+                        if (chunk.cache_creation_input_tokens) streamResult.cacheCreationTokens = chunk.cache_creation_input_tokens;
+                        if (chunk.cache_read_input_tokens) streamResult.cacheReadTokens = chunk.cache_read_input_tokens;
+                        resolveStream();
                     }
                 });
 
-                // Start streaming
-                await invoke('ai_chat_stream', { request: aiRequest, streamId });
+                // Fire the stream command (don't await its completion for unlisten)
+                invoke('ai_chat_stream', { request: aiRequest, streamId }).catch((err: unknown) => {
+                    const errStr = err instanceof Error ? err.message : String(err);
+                    streamContent = `**Error**: ${errStr}`;
+                    setMessages(prev => prev.map(m =>
+                        m.id === msgId ? { ...m, content: streamContent } : m
+                    ));
+                    resolveStream();
+                });
+
+                // Wait for the done event with timeout, then unlisten
+                const STREAM_TIMEOUT_MS = 120_000; // 2 minutes
+                const timeoutPromise = new Promise<void>((_, reject) =>
+                    setTimeout(() => reject(new Error('Stream timeout after 120s')), STREAM_TIMEOUT_MS)
+                );
+                try {
+                    await Promise.race([streamDone, timeoutPromise]);
+                } catch (timeoutErr) {
+                    // Timeout occurred - add error message and clean up
+                    streamContent += '\n\n[Stream timeout - no response received for 2 minutes]';
+                    setMessages(prev => prev.map(m =>
+                        m.id === msgId ? { ...m, content: streamContent } : m
+                    ));
+                }
                 unlisten();
 
                 // Calculate cost
-                const tokenInfo: Message['tokenInfo'] = streamResult.inputTokens || streamResult.outputTokens ? {
-                    inputTokens: streamResult.inputTokens,
-                    outputTokens: streamResult.outputTokens,
-                    totalTokens: (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0),
-                    cost: modelDef?.inputCostPer1k && modelDef?.outputCostPer1k
-                        ? ((streamResult.inputTokens || 0) / 1000) * modelDef.inputCostPer1k +
-                          ((streamResult.outputTokens || 0) / 1000) * modelDef.outputCostPer1k
-                        : undefined,
-                } : undefined;
+                const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
 
-                // Check for tool calls from streaming
-                let toolParsed: { tool: string; args: Record<string, unknown> } | null = null;
-                if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
-                    const tc = streamResult.toolCalls[0];
-                    const args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments as string) : tc.arguments;
-                    toolParsed = { tool: tc.name, args: args as Record<string, unknown> };
-                } else {
-                    toolParsed = parseToolCall(streamContent);
+                // Phase 4: Record spending for cost budget tracking
+                if (tokenInfo && activeModel) {
+                    const cost = tokenInfo.cost || 0;
+                    const tokens = (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0);
+                    recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        .then(result => setBudgetCheck(result));
                 }
 
-                if (toolParsed) {
-                    const tool = getToolByName(toolParsed.tool);
-                    if (tool) {
-                        const toolCall: AgentToolCall = {
-                            id: Date.now().toString(),
-                            toolName: toolParsed.tool,
-                            args: toolParsed.args,
-                            status: requiresApproval(toolParsed.tool) ? 'pending' : 'approved',
-                        };
-                        // Update the streamed message or add approval
-                        if (toolCall.status === 'pending') {
-                            setMessages(prev => prev.map(m =>
-                                m.id === msgId ? { ...m, content: streamContent || '' } : m
-                            ));
-                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
-                            setPendingToolCall(toolCall);
-                        } else {
-                            const toolResult = await executeTool(toolCall);
-                            // Start multi-step loop if tool was auto-executed (safe)
-                            if (toolResult && !autoStopRef.current) {
-                                await executeMultiStep(toolResult, aiRequest, [...messageHistory], modelInfo, modelDef);
-                                return; // Multi-step handles setIsLoading
+                // Check for tool calls from streaming — process ALL (parallel support)
+                let allToolsParsed: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
+                if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
+                    allToolsParsed = streamResult.toolCalls.map(tc => ({
+                        tool: tc.name,
+                        args: (() => {
+                            if (typeof tc.arguments === 'string') {
+                                try { return JSON.parse(tc.arguments as string) as Record<string, unknown>; }
+                                catch { return {} as Record<string, unknown>; }
                             }
+                            return tc.arguments as Record<string, unknown>;
+                        })(),
+                        id: tc.id || crypto.randomUUID(),
+                    }));
+                } else {
+                    const fallbacks = parseToolCalls(streamContent);
+                    if (fallbacks.length > 0) allToolsParsed = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
+                }
+
+                if (allToolsParsed.length > 0) {
+                    // Separate safe (auto-execute) vs approval-required tools
+                    const safeCalls = allToolsParsed.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                    const approvalCalls = allToolsParsed.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+
+                    // Execute safe tools in parallel
+                    if (safeCalls.length > 0) {
+                        const safeToolCalls = safeCalls.map(sc => ({
+                            id: sc.id,
+                            toolName: sc.tool,
+                            args: sc.args,
+                            status: 'approved' as const,
+                        }));
+                        const levels = buildExecutionLevels(safeToolCalls);
+                        const results = await executePipeline(levels, executeTool);
+                        const combinedResult = results.filter(Boolean).join('\n---\n');
+                        if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
+                            await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                            return;
                         }
+                    }
+
+                    // Queue approval-required tools
+                    if (approvalCalls.length > 0) {
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, content: streamContent || '' } : m
+                        ));
+                        const pending = approvalCalls.map(ac => ({
+                            id: ac.id,
+                            toolName: ac.tool,
+                            args: ac.args,
+                            status: 'pending' as const,
+                        }));
+                        // Validate tool arguments in parallel
+                        const pendingWithValidation = await Promise.all(
+                            pending.map(async (tc) => {
+                                const validation = await validateToolArgs(tc.toolName, tc.args);
+                                return { ...tc, validation };
+                            })
+                        );
+                        multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
+                        setPendingToolCalls(pendingWithValidation);
                     }
                 } else {
                     // Update final message with token info
@@ -1503,62 +1262,84 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                         tokens_used?: number;
                         input_tokens?: number;
                         output_tokens?: number;
+                        cache_creation_input_tokens?: number;
+                        cache_read_input_tokens?: number;
                         finish_reason?: string;
                         tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
                     }>('ai_chat', { request: aiRequest })
                 );
 
-                const tokenInfo: Message['tokenInfo'] = response.input_tokens || response.output_tokens ? {
-                    inputTokens: response.input_tokens,
-                    outputTokens: response.output_tokens,
-                    totalTokens: response.tokens_used,
-                    cost: modelDef?.inputCostPer1k && modelDef?.outputCostPer1k
-                        ? ((response.input_tokens || 0) / 1000) * modelDef.inputCostPer1k +
-                          ((response.output_tokens || 0) / 1000) * modelDef.outputCostPer1k
-                        : undefined,
-                } : undefined;
+                const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
-                // Check if AI wants to use a tool
-                let toolParsed: { tool: string; args: Record<string, unknown> } | null = null;
-                if (response.tool_calls && response.tool_calls.length > 0) {
-                    const tc = response.tool_calls[0];
-                    const args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments;
-                    toolParsed = { tool: tc.name, args: args as Record<string, unknown> };
-                } else {
-                    toolParsed = parseToolCall(response.content);
+                // Phase 4: Record spending for cost budget tracking (non-streaming path)
+                if (tokenInfo && activeModel) {
+                    const cost = tokenInfo.cost || 0;
+                    const tokens = response.tokens_used || ((response.input_tokens || 0) + (response.output_tokens || 0));
+                    recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        .then(result => setBudgetCheck(result));
                 }
 
-                if (toolParsed) {
-                    const tool = getToolByName(toolParsed.tool);
-                    if (tool) {
-                        const toolCall: AgentToolCall = {
-                            id: Date.now().toString(),
-                            toolName: toolParsed.tool,
-                            args: toolParsed.args,
-                            status: requiresApproval(toolParsed.tool) ? 'pending' : 'approved',
-                        };
-                        if (toolCall.status === 'pending') {
-                            const pendingMessage: Message = {
-                                id: (Date.now() + 1).toString(),
-                                role: 'assistant',
-                                content: response.content || '',
-                                timestamp: new Date(),
-                                modelInfo,
-                            };
-                            setMessages(prev => [...prev, pendingMessage]);
-                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
-                            setPendingToolCall(toolCall);
-                        } else {
-                            const toolResult = await executeTool(toolCall);
-                            if (toolResult && !autoStopRef.current) {
-                                await executeMultiStep(toolResult, aiRequest, [...messageHistory], modelInfo, modelDef);
-                                return; // Multi-step handles setIsLoading
+                // Check if AI wants to use tools — process ALL (parallel support)
+                let allToolsParsedNS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
+                if (response.tool_calls && response.tool_calls.length > 0) {
+                    allToolsParsedNS = response.tool_calls.map((tc: { id: string; name: string; arguments: unknown }) => ({
+                        tool: tc.name,
+                        args: (() => {
+                            if (typeof tc.arguments === 'string') {
+                                try { return JSON.parse(tc.arguments) as Record<string, unknown>; }
+                                catch { return {} as Record<string, unknown>; }
                             }
+                            return tc.arguments as Record<string, unknown>;
+                        })(),
+                        id: tc.id || crypto.randomUUID(),
+                    }));
+                } else {
+                    const fallbacks = parseToolCalls(response.content);
+                    if (fallbacks.length > 0) allToolsParsedNS = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
+                }
+
+                if (allToolsParsedNS.length > 0) {
+                    const safeCalls = allToolsParsedNS.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                    const approvalCalls = allToolsParsedNS.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+
+                    if (safeCalls.length > 0) {
+                        const safeToolCalls = safeCalls.map(sc => ({
+                            id: sc.id, toolName: sc.tool, args: sc.args, status: 'approved' as const,
+                        }));
+                        const levels = buildExecutionLevels(safeToolCalls);
+                        const results = await executePipeline(levels, executeTool);
+                        const combinedResult = results.filter(Boolean).join('\n---\n');
+                        if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
+                            await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                            return;
                         }
+                    }
+
+                    if (approvalCalls.length > 0) {
+                        const pendingMessage: Message = {
+                            id: crypto.randomUUID(),
+                            role: 'assistant',
+                            content: response.content || '',
+                            timestamp: new Date(),
+                            modelInfo,
+                        };
+                        setMessages(prev => [...prev, pendingMessage]);
+                        const pending = approvalCalls.map(ac => ({
+                            id: ac.id, toolName: ac.tool, args: ac.args, status: 'pending' as const,
+                        }));
+                        // Validate tool arguments in parallel
+                        const pendingWithValidation = await Promise.all(
+                            pending.map(async (tc) => {
+                                const validation = await validateToolArgs(tc.toolName, tc.args);
+                                return { ...tc, validation };
+                            })
+                        );
+                        multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
+                        setPendingToolCalls(pendingWithValidation);
                     }
                 } else {
                     const assistantMessage: Message = {
-                        id: (Date.now() + 1).toString(),
+                        id: crypto.randomUUID(),
                         role: 'assistant',
                         content: response.content,
                         timestamp: new Date(),
@@ -1606,7 +1387,8 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                     hint = 'Network error. Check your internet connection and provider URL.';
                 }
             }
-            const errorContent = `**Error**: ${errStr}\n\n${hint}`;
+            const sanitized = errStr.replace(/\/[\w\/./-]+/g, '[path]').replace(/\\[\w\\.\\-]+/g, '[path]');
+            const errorContent = `**Error**: ${sanitized}\n\n${hint}`;
             if (streamingMsgId) {
                 // Update the existing placeholder message instead of adding a duplicate
                 setMessages(prev => prev.map(m =>
@@ -1614,7 +1396,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 ));
             } else {
                 const errorMessage: Message = {
-                    id: (Date.now() + 1).toString(),
+                    id: crypto.randomUUID(),
                     role: 'assistant',
                     content: errorContent,
                     timestamp: new Date(),
@@ -1623,69 +1405,52 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
             }
         } finally {
             setIsLoading(false);
+            streamingMsgIdRef.current = null;
         }
     };
 
+    // Phase 4: Record cost and update conversation cost after each message send
+    // This is triggered by messages array changing (after AI responds)
+    useEffect(() => {
+        if (!activeConversationId) return;
+        const cost = getConversationCost(activeConversationId);
+        if (cost) setConversationCost(cost);
+    }, [messages, activeConversationId]);
+
     return (
         <div className={`flex flex-col h-full bg-gray-900 ${className}`}>
-            {/* Minimal Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800/50 border-b border-gray-700/50">
-                <div className="flex items-center gap-2 text-sm text-gray-300">
-                    <button
-                        onClick={() => setShowHistory(!showHistory)}
-                        className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                        title={showHistory ? t('ai.hideHistory') : t('ai.chatHistory')}
-                    >
-                        {showHistory ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-                    </button>
-                    <Sparkles size={14} className="text-purple-400" />
-                    <span className="font-medium">{t('ai.aeroAgent')}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={startNewChat}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                        title={t('ai.newChat')}
-                    >
-                        <Plus size={14} />
-                    </button>
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowExportMenu(!showExportMenu)}
-                            disabled={messages.length === 0}
-                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Export Chat"
-                        >
-                            <Download size={14} />
-                        </button>
-                        {showExportMenu && (
-                            <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-20 py-1 min-w-[180px]">
-                                <button
-                                    onClick={() => exportConversation('markdown')}
-                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2"
-                                >
-                                    <span>📝</span>
-                                    <span>Export as Markdown</span>
-                                </button>
-                                <button
-                                    onClick={() => exportConversation('json')}
-                                    className="w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2"
-                                >
-                                    <span>📦</span>
-                                    <span>Export as JSON</span>
-                                </button>
-                            </div>
-                        )}
+            <AIChatHeader
+                showHistory={showHistory}
+                onToggleHistory={() => setShowHistory(!showHistory)}
+                onNewChat={startNewChat}
+                showExportMenu={showExportMenu}
+                onToggleExportMenu={() => setShowExportMenu(!showExportMenu)}
+                onExport={exportConversation}
+                onOpenSettings={() => setShowSettings(true)}
+                hasMessages={messages.length > 0}
+            />
+
+            {/* Phase 3: Branch selector (#69) */}
+            {(() => {
+                const activeConv = conversations.find(c => c.id === activeConversationId);
+                const branches = activeConv?.branches || [];
+                if (branches.length === 0) return null;
+                return (
+                    <div className="px-3 py-1 border-b border-gray-700/50 bg-gray-800/20">
+                        <BranchSelector
+                            branches={branches.map(b => ({
+                                id: b.id,
+                                name: b.name,
+                                messageCount: b.messages.length,
+                                createdAt: b.createdAt,
+                            }))}
+                            activeBranchId={activeBranchId}
+                            onSwitchBranch={switchBranch}
+                            onDeleteBranch={deleteBranch}
+                        />
                     </div>
-                    <button
-                        onClick={() => setShowSettings(true)}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                        title={t('ai.aiSettings')}
-                    >
-                        <Settings2 size={14} />
-                    </button>
-                </div>
-            </div>
+                );
+            })()}
 
             <div className="flex flex-1 overflow-hidden">
             {/* History Sidebar */}
@@ -1722,8 +1487,17 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                 </div>
             )}
 
+            {/* Phase 4: Chat Search Overlay (#78) */}
+            <ChatSearchOverlay
+                messages={messages.map(m => ({ id: m.id, role: m.role, content: m.content }))}
+                visible={showSearch}
+                onClose={() => setShowSearch(false)}
+                onHighlightMessage={handleSearchHighlightMessage}
+                onSearchResults={handleSearchResults}
+            />
+
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto" onClick={() => showExportMenu && setShowExportMenu(false)}>
+            <div ref={messageListRef} className="flex-1 overflow-y-auto" onClick={() => showExportMenu && setShowExportMenu(false)}>
                 {messages.length === 0 ? (
                     /* Empty State - System Welcome */
                     <div className="h-full flex flex-col items-center justify-center text-center px-6 py-8">
@@ -1756,17 +1530,13 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                         {messages.map((message) => (
                             <div
                                 key={message.id}
+                                data-message-id={message.id}
                                 className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                             >
-                                {message.role === 'assistant' && (
-                                    <div className="w-7 h-7 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
-                                        <Sparkles size={14} className="text-purple-400" />
-                                    </div>
-                                )}
                                 <div
-                                    className={`max-w-[80%] rounded-lg px-4 py-2 text-sm select-text ${message.role === 'user'
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-gray-800 text-gray-200'
+                                    className={`max-w-[85%] rounded-lg px-4 py-2 text-sm select-text ${message.role === 'user'
+                                        ? 'bg-[#1e2a3a] text-blue-100 border border-blue-900/40'
+                                        : 'bg-gray-800/80 text-gray-200'
                                         }`}
                                 >
                                     {/* Image thumbnails for vision messages */}
@@ -1777,14 +1547,30 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                             ))}
                                         </div>
                                     )}
+                                    {/* Thinking block (Claude extended thinking) — Phase 4: token display (#74) */}
+                                    {message.thinking && (
+                                        <ThinkingBlock
+                                            content={message.thinking}
+                                            isComplete={!!message.thinkingDuration}
+                                            duration={message.thinkingDuration}
+                                            thinkingTokens={message.tokenInfo?.outputTokens}
+                                            responseTokens={message.tokenInfo?.inputTokens}
+                                        />
+                                    )}
                                     <div className="relative">
                                         <div
                                             className={`select-text prose prose-invert prose-sm max-w-none ${
                                                 message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id)
                                                     ? 'max-h-[200px] overflow-hidden' : ''
                                             }`}
-                                            dangerouslySetInnerHTML={{ __html: formatToolCallDisplay(renderMarkdown(message.content)) }}
-                                        />
+                                        >
+                                            <MarkdownRenderer
+                                                content={message.content}
+                                                isStreaming={isLoading && message.id === streamingMsgIdRef.current}
+                                                editorFilePath={editorFilePath}
+                                                editorFileName={editorFileName}
+                                            />
+                                        </div>
                                         {message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id) && (
                                             <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-800 to-transparent flex items-end justify-center">
                                                 <button
@@ -1804,7 +1590,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                             </button>
                                         )}
                                     </div>
-                                    <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
+                                    <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? 'text-blue-300/60' : 'text-gray-500'}`}>
                                         <span>{message.timestamp.toLocaleTimeString()}</span>
                                         {message.role === 'assistant' && (
                                             <button
@@ -1817,6 +1603,15 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                                 title={t('ai.copy') || 'Copy'}
                                             >
                                                 {copiedId === message.id ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+                                            </button>
+                                        )}
+                                        {message.role === 'assistant' && (
+                                            <button
+                                                onClick={() => forkConversation(message.id)}
+                                                className="p-0.5 text-gray-600 hover:text-purple-400 transition-colors"
+                                                title={t('ai.branch.fork') || 'Fork here'}
+                                            >
+                                                <GitBranch size={10} />
                                             </button>
                                         )}
                                         {message.role === 'assistant' && message.modelInfo && (
@@ -1833,26 +1628,24 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                                         ${message.tokenInfo.cost < 0.01 ? message.tokenInfo.cost.toFixed(4) : message.tokenInfo.cost.toFixed(3)}
                                                     </span>
                                                 )}
+                                                {message.tokenInfo.cacheSavings !== undefined && message.tokenInfo.cacheSavings > 0 && (
+                                                    <span className="text-cyan-500/70" title={`Cache: ${message.tokenInfo.cacheReadTokens || 0} read, ${message.tokenInfo.cacheCreationTokens || 0} created`}>
+                                                        ↓${message.tokenInfo.cacheSavings < 0.01 ? message.tokenInfo.cacheSavings.toFixed(4) : message.tokenInfo.cacheSavings.toFixed(3)}
+                                                    </span>
+                                                )}
                                             </span>
                                         )}
                                     </div>
                                 </div>
-                                {message.role === 'user' && (
-                                    <div className="w-7 h-7 rounded-full bg-blue-600/20 flex items-center justify-center shrink-0">
-                                        <User size={14} className="text-blue-400" />
-                                    </div>
-                                )}
                             </div>
                         ))}
-                        {isLoading && (
+                        {isLoading && !pendingToolCalls.some(tc => tc.status === 'pending') && (
                             <div className="flex gap-3">
-                                <div className="w-7 h-7 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
-                                    <Sparkles size={14} className="text-purple-400 animate-pulse" />
-                                </div>
-                                <div className="bg-gray-800 rounded-lg px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+                                <div className="bg-gray-800/80 rounded-lg px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+                                    <GridSpinner size={14} className="text-purple-400" />
                                     {isAutoExecuting ? (
                                         <>
-                                            <span>Step {autoStepCount}/10</span>
+                                            <span>Step {autoStepCount}/{MAX_AUTO_STEPS}</span>
                                             <span className="mx-1">&mdash;</span>
                                             <button
                                                 onClick={() => { autoStopRef.current = true; }}
@@ -1862,30 +1655,82 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                             </button>
                                         </>
                                     ) : (
-                                        t('ai.thinking')
+                                        <span className="transition-opacity duration-300">{thinkingMessage}</span>
                                     )}
                                 </div>
                             </div>
                         )}
-                        {pendingToolCall && pendingToolCall.status === 'pending' && (
+                        {/* Single tool approval (backward compat) */}
+                        {pendingToolCalls.length === 1 && pendingToolCalls[0].status === 'pending' && (
                             <ToolApproval
-                                toolCall={pendingToolCall}
+                                toolCall={pendingToolCalls[0]}
+                                allTools={allTools}
                                 onApprove={async () => {
-                                    const toolResult = await executeTool(pendingToolCall);
-                                    // Resume multi-step loop if context was saved
+                                    setIsLoading(true);
+                                    const toolResult = await executeTool(pendingToolCalls[0]);
+                                    setPendingToolCalls([]);
                                     if (toolResult && multiStepContextRef.current && !autoStopRef.current) {
                                         const ctx = multiStepContextRef.current;
                                         multiStepContextRef.current = null;
                                         await executeMultiStep(toolResult, ctx.aiRequest, ctx.messageHistory, ctx.modelInfo, ctx.modelDef);
+                                    } else {
+                                        setIsLoading(false);
                                     }
                                 }}
                                 onReject={() => {
                                     multiStepContextRef.current = null;
-                                    setPendingToolCall(null);
+                                    setPendingToolCalls([]);
                                     const rejectedMsg: Message = {
-                                        id: Date.now().toString(),
+                                        id: crypto.randomUUID(),
                                         role: 'assistant',
-                                        content: '❌ Operation cancelled.',
+                                        content: 'Operation cancelled.',
+                                        timestamp: new Date(),
+                                    };
+                                    setMessages(prev => [...prev, rejectedMsg]);
+                                }}
+                            />
+                        )}
+                        {/* Batch tool approval (parallel tool calls) */}
+                        {pendingToolCalls.length > 1 && (
+                            <BatchToolApproval
+                                toolCalls={pendingToolCalls}
+                                allTools={allTools}
+                                onApproveAll={async () => {
+                                    setIsLoading(true);
+                                    const levels = buildExecutionLevels(pendingToolCalls);
+                                    const results = await executePipeline(levels, executeTool);
+                                    setPendingToolCalls([]);
+                                    const combinedResult = results.filter(Boolean).join('\n---\n');
+                                    if (combinedResult && multiStepContextRef.current && !autoStopRef.current) {
+                                        const ctx = multiStepContextRef.current;
+                                        multiStepContextRef.current = null;
+                                        await executeMultiStep(combinedResult, ctx.aiRequest, ctx.messageHistory, ctx.modelInfo, ctx.modelDef);
+                                    } else {
+                                        setIsLoading(false);
+                                    }
+                                }}
+                                onApproveSingle={async (id: string) => {
+                                    setIsLoading(true);
+                                    const tc = pendingToolCalls.find(t => t.id === id);
+                                    if (!tc) { setIsLoading(false); return; }
+                                    const result = await executeTool(tc);
+                                    const remaining = pendingToolCalls.filter(t => t.id !== id);
+                                    setPendingToolCalls(remaining);
+                                    if (remaining.length === 0 && result && multiStepContextRef.current && !autoStopRef.current) {
+                                        const ctx = multiStepContextRef.current;
+                                        multiStepContextRef.current = null;
+                                        await executeMultiStep(result, ctx.aiRequest, ctx.messageHistory, ctx.modelInfo, ctx.modelDef);
+                                    } else {
+                                        setIsLoading(false);
+                                    }
+                                }}
+                                onRejectAll={() => {
+                                    multiStepContextRef.current = null;
+                                    setPendingToolCalls([]);
+                                    const rejectedMsg: Message = {
+                                        id: crypto.randomUUID(),
+                                        role: 'assistant',
+                                        content: 'All operations cancelled.',
                                         timestamp: new Date(),
                                     };
                                     setMessages(prev => [...prev, rejectedMsg]);
@@ -1901,7 +1746,17 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 
             {/* Input Area - Antigravity Style - All inside one box */}
             <div className="p-3">
-                <div className="bg-gray-800 border border-gray-600 rounded-lg focus-within:border-purple-500 transition-colors">
+                <div className="relative bg-gray-800 border border-gray-600 rounded-lg focus-within:border-purple-500 transition-colors" data-aichat-input>
+                    {/* Phase 4: Prompt template selector (#75) */}
+                    <PromptTemplateSelector
+                        input={input}
+                        templates={allTemplates}
+                        onSelect={handleTemplateSelect}
+                        onDismiss={() => setShowTemplates(false)}
+                        visible={showTemplates}
+                    />
+                    {/* Phase 3: Token budget indicator (#71) */}
+                    <TokenBudgetIndicator budget={tokenBudgetData} compact />
                     {/* Attached Images Preview Strip */}
                     {attachedImages.length > 0 && (
                         <div className="flex gap-2 px-3 py-2 border-b border-gray-700/50 overflow-x-auto">
@@ -1909,7 +1764,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                                 <div key={i} className="relative group shrink-0">
                                     <img src={img.preview} alt="" className="h-12 w-12 object-cover rounded border border-gray-600" />
                                     <button
-                                        onClick={() => setAttachedImages(prev => prev.filter((_, j) => j !== i))}
+                                        onClick={() => removeImage(i)}
                                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                                         title={t('ai.removeImage')}
                                     >
@@ -1925,7 +1780,10 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                             ref={inputRef}
                             value={input}
                             onChange={(e) => {
-                                setInput(e.target.value);
+                                const val = e.target.value;
+                                setInput(val);
+                                // Phase 4: Show/hide template selector on / prefix
+                                setShowTemplates(val.startsWith('/'));
                                 // Auto-resize
                                 e.target.style.height = 'auto';
                                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
@@ -2105,6 +1963,8 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
                             </div>
                         </div>
 
+                        {/* Phase 4: Cost budget indicator (#77) */}
+                        <CostBudgetIndicator conversationCost={conversationCost} budgetCheck={budgetCheck} compact />
                         {/* AI Disclaimer */}
                         <span className="text-[10px] text-gray-500">{t('ai.disclaimer')}</span>
                     </div>

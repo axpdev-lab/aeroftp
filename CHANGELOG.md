@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-07
+
+### AeroAgent Pro — Professional AI Experience
+
+AeroAgent evolves from a capable assistant into a professional-grade AI development companion with 5 enhancement phases: Provider Intelligence, Advanced Tool Execution, Context Intelligence, Professional UX, and Provider-Specific Features.
+
+#### Added
+
+- **Streaming markdown renderer**: Incremental rendering with finalized segments (React.memo, never re-rendered) and in-progress tail. Eliminates flashing during AI responses
+- **Code block actions**: "Copy", "Apply", "Diff", and "Run" buttons on every code block in AI responses. "Apply" writes code to the active editor file, "Diff" shows side-by-side comparison before applying
+- **Agent thought visualization**: ThinkingBlock component shows Claude/OpenAI/Gemini reasoning process with duration timer, token count badge, and collapsible content
+- **Prompt template library**: 15 built-in templates activated with `/` prefix — /review, /refactor, /explain, /debug, /tests, /docs, /security, /optimize, /fix, /convert, /commit, /summarize, /types, /analyze-ui, /performance. Custom templates storable in vault
+- **Multi-file diff preview**: PR-style diff panel for reviewing changes across multiple files with per-file checkboxes and unified apply action
+- **Cost budget tracking**: Per-provider monthly spending limits with warning thresholds, conversation cost display, and vault-persisted spending records
+- **Chat search**: Ctrl+F search overlay with role filtering (all/user/assistant), match highlighting, and keyboard navigation between results
+- **Keyboard shortcuts**: Ctrl+L (clear), Ctrl+Shift+N (new chat), Ctrl+Shift+E (export), Ctrl+F (search), Ctrl+/ (focus input)
+- **Anthropic prompt caching**: System messages sent with `cache_control: {"type": "ephemeral"}` — cache reads are 90% cheaper, with savings displayed per message in cyan
+- **OpenAI structured outputs**: `strict: true` on function definitions with `additionalProperties: false` for OpenAI, xAI, and OpenRouter providers — ensures reliable tool call JSON schemas
+- **Ollama model-specific templates**: 8 model family profiles (llama3, codellama, deepseek-coder, qwen, mistral, phi, gemma, starcoder) with tailored prompt styles and optimal temperatures
+- **Ollama pull model from UI**: Text input + progress bar in AI Settings to download models directly via `POST /api/pull` with real-time NDJSON streaming progress
+- **Ollama GPU memory monitoring**: GPU Monitor panel in AI Settings shows running models, VRAM usage with color-coded bars, and auto-refresh every 15 seconds
+- **Gemini code execution**: Parse and render `executableCode` and `codeExecutionResult` response parts with syntax-highlighted code blocks and collapsible output sections
+- **Gemini `system_instruction`**: System prompt now passed as top-level `systemInstruction` field instead of in-message, following Google API best practices
+- **Gemini context caching**: New `gemini_create_cache` command for caching large contexts (32K+ tokens) with configurable TTL — reduces latency and cost by up to 75% on subsequent requests
+- **Thinking budget presets**: 5 presets (Off/Light/Balanced/Deep/Maximum) plus range slider (0-100K tokens) for fine-grained control of AI reasoning depth
+- **Provider Intelligence Layer**: Per-provider system prompt profiles with optimized identity, style, and behavior rules for all 7 AI providers
+- **DAG-based tool pipeline**: Topological sort of tool calls by path dependencies — independent tools execute in parallel, dependent tools run sequentially
+- **Diff preview for edits**: Read-only diff preview in tool approval UI for `local_edit` and `remote_edit` tools (100KB cap)
+- **Intelligent tool retry**: `analyzeToolError()` with 8+ error detection strategies and automatic retry suggestions
+- **Tool argument validation**: Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits
+- **Composite tool macros**: Reusable multi-tool workflows with `{{var}}` template variables, max depth 5, new "Macros" tab in AI Settings
+- **Tool progress indicators**: Real-time progress bars for long-running tools (upload, download, RAG indexing) via `ai-tool-progress` Tauri events
+- **Project-aware context**: Auto-detect project type from 10 markers (Node.js, Rust, Python, PHP, Go, Java, Maven, Gradle, CMake, Make) — injects metadata into AI system prompt
+- **File dependency graph**: `scan_file_imports` parses import/require/use statements in 6 languages (JS/TS, Rust, Python, PHP, Go, Java) for context-aware suggestions
+- **Persistent agent memory**: `.aeroagent` file per project — AI reads at session start, can write learnings via `agent_memory_write` tool for cross-session knowledge retention
+- **Conversation branching**: Fork conversations at any message to explore alternative approaches. Branch selector dropdown with create, switch, and delete operations
+- **Smart context injection**: `analyzePromptIntent()` detects task type from user prompt and auto-selects relevant context (git diff, file imports, project info, agent memory) with priority allocation
+- **Token budget optimizer**: Dynamic allocation based on model capacity — full/compact/minimal modes with visual segmented bar showing system/context/history/current/available token breakdown
+- **Universal Preview syntax highlighting**: Prism.js-powered source code coloring for 25+ file types in the preview modal, with language badge and full text selection support
+- **HTML/Markdown render toggle**: Preview modal now offers live rendering for HTML files (iframe with inlined local CSS) and Markdown files (via MarkdownRenderer), plus responsive viewport controls (mobile/tablet/desktop), zoom slider, and browser-open action
+- **Image color picker**: Canvas-based pixel color sampling in ImageViewer (cross-platform), with hex value display and clipboard copy
+
+#### Changed
+
+- **AeroAgent tool count**: Expanded from 27 to 28 tools with addition of `agent_memory_write`
+- **AI Settings tabs**: Reorganized from 6 to 7 tabs with new "Macros" tab
+- **Anthropic API version**: Unified to `2025-04-15` for all Anthropic calls (caching + thinking support)
+- **System prompt architecture**: Provider-aware profiles replace one-size-fits-all prompt. Ollama models get family-specific guidance
+- **Token info display**: Message footer now shows cache savings (cyan arrow-down icon) when Anthropic prompt caching reduces costs
+- **Settings reorganization**: Lock Screen Pattern moved from Security to Appearance tab; Vault Backup moved to dedicated Backup tab with Key icon
+
+#### Fixed
+
+- **Chat search navigation**: `data-message-id` attributes enable scroll-to-match functionality
+- **Cost tracking accuracy**: Budget check runs before sending messages, preventing overspend
+- **Template detection**: `/` prefix in chat input triggers template selector popup without false positives on regular text
+- **Streaming token capture**: Cache creation and cache read tokens now correctly captured from streaming chunks
+- **Gemini system prompt**: Previously sent as first user message, now correctly uses `systemInstruction` top-level field
+- **Auto-lock timeout persistence**: Timeout was only stored in RAM — now persisted to config file and restored on app restart
+- **Auto-lock slider default**: Fixed slider showing 5 minutes when disabled (now correctly shows 0)
+- **Auto-lock save flow**: Removed broken "Save Timeout" button, timeout now auto-saves on slider change
+- **EyeDropper color picker on Linux**: Hidden when EyeDropper API is unavailable (WebKitGTK), preventing runtime errors
+
+---
+
 ## [1.9.0] - 2026-02-07
 
 ### AeroAgent Super Powers & Unified Keystore
@@ -50,6 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-step auto-resume**: After user approves a medium/high-risk tool, the agent loop now automatically continues to the next step instead of stopping. Context (aiRequest, messageHistory, modelInfo) is preserved across the approval pause
 - **Tool descriptions clarified**: `local_edit` and `remote_edit` descriptions now explicitly state "literal match, not regex" to prevent AI models from sending regex syntax in find parameters
 
+#### Refactored
+
+- **AIChat.tsx modularization**: Monolithic 2215-line component split into 8 focused modules — `aiChatTypes.ts` (types/constants), `aiChatUtils.ts` (pure functions: rate limiter, retry, token window, task routing, tool parsing), `aiChatTokenInfo.ts` (DRY token cost calculation), `aiChatSystemPrompt.ts` (system prompt builder with 13-protocol expertise), `useAIChatImages.ts` (vision image hook), `useAIChatConversations.ts` (conversation persistence hook), `AIChatHeader.tsx` (header component). Main file reduced to ~1436 lines (-35%)
+- **Plugin tool approval resolution**: `ToolApproval` and `BatchToolApproval` components now accept `allTools` prop to resolve danger levels for both built-in and plugin tools via `getToolByNameFromAll()`. Previously plugin tools always defaulted to 'medium' danger level regardless of their actual configuration
+- **requiresApproval extended**: `requiresApproval()` in `tools.ts` now accepts optional `allTools` parameter for consistent plugin tool resolution, matching `isSafeTool()` signature
+
 #### Fixed
 
 - **AeroPlayer play/pause first-click bug**: AudioContext `"suspended"` state (browser autoplay policy) now properly resumed before play — first click always works
@@ -58,6 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Double confirmation eliminated**: System prompt now instructs AI to call tools directly without asking for permission in natural language — the UI approval prompt handles user confirmation
 - **Hardcoded English messages removed**: Tool approval messages ("I want to execute...") replaced with model's own localized response content
 - **WebGL context loss recovery**: Auto-fallback from WebGL shader to Canvas 2D visualizer when GPU context is lost, with user notification
+- **Chat persist effect blocked on new conversation**: Debounced save effect skipped persistence when `activeConversationId` was null (start of new conversation), causing messages to be lost until component unmount. Removed guard since `persistConversation` already handles null ID by creating a new conversation internally
+- **Token cost missing with tokens_used fallback**: `computeTokenInfo` discarded all token info when only `tokens_used` was available (some providers return only total tokens without input/output breakdown). Guard now checks all three token fields before returning undefined
 
 #### Security
 

@@ -5,7 +5,7 @@
 //! connected, falls back to `AppState.ftp_manager` for FTP/FTPS sessions.
 
 use serde_json::{json, Value};
-use tauri::State;
+use tauri::{Emitter, State};
 use crate::provider_commands::ProviderState;
 use crate::AppState;
 
@@ -22,6 +22,10 @@ const ALLOWED_TOOLS: &[&str] = &[
     "sync_preview", "archive_create", "archive_extract",
     // RAG tools
     "rag_index", "rag_search",
+    // Preview tools
+    "preview_edit",
+    // Agent memory
+    "agent_memory_write",
 ];
 
 /// Validate a path argument — reject null bytes, traversal, excessive length
@@ -32,9 +36,26 @@ fn validate_path(path: &str, param: &str) -> Result<(), String> {
     if path.contains('\0') {
         return Err(format!("{}: path contains null bytes", param));
     }
-    for component in path.split('/').chain(path.split('\\')) {
+    let normalized = path.replace('\\', "/");
+    for component in normalized.split('/') {
         if component == ".." {
             return Err(format!("{}: path traversal ('..') not allowed", param));
+        }
+    }
+    // Resolve symlinks and verify canonical path is not a sensitive system path.
+    // For non-existent files, check the parent directory to avoid write/read inconsistency.
+    let resolved = std::fs::canonicalize(path).or_else(|_| {
+        std::path::Path::new(path)
+            .parent()
+            .map(std::fs::canonicalize)
+            .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+    });
+    if let Ok(canonical) = resolved {
+        let s = canonical.to_string_lossy();
+        // Block sensitive system paths (deny-list)
+        let denied = ["/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/etc/ssh"];
+        if denied.iter().any(|d| s.starts_with(d)) {
+            return Err(format!("{}: access to system path denied: {}", param, s));
         }
     }
     Ok(())
@@ -61,8 +82,146 @@ async fn has_ftp(app_state: &AppState) -> bool {
     app_state.ftp_manager.lock().await.is_connected()
 }
 
+/// Emit tool progress event for iterative operations
+fn emit_tool_progress(app: &tauri::AppHandle, tool: &str, current: u32, total: u32, item: &str) {
+    let _ = app.emit("ai-tool-progress", json!({
+        "tool": tool,
+        "current": current,
+        "total": total,
+        "item": item,
+    }));
+}
+
+/// Download a remote file to bytes via StorageProvider or FTP fallback
+async fn download_from_provider(
+    state: &State<'_, ProviderState>,
+    app_state: &State<'_, AppState>,
+    path: &str,
+) -> Result<Vec<u8>, String> {
+    if has_provider(state).await {
+        let mut provider = state.provider.lock().await;
+        let provider = provider.as_mut().unwrap();
+        provider.download_to_bytes(path).await.map_err(|e| e.to_string())
+    } else if has_ftp(app_state).await {
+        let mut manager = app_state.ftp_manager.lock().await;
+        manager.download_to_bytes(path).await.map_err(|e| e.to_string())
+    } else {
+        Err("Not connected to any server".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn validate_tool_args(
+    tool_name: String,
+    args: Value,
+) -> Result<Value, String> {
+    let mut errors: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    // Path validation for all tools with path args
+    for key in &["path", "local_path", "remote_path", "from", "to"] {
+        if let Some(path) = args.get(key).and_then(|v| v.as_str()) {
+            if let Err(e) = validate_path(path, key) {
+                errors.push(e);
+            }
+        }
+    }
+
+    // Tool-specific validation
+    match tool_name.as_str() {
+        "local_read" | "local_edit" | "local_search" | "local_list" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                if tool_name == "local_list" || tool_name == "local_search" {
+                    if !p.is_dir() {
+                        errors.push(format!("Directory not found: {}", path));
+                    }
+                } else {
+                    if !p.exists() {
+                        errors.push(format!("File not found: {}", path));
+                    } else if p.is_dir() {
+                        errors.push(format!("Path is a directory, not a file: {}", path));
+                    } else if let Ok(meta) = p.metadata() {
+                        let size = meta.len();
+                        if size > 5_242_880 {
+                            warnings.push(format!(
+                                "File is large ({:.1} MB). Edit operations may be slow.",
+                                size as f64 / 1_048_576.0
+                            ));
+                        }
+                        // Check read-only for edit tools
+                        if tool_name == "local_edit" && meta.permissions().readonly() {
+                            errors.push(format!("File is read-only: {}", path));
+                        }
+                    }
+                }
+            }
+            // Check find string for local_edit
+            if tool_name == "local_edit" {
+                if let Some(find) = args.get("find").and_then(|v| v.as_str()) {
+                    if find.is_empty() {
+                        errors.push("'find' parameter cannot be empty".to_string());
+                    }
+                }
+            }
+        }
+        "local_write" | "local_mkdir" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                // Check parent exists
+                if let Some(parent) = p.parent() {
+                    if !parent.exists() {
+                        warnings.push(format!(
+                            "Parent directory does not exist: {}",
+                            parent.display()
+                        ));
+                    }
+                }
+                // Check if path is read-only
+                if p.exists() {
+                    if let Ok(meta) = p.metadata() {
+                        if meta.permissions().readonly() {
+                            errors.push(format!("File is read-only: {}", path));
+                        }
+                    }
+                }
+            }
+        }
+        "local_delete" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let home_dir = std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .unwrap_or_default();
+                let dangerous = ["/", "~", ".", "..", home_dir.as_str()];
+                let normalized = path.trim_end_matches('/');
+                if dangerous
+                    .iter()
+                    .any(|d| normalized == *d || normalized.is_empty())
+                {
+                    errors.push(format!("Refusing to delete dangerous path: {}", path));
+                }
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    warnings.push(format!(
+                        "Path does not exist (nothing to delete): {}",
+                        path
+                    ));
+                }
+            }
+        }
+        _ => {} // Remote tools: path format already validated above
+    }
+
+    Ok(json!({
+        "valid": errors.is_empty(),
+        "errors": errors,
+        "warnings": warnings,
+    }))
+}
+
 #[tauri::command]
 pub async fn execute_ai_tool(
+    app: tauri::AppHandle,
     state: State<'_, ProviderState>,
     app_state: State<'_, AppState>,
     tool_name: String,
@@ -125,28 +284,13 @@ pub async fn execute_ai_tool(
             let path = get_str(&args, "path")?;
             validate_path(&path, "path")?;
 
-            if has_provider(&state).await {
-                let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
-                let bytes = provider.download_to_bytes(&path).await.map_err(|e| e.to_string())?;
+            let bytes = download_from_provider(&state, &app_state, &path).await?;
 
-                let max_bytes = 5120;
-                let truncated = bytes.len() > max_bytes;
-                let content = String::from_utf8_lossy(&bytes[..bytes.len().min(max_bytes)]).to_string();
+            let max_bytes = 5120;
+            let truncated = bytes.len() > max_bytes;
+            let content = String::from_utf8_lossy(&bytes[..bytes.len().min(max_bytes)]).to_string();
 
-                Ok(json!({ "content": content, "size": bytes.len(), "truncated": truncated }))
-            } else if has_ftp(&app_state).await {
-                let mut manager = app_state.ftp_manager.lock().await;
-                let bytes = manager.download_to_bytes(&path).await.map_err(|e| e.to_string())?;
-
-                let max_bytes = 5120;
-                let truncated = bytes.len() > max_bytes;
-                let content = String::from_utf8_lossy(&bytes[..bytes.len().min(max_bytes)]).to_string();
-
-                Ok(json!({ "content": content, "size": bytes.len(), "truncated": truncated }))
-            } else {
-                Err("Not connected to any server".to_string())
-            }
+            Ok(json!({ "content": content, "size": bytes.len(), "truncated": truncated }))
         }
 
         "remote_upload" => {
@@ -396,6 +540,12 @@ pub async fn execute_ai_tool(
             let path = get_str(&args, "path")?;
             validate_path(&path, "path")?;
 
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| format!("Failed to stat file: {}", e))?;
+            if meta.len() > 10_485_760 {
+                return Err(format!("File too large for local_read: {:.1} MB (max 10 MB)", meta.len() as f64 / 1_048_576.0));
+            }
+
             let bytes = std::fs::read(&path)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -434,6 +584,15 @@ pub async fn execute_ai_tool(
         "local_delete" => {
             let path = get_str(&args, "path")?;
             validate_path(&path, "path")?;
+
+            // Dangerous path protection (defense-in-depth)
+            let home_dir = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_default();
+            let normalized = path.trim_end_matches('/').trim_end_matches('\\');
+            if normalized.is_empty() || normalized == "/" || normalized == "~" || normalized == "." || normalized == ".." || normalized == home_dir {
+                return Err(format!("Refusing to delete dangerous path: {}", path));
+            }
 
             let meta = std::fs::metadata(&path)
                 .map_err(|e| format!("Path not found: {}", e))?;
@@ -510,24 +669,13 @@ pub async fn execute_ai_tool(
             validate_path(&path, "path")?;
 
             // Download file content
-            let bytes = if has_provider(&state).await {
-                let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
-                provider.download_to_bytes(&path).await.map_err(|e| e.to_string())?
-            } else if has_ftp(&app_state).await {
-                let mut manager = app_state.ftp_manager.lock().await;
-                manager.download_to_bytes(&path).await.map_err(|e| e.to_string())?
-            } else {
-                return Err("Not connected to any server".to_string());
-            };
+            let bytes = download_from_provider(&state, &app_state, &path).await?;
 
             let mut content = String::from_utf8(bytes)
                 .map_err(|_| "File is not valid UTF-8 text".to_string())?;
 
             // Strip UTF-8 BOM if present
-            if content.starts_with('\u{FEFF}') {
-                content = content[3..].to_string();
-            }
+            content = content.strip_prefix('\u{FEFF}').unwrap_or(&content).to_string();
 
             let occurrences = content.matches(&find).count();
             if occurrences == 0 {
@@ -585,14 +733,17 @@ pub async fn execute_ai_tool(
 
             let mut uploaded = Vec::new();
             let mut errors = Vec::new();
+            let total = local_paths.len();
 
-            for local_path in &local_paths {
+            for (idx, local_path) in local_paths.iter().enumerate() {
                 validate_path(local_path, "path").map_err(|e| e.to_string())?;
                 let filename = std::path::Path::new(local_path)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "file".to_string());
                 let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
+
+                emit_tool_progress(&app, "upload_files", idx as u32 + 1, total as u32, &filename);
 
                 let result = if has_provider(&state).await {
                     let mut provider = state.provider.lock().await;
@@ -633,14 +784,17 @@ pub async fn execute_ai_tool(
 
             let mut downloaded = Vec::new();
             let mut errors = Vec::new();
+            let total = remote_paths.len();
 
-            for remote_path in &remote_paths {
+            for (idx, remote_path) in remote_paths.iter().enumerate() {
                 validate_path(remote_path, "path").map_err(|e| e.to_string())?;
                 let filename = std::path::Path::new(remote_path)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "file".to_string());
                 let local_path = format!("{}/{}", local_dir.trim_end_matches('/'), filename);
+
+                emit_tool_progress(&app, "download_files", idx as u32 + 1, total as u32, &filename);
 
                 let result = if has_provider(&state).await {
                     let mut provider = state.provider.lock().await;
@@ -844,6 +998,9 @@ pub async fn execute_ai_tool(
             let mut dirs_count: u32 = 0;
             scan_dir(base_path, base_path, recursive, &mut files, &mut dirs_count, max_files);
 
+            // Emit progress after scan completes
+            emit_tool_progress(&app, "rag_index", files.len() as u32, files.len() as u32, "scan complete");
+
             let total_size: u64 = files.iter()
                 .filter_map(|f| f.get("size").and_then(|s| s.as_u64()))
                 .sum();
@@ -948,6 +1105,106 @@ pub async fn execute_ai_tool(
                 "query": query,
                 "files_scanned": files_scanned,
                 "matches": matches,
+            }))
+        }
+
+        "preview_edit" => {
+            let path = get_str(&args, "path")?;
+            let find = get_str(&args, "find")?;
+            let replace = get_str(&args, "replace")?;
+            let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(true);
+            let remote = args.get("remote").and_then(|v| v.as_bool()).unwrap_or(false);
+            validate_path(&path, "path")?;
+
+            const MAX_PREVIEW_BYTES: usize = 100 * 1024; // 100KB
+
+            let mut content = if remote {
+                let bytes = download_from_provider(&state, &app_state, &path).await?;
+                if bytes.len() > MAX_PREVIEW_BYTES {
+                    return Ok(json!({
+                        "success": false,
+                        "message": "File too large for preview (max 100KB)",
+                    }));
+                }
+                String::from_utf8(bytes)
+                    .map_err(|_| "File is not valid UTF-8 text".to_string())?
+            } else {
+                let meta = std::fs::metadata(&path)
+                    .map_err(|e| format!("Failed to stat file: {}", e))?;
+                if meta.len() as usize > MAX_PREVIEW_BYTES {
+                    return Ok(json!({
+                        "success": false,
+                        "message": "File too large for preview (max 100KB)",
+                    }));
+                }
+                std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read file: {}", e))?
+            };
+
+            // Strip UTF-8 BOM if present
+            if content.starts_with('\u{FEFF}') {
+                content = content.strip_prefix('\u{FEFF}').unwrap().to_string();
+            }
+
+            let occurrences = content.matches(&find).count();
+            if occurrences == 0 {
+                return Ok(json!({
+                    "success": false,
+                    "message": "String not found in file",
+                    "occurrences": 0,
+                }));
+            }
+
+            let modified_content = if replace_all {
+                content.replace(&find, &replace)
+            } else {
+                content.replacen(&find, &replace, 1)
+            };
+
+            let replaced = if replace_all { occurrences } else { 1 };
+            Ok(json!({
+                "success": true,
+                "original": content,
+                "modified": modified_content,
+                "occurrences": occurrences,
+                "replaced": replaced,
+            }))
+        }
+
+        "agent_memory_write" => {
+            let entry = args.get("entry")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'entry' parameter")?;
+            let category = args.get("category")
+                .and_then(|v| v.as_str())
+                .unwrap_or("general");
+
+            // FIX 12: Sanitize category — only alphanumeric, underscore, hyphen; max 30 chars
+            let sanitized_category: String = category.chars()
+                .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+                .take(30)
+                .collect();
+
+            // FIX 11: Require explicit project_path and validate it
+            let project_path = args.get("project_path")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'project_path' parameter")?;
+            validate_path(project_path, "project_path")?;
+
+            let formatted = format!("\n[{}] [{}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M"),
+                sanitized_category,
+                entry
+            );
+
+            crate::context_intelligence::write_agent_memory(
+                project_path.to_string(),
+                formatted
+            ).await.map_err(|e| e.to_string())?;
+
+            Ok(json!({
+                "success": true,
+                "message": format!("Memory entry saved: [{}] {}", sanitized_category, entry)
             }))
         }
 

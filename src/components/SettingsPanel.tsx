@@ -166,7 +166,7 @@ const defaultSettings: AppSettings = {
     analyticsEnabled: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'privacy' | 'security';
+type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -271,13 +271,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [newMasterPassword, setNewMasterPassword] = useState('');
     const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
     const [currentMasterPassword, setCurrentMasterPassword] = useState('');
-    const [autoLockTimeout, setAutoLockTimeout] = useState(5); // minutes
+    const [autoLockTimeout, setAutoLockTimeout] = useState(0); // minutes (0 = disabled)
     const [showMasterPassword, setShowMasterPassword] = useState(false);
     const [masterPasswordError, setMasterPasswordError] = useState('');
     const [masterPasswordSuccess, setMasterPasswordSuccess] = useState('');
     const [isSettingPassword, setIsSettingPassword] = useState(false);
     const [passwordBtnState, setPasswordBtnState] = useState<'idle' | 'encrypting' | 'done'>('idle');
-    const [isSavingTimeout, setIsSavingTimeout] = useState(false);
 
     // Vault Backup state
     const [vaultEntriesCount, setVaultEntriesCount] = useState(0);
@@ -420,6 +419,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'filehandling', label: t('settings.fileHandling'), icon: <FileCheck size={16} /> },
         { id: 'ui', label: t('settings.appearance'), icon: <Palette size={16} /> },
         { id: 'security', label: t('settings.security'), icon: <Lock size={16} /> },
+        { id: 'backup', label: t('settings.backup'), icon: <Key size={16} /> },
         { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
     ];
 
@@ -1617,6 +1617,58 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Lock Screen Pattern */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mt-6">
+                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <h4 className="font-medium flex items-center gap-2 text-sm">
+                                            <Palette size={14} className="text-gray-500" />
+                                            {t('settings.lockScreenPattern')}
+                                        </h4>
+                                    </div>
+                                    <div className="p-4">
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {LOCK_SCREEN_PATTERNS.map(pattern => {
+                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
+                                                const isSelected = currentId === pattern.id;
+                                                return (
+                                                    <button
+                                                        key={pattern.id}
+                                                        onClick={() => {
+                                                            localStorage.setItem('aeroftp_lock_pattern', pattern.id);
+                                                            flashSaved();
+                                                        }}
+                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                                                            isSelected
+                                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                        }`}
+                                                        title={t(pattern.nameKey)}
+                                                    >
+                                                        {/* Pattern preview */}
+                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                            {pattern.svg && (
+                                                                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
+                                                            )}
+                                                        </div>
+                                                        {/* Label */}
+                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                        </div>
+                                                        {/* Selected check */}
+                                                        {isSelected && (
+                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -1761,7 +1813,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     max="60"
                                                     step="5"
                                                     value={autoLockTimeout}
-                                                    onChange={e => setAutoLockTimeout(parseInt(e.target.value))}
+                                                    onChange={async (e) => {
+                                                        const mins = parseInt(e.target.value);
+                                                        setAutoLockTimeout(mins);
+                                                        // Auto-save when master password is already set
+                                                        if (masterPasswordStatus?.is_set) {
+                                                            try {
+                                                                await invoke('set_auto_lock_timeout', { timeoutSeconds: mins * 60 });
+                                                                setMasterPasswordStatus(prev => prev ? { ...prev, timeout_seconds: mins * 60 } : prev);
+                                                            } catch { /* best-effort */ }
+                                                        }
+                                                    }}
                                                     className="flex-1 accent-emerald-500"
                                                 />
                                                 <span className="w-20 text-sm font-medium text-gray-700 dark:text-gray-300 text-right">
@@ -1769,51 +1831,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </span>
                                             </div>
                                             <p className="mt-1 text-xs text-gray-500">{t('settings.autoLockDesc')}</p>
-                                            {/* Save Timeout Only - when password is already set */}
-                                            {masterPasswordStatus?.is_set && (
-                                                <button
-                                                    onClick={async () => {
-                                                        if (!currentMasterPassword) {
-                                                            setMasterPasswordError(t('settings.enterCurrentPassword'));
-                                                            return;
-                                                        }
-                                                        setIsSavingTimeout(true);
-                                                        setMasterPasswordError('');
-                                                        try {
-                                                            // Verify password is correct, then update timeout
-                                                            await invoke('change_master_password', {
-                                                                oldPassword: currentMasterPassword,
-                                                                newPassword: currentMasterPassword,
-                                                            });
-                                                            const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
-                                                            setMasterPasswordStatus({
-                                                                is_set: status.master_mode,
-                                                                is_locked: status.is_locked,
-                                                                timeout_seconds: Number(status.timeout_seconds),
-                                                            });
-                                                            setMasterPasswordSuccess(t('settings.timeoutSaved'));
-                                                        } catch (err) {
-                                                            setMasterPasswordError(String(err));
-                                                        } finally {
-                                                            setIsSavingTimeout(false);
-                                                        }
-                                                    }}
-                                                    disabled={isSavingTimeout}
-                                                    className="mt-2 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                                                >
-                                                    {isSavingTimeout ? (
-                                                        <>
-                                                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                                                            {t('common.loading')}
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Clock size={12} />
-                                                            {t('settings.saveTimeout')}
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
                                         </div>
 
                                         {/* Action Buttons */}
@@ -1838,11 +1855,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     try {
                                                         const timeoutSeconds = autoLockTimeout * 60;
                                                         if (masterPasswordStatus?.is_set) {
-                                                            // Change password
+                                                            // Change password + sync timeout
                                                             await invoke('change_master_password', {
                                                                 oldPassword: currentMasterPassword,
                                                                 newPassword: newMasterPassword,
                                                             });
+                                                            await invoke('set_auto_lock_timeout', { timeoutSeconds: timeoutSeconds });
                                                             setMasterPasswordSuccess(t('settings.passwordChanged'));
                                                         } else {
                                                             // Enable master password
@@ -1980,65 +1998,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        )}
 
-                                {/* Lock Screen Pattern */}
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                                        <h4 className="font-medium flex items-center gap-2 text-sm">
-                                            <Palette size={14} className="text-gray-500" />
-                                            {t('settings.lockScreenPattern')}
-                                        </h4>
-                                    </div>
-                                    <div className="p-4">
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {LOCK_SCREEN_PATTERNS.map(pattern => {
-                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
-                                                const isSelected = currentId === pattern.id;
-                                                return (
-                                                    <button
-                                                        key={pattern.id}
-                                                        onClick={() => {
-                                                            localStorage.setItem('aeroftp_lock_pattern', pattern.id);
-                                                            flashSaved();
-                                                        }}
-                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
-                                                            isSelected
-                                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30'
-                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                        }`}
-                                                        title={t(pattern.nameKey)}
-                                                    >
-                                                        {/* Pattern preview */}
-                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
-                                                            {pattern.svg && (
-                                                                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
-                                                            )}
-                                                        </div>
-                                                        {/* Label */}
-                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
-                                                        </div>
-                                                        {/* Selected check */}
-                                                        {isSelected && (
-                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
+                        {activeTab === 'backup' && (
+                            <div className="space-y-6">
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.backup')}</h3>
 
-                                {/* Vault Backup Section */}
+                                {/* Vault Backup */}
                                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                     <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                                         <div className="flex items-center justify-between">
                                             <h4 className="font-medium flex items-center gap-2 text-sm">
-                                                <Shield size={14} className="text-blue-500" />
+                                                <Key size={14} className="text-blue-500" />
                                                 {t('settings.keystoreBackup')}
                                             </h4>
                                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">

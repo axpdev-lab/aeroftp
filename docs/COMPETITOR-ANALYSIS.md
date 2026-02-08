@@ -1,7 +1,7 @@
 # AeroFTP Competitor Analysis
 
-> Last Updated: 5 February 2026
-> Version: v1.8.6
+> Last Updated: 7 February 2026
+> Version: v2.0.0
 
 ---
 
@@ -63,14 +63,31 @@
 |---------|---------|-----------|-----------|--------|----------|----------|
 | Code Editor | Yes (Monaco) | No | No | Yes (Basic) | No | No |
 | Terminal | Yes | No | No | Yes (PuTTY) | No | No |
-| AI Assistant | **Yes (Pro)** | No | No | No | No | No |
-| Media Player | Yes | No | No | No | No | Quick Look |
+| AI Assistant | **Yes (AeroAgent Pro)** | No | No | No | No | No |
+| File Preview | **Yes (25+ types, syntax HL)** | No | Quick Look | No | Yes | Quick Look |
+| Media Player | Yes (14 visualizers) | No | No | No | No | Quick Look |
 | Activity Log | Yes | Yes | Yes | Yes | No | No |
 | Remote Search | Yes (all 13) | No | Yes | No | No | No |
 | File Versions | Yes (5 providers) | No | Yes | No | No | No |
 | File Locking | Yes (WebDAV) | No | Yes | No | No | No |
 | Batch Rename | **Yes (v1.8.0)** | No | No | Yes | Yes | Yes |
 | Inline Rename (F2) | **Yes (v1.8.0)** | Yes | Yes | Yes | Yes | Yes |
+
+### AI Assistant Capabilities
+
+| Feature | AeroFTP | FileZilla | Cyberduck | WinSCP | Transmit | ForkLift |
+|---------|---------|-----------|-----------|--------|----------|----------|
+| AI Chat Assistant | **Yes (v2.0)** | No | No | No | No | No |
+| AI Tool Calling | **28 tools** | No | No | No | No | No |
+| Multi-Provider AI | **7 providers** | No | No | No | No | No |
+| Vision/Multimodal | **Yes** | No | No | No | No | No |
+| RAG Indexing | **Yes** | No | No | No | No | No |
+| Prompt Templates | **15 built-in** | No | No | No | No | No |
+| AI Cost Tracking | **Yes** | No | No | No | No | No |
+| Streaming Markdown | **Yes** | No | No | No | No | No |
+| Code Execution (Gemini) | **Yes** | No | No | No | No | No |
+| GPU Monitoring (Ollama) | **Yes** | No | No | No | No | No |
+| Plugin System | **Yes** | No | No | No | No | No |
 
 ### Sync & Automation
 
@@ -106,6 +123,7 @@
 | RAR Extraction | Yes | No | No | No | No | No |
 | Archive Browser (in-app) | **Yes (v1.7.0)** | No | No | No | No | No |
 | Selective Archive Extract | **Yes (v1.7.0)** | No | No | No | No | No |
+| AI Tool Validation | **Yes (v2.0)** | No | No | No | No | No |
 
 ### Advanced Protocol Features (v1.4.0)
 
@@ -142,7 +160,7 @@
 | **Monaco Editor** | VS Code engine for remote file editing |
 | **AeroVault v2** | Military-grade containers: AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade |
 | **Cryptomator Format 8** | Open, browse, decrypt, encrypt files in Cryptomator vaults (scrypt + AES-SIV + AES-GCM) |
-| **AeroAgent AI Pro** | AI assistant with native function calling, streaming, 24 tools (local+remote edit, batch transfers), protocol expertise, 7 AI providers |
+| **AeroAgent Pro (v2.0)** | AI assistant with 28 tools, DAG pipeline, diff preview, RAG indexing, agent memory, conversation branching, streaming markdown, prompt templates, 7 AI providers |
 | **Modern Stack** | Rust backend + React frontend (performance + security) |
 | **Tray Background Sync** | Continuous sync without main window |
 | **Sync Index Cache** | Persistent cache for faster re-scans and true conflict detection |
@@ -152,6 +170,7 @@
 | **Memory Zeroization** | Passwords cleared from memory via zeroize/secrecy |
 | **Multi-Format Archives** | ZIP, 7z, TAR, GZ, XZ, BZ2, RAR (7 formats) with compression levels and password protection |
 | **Archive Browser** | Browse archive contents in-app without extracting, selective single-file extraction |
+| **Universal Preview** | In-app preview for 25+ file types with Prism.js syntax highlighting, HTML/Markdown live rendering, image zoom/rotate/color picker, audio/video playback, PDF viewer |
 | **AeroFile Mode** | Local-only file manager with resizable preview panel, image resolution display, and file info sidebar |
 | **Workspace Export** | Auto-export Google Docs/Sheets/Slides to DOCX/XLSX/PPTX |
 | **Change Tracking** | Delta sync foundation via Google Drive changes API |
@@ -228,9 +247,13 @@
 - PowerShell terminal prompt fix (no raw command echo on startup)
 - Windows compatibility improvements across all platforms
 
-### v1.8.6 - Planned
-- AeroAgent Intelligence (vision, multi-step), CLI/Scripting foundation
-- Remote vault open/save, Cryptomator vault creation
+### v1.8.6 - v1.9.0 - Done
+- Vision/multimodal AI, universal credential vault, unified keystore, keystore backup/restore
+- Migration wizard, AI multi-step tools, Ollama auto-detection, conversation export
+- Monaco bidirectional sync, terminal command execution, AeroPlayer WebGL engine
+
+### v2.0.0 - Done
+- **AeroAgent Pro**: Provider Intelligence (7 profiles), Advanced Tool Execution (DAG pipeline, diff preview, retry, validation, macros), Context Intelligence (project detection, dependency graph, agent memory, branching, smart context, token budget), Professional UX (streaming markdown, code actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict, Ollama templates/pull/GPU, Gemini code execution)
 
 ---
 
@@ -240,7 +263,7 @@
                     CLOUD INTEGRATION
                           |
          Cyberduck        |        AeroFTP
-                          |        (v1.8.5)
+                          |        (v2.0.0)
     ----------------------+----------------------> PRO FEATURES
          FileZilla        |
                           |

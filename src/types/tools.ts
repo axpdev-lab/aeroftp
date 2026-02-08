@@ -24,6 +24,7 @@ export interface AgentToolCall {
     result?: unknown;
     error?: string;
     preview?: string;
+    validation?: { valid: boolean; errors: string[]; warnings: string[] };
 }
 
 // Provider-agnostic tool definitions (works with all 13 protocols)
@@ -59,6 +60,18 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'path', type: 'string', description: 'Directory to search', required: true },
             { name: 'pattern', type: 'string', description: 'Search pattern (e.g. "*.txt")', required: true },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'preview_edit',
+        description: 'Preview a find/replace edit without modifying the file. Returns original and modified content for diff display.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'File path to preview edit', required: true },
+            { name: 'find', type: 'string', description: 'String to find', required: true },
+            { name: 'replace', type: 'string', description: 'Replacement string', required: true },
+            { name: 'replace_all', type: 'boolean', description: 'Replace all occurrences (default true)', required: false },
+            { name: 'remote', type: 'boolean', description: 'If true, read from remote server', required: false },
         ],
         dangerLevel: 'safe',
     },
@@ -245,21 +258,36 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'path', type: 'string', description: 'Directory to search (default: current)', required: false },
             { name: 'max_results', type: 'number', description: 'Maximum results (default: 20)', required: false },
         ],
-        dangerLevel: 'safe',
+        dangerLevel: 'medium',
+    },
+
+    // Agent memory — persistent project notes
+    {
+        name: 'agent_memory_write',
+        description: 'Save a note to persistent project memory (.aeroagent file) for future reference across sessions',
+        parameters: [
+            { name: 'entry', type: 'string', description: 'Content to remember', required: true },
+            { name: 'category', type: 'string', description: 'Category: convention, preference, issue, pattern', required: false },
+        ],
+        dangerLevel: 'medium',
     },
 ];
 
-// Backwards compatibility
-export const FTP_TOOLS = AGENT_TOOLS;
-
-// Get tool by name
+// Get tool by name (searches built-in AGENT_TOOLS only)
 export const getToolByName = (name: string): AITool | undefined =>
     AGENT_TOOLS.find(t => t.name === name);
 
-// Check if tool requires approval
-export const requiresApproval = (toolName: string): boolean => {
-    const tool = getToolByName(toolName);
-    return tool ? tool.dangerLevel !== 'safe' : true;
+// Get tool by name from a provided array (includes plugin tools)
+export const getToolByNameFromAll = (name: string, allTools: AITool[]): AITool | undefined =>
+    allTools.find(t => t.name === name);
+
+// Check if tool is safe (auto-execute without approval)
+// When allTools is provided, searches that array (includes plugin tools)
+export const isSafeTool = (toolName: string, allTools?: AITool[]): boolean => {
+    const tool = allTools
+        ? allTools.find(t => t.name === toolName)
+        : getToolByName(toolName);
+    return tool ? tool.dangerLevel === 'safe' : false;
 };
 
 // Generate tool description for AI system prompt
@@ -269,7 +297,7 @@ ${AGENT_TOOLS.map(t => `- ${t.name}: ${t.description}
   Parameters: ${t.parameters.map(p => `${p.name} (${p.type}${p.required ? ', required' : ''})`).join(', ')}`).join('\n\n')}
 
 RULES:
-1. Safe tools (remote_list, remote_read, remote_info, remote_search, rag_search) execute automatically.
+1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically.
 2. Medium/high risk tools need user approval — the system shows an approval prompt automatically. Do NOT ask for confirmation yourself — just call the tool directly and the UI will handle approval.
 3. Never delete files without explicit user request.
 

@@ -135,6 +135,29 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         }
     }, [theme]);
 
+    // Listen for editor-insert events from AeroAgent code block actions
+    useEffect(() => {
+        const handleEditorInsert = (e: Event) => {
+            const { code } = (e as CustomEvent).detail;
+            const editor = editorRef.current;
+            const monaco = monacoRef.current;
+            if (!editor || !monaco || !code) return;
+
+            const position = editor.getPosition();
+            if (position) {
+                editor.executeEdits('aeroagent-insert', [{
+                    range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                    text: code,
+                    forceMoveMarkers: true,
+                }]);
+                editor.focus();
+            }
+        };
+
+        window.addEventListener('editor-insert', handleEditorInsert);
+        return () => window.removeEventListener('editor-insert', handleEditorInsert);
+    }, []);
+
     // ResizeObserver for container size changes
     useEffect(() => {
         const container = containerRef.current;

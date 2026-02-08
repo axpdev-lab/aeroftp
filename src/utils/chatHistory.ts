@@ -5,6 +5,7 @@
 
 import { readTextFile, writeTextFile, mkdir, exists } from '@tauri-apps/plugin-fs';
 import { appConfigDir } from '@tauri-apps/api/path';
+import { logger } from './logger';
 
 export interface ConversationMessage {
     id: string;
@@ -32,6 +33,16 @@ export interface Conversation {
     updatedAt: string;
     totalTokens: number;
     totalCost: number;
+    branches?: ConversationBranch[];
+    activeBranchId?: string;
+}
+
+export interface ConversationBranch {
+    id: string;
+    name: string;
+    parentMessageId: string;
+    messages: ConversationMessage[];
+    createdAt: string;
 }
 
 const MAX_CONVERSATIONS = 50;
@@ -86,7 +97,7 @@ export async function saveHistory(conversations: Conversation[]): Promise<void> 
 
         await writeTextFile(path, JSON.stringify(trimmed, null, 2));
     } catch (e) {
-        console.error('Failed to save chat history:', e);
+        logger.error('Failed to save chat history:', e);
     }
 }
 

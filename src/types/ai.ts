@@ -20,11 +20,16 @@ export interface AIModel {
     name: string;
     displayName: string;
     maxTokens: number;
+    maxContextTokens?: number;         // Input context window size (distinct from maxTokens output limit)
     inputCostPer1k?: number;
     outputCostPer1k?: number;
     supportsStreaming: boolean;
     supportsTools: boolean;
     supportsVision: boolean;
+    supportsThinking?: boolean;        // Extended thinking / chain-of-thought (Claude, o3)
+    supportsParallelTools?: boolean;   // Multiple tool calls in single response
+    toolCallQuality?: 1 | 2 | 3 | 4 | 5;   // Tool call accuracy rating
+    bestFor?: string[];                        // Capability tags
     isEnabled: boolean;
     isDefault: boolean;
 }
@@ -48,9 +53,12 @@ export interface AISettings {
     advancedSettings: {
         temperature: number;        // 0.0 - 2.0
         maxTokens: number;          // Max response length
+        topP?: number;              // Top-P nucleus sampling (0.0-1.0)
+        topK?: number;              // Top-K sampling (1-100)
         conversationStyle: 'precise' | 'balanced' | 'creative';
         customSystemPrompt?: string;
         useCustomPrompt?: boolean;
+        thinkingBudget?: number;    // Extended thinking budget tokens (0 = disabled, default 10000)
     };
     defaultModelId: string | null;
 }
@@ -120,39 +128,20 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
     },
 ];
 
-// Default models for each provider
+// Default models for each provider (empty — users add their own via Settings or "Models" button)
 export const DEFAULT_MODELS: Record<AIProviderType, Omit<AIModel, 'id' | 'providerId'>[]> = {
-    google: [
-        { name: 'gemini-2.5-flash-preview-05-20', displayName: 'Gemini 2.5 Flash', maxTokens: 8192, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: true },
-        { name: 'gemini-2.0-flash-exp', displayName: 'Gemini 2.0 Flash', maxTokens: 8192, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: false },
-        { name: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', maxTokens: 32000, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: false },
-    ],
-    openai: [
-        { name: 'gpt-4o', displayName: 'GPT-4o', maxTokens: 128000, inputCostPer1k: 0.005, outputCostPer1k: 0.015, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: true },
-        { name: 'gpt-4o-mini', displayName: 'GPT-4o Mini', maxTokens: 128000, inputCostPer1k: 0.00015, outputCostPer1k: 0.0006, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: false },
-        { name: 'gpt-4-turbo', displayName: 'GPT-4 Turbo', maxTokens: 128000, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: false },
-    ],
-    anthropic: [
-        { name: 'claude-3-5-sonnet-20241022', displayName: 'Claude 3.5 Sonnet', maxTokens: 200000, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: true },
-        { name: 'claude-3-opus-20240229', displayName: 'Claude 3 Opus', maxTokens: 200000, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: false },
-    ],
-    xai: [
-        { name: 'grok-beta', displayName: 'Grok Beta', maxTokens: 131072, supportsStreaming: true, supportsTools: true, supportsVision: false, isEnabled: true, isDefault: true },
-    ],
-    openrouter: [
-        { name: 'google/gemini-2.0-flash-exp:free', displayName: 'Gemini 2.0 Flash (Free)', maxTokens: 8192, supportsStreaming: true, supportsTools: true, supportsVision: true, isEnabled: true, isDefault: true },
-        { name: 'meta-llama/llama-3.2-3b-instruct:free', displayName: 'Llama 3.2 3B (Free)', maxTokens: 8192, supportsStreaming: true, supportsTools: false, supportsVision: false, isEnabled: true, isDefault: false },
-    ],
-    ollama: [
-        { name: 'llama3.2', displayName: 'Llama 3.2', maxTokens: 8192, supportsStreaming: true, supportsTools: false, supportsVision: false, isEnabled: true, isDefault: true },
-        { name: 'codellama', displayName: 'Code Llama', maxTokens: 4096, supportsStreaming: true, supportsTools: false, supportsVision: false, isEnabled: true, isDefault: false },
-    ],
+    google: [],
+    openai: [],
+    anthropic: [],
+    xai: [],
+    openrouter: [],
+    ollama: [],
     custom: [],
 };
 
 // Helper to generate unique IDs
 export const generateId = (): string => {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 11)}`;
 };
 
 // Initial empty settings

@@ -246,8 +246,10 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             {/* Resize handle */}
             <div
                 onMouseDown={handleMouseDown}
-                className={`h-1.5 ${theme.resizeHandle} cursor-ns-resize transition-colors flex-shrink-0`}
-            />
+                className={`h-2 ${theme.resizeHandle} cursor-ns-resize transition-colors flex-shrink-0 flex items-center justify-center group`}
+            >
+                <div className={`w-10 h-0.5 rounded-full ${isLightTheme ? 'bg-gray-400 group-hover:bg-blue-500' : 'bg-gray-500 group-hover:bg-blue-400'} transition-colors`} />
+            </div>
 
             {/* Toolbar */}
             <div className={`flex items-center justify-between px-3 py-1.5 ${theme.toolbar} border-b flex-shrink-0`}>

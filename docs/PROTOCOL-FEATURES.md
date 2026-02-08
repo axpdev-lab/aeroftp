@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 7 February 2026
-> Version: v1.9.0 (Unified Keystore, AI 27 tools, RAG indexing, plugin system, keystore backup/restore, migration wizard, dual security audit, AeroPlayer WebGL engine)
+> Version: v2.0.0 (AeroAgent Pro — Provider Intelligence, Advanced Tool Execution, Context Intelligence, Professional UX, Provider-Specific Features)
 
 ---
 
@@ -287,7 +287,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 25 tools work identically across all 13 protocols via the `StorageProvider` trait:
+All 28 tools work identically across all 13 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -312,6 +312,9 @@ All 25 tools work identically across all 13 protocols via the `StorageProvider` 
 | `sync_preview` | Medium | Preview directory sync |
 | `archive_create` | Medium | Create archive |
 | `archive_extract` | Medium | Extract archive |
+| `rag_index` | Medium | Index directory for RAG search |
+| `rag_search` | Medium | Full-text search over indexed files |
+| `agent_memory_write` | Medium | Write to persistent agent memory |
 | `remote_delete` | High | Delete remote file |
 | `terminal_exec` | High | Execute terminal command |
 | `local_delete` | High | Delete local file/directory |
@@ -335,6 +338,49 @@ All 25 tools work identically across all 13 protocols via the `StorageProvider` 
 | Conversation export | Done (v1.9.0) | Export as Markdown or JSON |
 | Monaco bidirectional sync | Done (v1.9.0) | Live two-way sync between editor and AI agent |
 | Terminal command execution | Done (v1.9.0) | AI executes terminal commands with user approval |
+| Streaming markdown renderer | Done (v2.0.0) | Incremental rendering with finalized segments (React.memo) |
+| Code block actions | Done (v2.0.0) | Copy/Apply/Diff/Run buttons on AI code blocks |
+| Thought visualization | Done (v2.0.0) | ThinkingBlock for Anthropic/OpenAI/Gemini reasoning |
+| Prompt templates | Done (v2.0.0) | 15 built-in templates via `/` prefix, vault-persisted custom |
+| Multi-file diff | Done (v2.0.0) | PR-style diff with per-file checkboxes |
+| Cost budget tracking | Done (v2.0.0) | Per-provider monthly limits, vault-persisted |
+| Chat search | Done (v2.0.0) | Ctrl+F with role filter and keyboard navigation |
+| Anthropic prompt caching | Done (v2.0.0) | cache_control ephemeral, 90% read discount |
+| OpenAI structured outputs | Done (v2.0.0) | strict: true for OpenAI/xAI/OpenRouter |
+| Ollama model templates | Done (v2.0.0) | 8 family profiles with tailored prompts |
+| Ollama pull from UI | Done (v2.0.0) | NDJSON streaming progress in AI Settings |
+| Gemini code execution | Done (v2.0.0) | executableCode/codeExecutionResult parsing |
+
+---
+
+## AeroAgent Pro (v2.0.0)
+
+### AI Provider Feature Matrix
+
+| Feature | OpenAI | Anthropic | Google Gemini | xAI | OpenRouter | Ollama | Custom |
+|---------|--------|-----------|---------------|-----|------------|--------|--------|
+| Native Tool Calling | Yes | Yes | Yes | Yes | Yes | Text format | Yes |
+| Streaming | SSE | SSE | SSE | SSE | SSE | NDJSON | SSE |
+| Vision/Multimodal | Yes | Yes | Yes | Yes | Via model | Yes | Via model |
+| Structured Outputs | **strict: true** | N/A | N/A | **strict: true** | **strict: true** | N/A | N/A |
+| Prompt Caching | N/A | **Ephemeral** | **cachedContent** | N/A | N/A | N/A | N/A |
+| Extended Thinking | o3/o3-mini | Claude 3.5+ | Gemini 2.0+ | N/A | Via model | deepseek-r1 | N/A |
+| Code Execution | N/A | N/A | **Python sandbox** | N/A | N/A | N/A | N/A |
+| Model Pull from UI | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A |
+| GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A |
+| Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A |
+
+### AeroAgent Tool Categories (28 tools)
+
+| Category | Tools | Danger Level |
+|----------|-------|-------------|
+| Remote File Ops | remote_list, remote_read, remote_download, remote_upload, remote_delete, remote_rename, remote_mkdir, remote_edit | medium-high |
+| Local File Ops | local_list, local_read, local_write, local_delete, local_rename, local_mkdir, local_search, local_edit | medium |
+| Batch Operations | upload_files, download_files | medium |
+| Sync & Compare | sync_preview | medium |
+| Terminal | terminal_execute | high |
+| RAG | rag_index, rag_search | medium |
+| Memory | agent_memory_write | medium |
 
 ---
 
@@ -400,13 +446,14 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v1.8.7 | File clipboard (cut/copy/paste), cross-panel paste, Ubuntu/macOS audits | Done |
 | v1.8.8 | Vision/multimodal AI, auto panel refresh, XSS hardening, security audit | Done |
 | v1.9.0 | **Unified Keystore** (localStorage to vault migration), **keystore backup/restore** (.aeroftp-keystore), **migration wizard**, AI multi-step tools, Ollama auto-detection, conversation export, Monaco bidirectional sync, terminal command execution | Done |
+| v2.0.0 | **AeroAgent Pro** — Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.0.0 | CLI Foundation (`aeroftp connect/ls/get/put/sync`), settings consolidation |
-| v2.1.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
+| v2.1.0 | CLI Foundation (`aeroftp connect/ls/get/put/sync`), 2FA/Biometric unlock |
+| v2.2.0 | Remote vault open/save, Cryptomator vault creation, provider feature gaps |
 
 ---
 

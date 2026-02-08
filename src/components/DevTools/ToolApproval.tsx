@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { AgentToolCall, getToolByName, DangerLevel } from '../../types/tools';
+import { invoke } from '@tauri-apps/api/core';
+import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
+import { DiffPreview } from './DiffPreview';
+import { ToolProgressIndicator } from './ToolProgressIndicator';
+import { useTranslation } from '../../i18n';
 
 interface ToolApprovalProps {
     toolCall: AgentToolCall;
     onApprove: () => void;
     onReject: () => void;
+    allTools?: AITool[];
 }
 
 const dangerConfig: Record<DangerLevel, { accent: string; label: string; icon: typeof Shield }> = {
@@ -35,6 +40,7 @@ const toolLabels: Record<string, string> = {
     sync_preview: 'Sync Preview',
     terminal_execute: 'Terminal',
     rag_index: 'Index',
+    agent_memory_write: 'Memory',
 };
 
 /** Extract the main argument to show inline (usually path or command) */
@@ -50,9 +56,14 @@ function getMainArg(toolName: string, args: Record<string, unknown>): string {
     return '';
 }
 
-export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject }) => {
+export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject, allTools }) => {
     const [expanded, setExpanded] = useState(false);
-    const tool = getToolByName(toolCall.toolName);
+    const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
+    const [diffLoading, setDiffLoading] = useState(false);
+    const [diffError, setDiffError] = useState<string | null>(null);
+    const t = useTranslation();
+
+    const tool = allTools ? getToolByNameFromAll(toolCall.toolName, allTools) : getToolByName(toolCall.toolName);
     const dangerLevel = tool?.dangerLevel || 'medium';
     const config = dangerConfig[dangerLevel];
     const DangerIcon = config.icon;
@@ -62,11 +73,39 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isError = toolCall.status === 'error';
     const isPending = toolCall.status === 'pending' || toolCall.status === 'approved';
 
+    const isEditTool = toolCall.toolName === 'local_edit' || toolCall.toolName === 'remote_edit';
+
+    useEffect(() => {
+        if (!isEditTool || toolCall.status !== 'pending') return;
+        setDiffLoading(true);
+        setDiffError(null);
+        invoke('execute_ai_tool', {
+            toolName: 'preview_edit',
+            args: {
+                path: toolCall.args.path,
+                find: toolCall.args.find,
+                replace: toolCall.args.replace,
+                replace_all: toolCall.args.replace_all ?? true,
+                remote: toolCall.toolName === 'remote_edit',
+            },
+        })
+        .then((result: unknown) => {
+            const r = result as Record<string, unknown>;
+            if (r.success) {
+                setDiffData({ original: r.original as string, modified: r.modified as string });
+            } else {
+                setDiffError((r.message as string) || 'Preview failed');
+            }
+        })
+        .catch((err: unknown) => setDiffError(String(err)))
+        .finally(() => setDiffLoading(false));
+    }, [toolCall.id]);
+
     const label = toolLabels[toolCall.toolName] || toolCall.toolName;
     const mainArg = getMainArg(toolCall.toolName, toolCall.args);
 
     return (
-        <div className={`border-l-2 ${config.accent} bg-gray-800/40 rounded-r my-1 text-xs`}>
+        <div className={`border-l-2 ${config.accent} bg-gray-800/40 rounded-r my-1 text-xs`} role="listitem">
             {/* Compact header row */}
             <div className="flex items-center gap-1.5 px-2 py-1.5">
                 <DangerIcon size={12} className={
@@ -88,6 +127,8 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                     <button
                         onClick={() => setExpanded(!expanded)}
                         className="ml-auto text-gray-500 hover:text-gray-300 p-0.5"
+                        aria-expanded={expanded}
+                        aria-label="Toggle details"
                     >
                         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </button>
@@ -96,17 +137,17 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                 {/* Status indicators */}
                 {isExecuting && (
                     <span className="ml-auto flex items-center gap-1 text-yellow-400">
-                        <Loader2 size={11} className="animate-spin" /> Running...
+                        <Loader2 size={11} className="animate-spin" /> {t('ai.tool.running') || 'Running...'}
                     </span>
                 )}
                 {isCompleted && (
                     <span className="ml-auto flex items-center gap-1 text-green-400">
-                        <Check size={11} /> Done
+                        <Check size={11} /> {t('ai.tool.done') || 'Done'}
                     </span>
                 )}
                 {isError && (
                     <span className="ml-auto text-red-400 truncate max-w-[200px]">
-                        Failed{toolCall.error ? `: ${toolCall.error}` : ''}
+                        {t('ai.tool.failed') || 'Failed'}{toolCall.error ? `: ${toolCall.error}` : ''}
                     </span>
                 )}
 
@@ -120,19 +161,67 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                     ? 'bg-red-600/80 hover:bg-red-500 text-white'
                                     : 'bg-green-600/80 hover:bg-green-500 text-white'
                             }`}
+                            aria-label={dangerLevel === 'high' ? 'Confirm dangerous action' : 'Allow tool execution'}
                         >
                             <Check size={10} />
-                            {dangerLevel === 'high' ? 'Confirm' : 'Allow'}
+                            {dangerLevel === 'high' ? (t('ai.tool.confirm') || 'Confirm') : (t('ai.tool.allow') || 'Allow')}
                         </button>
                         <button
                             onClick={onReject}
                             className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-700/80 hover:bg-gray-600 text-gray-300 transition-colors"
+                            aria-label="Reject tool execution"
                         >
                             <X size={10} />
                         </button>
                     </div>
                 )}
             </div>
+
+            {/* Progress indicator for long-running tools */}
+            {isExecuting && (
+                <ToolProgressIndicator toolName={toolCall.toolName} />
+            )}
+
+            {/* Diff preview for edit tools */}
+            {isEditTool && diffLoading && (
+                <div className="px-3 py-1.5 text-[11px] text-gray-500 flex items-center gap-1">
+                    <Loader2 size={10} className="animate-spin" />
+                    {t('ai.tool.loadingDiff') || 'Loading diff preview...'}
+                </div>
+            )}
+            {isEditTool && diffData && isPending && (
+                <DiffPreview
+                    originalContent={diffData.original}
+                    modifiedContent={diffData.modified}
+                    fileName={String(toolCall.args.path || '')}
+                    showActions={false}
+                />
+            )}
+            {isEditTool && diffError && (
+                <div className="px-3 py-1 text-[11px] text-yellow-400">
+                    {t('ai.tool.previewUnavailable') || 'Preview unavailable:'} {diffError}
+                </div>
+            )}
+
+            {/* Validation errors/warnings */}
+            {toolCall.validation && !toolCall.validation.valid && (
+                <div className="px-3 py-1 text-[11px]">
+                    {toolCall.validation.errors.map((err, i) => (
+                        <div key={`err-${i}`} className="text-red-400 flex items-center gap-1">
+                            <span>{'\u2715'}</span> {err}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {toolCall.validation && toolCall.validation.warnings.length > 0 && (
+                <div className="px-3 py-1 text-[11px]">
+                    {toolCall.validation.warnings.map((warn, i) => (
+                        <div key={`warn-${i}`} className="text-yellow-400 flex items-center gap-1">
+                            <span>{'\u26A0'}</span> {warn}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Expandable args detail */}
             {expanded && isPending && (

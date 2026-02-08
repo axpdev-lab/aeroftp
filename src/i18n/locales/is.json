@@ -396,7 +396,8 @@
             "migrationFinish": "[NEEDS TRANSLATION] Complete",
             "migrationStep": "[NEEDS TRANSLATION] Step {current} of {total}",
             "duplicatesSkipped": "[NEEDS TRANSLATION] duplicates skipped",
-            "invalidPassword": "[NEEDS TRANSLATION] Invalid password"
+            "invalidPassword": "[NEEDS TRANSLATION] Invalid password",
+            "backup": "[NEEDS TRANSLATION] Backup"
         },
         "devtools": {
             "title": "Þróunarverkfæri",
@@ -1027,7 +1028,19 @@
                 "pluginEnabled": "[NEEDS TRANSLATION] Enabled",
                 "pluginDisabled": "[NEEDS TRANSLATION] Disabled",
                 "pluginBy": "[NEEDS TRANSLATION] by {{author}}",
-                "pluginTools": "[NEEDS TRANSLATION] {{count}} tools"
+                "pluginTools": "[NEEDS TRANSLATION] {{count}} tools",
+                "fetchModels": "[NEEDS TRANSLATION] Models",
+                "fetchingModels": "[NEEDS TRANSLATION] Loading...",
+                "fetchModelsTitle": "[NEEDS TRANSLATION] Available Models",
+                "fetchModelsEmpty": "[NEEDS TRANSLATION] No models found",
+                "fetchModelsError": "[NEEDS TRANSLATION] Failed to fetch models",
+                "fetchModelsAdd": "[NEEDS TRANSLATION] Add",
+                "fetchModelsAdded": "[NEEDS TRANSLATION] Added",
+                "macros": "[NEEDS TRANSLATION] Macros",
+                "macroName": "[NEEDS TRANSLATION] Macro Name",
+                "macroSteps": "[NEEDS TRANSLATION] Steps",
+                "macroParams": "[NEEDS TRANSLATION] Parameters",
+                "noMacros": "[NEEDS TRANSLATION] No macros configured"
             },
             "copy": "[NEEDS TRANSLATION] Copy",
             "attachImage": "[NEEDS TRANSLATION] Attach image",
@@ -1053,7 +1066,156 @@
                 "noResults": "[NEEDS TRANSLATION] No matches found"
             },
             "showMore": "[NEEDS TRANSLATION] Show more",
-            "showLess": "[NEEDS TRANSLATION] Show less"
+            "showLess": "[NEEDS TRANSLATION] Show less",
+            "codeBlock": {
+                "copy": "[NEEDS TRANSLATION] Copy",
+                "copied": "[NEEDS TRANSLATION] Copied!",
+                "apply": "[NEEDS TRANSLATION] Apply to File",
+                "run": "[NEEDS TRANSLATION] Run in Terminal",
+                "insert": "[NEEDS TRANSLATION] Insert in Editor",
+                "diff": "[NEEDS TRANSLATION] Diff with original",
+                "diffNoFile": "[NEEDS TRANSLATION] No file open for diff"
+            },
+            "thinkingBlock": {
+                "thinking": "[NEEDS TRANSLATION] Thinking...",
+                "thoughtFor": "[NEEDS TRANSLATION] Thought for {{seconds}}s"
+            },
+            "batch": {
+                "allowAll": "[NEEDS TRANSLATION] Allow All",
+                "rejectAll": "[NEEDS TRANSLATION] Reject All",
+                "pending": "[NEEDS TRANSLATION] pending approval",
+                "toolCall": "[NEEDS TRANSLATION] tool call",
+                "toolCalls": "[NEEDS TRANSLATION] tool calls",
+                "running": "[NEEDS TRANSLATION] Running...",
+                "done": "[NEEDS TRANSLATION] Done",
+                "failed": "[NEEDS TRANSLATION] Failed",
+                "allowThis": "[NEEDS TRANSLATION] Allow this tool"
+            },
+            "diff": {
+                "title": "[NEEDS TRANSLATION] Diff Preview",
+                "apply": "[NEEDS TRANSLATION] Apply",
+                "cancel": "[NEEDS TRANSLATION] Cancel"
+            },
+            "tool": {
+                "running": "[NEEDS TRANSLATION] Running...",
+                "done": "[NEEDS TRANSLATION] Done",
+                "failed": "[NEEDS TRANSLATION] Failed",
+                "confirm": "[NEEDS TRANSLATION] Confirm",
+                "allow": "[NEEDS TRANSLATION] Allow",
+                "loadingDiff": "[NEEDS TRANSLATION] Loading diff preview...",
+                "previewUnavailable": "[NEEDS TRANSLATION] Preview unavailable:",
+                "memoryWrite": "[NEEDS TRANSLATION] Memory"
+            },
+            "budget": {
+                "system": "[NEEDS TRANSLATION] System",
+                "context": "[NEEDS TRANSLATION] Context",
+                "history": "[NEEDS TRANSLATION] History",
+                "current": "[NEEDS TRANSLATION] Current",
+                "response": "[NEEDS TRANSLATION] Response",
+                "available": "[NEEDS TRANSLATION] Available",
+                "usage": "[NEEDS TRANSLATION] Token usage"
+            },
+            "branch": {
+                "main": "[NEEDS TRANSLATION] Main",
+                "fork": "[NEEDS TRANSLATION] Fork conversation here",
+                "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+                "delete": "[NEEDS TRANSLATION] Delete branch",
+                "newBranch": "[NEEDS TRANSLATION] New branch",
+                "branchFrom": "[NEEDS TRANSLATION] Branch from this point"
+            },
+            "context": {
+                "projectDetected": "[NEEDS TRANSLATION] Project detected",
+                "gitContext": "[NEEDS TRANSLATION] Git context",
+                "agentMemory": "[NEEDS TRANSLATION] Agent memory",
+                "smartContext": "[NEEDS TRANSLATION] Smart context",
+                "noProject": "[NEEDS TRANSLATION] No project detected",
+                "memorySaved": "[NEEDS TRANSLATION] Memory saved",
+                "memoryCleared": "[NEEDS TRANSLATION] Memory cleared"
+            },
+            "search": {
+                "placeholder": "[NEEDS TRANSLATION] Search messages...",
+                "noResults": "[NEEDS TRANSLATION] No results",
+                "filterAll": "[NEEDS TRANSLATION] All",
+                "filterUser": "[NEEDS TRANSLATION] User",
+                "filterAI": "[NEEDS TRANSLATION] AI"
+            },
+            "templates": {
+                "code": "[NEEDS TRANSLATION] Code",
+                "debug": "[NEEDS TRANSLATION] Debug",
+                "docs": "[NEEDS TRANSLATION] Documentation",
+                "security": "[NEEDS TRANSLATION] Security",
+                "general": "[NEEDS TRANSLATION] General",
+                "typeSlash": "[NEEDS TRANSLATION] Type / to use templates",
+                "analyzeUi": "[NEEDS TRANSLATION] Analyze UI screenshot for layout, accessibility, and UX issues",
+                "performance": "[NEEDS TRANSLATION] Analyze code for performance bottlenecks and optimization"
+            },
+            "costBudget": {
+                "conversationCost": "[NEEDS TRANSLATION] Conversation cost",
+                "tokens": "[NEEDS TRANSLATION] Tokens",
+                "requests": "[NEEDS TRANSLATION] Requests",
+                "monthlyBudget": "[NEEDS TRANSLATION] Monthly budget",
+                "budgetExhausted": "[NEEDS TRANSLATION] Monthly budget exhausted",
+                "budgetWarning": "[NEEDS TRANSLATION] Budget warning"
+            },
+            "shortcuts": {
+                "clearChat": "[NEEDS TRANSLATION] Clear chat (Ctrl+L)",
+                "newChat": "[NEEDS TRANSLATION] New chat (Ctrl+Shift+N)",
+                "exportChat": "[NEEDS TRANSLATION] Export chat (Ctrl+Shift+E)",
+                "search": "[NEEDS TRANSLATION] Search (Ctrl+F)",
+                "focusInput": "[NEEDS TRANSLATION] Focus input (Ctrl+/)"
+            },
+            "multiDiff": {
+                "filesChanged": "[NEEDS TRANSLATION] {{count}} files changed",
+                "selectAll": "[NEEDS TRANSLATION] Select all",
+                "deselectAll": "[NEEDS TRANSLATION] Deselect all",
+                "applyFiles": "[NEEDS TRANSLATION] Apply {{count}} files",
+                "selected": "[NEEDS TRANSLATION] {{selected}} of {{total}} selected"
+            },
+            "cache": {
+                "savings": "[NEEDS TRANSLATION] Cache savings",
+                "read": "[NEEDS TRANSLATION] Cache read tokens",
+                "created": "[NEEDS TRANSLATION] Cache creation tokens",
+                "enabled": "[NEEDS TRANSLATION] Prompt caching enabled"
+            },
+            "pullModel": {
+                "title": "[NEEDS TRANSLATION] Pull Model",
+                "placeholder": "[NEEDS TRANSLATION] Model name (e.g. llama3.2)",
+                "pulling": "[NEEDS TRANSLATION] Pulling model...",
+                "success": "[NEEDS TRANSLATION] Model pulled successfully",
+                "error": "[NEEDS TRANSLATION] Failed to pull model",
+                "progress": "[NEEDS TRANSLATION] Downloading"
+            },
+            "thinkingBudget": {
+                "title": "[NEEDS TRANSLATION] Thinking Budget",
+                "off": "[NEEDS TRANSLATION] Off",
+                "light": "[NEEDS TRANSLATION] Light",
+                "balanced": "[NEEDS TRANSLATION] Balanced",
+                "deep": "[NEEDS TRANSLATION] Deep",
+                "maximum": "[NEEDS TRANSLATION] Maximum",
+                "tokens": "[NEEDS TRANSLATION] tokens"
+            },
+            "modelFamily": {
+                "detected": "[NEEDS TRANSLATION] Model family detected",
+                "unknown": "[NEEDS TRANSLATION] Unknown model family"
+            },
+            "gpuMonitor": {
+                "title": "[NEEDS TRANSLATION] GPU Monitor",
+                "noModels": "[NEEDS TRANSLATION] No models currently loaded",
+                "vram": "[NEEDS TRANSLATION] VRAM",
+                "running": "[NEEDS TRANSLATION] running",
+                "expired": "[NEEDS TRANSLATION] expired",
+                "refresh": "[NEEDS TRANSLATION] Refresh"
+            },
+            "geminiCache": {
+                "title": "[NEEDS TRANSLATION] Context Caching",
+                "description": "[NEEDS TRANSLATION] Large system prompts and contexts (32K+ tokens) are automatically cached for 5 minutes, reducing latency and cost by up to 75% on subsequent requests."
+            },
+            "codeExec": {
+                "title": "[NEEDS TRANSLATION] Gemini Code Execution",
+                "output": "[NEEDS TRANSLATION] Output",
+                "ok": "[NEEDS TRANSLATION] OK",
+                "failed": "[NEEDS TRANSLATION] Failed"
+            }
         },
         "archive": {
             "passwordRequired": "[NEEDS TRANSLATION] This archive is password protected",

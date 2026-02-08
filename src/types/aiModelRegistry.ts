@@ -1,0 +1,362 @@
+import { AIModel } from './ai';
+
+/**
+ * Specification for a known AI model, including capabilities, pricing, and quality ratings.
+ */
+export interface KnownModelSpec {
+    displayName: string;
+    maxTokens: number;
+    maxContextTokens: number;
+    inputCostPer1k: number;
+    outputCostPer1k: number;
+    supportsStreaming: boolean;
+    supportsTools: boolean;
+    supportsVision: boolean;
+    supportsThinking: boolean;
+    supportsParallelTools: boolean;
+    toolCallQuality: 1 | 2 | 3 | 4 | 5;
+    bestFor: string[];
+}
+
+export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
+    // OpenAI
+    'gpt-4o': {
+        displayName: 'GPT-4o',
+        maxTokens: 16384,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0.0025,
+        outputCostPer1k: 0.01,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'analysis', 'vision'],
+    },
+    'gpt-4o-mini': {
+        displayName: 'GPT-4o Mini',
+        maxTokens: 16384,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0.00015,
+        outputCostPer1k: 0.0006,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 4,
+        bestFor: ['fast', 'code'],
+    },
+    'gpt-4-turbo': {
+        displayName: 'GPT-4 Turbo',
+        maxTokens: 4096,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0.01,
+        outputCostPer1k: 0.03,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'analysis'],
+    },
+    'o3-mini': {
+        displayName: 'o3-mini',
+        maxTokens: 16384,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0.0011,
+        outputCostPer1k: 0.0044,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: false,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning'],
+    },
+    'o3': {
+        displayName: 'o3',
+        maxTokens: 100000,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.01,
+        outputCostPer1k: 0.04,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis'],
+    },
+
+    // Anthropic
+    'claude-opus-4-6': {
+        displayName: 'Claude Opus 4.6',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.015,
+        outputCostPer1k: 0.075,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis'],
+    },
+    'claude-sonnet-4-5-20250929': {
+        displayName: 'Claude Sonnet 4.5',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.003,
+        outputCostPer1k: 0.015,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'analysis'],
+    },
+    'claude-haiku-4-5-20251001': {
+        displayName: 'Claude Haiku 4.5',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.0008,
+        outputCostPer1k: 0.004,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 4,
+        bestFor: ['fast', 'code'],
+    },
+    'claude-3-5-sonnet-20241022': {
+        displayName: 'Claude 3.5 Sonnet',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.003,
+        outputCostPer1k: 0.015,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'analysis'],
+    },
+
+    // Google
+    'gemini-2.5-flash': {
+        displayName: 'Gemini 2.5 Flash',
+        maxTokens: 8192,
+        maxContextTokens: 1048576,
+        inputCostPer1k: 0.00015,
+        outputCostPer1k: 0.0006,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 4,
+        bestFor: ['fast', 'analysis'],
+    },
+    'gemini-2.5-pro': {
+        displayName: 'Gemini 2.5 Pro',
+        maxTokens: 8192,
+        maxContextTokens: 1048576,
+        inputCostPer1k: 0.00125,
+        outputCostPer1k: 0.01,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis'],
+    },
+    'gemini-2.0-flash': {
+        displayName: 'Gemini 2.0 Flash',
+        maxTokens: 8192,
+        maxContextTokens: 1048576,
+        inputCostPer1k: 0.0001,
+        outputCostPer1k: 0.0004,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 4,
+        bestFor: ['fast'],
+    },
+
+    // xAI
+    'grok-3': {
+        displayName: 'Grok 3',
+        maxTokens: 8192,
+        maxContextTokens: 131072,
+        inputCostPer1k: 0.003,
+        outputCostPer1k: 0.015,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: true,
+        toolCallQuality: 4,
+        bestFor: ['code', 'creative'],
+    },
+    'grok-3-mini': {
+        displayName: 'Grok 3 Mini',
+        maxTokens: 8192,
+        maxContextTokens: 131072,
+        inputCostPer1k: 0.0003,
+        outputCostPer1k: 0.0005,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: false,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 3,
+        bestFor: ['fast', 'reasoning'],
+    },
+
+    // Ollama (common local models)
+    'llama3.3:70b': {
+        displayName: 'Llama 3.3 70B',
+        maxTokens: 4096,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 2,
+        bestFor: ['general'],
+    },
+    'llama3.1:8b': {
+        displayName: 'Llama 3.1 8B',
+        maxTokens: 4096,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 1,
+        bestFor: ['fast'],
+    },
+    'deepseek-coder-v2': {
+        displayName: 'DeepSeek Coder V2',
+        maxTokens: 4096,
+        maxContextTokens: 128000,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 3,
+        bestFor: ['code'],
+    },
+    'qwen2.5-coder:32b': {
+        displayName: 'Qwen 2.5 Coder 32B',
+        maxTokens: 4096,
+        maxContextTokens: 32768,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 3,
+        bestFor: ['code'],
+    },
+    'codellama:34b': {
+        displayName: 'Code Llama 34B',
+        maxTokens: 4096,
+        maxContextTokens: 16384,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 2,
+        bestFor: ['code'],
+    },
+    'mistral:7b': {
+        displayName: 'Mistral 7B',
+        maxTokens: 4096,
+        maxContextTokens: 32768,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 2,
+        bestFor: ['fast'],
+    },
+    'mixtral:8x22b': {
+        displayName: 'Mixtral 8x22B',
+        maxTokens: 4096,
+        maxContextTokens: 65536,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        toolCallQuality: 3,
+        bestFor: ['general', 'code'],
+    },
+};
+
+/**
+ * Lookup a model spec by name. Tries exact match first, then prefix match
+ * for versioned model names (e.g., "gpt-4o-2024-11-20" matches "gpt-4o").
+ */
+export function lookupModelSpec(modelName: string): KnownModelSpec | null {
+    if (MODEL_REGISTRY[modelName]) return MODEL_REGISTRY[modelName];
+    const keys = Object.keys(MODEL_REGISTRY).sort((a, b) => b.length - a.length);
+    for (const key of keys) {
+        if (modelName.startsWith(key)) return MODEL_REGISTRY[key];
+    }
+    return null;
+}
+
+/**
+ * Apply registry defaults to a partial model definition. User-provided values
+ * take precedence over registry defaults.
+ */
+export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }): Partial<AIModel> {
+    const spec = lookupModelSpec(model.name);
+    if (!spec) return model;
+    return {
+        displayName: spec.displayName,
+        maxTokens: spec.maxTokens,
+        maxContextTokens: spec.maxContextTokens,
+        inputCostPer1k: spec.inputCostPer1k,
+        outputCostPer1k: spec.outputCostPer1k,
+        supportsStreaming: spec.supportsStreaming,
+        supportsTools: spec.supportsTools,
+        supportsVision: spec.supportsVision,
+        supportsThinking: spec.supportsThinking,
+        supportsParallelTools: spec.supportsParallelTools,
+        toolCallQuality: spec.toolCallQuality,
+        bestFor: [...spec.bestFor],
+        ...model,
+    };
+}

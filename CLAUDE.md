@@ -150,7 +150,7 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 
 ---
 
-## Versione corrente: v1.9.0
+## Versione corrente: v2.0.0
 
 ### Stack tecnologico
 - **Backend**: Rust (Tauri 2) con russh 0.57, suppaftp 8, reqwest 0.13, quick-xml 0.39, zip 7
@@ -279,20 +279,82 @@ snapcraft upload aeroftp_X.Y.Z_amd64.snap --release=stable
 - ~~AeroPlayer 6 WebGL shader — Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles (port da CyberPulse)~~ Done
 - ~~AeroPlayer post-processing — vignette, chromatic aberration, CRT scanlines, glitch on beat~~ Done
 - ~~AeroPlayer 14 modalita visualizer — 8 Canvas 2D + 6 WebGL 2 GPU, tasto V cicla tutte~~ Done
+- ~~AIChat.tsx modularizzazione — da 2215 a ~1436 righe, 7 moduli estratti (types, utils, tokenInfo, systemPrompt, images hook, conversations hook, header)~~ Done
+- ~~Fix chat persist effect — rimossa guardia `activeConversationId`, nuove conversazioni salvate subito~~ Done
+- ~~Fix computeTokenInfo fallback — gestione provider che restituiscono solo `tokens_used`~~ Done
+- ~~Plugin tool approval resolution — ToolApproval/BatchToolApproval usano `allTools` prop per danger level accurati~~ Done
+- ~~requiresApproval esteso — supporto parametro opzionale `allTools` per plugin tools~~ Done
 
-### Prossimi task (v2.0.0 / v2.1.0)
+### Completato in v2.0.0 (AeroAgent Pro)
 
-- CLI Foundation (`aeroftp connect/ls/get/put/sync`) — reuses `StorageProvider` trait
-- All 13 providers CLI support
-- JSON output (`--json`) per automation/CI
-- 2FA (TOTP) unlock — opzionale per utenti avanzati
-- Biometric unlock (macOS Touch ID, Windows Hello)
+#### Phase 1 — Provider Intelligence Layer
+- ~~Per-provider system prompt profiles — `aiProviderProfiles.ts` con 7 profili (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Custom)~~ Done
+- ~~Model capability registry — capabilities embedded nei provider profiles~~ Done
+- ~~Provider-specific parameter presets — `PARAMETER_PRESETS` (creative/balanced/precise)~~ Done
+- ~~Counter-audit Phase 1+2: 19 findings (3 critical, 5 high, 11 medium) — tutti risolti~~ Done
+
+#### Phase 2 — Advanced Tool Execution Engine
+- ~~DAG-based tool pipeline — `aiChatToolPipeline.ts` con topological sort e parallel execution~~ Done
+- ~~Diff preview for edits — `preview_edit` Rust command + preview in ToolApproval~~ Done
+- ~~Intelligent retry — `aiChatToolRetry.ts` con 8+ error strategies~~ Done
+- ~~Tool validation layer — `aiChatToolValidation.ts` + `validate_tool_args` Rust command~~ Done
+- ~~Composite tool macros — `aiChatToolMacros.ts` con `{{var}}` templates, 7a tab "Macros"~~ Done
+- ~~Tool progress indicators — `ToolProgressIndicator.tsx` con `ai-tool-progress` events~~ Done
+
+#### Phase 3 — Context Intelligence
+- ~~Project-aware context — `context_intelligence.rs` detect_project_context (10 linguaggi)~~ Done
+- ~~File dependency graph — `scan_file_imports` (6 linguaggi, LazyLock regex)~~ Done
+- ~~Persistent agent memory — `.aeroagent` file, `useAgentMemory.ts` hook, `agent_memory_write` tool (#28)~~ Done
+- ~~Conversation branching — fork/switch/delete, `ConversationBranch.tsx`, branch persistence~~ Done
+- ~~Smart context injection — `aiChatSmartContext.ts` con intent analysis e priority allocation~~ Done
+- ~~Token budget optimizer — `TokenBudgetIndicator.tsx`, `computeTokenBudget()`, 3 budget modes~~ Done
+- ~~Counter-audit Phase 3: 93 findings (0C, 8H, 25M, 37L, 23I) — tutti risolti (37 fix)~~ Done
+- ~~Path validation — `validate_context_path()` per tutti i 5 comandi context_intelligence~~ Done
+- ~~19 regex LazyLock — compilazione statica per performance~~ Done
+- ~~TOCTOU mutex — `MEMORY_WRITE_LOCK` per agent memory writes~~ Done
+- ~~Dead code removal — ForkButton, FTP_TOOLS, requiresApproval, PARAMETER_PRESETS export, tipi duplicati~~ Done
+- ~~Type consolidation — TokenBudgetBreakdown e BudgetMode in single source of truth~~ Done
+
+#### Phase 4 — Professional UX
+- ~~Streaming markdown renderer — FinalizedSegment (React.memo) + StreamingSegment~~ Done
+- ~~Code block actions — Copy/Apply/Diff/Run buttons, DiffPreview component~~ Done
+- ~~Agent thought visualization — ThinkingBlock con token display e duration~~ Done
+- ~~Prompt template library — 15 built-in templates, `/` prefix activation, vault persistence~~ Done
+- ~~Multi-file diff preview — PR-style diff con per-file checkboxes~~ Done
+- ~~Cost budget tracking — per-provider monthly limits, conversation cost, vault-persisted~~ Done
+- ~~Chat search — Ctrl+F overlay con role filter e keyboard navigation~~ Done
+- ~~Keyboard shortcuts — Ctrl+L/Shift+N/Shift+E/F/÷ con useKeyboardShortcuts hook~~ Done
+
+#### Phase 5 — Provider-Specific Features
+##### Tier 1 — High Impact
+- ~~Anthropic prompt caching — cache_control ephemeral, 90% read discount, cache savings display~~ Done
+- ~~OpenAI structured outputs — strict:true + additionalProperties:false per OpenAI/xAI/OpenRouter~~ Done
+- ~~Ollama model-specific templates — 8 family profiles, detectOllamaModelFamily(), getOllamaPromptStyle()~~ Done
+- ~~Ollama pull model from UI — POST /api/pull, NDJSON streaming, progress bar in AISettingsPanel~~ Done
+- ~~Thinking budget presets — 5 preset (Off/Light/Balanced/Deep/Maximum) + range slider 0-100K~~ Done
+
+##### Tier 2 — Medium Impact
+- ~~Gemini code execution — executableCode/codeExecutionResult parsing, GeminiCodeBlock.tsx~~ Done
+- ~~Gemini system_instruction — top-level field instead of in-message~~ Done
+- ~~Gemini context caching — gemini_create_cache command, cachedContent passthrough~~ Done
+- ~~Ollama GPU monitoring — ollama_list_running command, OllamaGpuMonitor.tsx~~ Done
+- ~~Native parallel tool calls (#58) — DAG pipeline in tutti i 4 path di esecuzione~~ Done
+- ~~Unified thinking/reasoning (#59) — ThinkingBlock per Anthropic/OpenAI o3/Gemini~~ Done
+- ~~Analyze UI + Performance templates — /analyze-ui e /performance in prompt library~~ Done
+
+### Prossimi task (v2.1.0)
+
+- **Phase 5 Tier 3**: Anthropic extended thinking visualization (multi-block), prompt caching analytics dashboard, OpenAI strict mode toggle in UI, Ollama model template editor, Gemini code execution sandbox config
+- **CLI Foundation**: `aeroftp connect/ls/get/put/sync` command-line interface
+- **2FA/Biometric**: Two-factor authentication and biometric unlock for vault
+- **Remote Vault**: Open/save AeroVault containers on remote servers
+- **Cryptomator Creation**: Create new Cryptomator vaults (currently read-only)
 
 ### Roadmap futura
 
 Dettagli completi in `docs/dev/ROADMAP.md`:
-- **v2.0.0**: CLI Foundation + 2FA/Biometric unlock
-- **v2.1.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
+- **v2.1.0**: CLI Foundation (`aeroftp connect/ls/get/put/sync`) + 2FA/Biometric unlock
+- **v2.2.0**: Remote vault open/save, Cryptomator vault creation, provider feature gaps
 
 ---
 

@@ -410,6 +410,7 @@
             "exportSuccess": "Exported {count} servers successfully",
             "importSuccess": "Imported {count} new servers",
             "security": "Security",
+            "backup": "Backup",
             "masterPassword": "Master Password",
             "masterPasswordDesc": "Protect AeroFTP with a master password. The app will lock after inactivity and require your password to unlock.",
             "masterPasswordEnabled": "Protected",
@@ -1095,13 +1096,176 @@
                 "pluginEnabled": "Enabled",
                 "pluginDisabled": "Disabled",
                 "pluginBy": "by {{author}}",
-                "pluginTools": "{{count}} tools"
+                "pluginTools": "{{count}} tools",
+                "fetchModels": "Models",
+                "fetchingModels": "Loading...",
+                "fetchModelsTitle": "Available Models",
+                "fetchModelsEmpty": "No models found",
+                "fetchModelsError": "Failed to fetch models",
+                "fetchModelsAdd": "Add",
+                "fetchModelsAdded": "Added",
+                "macros": "Macros",
+                "macroName": "Macro Name",
+                "macroSteps": "Steps",
+                "macroParams": "Parameters",
+                "noMacros": "No macros configured"
             },
             "rag": {
                 "indexing": "Indexing files...",
                 "indexed": "{{count}} files indexed",
                 "searching": "Searching...",
                 "noResults": "No matches found"
+            },
+            "codeBlock": {
+                "copy": "Copy",
+                "copied": "Copied!",
+                "apply": "Apply to File",
+                "run": "Run in Terminal",
+                "insert": "Insert in Editor",
+                "diff": "Diff with original",
+                "diffNoFile": "No file open for diff"
+            },
+            "thinkingBlock": {
+                "thinking": "Thinking...",
+                "thoughtFor": "Thought for {{seconds}}s"
+            },
+            "batch": {
+                "allowAll": "Allow All",
+                "rejectAll": "Reject All",
+                "pending": "pending approval",
+                "toolCall": "tool call",
+                "toolCalls": "tool calls",
+                "running": "Running...",
+                "done": "Done",
+                "failed": "Failed",
+                "allowThis": "Allow this tool"
+            },
+            "diff": {
+                "title": "Diff Preview",
+                "apply": "Apply",
+                "cancel": "Cancel"
+            },
+            "tool": {
+                "running": "Running...",
+                "done": "Done",
+                "failed": "Failed",
+                "confirm": "Confirm",
+                "allow": "Allow",
+                "loadingDiff": "Loading diff preview...",
+                "previewUnavailable": "Preview unavailable:",
+                "memoryWrite": "Memory"
+            },
+            "budget": {
+                "system": "System",
+                "context": "Context",
+                "history": "History",
+                "current": "Current",
+                "response": "Response",
+                "available": "Available",
+                "usage": "Token usage"
+            },
+            "branch": {
+                "main": "Main",
+                "fork": "Fork conversation here",
+                "switchBranch": "Switch branch",
+                "delete": "Delete branch",
+                "newBranch": "New branch",
+                "branchFrom": "Branch from this point"
+            },
+            "context": {
+                "projectDetected": "Project detected",
+                "gitContext": "Git context",
+                "agentMemory": "Agent memory",
+                "smartContext": "Smart context",
+                "noProject": "No project detected",
+                "memorySaved": "Memory saved",
+                "memoryCleared": "Memory cleared"
+            },
+            "search": {
+                "placeholder": "Search messages...",
+                "noResults": "No results",
+                "filterAll": "All",
+                "filterUser": "User",
+                "filterAI": "AI"
+            },
+            "templates": {
+                "code": "Code",
+                "debug": "Debug",
+                "docs": "Documentation",
+                "security": "Security",
+                "general": "General",
+                "typeSlash": "Type / to use templates"
+            },
+            "costBudget": {
+                "conversationCost": "Conversation cost",
+                "tokens": "Tokens",
+                "requests": "Requests",
+                "monthlyBudget": "Monthly budget",
+                "budgetExhausted": "Monthly budget exhausted",
+                "budgetWarning": "Budget warning"
+            },
+            "shortcuts": {
+                "clearChat": "Clear chat (Ctrl+L)",
+                "newChat": "New chat (Ctrl+Shift+N)",
+                "exportChat": "Export chat (Ctrl+Shift+E)",
+                "search": "Search (Ctrl+F)",
+                "focusInput": "Focus input (Ctrl+/)"
+            },
+            "multiDiff": {
+                "filesChanged": "{{count}} files changed",
+                "selectAll": "Select all",
+                "deselectAll": "Deselect all",
+                "applyFiles": "Apply {{count}} files",
+                "selected": "{{selected}} of {{total}} selected"
+            },
+            "cache": {
+                "savings": "Cache savings",
+                "read": "Cache read tokens",
+                "created": "Cache creation tokens",
+                "enabled": "Prompt caching enabled"
+            },
+            "pullModel": {
+                "title": "Pull Model",
+                "placeholder": "Model name (e.g. llama3.2)",
+                "pulling": "Pulling model...",
+                "success": "Model pulled successfully",
+                "error": "Failed to pull model",
+                "progress": "Downloading"
+            },
+            "thinkingBudget": {
+                "title": "Thinking Budget",
+                "off": "Off",
+                "light": "Light",
+                "balanced": "Balanced",
+                "deep": "Deep",
+                "maximum": "Maximum",
+                "tokens": "tokens"
+            },
+            "modelFamily": {
+                "detected": "Model family detected",
+                "unknown": "Unknown model family"
+            },
+            "gpuMonitor": {
+                "title": "GPU Monitor",
+                "noModels": "No models currently loaded",
+                "vram": "VRAM",
+                "running": "running",
+                "expired": "expired",
+                "refresh": "Refresh"
+            },
+            "geminiCache": {
+                "title": "Context Caching",
+                "description": "Large system prompts and contexts (32K+ tokens) are automatically cached for 5 minutes, reducing latency and cost by up to 75% on subsequent requests."
+            },
+            "codeExec": {
+                "title": "Gemini Code Execution",
+                "output": "Output",
+                "ok": "OK",
+                "failed": "Failed"
+            },
+            "templates": {
+                "analyzeUi": "Analyze UI screenshot for layout, accessibility, and UX issues",
+                "performance": "Analyze code for performance bottlenecks and optimization"
             }
         },
         "compress": {

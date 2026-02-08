@@ -28,6 +28,7 @@ mod keystore_export;
 mod pty;
 mod ssh_shell;
 mod ai_tools;
+mod context_intelligence;
 mod plugins;
 mod ai_stream;
 mod archive_browse;
@@ -3431,6 +3432,17 @@ async fn ai_test_provider(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn ai_list_models(
+    provider_type: ai::AIProviderType,
+    base_url: String,
+    api_key: Option<String>,
+) -> Result<Vec<String>, String> {
+    ai::list_models(provider_type, base_url, api_key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // Tool execution request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ToolRequest {
@@ -4156,6 +4168,14 @@ async fn get_credential_store_status(
     let master_mode = credential_store::CredentialStore::is_master_mode();
     let is_locked = state.is_locked();
 
+    // Load persisted timeout on first status check (after restart)
+    if master_mode && state.get_timeout() == 0 {
+        let persisted = load_persisted_timeout();
+        if persisted > 0 {
+            state.set_timeout(persisted);
+        }
+    }
+
     let accounts_count = credential_store::CredentialStore::from_cache()
         .and_then(|store| store.list_accounts().ok())
         .map(|a| a.len() as u32)
@@ -4223,7 +4243,9 @@ async fn enable_master_password(
 ) -> Result<(), String> {
     credential_store::CredentialStore::enable_master_password(&password)
         .map_err(|e| e.to_string())?;
-    state.set_timeout(timeout_seconds as u64);
+    let secs = timeout_seconds as u64;
+    state.set_timeout(secs);
+    persist_auto_lock_timeout(secs).ok(); // best-effort persist
     state.update_activity();
     Ok(())
 }
@@ -4247,6 +4269,36 @@ async fn change_master_password(
 ) -> Result<(), String> {
     credential_store::CredentialStore::change_master_password(&old_password, &new_password)
         .map_err(|e| e.to_string())
+}
+
+/// Persist auto-lock timeout to config file (not a secret, plain text)
+fn persist_auto_lock_timeout(seconds: u64) -> Result<(), String> {
+    let config_dir = dirs::config_dir()
+        .ok_or("Cannot find config directory")?
+        .join("aeroftp");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    std::fs::write(config_dir.join("auto_lock_timeout"), seconds.to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Load persisted auto-lock timeout from config file
+fn load_persisted_timeout() -> u64 {
+    dirs::config_dir()
+        .map(|d| d.join("aeroftp").join("auto_lock_timeout"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+async fn set_auto_lock_timeout(
+    timeout_seconds: u32,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    let secs = timeout_seconds as u64;
+    state.set_timeout(secs);
+    persist_auto_lock_timeout(secs)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -4651,6 +4703,7 @@ pub fn run() {
             enable_master_password,
             disable_master_password,
             change_master_password,
+            set_auto_lock_timeout,
             app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
@@ -4674,8 +4727,16 @@ pub fn run() {
             // AI commands
             ai_chat,
             ai_test_provider,
+            ai_list_models,
             ai_execute_tool,
+            ai_tools::validate_tool_args,
             ai_tools::execute_ai_tool,
+            // Context Intelligence commands
+            context_intelligence::detect_project_context,
+            context_intelligence::scan_file_imports,
+            context_intelligence::get_git_context,
+            context_intelligence::read_agent_memory,
+            context_intelligence::write_agent_memory,
             // Archive browsing & selective extraction
             archive_browse::list_zip,
             archive_browse::list_7z,
@@ -4714,6 +4775,9 @@ pub fn run() {
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
             ai_stream::ai_chat_stream,
+            ai::ollama_pull_model,
+            ai::gemini_create_cache,
+            ai::ollama_list_running,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::provider_disconnect,
