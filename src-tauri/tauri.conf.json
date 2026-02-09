@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -26,7 +26,7 @@
             }
         ],
         "security": {
-            "csp": "default-src 'self'; connect-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://*.googleapis.com https://*.dropboxapi.com https://graph.microsoft.com https://login.microsoftonline.com; img-src 'self' asset: https://asset.localhost data: blob:; media-src 'self' asset: https://asset.localhost blob:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; font-src 'self' data: https://cdn.jsdelivr.net; worker-src 'self' blob:; frame-src blob: data:",
+            "dangerousDisableAssetCspModification": true,
             "assetProtocol": {
                 "enable": true,
                 "scope": [

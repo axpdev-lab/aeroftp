@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Terminal as XTerm } from 'xterm';
+import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal as TerminalIcon, Play, Square, RotateCcw, Plus, X, Palette, ZoomIn, ZoomOut, ChevronDown, Globe } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
 
 // ============ Terminal Themes ============
 
@@ -431,8 +431,10 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             cursorInactiveStyle: 'block',
             scrollback: 10000,
             allowProposedApi: true,
+            allowTransparency: false,
             convertEol: true,
             scrollOnUserInput: true,
+            drawBoldTextInBrightColors: true,
         });
 
         const fitAddon = new FitAddon();
@@ -455,6 +457,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         // On first tab the DevTools panel is still laying out, so setTimeout alone is unreliable
         const writeWelcome = () => {
             fitAddon.fit();
+            xterm.focus();
             const currentTab = tabs.find(t => t.id === tabId);
             if (currentTab?.type === 'ssh') {
                 xterm.writeln('\x1b[1;36m╔════════════════════════════════════════╗\x1b[0m');

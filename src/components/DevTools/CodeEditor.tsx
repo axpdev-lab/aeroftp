@@ -3,6 +3,11 @@ import Editor, { OnMount, loader } from '@monaco-editor/react';
 import { Save, X, RotateCcw, FileCode } from 'lucide-react';
 import { PreviewFile, getFileLanguage } from './types';
 
+// Use locally copied Monaco AMD assets (min/vs/) served by tauri-plugin-localhost.
+// AMD workers are IIFE format — no ESM import issues in WebKitGTK workers.
+// A Vite plugin copies node_modules/monaco-editor/min/vs → dist/vs at build time.
+loader.config({ paths: { vs: '/vs' } });
+
 // Tokyo Night theme colors - in honor of Antigravity! 🌃
 const tokyoNightTheme = {
     base: 'vs-dark' as const,
@@ -161,15 +166,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     // ResizeObserver for container size changes
     useEffect(() => {
         const container = containerRef.current;
-        const editor = editorRef.current;
-
         if (!container) return;
 
         const resizeObserver = new ResizeObserver(() => {
-            if (editor) {
-                // Debounce the layout call
+            // Read ref inside callback — not the stale closure value
+            const ed = editorRef.current;
+            if (ed) {
                 requestAnimationFrame(() => {
-                    editor.layout();
+                    ed.layout();
                 });
             }
         });

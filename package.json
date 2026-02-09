@@ -1,12 +1,12 @@
 {
   "name": "aeroftp",
   "private": true,
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "AeroFTP - Fast, Beautiful, Reliable FTP Client",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "i18n:validate": "npx tsx scripts/i18n-validate.ts",
@@ -23,15 +23,16 @@
     "@tauri-apps/plugin-shell": "^2.3.4",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
     "country-flag-icons": "^1.6.12",
     "lucide-react": "^0.378.0",
+    "monaco-editor": "^0.55.1",
     "prismjs": "^1.30.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "xterm": "^5.3.0"
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

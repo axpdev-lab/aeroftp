@@ -95,6 +95,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     const [wordWrap, setWordWrap] = useState(true);
     const [renderMode, setRenderMode] = useState(false);
     const [processedHtml, setProcessedHtml] = useState<string>('');
+    const [htmlBlobUrl, setHtmlBlobUrl] = useState<string>('');
 
     // Dev tools state (HTML preview)
     const [viewport, setViewport] = useState<ViewportPreset>('desktop');
@@ -135,15 +136,33 @@ export const TextViewer: React.FC<TextViewerProps> = ({
         loadContent();
     }, [file, onError]);
 
-    // Process HTML for iframe rendering (inline local CSS)
+    // Process HTML for iframe rendering (inline local CSS + create blob URL)
     useEffect(() => {
         if (!renderMode || !isHTML || !content) return;
         let cancelled = false;
         inlineLocalStyles(content, file.path).then(result => {
-            if (!cancelled) setProcessedHtml(result);
+            if (!cancelled) {
+                setProcessedHtml(result);
+                // Use blob URL instead of srcdoc for better WebKitGTK compatibility
+                const blob = new Blob([result], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                setHtmlBlobUrl(prev => {
+                    if (prev) URL.revokeObjectURL(prev);
+                    return url;
+                });
+            }
         });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, [renderMode, isHTML, content, file.path]);
+
+    // Cleanup blob URL on unmount
+    useEffect(() => {
+        return () => {
+            if (htmlBlobUrl) URL.revokeObjectURL(htmlBlobUrl);
+        };
+    }, [htmlBlobUrl]);
 
     // Auto-refresh: re-read file every 3s
     useEffect(() => {
@@ -429,8 +448,8 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     >
                         <iframe
                             ref={iframeRef}
-                            srcDoc={processedHtml || content}
-                            sandbox=""
+                            src={htmlBlobUrl || undefined}
+                            srcDoc={!htmlBlobUrl ? (processedHtml || content) : undefined}
                             className="w-full h-full bg-white border border-gray-700 rounded"
                             title="HTML Preview"
                         />

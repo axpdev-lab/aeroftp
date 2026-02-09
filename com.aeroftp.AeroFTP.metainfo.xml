@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.3" date="2026-02-09">
+      <description>
+        <p>Production Rendering Fix: Critical fix for CSP nonce injection that silently broke all dynamic styles, Web Workers, WebGL, and IPC in production builds. Switched Monaco Editor to AMD loading for full WebKitGTK compatibility. Added DMABUF renderer workaround for Linux canvas artifacts.</p>
+      </description>
+    </release>
     <release version="2.0.2" date="2026-02-08">
       <description>
         <p>AeroFile Pro, Security Hardening and AI Provider Audit: Professional local file manager with Quick Look (Space), Trash Browser, Enhanced Properties (3-tab with permissions and 4-algorithm checksums), Disk Usage Treemap, and Duplicate Finder. Massive security audit resolving 70 findings across AeroAgent AI system (22 fixes, A-) and AeroFile file manager (48 fixes, A-) — including path traversal prevention, resource exhaustion limits, memory leak fixes, iframe sandbox hardening, and prompt injection defense.</p>

@@ -4519,7 +4519,24 @@ async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::Ke
 pub fn run() {
     use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
 
+    // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
+    // which causes canvas/WebGL artifacts in Monaco and xterm.js.
+    // Must be set BEFORE any WebKit initialization.
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
+    // Serve frontend via real HTTP server to fix WebKitGTK rendering issues.
+    // In production, Tauri uses tauri:// custom protocol which breaks:
+    // - Monaco Editor web workers (no syntax highlighting)
+    // - xterm.js canvas renderer (no colors/cursor)
+    // - iframe CSS rendering (no styles in HTML preview)
+    // By serving via http://localhost, production behaves identically to dev mode.
+    let port: u16 = 14321;
+
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -4535,8 +4552,16 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .setup(|app| {
+        .setup(move |app| {
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
+
+            // Navigate main window from tauri:// to http://localhost to fix
+            // WebKitGTK rendering issues with Monaco, xterm.js, and iframes
+            if let Some(window) = app.get_webview_window("main") {
+                let url = url::Url::parse(&format!("http://localhost:{}", port))
+                    .expect("valid localhost URL");
+                let _ = window.navigate(url);
+            }
             
             // Create menu items
             let quit = MenuItem::with_id(app, "quit", "Quit AeroFTP", true, Some("CmdOrCtrl+Q"))?;

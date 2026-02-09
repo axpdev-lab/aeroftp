@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.3] - 2026-02-09
+
+### Production Rendering Fix, Monaco AMD & WebKitGTK Hardening
+
+Critical fix for production builds (.deb, .AppImage, .rpm): all rendering was broken due to Tauri 2 CSP nonce injection silently overriding `unsafe-inline`, blocking 81+ dynamic stylesheets, Web Workers, WebGL shaders, and IPC calls. This release resolves the root cause and switches Monaco Editor to AMD loading for full WebKitGTK compatibility.
+
+#### Fixed
+
+- **Critical: CSP nonce injection breaking all rendering** — Tauri 2 injects nonces into Content-Security-Policy which per CSP spec overrides `unsafe-inline`, silently blocking ALL dynamically created `<style>` elements (Monaco editor, xterm.js, Tailwind), Web Workers, WebGL shader compilation, and blob URLs. Resolved by removing CSP and setting `dangerousDisableAssetCspModification: true`
+- **Monaco Editor workers SyntaxError** — ESM blob proxy approach failed because `importScripts()` cannot parse ES module `import` syntax. Switched to AMD approach: Vite plugin copies `monaco-editor/min/vs/` (IIFE format) to `dist/vs/` at build time, eliminating all worker errors
+- **Terminal (xterm.js) no colors/cursor in production** — CSP blocked all dynamic style injection. Additionally set `allowTransparency: false` and `drawBoldTextInBrightColors: true` for WebKitGTK compatibility
+- **HTML Preview CSS not rendering** — CSP blocked inline styles and CDN stylesheets. Removed iframe `sandbox` attribute that restricted CSS loading
+- **AeroPlayer WebGL visualizer not rendering** — CSP blocked shader compilation and canvas operations. Now fully functional with all 14 visualizer modes
+- **WebKitGTK canvas rendering artifacts** — Added `WEBKIT_DISABLE_DMABUF_RENDERER=1` environment variable before WebKit initialization on Linux
+
+#### Changed
+
+- **Monaco loading: ESM to AMD** — Replaced ESM worker blob proxy (`monacoSetup.ts`) with AMD asset copy approach. Workers now use IIFE format files from `min/vs/` directory, compatible with all WebKitGTK versions
+- **Vite config simplified** — Removed `worker.format` and `manualChunks` config, replaced with `copyMonacoAssets()` plugin that copies Monaco AMD files to `dist/vs/` at build time
+
+#### Removed
+
+- **Dead code: `monacoSetup.ts`** — ESM worker proxy module no longer imported after AMD switch
+- **Devtools in production** — Removed `window.open_devtools()` auto-open and `devtools` feature flag from Cargo.toml
+
+---
+
 ## [2.0.2] - 2026-02-08
 
 ### AeroFile Pro, Security Hardening & AI Provider Audit

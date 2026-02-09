@@ -149,7 +149,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
       };
 
       if (!isRemote) {
-        if (category === 'text' || category === 'markdown') {
+        if (category === 'text' || category === 'markdown' || category === 'code') {
           content = await invoke<string>('read_local_file', { path: filePath });
         } else if (category === 'audio' || category === 'video') {
           logger.debug(`[Preview] Loading ${category} file as blob...`);
@@ -177,7 +177,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
           blobUrl = URL.createObjectURL(blob);
         }
       } else {
-        if (category === 'text' || category === 'markdown') {
+        if (category === 'text' || category === 'markdown' || category === 'code') {
           content = await invoke<string>('preview_remote_file', { path: filePath });
         } else if (category === 'image') {
           const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath });

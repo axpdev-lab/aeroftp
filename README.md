@@ -177,7 +177,7 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 - **Unified Encrypted Keystore**: ALL credentials in AES-256-GCM vault — nothing in localStorage
 - **Keystore backup/restore**: Export/import `.aeroftp-keystore` with Argon2id + AES-256-GCM
 - **Universal Vault**: Single `vault.key` + `vault.db` backend — no OS keyring dependency
-- **XSS-hardened AI chat**: Source-level HTML escaping, strict CSP with no `unsafe-eval`
+- **XSS-hardened AI chat**: Source-level HTML escaping pipeline (`escapeHtml → renderMarkdown → formatToolCallDisplay`)
 - **SFTP host key verification**: Trust On First Use with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)
 - **FTP insecure warning**: Visual banner on unencrypted FTP connections

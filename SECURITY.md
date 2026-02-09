@@ -204,7 +204,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - **Command injection prevention**: `eject_volume` validates device path against `/dev/[a-zA-Z0-9/_-]+` regex
 - **Trash item traversal guard**: `restore_trash_item` validates ID contains no `/`, `\`, `..`, or null bytes
 - **Preview size caps**: Images 20MB, video/audio 20MB, text 5MB, thumbnails 5MB — all enforced at Rust backend level
-- **iframe sandbox**: HTML preview uses `sandbox=""` (maximum restriction, no script execution)
+- **iframe sandbox**: HTML preview uses blob URL isolation (sandbox attribute removed in v2.0.3 for CSS rendering compatibility with WebKitGTK; content is served via blob: URL which provides origin isolation)
 
 ### OAuth Session Security (v1.5.3)
 
@@ -302,4 +302,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.2 - 8 February 2026*
+*AeroFTP v2.0.3 - 9 February 2026*
