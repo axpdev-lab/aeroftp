@@ -131,13 +131,15 @@ export interface TransferProgress {
   speed_bps: number;
   eta_seconds: number;
   direction: 'download' | 'upload';
+  total_files?: number; // When set, transferred/total are file counts (folder transfer)
+  path?: string;        // Full path for context
 }
 
 // Transfer event from backend (includes transfers and deletes)
 export interface TransferEvent {
   event_type:
   // Transfer events
-  | 'start' | 'progress' | 'complete' | 'error' | 'cancelled'
+  | 'start' | 'scanning' | 'progress' | 'complete' | 'error' | 'cancelled'
   | 'file_start' | 'file_complete' | 'file_error' | 'file_skip'
   // Delete events
   | 'delete_start' | 'delete_complete' | 'delete_error'
@@ -148,6 +150,7 @@ export interface TransferEvent {
   direction: 'download' | 'upload' | 'local' | 'remote';
   message?: string;
   progress?: TransferProgress;
+  path?: string; // Full path for context (file or folder)
 }
 
 // Server profile for saved connections

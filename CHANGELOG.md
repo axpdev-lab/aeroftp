@@ -5,7 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.4] - 2026-02-10
+
+### Mission Green Badge, Folder Transfer UX and Transfer Reliability
+
+Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync status — competing directly with Dropbox, OneDrive, and Google Drive. Tray icon with dynamic badge dots including overlay icons (checkmark, sync arrows, X). Major folder transfer UX improvements with cancel support, file-count progress, and path-aware logging. Transfer event system rewritten for zero event loss.
+
+#### Added
+
+- **Badge daemon (`sync_badge.rs`)**: Unix socket server with Nextcloud-compatible IPC protocol, 6 sync states (Synced/Syncing/Error/Ignored/Conflict/New), LRU state tracker (100K entries), Semaphore-based connection limiting (max 10 concurrent), sliding window rate limiter, `read_line_limited()` DoS protection, RwLock poisoning recovery
+- **Nautilus Python extension**: `aerocloud_nautilus.py` — `Nautilus.InfoProvider` with custom emblem overlay, thread-safe 5s TTL cache, persistent socket connection, 100ms query timeout, 30s reconnect interval. Supports Nautilus 4.0 (GNOME 43+) with 3.0 fallback
+- **Nemo Python extension**: `aerocloud_nemo.py` — fork for Cinnamon/Linux Mint desktop environments
+- **GIO emblem fallback**: `gio set metadata::emblems` support for Thunar (XFCE), PCManFM, and all GIO-based file managers
+- **6 custom SVG emblem icons**: `emblem-aerocloud-synced/syncing/error/ignored/conflict/new` — installed to `~/.icons/hicolor/scalable/emblems/`
+- **Shell extension installer**: One-click Install/Uninstall buttons in Settings panel with inline feedback banner (replaces native alert dialogs), copies Python extensions + SVG emblems with proper 0644 permissions
+- **Restart File Manager button**: After installing shell extensions, one-click graceful restart of Nautilus/Nemo via `nautilus -q` / `nemo -q`
+- **Tray icon overlay icons**: White checkmark inside green badge (synced, like Ubuntu Livepatch), sync arrows inside blue badge (syncing), X mark inside red badge (error) — pixel-level rendering with distance-based line rasterization, proportional to any icon size
+- **Sync pipeline integration**: `start_background_sync()` auto-starts badge server + registers sync root; `stop_background_sync()` stops server + clears states; `background_sync_worker()` updates directory states (Syncing before sync, Synced/Error after)
+- **Folder transfer cancel**: Cancel button now aborts in-progress folder downloads via `cancel_flag` in provider state, with proper cleanup of all file-level log entries and queue items
+- **Folder transfer progress**: File-count mode (X/Y files) with folder icon, amber gradient progress bar, and smart path truncation in progress toast
+- **Path-aware transfer logging**: Full file paths tracked through transfer events (`path` field on TransferEvent/TransferProgress), displayed in activity log and transfer queue with smart truncation
+- **Copy buttons**: Hover copy button on activity log entries and transfer queue items (both inline and context menu)
+- **Standalone Linux installer**: `shell_integration/linux/install.sh` for manual installation outside the app
+- **8 new Tauri commands**: `start_badge_server_cmd`, `stop_badge_server_cmd`, `set_file_badge`, `clear_file_badge`, `get_badge_status`, `install_shell_extension_cmd`, `uninstall_shell_extension_cmd`, `restart_file_manager_cmd`
+- **New Rust dependencies**: `image = "0.25"` (tray badge generation), `libc = "0.2"` (Unix UID for socket path)
+
+#### Fixed
+
+- **Transfer event re-subscription race**: `useTransferEvents` rewritten with subscribe-once pattern and ref-based callback access — eliminates micro-gaps where events could be lost during React re-renders
+- **Folder transfer cancel cleanup**: Cancelled folder transfers now properly clean up all file-level log entries and queue items (previously left orphaned entries)
+- **Duplicate sync completion logs**: `useCloudSync` now updates the existing "Syncing..." log entry on completion instead of creating a duplicate
+- **CloudPanel empty server list**: Was reading from `localStorage` directly instead of vault after v1.9.0 migration — fixed with `secureGetWithFallback`
+- **Transfer queue file tracking**: Path-based composite keys (`transferId:path`) prevent confusion with duplicate filenames across subdirectories during folder transfers
+- **Stop All button**: Now cancels active backend transfers (invokes `cancel_transfer`) in addition to stopping the queue
+- **Security audit (43 findings, all fixed)**: 2 critical (unbounded read_line DoS, connection counter never decremented), 6 high (PID instead of UID, missing absolute path validation, RwLock panic on poisoning, newline injection in protocol, bare `except:` in Python, emblem name divergence), 12 medium (double PNG encode/decode, TOCTOU in socket cleanup, pub visibility too broad, rate limiter bypass), 14 low + 10 info
+
+#### Changed
+
+- **Transfer progress bar position**: Moved up from `bottom-4` to `bottom-12` to avoid overlapping with status bar
+- **TransferEvent type**: Added `scanning` event type, `path` field, and `total_files` field for folder-level progress tracking
+- **Activity log warning style**: Changed from orange/running to green/success status for normal operational warnings
 
 ---
 

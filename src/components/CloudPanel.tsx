@@ -14,6 +14,7 @@ import {
 import { useTraySync } from '../hooks/useTraySync';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
+import { secureGetWithFallback } from '../utils/secureStorage';
 import './CloudPanel.css';
 
 // TypeScript interfaces matching Rust structs
@@ -501,14 +502,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         toggleBackgroundSync
     } = useTraySync();
 
-    // Load saved servers from localStorage (same key as SavedServers component)
-    // Include all credentials for background sync support
-    const savedServers = React.useMemo(() => {
-        try {
-            const stored = localStorage.getItem('aeroftp-saved-servers');
-            if (stored) {
-                const servers = JSON.parse(stored);
-                return servers.map((s: {
+    // Load saved servers from vault (with localStorage fallback for pre-migration installs)
+    const [savedServers, setSavedServers] = useState<{ id: string; name: string; host: string; port: number; username: string; password: string; initialPath: string }[]>([]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        (async () => {
+            try {
+                const servers = await secureGetWithFallback<{
                     id?: string;
                     name?: string;
                     host: string;
@@ -516,21 +517,23 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     username?: string;
                     password?: string;
                     initialPath?: string;
-                }) => ({
-                    id: s.id || '',
-                    name: s.name || s.host,
-                    host: s.host,
-                    port: s.port || 21,
-                    username: s.username || '',
-                    password: s.password || '',
-                    initialPath: s.initialPath || ''
-                }));
+                }[]>('server_profiles', 'aeroftp-saved-servers');
+                if (servers && servers.length > 0) {
+                    setSavedServers(servers.map(s => ({
+                        id: s.id || '',
+                        name: s.name || s.host,
+                        host: s.host,
+                        port: s.port || 21,
+                        username: s.username || '',
+                        password: s.password || '',
+                        initialPath: s.initialPath || ''
+                    })));
+                }
+            } catch (e) {
+                logger.error('Failed to load saved servers:', e);
             }
-        } catch (e) {
-            console.error('Failed to load saved servers:', e);
-        }
-        return [];
-    }, [isOpen]); // Reload when panel opens
+        })();
+    }, [isOpen]);
 
     // Load config on mount
     useEffect(() => {

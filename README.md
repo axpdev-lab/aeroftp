@@ -59,6 +59,8 @@ Turn **any FTP server** into a private personal cloud. Connect to 13 protocols t
 
 **Cloud features**: Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
+**Native OS File Manager Badges** (v2.0.4): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install from Settings. Competing feature-for-feature with Dropbox, OneDrive, and Google Drive overlay icons.
+
 ---
 
 ### AeroFile — Professional File Manager

@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "2.0.2"
+version = "2.0.4"
 dependencies = [
  "aes-gcm",
  "aes-gcm-siv",
@@ -42,7 +42,9 @@ dependencies = [
  "hkdf",
  "hmac",
  "http",
+ "image",
  "jsonwebtoken",
+ "libc",
  "log",
  "md-5",
  "mime_guess",

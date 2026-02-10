@@ -501,7 +501,7 @@ const App: React.FC = () => {
       return showToastNotifications ? toast.info(title, message) : null;
     },
     warning: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `⚠️ ${title}: ${message}` : `⚠️ ${title}`, 'running');
+      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
       return showToastNotifications ? toast.warning(title, message) : null;
     }
   }), [showToastNotifications, toast, activityLog]);
@@ -2155,17 +2155,19 @@ const App: React.FC = () => {
           const fileExistsAction = savedSettings ? (JSON.parse(savedSettings).fileExistsAction || 'ask') : 'ask';
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
+          let folderResult: string;
           if (isProvider) {
-            // Use provider command for folder download
-            await invoke('provider_download_folder', { remotePath: remoteFilePath, localPath: folderPath, fileExistsAction: folderAction || undefined });
+            folderResult = await invoke<string>('provider_download_folder', { remotePath: remoteFilePath, localPath: folderPath, fileExistsAction: folderAction || undefined });
           } else {
-            // Use FTP command
             const params: DownloadFolderParams = { remote_path: remoteFilePath, local_path: folderPath, file_exists_action: folderAction || undefined };
-            await invoke('download_folder', { params });
+            folderResult = await invoke<string>('download_folder', { params });
           }
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${fileName} in ${elapsed}s`, 'success');
-          humanLog.updateEntry(logId, { status: 'success', message: `📥 Downloaded folder ${fileName} in ${elapsed}s` });
+          // Don't log success if the transfer was cancelled
+          if (!folderResult.toLowerCase().includes('cancelled')) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${fileName} in ${elapsed}s`, 'success');
+            humanLog.updateEntry(logId, { status: 'success', message: `Downloaded folder ${fileName} in ${elapsed}s` });
+          }
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
@@ -2256,11 +2258,14 @@ const App: React.FC = () => {
         const fileExistsAction2 = savedSettings2 ? (JSON.parse(savedSettings2).fileExistsAction || 'ask') : 'ask';
         const folderAction2 = fileExistsAction2 === 'ask' ? '' : fileExistsAction2;
         const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath, file_exists_action: folderAction2 || undefined };
-        await invoke('upload_folder', { params });
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const details = `(${elapsed}s)`;
-        const msg = t('activity.upload_success', { filename: fileName, details });
-        humanLog.updateEntry(logId, { status: 'success', message: msg });
+        const uploadResult = await invoke<string>('upload_folder', { params });
+        // Don't log success if the transfer was cancelled
+        if (!uploadResult.toLowerCase().includes('cancelled')) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          const details = `(${elapsed}s)`;
+          const msg = t('activity.upload_success', { filename: fileName, details });
+          humanLog.updateEntry(logId, { status: 'success', message: msg });
+        }
       } else {
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
 
@@ -2284,6 +2289,7 @@ const App: React.FC = () => {
 
   const cancelTransfer = async () => {
     setActiveTransfer(null); // Close popup immediately
+    transferQueue.stopAll(); // Mark all pending queue items as stopped
     try { await invoke('cancel_transfer'); } catch { }
   };
 
@@ -3850,7 +3856,7 @@ const App: React.FC = () => {
         onToggle={transferQueue.toggle}
         onClear={transferQueue.clear}
         onClearCompleted={transferQueue.clearCompleted}
-        onStopAll={transferQueue.stopAll}
+        onStopAll={cancelTransfer}
         onRemoveItem={transferQueue.removeItem}
         onRetryItem={(id: string) => {
           transferQueue.retryItem(id);

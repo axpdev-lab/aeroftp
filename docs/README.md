@@ -79,8 +79,8 @@ AeroAgent now features **27 tools** (up from 25), including **RAG integration** 
 
 ---
 
-- **Documentation Version**: 1.9.0
-- **Last Update**: 2026-02-07
+- **Documentation Version**: 2.0.4
+- **Last Update**: 2026-02-10
 
 ---
 

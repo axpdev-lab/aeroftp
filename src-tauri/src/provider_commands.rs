@@ -20,6 +20,8 @@ pub struct ProviderState {
     pub provider: Mutex<Option<Box<dyn StorageProvider>>>,
     /// Current provider configuration
     pub config: Mutex<Option<ProviderConfig>>,
+    /// Cancel flag for aborting folder transfers
+    pub cancel_flag: Mutex<bool>,
 }
 
 impl ProviderState {
@@ -27,6 +29,7 @@ impl ProviderState {
         Self {
             provider: Mutex::new(None),
             config: Mutex::new(None),
+            cancel_flag: Mutex::new(false),
         }
     }
 }
@@ -437,6 +440,13 @@ pub async fn provider_download_folder(
     file_exists_action: Option<String>,
 ) -> Result<String, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
+
+    // Reset cancel flag
+    {
+        let mut cancel = state.cancel_flag.lock().await;
+        *cancel = false;
+    }
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock.as_mut()
@@ -459,6 +469,7 @@ pub async fn provider_download_folder(
         direction: "download".to_string(),
         message: Some(format!("Starting folder download: {}", folder_name)),
         progress: None,
+        path: Some(remote_path.clone()),
     });
 
     // Create local folder
@@ -482,6 +493,24 @@ pub async fn provider_download_folder(
             .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
 
         for file in files {
+            // Check cancel flag before each file
+            {
+                let cancel = state.cancel_flag.lock().await;
+                if *cancel {
+                    info!("Provider folder download cancelled by user after {} files", files_downloaded);
+                    let _ = app.emit("transfer_event", crate::TransferEvent {
+                        event_type: "cancelled".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Download cancelled after {} files", files_downloaded)),
+                        progress: None,
+                        path: None,
+                    });
+                    return Ok(format!("Download cancelled after {} files", files_downloaded));
+                }
+            }
+
             let remote_file_path = if remote_folder.ends_with('/') {
                 format!("{}{}", remote_folder, file.name)
             } else {
@@ -515,6 +544,7 @@ pub async fn provider_download_folder(
                                     direction: "download".to_string(),
                                     message: Some(format!("Skipped (identical): {}", file.name)),
                                     progress: None,
+                                    path: Some(remote_file_path.clone()),
                                 });
                                 file_index += 1;
                                 continue;
@@ -531,7 +561,7 @@ pub async fn provider_download_folder(
                     transfer_id: file_transfer_id.clone(),
                     filename: file.name.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Downloading: {}", file.name)),
+                    message: Some(format!("Downloading: {}", remote_file_path)),
                     progress: Some(crate::TransferProgress {
                         transfer_id: file_transfer_id.clone(),
                         filename: file.name.clone(),
@@ -541,7 +571,10 @@ pub async fn provider_download_folder(
                         speed_bps: 0,
                         eta_seconds: 0,
                         direction: "download".to_string(),
+                        total_files: None,
+                        path: None,
                     }),
+                    path: Some(remote_file_path.clone()),
                 });
 
                 // Download file
@@ -555,6 +588,7 @@ pub async fn provider_download_folder(
                         direction: "download".to_string(),
                         message: Some(format!("Failed: {}", e)),
                         progress: None,
+                        path: Some(remote_file_path.clone()),
                     });
                 } else {
                     files_downloaded += 1;
@@ -565,6 +599,7 @@ pub async fn provider_download_folder(
                         direction: "download".to_string(),
                         message: Some(format!("Downloaded: {} ({}/{})", file.name, files_downloaded, files_downloaded + files_skipped)),
                         progress: None,
+                        path: Some(remote_file_path.clone()),
                     });
                 }
 
@@ -581,6 +616,7 @@ pub async fn provider_download_folder(
         direction: "download".to_string(),
         message: Some(format!("Downloaded {} files, {} skipped, {} errors", files_downloaded, files_skipped, files_errored)),
         progress: None,
+        path: None,
     });
 
     info!("Folder download completed: {} ({} files)", folder_name, files_downloaded);

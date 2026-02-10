@@ -89,12 +89,23 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
         </button>
     );
 
+    const copyItemDetails = () => {
+        const dir = item.type === 'upload' ? 'UPLOAD' : 'DOWNLOAD';
+        const st = item.status.toUpperCase();
+        const sz = item.size > 0 ? formatBytes(item.size) : '0 B';
+        const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
+        const err = item.error ? ` [${item.error}]` : '';
+        const path = item.path ? ` (${item.path})` : '';
+        navigator.clipboard.writeText(`${dir} ${st} ${item.filename}${path} ${sz}${time}${err}`);
+    };
+
     return (
         <div
             ref={menuRef}
             className="fixed z-[200] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
             style={{ left: adjustedX, top: adjustedY }}
         >
+            {menuItem(<Copy size={12} />, 'Copy', copyItemDetails)}
             {item.status === 'error' && onRetry && (
                 menuItem(<RotateCcw size={12} />, 'Retry', () => onRetry(item.id))
             )}
@@ -403,28 +414,41 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             </span>
 
                             {/* Inline action buttons — hover only */}
-                            {item.status !== 'transferring' && (onRemoveItem || onRetryItem) && (
-                                <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
-                                    {item.status === 'error' && onRetryItem && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
-                                            className="p-0.5 text-gray-600 hover:text-cyan-400 transition-colors"
-                                            title="Retry"
-                                        >
-                                            <RotateCcw size={10} />
-                                        </button>
-                                    )}
-                                    {onRemoveItem && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
-                                            className="p-0.5 text-gray-600 hover:text-red-400 transition-colors"
-                                            title="Remove"
-                                        >
-                                            <X size={10} />
-                                        </button>
-                                    )}
-                                </span>
-                            )}
+                            <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const dir = item.type === 'upload' ? 'UPLOAD' : 'DOWNLOAD';
+                                        const st = item.status.toUpperCase();
+                                        const sz = item.size > 0 ? formatBytes(item.size) : '0 B';
+                                        const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
+                                        const err = item.error ? ` [${item.error}]` : '';
+                                        navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
+                                    }}
+                                    className="p-0.5 text-gray-600 hover:text-blue-400 transition-colors"
+                                    title="Copy"
+                                >
+                                    <Copy size={10} />
+                                </button>
+                                {item.status === 'error' && onRetryItem && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
+                                        className="p-0.5 text-gray-600 hover:text-cyan-400 transition-colors"
+                                        title="Retry"
+                                    >
+                                        <RotateCcw size={10} />
+                                    </button>
+                                )}
+                                {item.status !== 'transferring' && onRemoveItem && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
+                                        className="p-0.5 text-gray-600 hover:text-red-400 transition-colors"
+                                        title="Remove"
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                )}
+                            </span>
                         </div>
                     ))}
                 </div>

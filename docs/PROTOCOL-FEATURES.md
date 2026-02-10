@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 8 February 2026
-> Version: v2.0.1 (Vault Unlock Fix, Asian AI Providers, AeroFile Pro Navigation)
+> Last Updated: 10 February 2026
+> Version: v2.0.4 (Mission Green Badge, Folder Transfer UX, Transfer Reliability)
 
 ---
 

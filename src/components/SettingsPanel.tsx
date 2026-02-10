@@ -3,11 +3,12 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck } from 'lucide-react';
 import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { ConfirmDialog } from './Dialogs';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
@@ -282,6 +283,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [autoLockTimeout, setAutoLockTimeout] = useState(0); // minutes (0 = disabled)
     const [showMasterPassword, setShowMasterPassword] = useState(false);
     const [masterPasswordError, setMasterPasswordError] = useState('');
+
+    // Badge extension feedback
+    const [badgeFeedback, setBadgeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [masterPasswordSuccess, setMasterPasswordSuccess] = useState('');
     const [isSettingPassword, setIsSettingPassword] = useState(false);
     const [passwordBtnState, setPasswordBtnState] = useState<'idle' | 'encrypting' | 'done'>('idle');
@@ -297,19 +301,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [showKeystoreImportPassword, setShowKeystoreImportPassword] = useState(false);
     const [keystoreImportMerge, setKeystoreImportMerge] = useState<'skip' | 'overwrite'>('skip');
     const [keystoreMetadata, setKeystoreMetadata] = useState<{
-        export_date: string;
-        aeroftp_version: string;
-        entries_count: number;
+        exportDate: string;
+        aeroftpVersion: string;
+        entriesCount: number;
         categories: {
-            server_credentials: number;
-            server_profiles: number;
-            ai_keys: number;
-            oauth_tokens: number;
-            config_entries: number;
+            serverCredentials: number;
+            serverProfiles: number;
+            aiKeys: number;
+            oauthTokens: number;
+            configEntries: number;
         };
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
     const [keystoreMessage, setKeystoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [removePasswordConfirm, setRemovePasswordConfirm] = useState(false);
 
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
@@ -1277,6 +1282,88 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     >
                                         Configure in AeroCloud Panel →
                                     </button>
+
+                                    {/* File Manager Badge Integration */}
+                                    <div className="pt-3 border-t border-sky-200 dark:border-sky-700 space-y-2">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
+                                            <MonitorCheck size={14} />
+                                            File Manager Integration
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            Show sync status badges on files in Nautilus, Nemo, and other file managers.
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={async () => {
+                                                    setBadgeFeedback(null);
+                                                    try {
+                                                        const result = await invoke<string>('install_shell_extension_cmd');
+                                                        setBadgeFeedback({ type: 'success', message: result });
+                                                    } catch (e) {
+                                                        setBadgeFeedback({ type: 'error', message: String(e) });
+                                                    }
+                                                    setTimeout(() => setBadgeFeedback(null), 8000);
+                                                }}
+                                                className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                <CheckCircle2 size={12} />
+                                                Install Badges
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    setBadgeFeedback(null);
+                                                    try {
+                                                        const result = await invoke<string>('uninstall_shell_extension_cmd');
+                                                        setBadgeFeedback({ type: 'success', message: result });
+                                                    } catch (e) {
+                                                        setBadgeFeedback({ type: 'error', message: String(e) });
+                                                    }
+                                                    setTimeout(() => setBadgeFeedback(null), 8000);
+                                                }}
+                                                className="py-1.5 px-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded text-xs font-medium transition-colors"
+                                            >
+                                                Uninstall
+                                            </button>
+                                        </div>
+                                        {badgeFeedback && (
+                                            <div className={`p-2.5 rounded-lg text-xs space-y-2 ${
+                                                badgeFeedback.type === 'success'
+                                                    ? 'bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                                                    : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300'
+                                            }`}>
+                                                <div className="flex items-start gap-2">
+                                                    {badgeFeedback.type === 'success'
+                                                        ? <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                                                        : <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                                    }
+                                                    <span className="leading-relaxed flex-1">{badgeFeedback.message}</span>
+                                                    <button
+                                                        onClick={() => setBadgeFeedback(null)}
+                                                        className="shrink-0 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                                {badgeFeedback.type === 'success' && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                const result = await invoke<string>('restart_file_manager_cmd');
+                                                                setBadgeFeedback({ type: 'success', message: result });
+                                                                setTimeout(() => setBadgeFeedback(null), 5000);
+                                                            } catch (e) {
+                                                                setBadgeFeedback({ type: 'error', message: String(e) });
+                                                            }
+                                                        }}
+                                                        className="w-full py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <MonitorCheck size={12} />
+                                                        Restart File Manager
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Google Drive */}
@@ -1992,31 +2079,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             {masterPasswordStatus?.is_set && (
                                                 <button
-                                                    onClick={async () => {
+                                                    onClick={() => {
                                                         if (!currentMasterPassword) {
                                                             setMasterPasswordError(t('settings.enterCurrentPassword'));
                                                             return;
                                                         }
-                                                        if (confirm(t('settings.confirmRemovePassword'))) {
-                                                            try {
-                                                                await invoke('disable_master_password', { password: currentMasterPassword });
-                                                                const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
-                                                                setMasterPasswordStatus({
-                                                                    is_set: status.master_mode,
-                                                                    is_locked: status.is_locked,
-                                                                    timeout_seconds: Number(status.timeout_seconds),
-                                                                });
-                                                                setCurrentMasterPassword('');
-                                                                setMasterPasswordSuccess(t('settings.passwordRemoved'));
-                                                            } catch (err) {
-                                                                setMasterPasswordError(String(err));
-                                                            }
-                                                        }
+                                                        setRemovePasswordConfirm(true);
                                                     }}
                                                     className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 rounded-lg text-sm font-medium transition-colors"
                                                 >
                                                     {t('settings.removePassword')}
                                                 </button>
+                                            )}
+                                            {removePasswordConfirm && (
+                                                <ConfirmDialog
+                                                    message={t('settings.confirmRemovePassword')}
+                                                    confirmLabel={t('settings.removePassword')}
+                                                    confirmColor="red"
+                                                    onConfirm={async () => {
+                                                        setRemovePasswordConfirm(false);
+                                                        try {
+                                                            await invoke('disable_master_password', { password: currentMasterPassword });
+                                                            const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                            setMasterPasswordStatus({
+                                                                is_set: status.master_mode,
+                                                                is_locked: status.is_locked,
+                                                                timeout_seconds: Number(status.timeout_seconds),
+                                                            });
+                                                            setCurrentMasterPassword('');
+                                                            setMasterPasswordSuccess(t('settings.passwordRemoved'));
+                                                        } catch (err) {
+                                                            setMasterPasswordError(String(err));
+                                                        }
+                                                    }}
+                                                    onCancel={() => setRemovePasswordConfirm(false)}
+                                                />
                                             )}
                                         </div>
                                     </div>
@@ -2157,13 +2254,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     if (!filePath) return;
                                                     setKeystoreExporting(true);
                                                     try {
-                                                        const result = await invoke<{ entries_count: number }>('export_keystore', {
+                                                        const result = await invoke<{ entriesCount: number }>('export_keystore', {
                                                             password: keystoreExportPassword,
                                                             filePath,
                                                         });
                                                         setKeystoreMessage({
                                                             type: 'success',
-                                                            text: t('settings.keystoreExported', { count: result.entries_count }),
+                                                            text: t('settings.keystoreExported', { count: String(result.entriesCount) }),
                                                         });
                                                         setKeystoreExportPassword('');
                                                         setKeystoreExportConfirm('');
@@ -2219,15 +2316,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         const path = typeof filePath === 'string' ? filePath : filePath;
                                                         try {
                                                             const meta = await invoke<{
-                                                                export_date: string;
-                                                                aeroftp_version: string;
-                                                                entries_count: number;
+                                                                exportDate: string;
+                                                                aeroftpVersion: string;
+                                                                entriesCount: number;
                                                                 categories: {
-                                                                    server_credentials: number;
-                                                                    server_profiles: number;
-                                                                    ai_keys: number;
-                                                                    oauth_tokens: number;
-                                                                    config_entries: number;
+                                                                    serverCredentials: number;
+                                                                    serverProfiles: number;
+                                                                    aiKeys: number;
+                                                                    oauthTokens: number;
+                                                                    configEntries: number;
                                                                 };
                                                             }>('read_keystore_metadata', { filePath: path });
                                                             setKeystoreMetadata(meta);
@@ -2247,25 +2344,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm space-y-1.5">
                                                         <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium">
                                                             <Shield size={14} />
-                                                            {keystoreMetadata.entries_count} entries
+                                                            {keystoreMetadata.entriesCount} entries
                                                         </div>
                                                         <div className="text-xs text-blue-600/70 dark:text-blue-400/70 space-y-0.5">
-                                                            <div>AeroFTP {keystoreMetadata.aeroftp_version}</div>
-                                                            <div>{new Date(keystoreMetadata.export_date).toLocaleString()}</div>
-                                                            {keystoreMetadata.categories.server_credentials > 0 && (
-                                                                <div>{keystoreMetadata.categories.server_credentials} server credentials</div>
+                                                            <div>AeroFTP {keystoreMetadata.aeroftpVersion}</div>
+                                                            <div>{new Date(keystoreMetadata.exportDate).toLocaleString()}</div>
+                                                            {keystoreMetadata.categories.serverCredentials > 0 && (
+                                                                <div>{keystoreMetadata.categories.serverCredentials} server credentials</div>
                                                             )}
-                                                            {keystoreMetadata.categories.server_profiles > 0 && (
-                                                                <div>{keystoreMetadata.categories.server_profiles} server profiles</div>
+                                                            {keystoreMetadata.categories.serverProfiles > 0 && (
+                                                                <div>{keystoreMetadata.categories.serverProfiles} server profiles</div>
                                                             )}
-                                                            {keystoreMetadata.categories.ai_keys > 0 && (
-                                                                <div>{keystoreMetadata.categories.ai_keys} AI keys</div>
+                                                            {keystoreMetadata.categories.aiKeys > 0 && (
+                                                                <div>{keystoreMetadata.categories.aiKeys} AI keys</div>
                                                             )}
-                                                            {keystoreMetadata.categories.oauth_tokens > 0 && (
-                                                                <div>{keystoreMetadata.categories.oauth_tokens} OAuth tokens</div>
+                                                            {keystoreMetadata.categories.oauthTokens > 0 && (
+                                                                <div>{keystoreMetadata.categories.oauthTokens} OAuth tokens</div>
                                                             )}
-                                                            {keystoreMetadata.categories.config_entries > 0 && (
-                                                                <div>{keystoreMetadata.categories.config_entries} config entries</div>
+                                                            {keystoreMetadata.categories.configEntries > 0 && (
+                                                                <div>{keystoreMetadata.categories.configEntries} config entries</div>
                                                             )}
                                                         </div>
                                                     </div>

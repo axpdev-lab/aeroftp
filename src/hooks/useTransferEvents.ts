@@ -17,10 +17,11 @@ interface UseTransferEventsOptions {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
-  const {
-    t, activityLog, humanLog, transferQueue, notify,
-    setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
-  } = options;
+  // Store ALL options in a ref to avoid stale closures AND prevent re-subscribing.
+  // The event listener subscribes once ([] deps) and always reads fresh values via ref.
+  // This eliminates the micro-gap where events could be lost during re-subscription.
+  const optRef = useRef(options);
+  optRef.current = options;
 
   // Correlation maps between backend transfer IDs and frontend UI elements
   const transferIdToQueueId = useRef<Map<string, string>>(new Map());
@@ -29,26 +30,27 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const pendingDeleteLogIds = useRef<Map<string, string>>(new Map());
   // Track completed transfer IDs to prevent late progress events from re-showing the toast
   const completedTransferIds = useRef<Set<string>>(new Set());
-
-  // Use refs for callbacks to avoid stale closures without re-subscribing
-  const callbacksRef = useRef({ loadRemoteFiles, loadLocalFiles, currentLocalPath });
-  callbacksRef.current = { loadRemoteFiles, loadLocalFiles, currentLocalPath };
+  // Track last known file-level speed for display in folder transfer toast
+  const lastFileSpeedRef = useRef<number>(0);
 
   useEffect(() => {
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
+      const { t, activityLog, humanLog, transferQueue, notify, setActiveTransfer } = optRef.current;
       const data = event.payload;
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
-        // Clean up completed set for this new transfer
+        // Clean up completed set and reset speed tracking for this new transfer
         completedTransferIds.current.delete(data.transfer_id);
+        lastFileSpeedRef.current = 0;
+        const displayName = data.path || data.filename;
         let logId = '';
         // Check if we have a pending manual log for this file (deduplication)
         if (pendingFileLogIds.current.has(data.filename)) {
           logId = pendingFileLogIds.current.get(data.filename)!;
           pendingFileLogIds.current.delete(data.filename);
         } else {
-          logId = humanLog.logStart(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD', { filename: data.filename });
+          logId = humanLog.logStart(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD', { filename: displayName });
         }
         transferIdToLogId.current.set(data.transfer_id, logId);
 
@@ -59,53 +61,68 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.markAsFolder(queueItem.id);
           if (queueItem.status === 'pending') transferQueue.startTransfer(queueItem.id);
         }
+      } else if (data.event_type === 'scanning') {
+        // Update the activity log entry with scanning progress (message from Rust)
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        if (logId && data.message) {
+          activityLog.updateEntry(logId, { message: data.message });
+        }
       } else if (data.event_type === 'file_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        // Use full path from event if available, otherwise fall back to filename
+        const displayName = data.path || data.filename;
+        // Use full path as key to handle duplicate filenames across subdirectories
+        const fileKey = `${data.transfer_id}:${data.path || data.filename}`;
         const fileLogId = humanLog.logRaw(data.direction === 'download' ? 'activity.download_start' : 'activity.upload_start',
           data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD',
-          { filename: data.filename, location: loc }, 'running');
-        pendingFileLogIds.current.set(`${data.transfer_id}:${data.filename}`, fileLogId);
+          { filename: displayName, location: loc }, 'running');
+        pendingFileLogIds.current.set(fileKey, fileLogId);
 
         // Add individual file to transfer queue
         const fileDirection = data.direction === 'upload' ? 'upload' : 'download';
         const fileSize = data.progress?.total || 0;
-        const fileQueueId = transferQueue.addItem(data.filename, '', fileSize, fileDirection);
+        const fileQueueId = transferQueue.addItem(data.filename, data.path || '', fileSize, fileDirection);
         transferQueue.startTransfer(fileQueueId);
-        transferIdToQueueId.current.set(data.transfer_id, fileQueueId);
+        transferIdToQueueId.current.set(fileKey, fileQueueId);
       } else if (data.event_type === 'file_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const key = `${data.transfer_id}:${data.filename}`;
-        const existingId = pendingFileLogIds.current.get(key);
+        // Use full path as key to match file_start (handles duplicate filenames across subdirs)
+        const fileKey = `${data.transfer_id}:${data.path || data.filename}`;
+        const existingId = pendingFileLogIds.current.get(fileKey);
+        const displayName = data.path || data.filename;
         const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
-        const msg = t(successKey, { filename: data.filename, location: loc, details: '' }).trim();
+        const msg = t(successKey, { filename: displayName, location: loc, details: '' }).trim();
         if (existingId) {
           activityLog.updateEntry(existingId, { status: 'success', message: msg });
-          pendingFileLogIds.current.delete(key);
+          pendingFileLogIds.current.delete(fileKey);
         } else {
           humanLog.logRaw(successKey, data.direction === 'upload' ? 'UPLOAD' : 'DOWNLOAD',
-            { filename: data.filename, location: loc, details: '' }, 'success');
+            { filename: displayName, location: loc, details: '' }, 'success');
         }
 
-        // Complete individual file queue item
-        const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
+        // Complete individual file queue item (key matches file_start)
+        const fileQueueId = transferIdToQueueId.current.get(fileKey);
         if (fileQueueId) {
           transferQueue.completeTransfer(fileQueueId);
-          transferIdToQueueId.current.delete(data.transfer_id);
+          transferIdToQueueId.current.delete(fileKey);
         }
       } else if (data.event_type === 'file_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
         humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
-          'ERROR', { filename: data.filename, location: loc }, 'error');
+          'ERROR', { filename: displayName, location: loc }, 'error');
 
-        // Fail individual file queue item
-        const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
-        if (fileQueueId) {
-          transferQueue.failTransfer(fileQueueId, data.message || 'Transfer failed');
-          transferIdToQueueId.current.delete(data.transfer_id);
+        // Fail individual file queue item (key matches file_start)
+        const fileErrorKey = `${data.transfer_id}:${data.path || data.filename}`;
+        const fileErrQueueId = transferIdToQueueId.current.get(fileErrorKey);
+        if (fileErrQueueId) {
+          transferQueue.failTransfer(fileErrQueueId, data.message || 'Transfer failed');
+          transferIdToQueueId.current.delete(fileErrorKey);
         }
       } else if (data.event_type === 'file_skip') {
         // File skipped due to file_exists_action setting (identical/not newer)
-        humanLog.logRaw('activity.file_skipped', 'SKIP', { filename: data.filename }, 'success');
+        const displayName = data.path || data.filename;
+        humanLog.logRaw('activity.file_skipped', 'SKIP', { filename: displayName }, 'success');
 
         // Add skipped file to queue and mark as completed
         const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
@@ -114,7 +131,16 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       } else if (data.event_type === 'progress' && data.progress) {
         // Ignore late progress events for already-completed transfers (race condition fix)
         if (!completedTransferIds.current.has(data.transfer_id)) {
-          setActiveTransfer(data.progress);
+          if (data.progress.total_files) {
+            // Folder-level progress: merge in last known file speed for display
+            setActiveTransfer({ ...data.progress, speed_bps: lastFileSpeedRef.current });
+          } else {
+            // File-level progress: track speed for folder toast display
+            if (data.progress.speed_bps > 0) {
+              lastFileSpeedRef.current = data.progress.speed_bps;
+            }
+            setActiveTransfer(data.progress);
+          }
         }
 
         if (data.transfer_id.includes('folder')) {
@@ -144,9 +170,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
         const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
         const details = size && time ? `(${size} in ${time})` : size ? `(${size})` : '';
-        const formattedMessage = t(successKey, { filename: data.filename, location: loc, details });
+        const formattedMessage = t(successKey, { filename: displayName, location: loc, details });
 
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
@@ -160,21 +187,22 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferIdToQueueId.current.delete(data.transfer_id);
         }
 
-        if (data.direction === 'upload') callbacksRef.current.loadRemoteFiles();
-        else if (data.direction === 'download') callbacksRef.current.loadLocalFiles(callbacksRef.current.currentLocalPath);
+        if (data.direction === 'upload') optRef.current.loadRemoteFiles();
+        else if (data.direction === 'download') optRef.current.loadLocalFiles(optRef.current.currentLocalPath);
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
         const errorKey = data.direction === 'upload' ? 'activity.upload_error' : 'activity.download_error';
-        const formattedMessage = t(errorKey, { filename: data.filename, location: loc });
+        const formattedMessage = t(errorKey, { filename: displayName, location: loc });
 
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
           activityLog.updateEntry(logId, { status: 'error', message: formattedMessage });
           transferIdToLogId.current.delete(data.transfer_id);
         } else {
-          humanLog.logRaw(errorKey, 'ERROR', { filename: data.filename, location: loc }, 'error');
+          humanLog.logRaw(errorKey, 'ERROR', { filename: displayName, location: loc }, 'error');
         }
 
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
@@ -186,6 +214,39 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         notify.error('Transfer Failed', data.message);
       } else if (data.event_type === 'cancelled') {
         setActiveTransfer(null);
+
+        // Update activity log for this transfer
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        if (logId) {
+          activityLog.updateEntry(logId, { status: 'error', message: data.message || 'Cancelled by user' });
+          transferIdToLogId.current.delete(data.transfer_id);
+        }
+
+        // Mark the queue item as failed
+        const queueId = transferIdToQueueId.current.get(data.transfer_id);
+        if (queueId) {
+          transferQueue.failTransfer(queueId, 'Cancelled by user');
+          transferIdToQueueId.current.delete(data.transfer_id);
+        }
+
+        // Clean up any in-progress file log entries that belong to this folder transfer.
+        // Keys in pendingFileLogIds are like "dl-folder-123-5:/path/to/file" where
+        // the prefix before ":" contains the folder's transfer_id.
+        const cancelPrefix = data.transfer_id;
+        for (const [fileKey, fileLogId] of pendingFileLogIds.current.entries()) {
+          if (fileKey.startsWith(cancelPrefix)) {
+            activityLog.updateEntry(fileLogId, { status: 'error', message: 'Cancelled by user' });
+            pendingFileLogIds.current.delete(fileKey);
+          }
+        }
+        // Also clean up file-level queue items
+        for (const [fileKey, fileQueueId] of transferIdToQueueId.current.entries()) {
+          if (fileKey.startsWith(cancelPrefix) && fileKey.includes(':')) {
+            transferQueue.failTransfer(fileQueueId, 'Cancelled by user');
+            transferIdToQueueId.current.delete(fileKey);
+          }
+        }
+
         notify.warning('Transfer Cancelled', data.message);
       }
 
@@ -219,6 +280,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
         }
       } else if (data.event_type === 'delete_complete') {
+        const { loadRemoteFiles, loadLocalFiles, currentLocalPath } = optRef.current;
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
@@ -234,8 +296,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       }
     });
     return () => { unlisten.then(fn => fn()); };
+  // Subscribe once, never re-subscribe. All mutable values accessed via optRef.current.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activityLog, transferQueue]);
+  }, []);
 
   return { pendingFileLogIds, pendingDeleteLogIds };
 }

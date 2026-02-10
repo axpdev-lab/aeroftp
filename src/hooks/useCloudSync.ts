@@ -156,14 +156,22 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       }
     });
 
-    // Listen for cloud sync completion
+    // Listen for cloud sync completion — update the existing "Syncing..." log entry
+    // instead of creating a duplicate. Clear cloudSyncLogId so the later 'active' status
+    // event doesn't create yet another update.
     const unlistenSyncComplete = listen<{ uploaded: number; downloaded: number; errors: string[] }>('cloud_sync_complete', (event) => {
       const { activityLog: al } = callbacksRef.current;
       const result = event.payload;
-      if (result.errors.length > 0) {
-        al.log('INFO', `Errore sincronizzazione AeroCloud: ${result.errors.length} errori`, 'error');
+      const hasErrors = result.errors.length > 0;
+      const msg = hasErrors
+        ? `Errore sincronizzazione AeroCloud: ${result.errors.length} errori`
+        : `AeroCloud sincronizzato: \u2191${result.uploaded} \u2193${result.downloaded} file`;
+
+      if (cloudSyncLogId) {
+        al.updateEntry(cloudSyncLogId, { status: hasErrors ? 'error' : 'success', message: msg });
+        cloudSyncLogId = null;
       } else {
-        al.log('INFO', `AeroCloud sincronizzato: ↑${result.uploaded} ↓${result.downloaded} file`, 'success');
+        al.log('INFO', msg, hasErrors ? 'error' : 'success');
       }
     });
 

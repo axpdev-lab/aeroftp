@@ -334,8 +334,13 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
             entry.status === 'success' ? themeConfig.row.success :
                 themeConfig.row.default;
 
+    const copyEntry = useCallback(() => {
+        const text = `[${formatTimestamp(entry.timestamp)}] ${entry.operation} - ${entry.message}${entry.details ? ` (${entry.details})` : ''}`;
+        navigator.clipboard.writeText(text);
+    }, [entry]);
+
     return (
-        <div className={`flex items-start gap-2 py-0.5 px-3 font-mono text-xs border-l-2 transition-colors ${rowClass}`}>
+        <div className={`group flex items-start gap-2 py-0.5 px-3 font-mono text-xs border-l-2 transition-colors ${rowClass}`}>
             {/* Timestamp */}
             <span className={`shrink-0 w-16 tabular-nums ${themeConfig.timestamp}`}>
                 {formatTimestamp(entry.timestamp)}
@@ -351,7 +356,7 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 {entry.operation}
             </span>
 
-            {/* Message with typewriter effect */}
+            {/* Message with typewriter effect + inline copy button */}
             <span className={`flex-1 break-all ${statusClass}`}>
                 {shouldAnimate ? displayText : entry.message}
                 {/* Blinking cursor during typing */}
@@ -362,6 +367,13 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 {entry.details && (
                     <span className="text-[#565f89] ml-2 italic">({entry.details})</span>
                 )}
+                <button
+                    onClick={copyEntry}
+                    className={`inline-flex ml-2 opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all align-middle ${themeConfig.button}`}
+                    title="Copy"
+                >
+                    <Copy size={10} />
+                </button>
             </span>
 
             {/* Status indicator */}

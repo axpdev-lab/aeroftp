@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.4" date="2026-02-10">
+      <description>
+        <p>Mission Green Badge, Folder Transfer UX and Transfer Reliability: Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync status (green checkmark for synced, blue arrows for syncing, red X for errors). Tray icon with overlay icons inside colored dots. Folder transfer cancel support, file-count progress display, path-aware logging. Transfer event system rewritten for zero event loss.</p>
+      </description>
+    </release>
     <release version="2.0.3" date="2026-02-09">
       <description>
         <p>Production Rendering Fix: Critical fix for CSP nonce injection that silently broke all dynamic styles, Web Workers, WebGL, and IPC in production builds. Switched Monaco Editor to AMD loading for full WebKitGTK compatibility. Added DMABUF renderer workaround for Linux canvas artifacts.</p>

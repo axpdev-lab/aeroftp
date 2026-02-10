@@ -38,6 +38,8 @@ mod cryptomator;
 mod master_password;
 mod windows_acl;
 mod filesystem;
+mod tray_badge;
+mod sync_badge;
 
 use filesystem::validate_path;
 use ftp::{FtpManager, RemoteFile};
@@ -143,6 +145,10 @@ pub struct TransferProgress {
     pub speed_bps: u64,
     pub eta_seconds: u32,
     pub direction: String, // "download" or "upload"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_files: Option<u64>, // When set, transferred/total are file counts (folder transfer)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>, // Full path for context
 }
 
 #[derive(Clone, Serialize)]
@@ -153,6 +159,8 @@ pub struct TransferEvent {
     pub direction: String,
     pub message: Option<String>,
     pub progress: Option<TransferProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>, // Full path for context (file or folder)
 }
 
 // ============ Local File Info ============
@@ -610,6 +618,7 @@ async fn download_file(
         direction: "download".to_string(),
         message: Some(format!("Starting download: {}", filename)),
         progress: None,
+        path: None,
     });
 
     let mut ftp_manager = state.ftp_manager.lock().await;
@@ -648,6 +657,8 @@ async fn download_file(
                 speed_bps: speed,
                 eta_seconds: eta,
                 direction: "download".to_string(),
+                    total_files: None,
+                    path: None,
             };
 
             let _ = app.emit("transfer_event", TransferEvent {
@@ -657,6 +668,7 @@ async fn download_file(
                 direction: "download".to_string(),
                 message: None,
                 progress: Some(progress),
+                path: None,
             });
         }
     ).await {
@@ -669,6 +681,7 @@ async fn download_file(
                 direction: "download".to_string(),
                 message: Some(format!("Download complete: {}", filename)),
                 progress: None,
+                path: None,
             });
             Ok(format!("Downloaded: {}", filename))
         }
@@ -681,6 +694,7 @@ async fn download_file(
                 direction: "download".to_string(),
                 message: Some(format!("Download failed: {}", e)),
                 progress: None,
+                path: None,
             });
             Err(format!("Download failed: {}", e))
         }
@@ -720,6 +734,7 @@ async fn upload_file(
         direction: "upload".to_string(),
         message: Some(format!("Starting upload: {}", filename)),
         progress: None,
+        path: None,
     });
 
     let mut ftp_manager = state.ftp_manager.lock().await;
@@ -753,6 +768,8 @@ async fn upload_file(
                 speed_bps: speed,
                 eta_seconds: eta,
                 direction: "upload".to_string(),
+                    total_files: None,
+                    path: None,
             };
 
             let _ = app.emit("transfer_event", TransferEvent {
@@ -762,6 +779,7 @@ async fn upload_file(
                 direction: "upload".to_string(),
                 message: None,
                 progress: Some(progress),
+                path: None,
             });
         }
     ).await {
@@ -774,6 +792,7 @@ async fn upload_file(
                 direction: "upload".to_string(),
                 message: Some(format!("Upload complete: {}", filename)),
                 progress: None,
+                path: None,
             });
             Ok(format!("Uploaded: {}", filename))
         }
@@ -786,6 +805,7 @@ async fn upload_file(
                 direction: "upload".to_string(),
                 message: Some(format!("Upload failed: {}", e)),
                 progress: None,
+                path: None,
             });
             Err(format!("Upload failed: {}", e))
         }
@@ -875,7 +895,13 @@ async fn download_folder(
 ) -> Result<String, String> {
     
     info!("Downloading folder: {} -> {}", params.remote_path, params.local_path);
-    
+
+    // Reset cancel flag
+    {
+        let mut cancel = state.cancel_flag.lock().await;
+        *cancel = false;
+    }
+
     let folder_name = PathBuf::from(&params.remote_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -891,8 +917,9 @@ async fn download_folder(
         direction: "download".to_string(),
         message: Some(format!("Starting folder download: {}", folder_name)),
         progress: None,
+        path: Some(params.remote_path.clone()),
     });
-    
+
     // Create local directory
     let local_folder_path = PathBuf::from(&params.local_path);
     
@@ -904,6 +931,7 @@ async fn download_folder(
             direction: "download".to_string(),
             message: Some(format!("Failed to create local directory: {}", e)),
             progress: None,
+            path: None,
         });
         return Err(format!("Failed to create local directory: {}", e));
     }
@@ -988,12 +1016,13 @@ async fn download_folder(
                 let files_found = items_to_download.iter().filter(|i| !i.is_dir).count();
                 let dirs_found = items_to_download.iter().filter(|i| i.is_dir).count();
                 let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
+                    event_type: "scanning".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
                     direction: "download".to_string(),
                     message: Some(format!("Scanning... {} files, {} folders found", files_found, dirs_found)),
                     progress: None,
+                    path: None,
                 });
                 last_scan_emit = std::time::Instant::now();
             }
@@ -1018,12 +1047,13 @@ async fn download_folder(
     
     // Emit scan complete event
     let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "progress".to_string(),
+        event_type: "scanning".to_string(),
         transfer_id: transfer_id.clone(),
         filename: folder_name.clone(),
         direction: "download".to_string(),
-        message: Some(format!("Found {} files in {} folders", total_files, total_dirs)),
+        message: Some(format!("Scan complete: {} files in {} folders", total_files, total_dirs)),
         progress: None,
+        path: None,
     });
     
     // Download phase: process all items
@@ -1033,6 +1063,26 @@ async fn download_folder(
     let file_exists_action = params.file_exists_action.as_str();
 
     for item in &items_to_download {
+        // Check cancel flag before each item
+        {
+            let cancel = state.cancel_flag.lock().await;
+            if *cancel {
+                info!("Folder download cancelled by user after {} files", downloaded_files);
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download cancelled after {} files", downloaded_files)),
+                    progress: None,
+                    path: None,
+                });
+                // Restore original directory
+                let _ = ftp_manager.change_dir(&original_path).await;
+                return Ok(format!("Download cancelled after {} files", downloaded_files));
+            }
+        }
+
         if item.is_dir {
             // Create local directory
             if let Err(e) = tokio::fs::create_dir_all(&item.local_path).await {
@@ -1053,6 +1103,7 @@ async fn download_folder(
                             direction: "download".to_string(),
                             message: Some(format!("Skipped (identical): {}", item.name)),
                             progress: None,
+                            path: Some(item.remote_path.clone()),
                         });
                         continue;
                     }
@@ -1075,7 +1126,7 @@ async fn download_folder(
                 transfer_id: file_transfer_id.clone(),
                 filename: item.name.clone(),
                 direction: "download".to_string(),
-                message: Some(format!("Downloading: {}", item.name)),
+                message: Some(format!("Downloading: {}", item.remote_path)),
                 progress: Some(TransferProgress {
                     transfer_id: file_transfer_id.clone(),
                     filename: item.name.clone(),
@@ -1085,7 +1136,10 @@ async fn download_folder(
                     speed_bps: 0,
                     eta_seconds: 0,
                     direction: "download".to_string(),
+                    total_files: None,
+                    path: None,
                 }),
+                path: Some(item.remote_path.clone()),
             });
             
             // Download the file
@@ -1120,7 +1174,10 @@ async fn download_folder(
                             speed_bps: 0,
                             eta_seconds: 0,
                             direction: "download".to_string(),
+                            total_files: None,
+                            path: None,
                         }),
+                        path: Some(item.remote_path.clone()),
                     });
 
                     // Emit folder progress event (for folder row counter in queue)
@@ -1139,7 +1196,10 @@ async fn download_folder(
                             speed_bps: 0,
                             eta_seconds: 0,
                             direction: "download".to_string(),
+                            total_files: Some(total_files as u64),
+                            path: Some(params.remote_path.clone()),
                         }),
+                        path: Some(params.remote_path.clone()),
                     });
 
                     info!("Downloaded: {} ({}/{})", item.name, downloaded_files, total_files);
@@ -1156,6 +1216,7 @@ async fn download_folder(
                         direction: "download".to_string(),
                         message: Some(format!("Failed: {} - {}", item.name, e)),
                         progress: None,
+                        path: Some(item.remote_path.clone()),
                     });
                 }
             }
@@ -1183,6 +1244,7 @@ async fn download_folder(
         direction: "download".to_string(),
         message: Some(result_message.clone()),
         progress: None,
+        path: None,
     });
 
     Ok(result_message)
@@ -1199,7 +1261,13 @@ async fn upload_folder(
 ) -> Result<String, String> {
     
     info!("Uploading folder recursively: {} -> {}", params.local_path, params.remote_path);
-    
+
+    // Reset cancel flag
+    {
+        let mut cancel = state.cancel_flag.lock().await;
+        *cancel = false;
+    }
+
     let folder_name = PathBuf::from(&params.local_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -1215,8 +1283,9 @@ async fn upload_folder(
         direction: "upload".to_string(),
         message: Some(format!("Scanning folder: {}", folder_name)),
         progress: None,
+        path: Some(params.remote_path.clone()),
     });
-    
+
     let local_base_path = PathBuf::from(&params.local_path);
     
     if !local_base_path.is_dir() {
@@ -1227,6 +1296,7 @@ async fn upload_folder(
             direction: "upload".to_string(),
             message: Some("Source is not a directory".to_string()),
             progress: None,
+            path: None,
         });
         return Err("Source is not a directory".to_string());
     }
@@ -1317,12 +1387,13 @@ async fn upload_folder(
                 let files_found = items_to_upload.iter().filter(|i| !i.is_dir).count();
                 let dirs_found = dirs_to_create.len();
                 let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
+                    event_type: "scanning".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
                     direction: "upload".to_string(),
                     message: Some(format!("Scanning... {} files, {} folders found", files_found, dirs_found)),
                     progress: None,
+                    path: None,
                 });
                 last_scan_emit = std::time::Instant::now();
             }
@@ -1343,12 +1414,13 @@ async fn upload_folder(
     
     // Update event with scan results
     let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "progress".to_string(),
+        event_type: "scanning".to_string(),
         transfer_id: transfer_id.clone(),
         filename: folder_name.clone(),
         direction: "upload".to_string(),
-        message: Some(format!("Found {} files in {} folders to upload", total_files, total_dirs)),
+        message: Some(format!("Scan complete: {} files in {} folders", total_files, total_dirs)),
         progress: None,
+        path: None,
     });
     
     // ============ PHASE 2: Create all remote directories first ============
@@ -1407,6 +1479,24 @@ async fn upload_folder(
     let mut errors = 0u64;
 
     for item in &files_to_upload {
+        // Check cancel flag before each file
+        {
+            let cancel = state.cancel_flag.lock().await;
+            if *cancel {
+                info!("Folder upload cancelled by user after {} files", uploaded_files);
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Upload cancelled after {} files", uploaded_files)),
+                    progress: None,
+                    path: None,
+                });
+                return Ok(format!("Upload cancelled after {} files", uploaded_files));
+            }
+        }
+
         // Check if remote file exists and should be skipped
         if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
             if let Some(&(remote_size, remote_modified)) = remote_index.get(&item.remote_path) {
@@ -1420,6 +1510,7 @@ async fn upload_folder(
                             direction: "upload".to_string(),
                             message: Some(format!("Skipped (identical): {}", item.name)),
                             progress: None,
+                            path: Some(item.remote_path.clone()),
                         });
                         continue;
                     }
@@ -1445,7 +1536,10 @@ async fn upload_folder(
                 speed_bps: 0,
                 eta_seconds: 0,
                 direction: "upload".to_string(),
+                total_files: None,
+                path: None,
             }),
+            path: Some(item.remote_path.clone()),
         });
         
         info!("Uploading [{}/{}]: {} -> {}", 
@@ -1476,9 +1570,12 @@ async fn upload_folder(
                         speed_bps: 0,
                         eta_seconds: 0,
                         direction: "upload".to_string(),
+                        total_files: None,
+                        path: None,
                     }),
+                    path: Some(item.remote_path.clone()),
                 });
-                
+
                 // Emit folder progress event
                 let _ = app.emit("transfer_event", TransferEvent {
                     event_type: "progress".to_string(),
@@ -1495,7 +1592,10 @@ async fn upload_folder(
                         speed_bps: 0,
                         eta_seconds: 0,
                         direction: "upload".to_string(),
+                        total_files: Some(total_files as u64),
+                        path: Some(remote_base_path.clone()),
                     }),
+                    path: Some(remote_base_path.clone()),
                 });
             }
             Err(e) => {
@@ -1510,11 +1610,12 @@ async fn upload_folder(
                     direction: "upload".to_string(),
                     message: Some(format!("Failed to upload {}: {}", item.name, e)),
                     progress: None,
+                    path: Some(item.remote_path.clone()),
                 });
             }
         }
     }
-    
+
     // Emit complete event
     let result_message = if errors > 0 && skipped_files > 0 {
         format!("Uploaded {} files, {} skipped, {} errors", uploaded_files, skipped_files, errors)
@@ -1533,15 +1634,26 @@ async fn upload_folder(
         direction: "upload".to_string(),
         message: Some(result_message.clone()),
         progress: None,
+        path: None,
     });
     
     Ok(result_message)
 }
 
 #[tauri::command]
-async fn cancel_transfer(state: State<'_, AppState>) -> Result<(), String> {
-    let mut cancel = state.cancel_flag.lock().await;
-    *cancel = true;
+async fn cancel_transfer(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    // Set cancel flag on both FTP and provider states
+    {
+        let mut cancel = state.cancel_flag.lock().await;
+        *cancel = true;
+    }
+    {
+        let mut cancel = provider_state.cancel_flag.lock().await;
+        *cancel = true;
+    }
     info!("Transfer cancellation requested");
     Ok(())
 }
@@ -1929,6 +2041,7 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(format!("Deleting remote file: {}", file_name)),
             progress: None,
+            path: None,
         });
         
         match ftp_manager.remove(&path).await {
@@ -1940,6 +2053,7 @@ async fn delete_remote_file(
                     direction: "remote".to_string(),
                     message: Some(format!("Deleted remote file: {}", file_name)),
                     progress: None,
+                    path: None,
                 });
                 Ok(format!("Deleted: {}", file_name))
             }
@@ -1951,6 +2065,7 @@ async fn delete_remote_file(
                     direction: "remote".to_string(),
                     message: Some(format!("Failed to delete: {}", e)),
                     progress: None,
+                    path: None,
                 });
                 Err(format!("Failed to delete file: {}", e))
             }
@@ -1964,6 +2079,7 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(format!("Scanning remote folder: {}", file_name)),
             progress: None,
+            path: None,
         });
         
         let original_path = ftp_manager.current_path();
@@ -2024,6 +2140,7 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(format!("Found {} files in {} folders to delete", total_files, total_dirs)),
             progress: None,
+            path: None,
         });
         
         // Phase 2: Delete all files with events
@@ -2040,6 +2157,7 @@ async fn delete_remote_file(
                 direction: "remote".to_string(),
                 message: Some(format!("Deleting: {}", item.path)),
                 progress: None,
+                path: None,
             });
             
             match ftp_manager.remove(&item.path).await {
@@ -2052,6 +2170,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Deleted: {}", item.name)),
                         progress: None,
+                        path: None,
                     });
                 }
                 Err(e) => {
@@ -2064,6 +2183,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Failed: {} - {}", item.name, e)),
                         progress: None,
+                        path: None,
                     });
                 }
             }
@@ -2083,6 +2203,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Removed folder: {}", dir_name)),
                         progress: None,
+                        path: None,
                     });
                 }
                 Err(e) => {
@@ -2108,6 +2229,7 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(result_message.clone()),
             progress: None,
+            path: None,
         });
         
         Ok(result_message)
@@ -2135,6 +2257,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(format!("Deleting local file: {}", file_name)),
             progress: None,
+            path: None,
         });
         
         match tokio::fs::remove_file(&path).await {
@@ -2146,6 +2269,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                     direction: "local".to_string(),
                     message: Some(format!("Deleted local file: {}", file_name)),
                     progress: None,
+                    path: None,
                 });
                 Ok(format!("Deleted: {}", file_name))
             }
@@ -2157,6 +2281,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                     direction: "local".to_string(),
                     message: Some(format!("Failed to delete: {}", e)),
                     progress: None,
+                    path: None,
                 });
                 Err(format!("Failed to delete file: {}", e))
             }
@@ -2170,6 +2295,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(format!("Scanning local folder: {}", file_name)),
             progress: None,
+            path: None,
         });
         
         // Phase 1: Collect all files and directories
@@ -2232,6 +2358,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(format!("Found {} files in {} folders to delete", total_files, total_dirs)),
             progress: None,
+            path: None,
         });
         
         // Phase 2: Delete all files with events
@@ -2253,6 +2380,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                             direction: "local".to_string(),
                             message: Some(format!("Deleted [{}/{}]: {}", deleted_files, total_files, item.name)),
                             progress: None,
+                            path: None,
                         });
                         last_emit = std::time::Instant::now();
                     }
@@ -2266,6 +2394,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                         direction: "local".to_string(),
                         message: Some(format!("Failed: {} - {}", item.name, e)),
                         progress: None,
+                        path: None,
                     });
                 }
             }
@@ -2289,6 +2418,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                         direction: "local".to_string(),
                         message: Some(format!("Removed folder: {}", dir_path.display())),
                         progress: None,
+                        path: None,
                     });
                 }
                 Err(e) => {
@@ -2311,6 +2441,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(result_message.clone()),
             progress: None,
+            path: None,
         });
         
         Ok(result_message)
@@ -4017,6 +4148,10 @@ async fn background_sync_worker(app: AppHandle) {
         if !config.enabled {
             info!("AeroCloud disabled, stopping background sync");
             BACKGROUND_SYNC_RUNNING.store(false, Ordering::SeqCst);
+
+            // Reset tray badge to default (no badge)
+            tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
+
             let _ = app.emit("cloud-sync-status", serde_json::json!({
                 "status": "disabled",
                 "message": "AeroCloud is disabled"
@@ -4049,18 +4184,36 @@ async fn background_sync_worker(app: AppHandle) {
         
         // Perform sync with dedicated FTP connection
         info!("Background sync: starting sync cycle");
-        
+
+        // Update tray badge to syncing state
+        tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Syncing);
+
         // Emit syncing status
         let _ = app.emit("cloud-sync-status", serde_json::json!({
             "status": "syncing",
             "message": "Syncing..."
         }));
         
+        // Mark sync root as syncing before each cycle
+        {
+            let local_folder = std::path::Path::new(&config.local_folder);
+            sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Syncing).await;
+        }
+
         match perform_background_sync(&config).await {
             Ok(result) => {
                 info!("Background sync completed: {} uploaded, {} downloaded, {} errors",
                     result.uploaded, result.downloaded, result.errors.len());
-                
+
+                // Mark all files in sync root as synced (clear individual states → falls back to OK)
+                {
+                    let local_folder = std::path::Path::new(&config.local_folder);
+                    sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Synced).await;
+                }
+
+                // Update tray badge to synced state
+                tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Synced);
+
                 // Emit success
                 let _ = app.emit("cloud-sync-status", serde_json::json!({
                     "status": "active",
@@ -4072,6 +4225,16 @@ async fn background_sync_worker(app: AppHandle) {
             }
             Err(e) => {
                 warn!("Background sync failed: {}", e);
+
+                // Mark sync root as error
+                {
+                    let local_folder = std::path::Path::new(&config.local_folder);
+                    sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Error).await;
+                }
+
+                // Update tray badge to error state
+                tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Error);
+
                 let _ = app.emit("cloud-sync-status", serde_json::json!({
                     "status": "error",
                     "message": format!("Sync failed: {}", e)
@@ -4170,10 +4333,19 @@ async fn start_background_sync(
 
     // Set flag before spawning
     BACKGROUND_SYNC_RUNNING.store(true, Ordering::SeqCst);
-    
+
+    // Start badge server for file manager integration (Nautilus/Nemo)
+    if let Err(e) = sync_badge::start_badge_server(app.clone()).await {
+        warn!("Badge server failed to start (non-fatal): {}", e);
+    }
+
+    // Register sync root so files in local folder show green badge
+    let local_folder = std::path::PathBuf::from(&config.local_folder);
+    sync_badge::register_sync_root(local_folder).await;
+
     // Clone app handle for the spawned task
     let app_clone = app.clone();
-    
+
     // Spawn background worker
     tokio::spawn(async move {
         background_sync_worker(app_clone).await;
@@ -4197,7 +4369,14 @@ async fn stop_background_sync(app: AppHandle) -> Result<String, String> {
     }
 
     BACKGROUND_SYNC_RUNNING.store(false, Ordering::SeqCst);
-    
+
+    // Stop badge server and clear sync roots
+    sync_badge::stop_badge_server().await;
+    sync_badge::clear_all_states().await;
+
+    // Reset tray badge to default (no badge)
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
+
     // Emit status
     let _ = app.emit("cloud-sync-status", serde_json::json!({
         "status": "idle",
@@ -4205,7 +4384,7 @@ async fn stop_background_sync(app: AppHandle) -> Result<String, String> {
     }));
 
     info!("Background sync stopped");
-    
+
     Ok("Background sync stopped".to_string())
 }
 
@@ -4220,8 +4399,15 @@ async fn set_tray_status(app: AppHandle, status: String, tooltip: Option<String>
         "status": status,
         "tooltip": tooltip.unwrap_or_else(|| "AeroCloud".to_string())
     }));
-    
+
     info!("Tray status updated: {}", status);
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_tray_badge_cmd(app: AppHandle, state: String) -> Result<(), String> {
+    let badge_state = tray_badge::TrayBadgeState::from_str(&state);
+    tray_badge::update_tray_badge(&app, badge_state);
     Ok(())
 }
 
@@ -4556,7 +4742,9 @@ pub fn run() {
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
 
             // Navigate main window from tauri:// to http://localhost to fix
-            // WebKitGTK rendering issues with Monaco, xterm.js, and iframes
+            // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
+            // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
+            #[cfg(not(dev))]
             if let Some(window) = app.get_webview_window("main") {
                 let url = url::Url::parse(&format!("http://localhost:{}", port))
                     .expect("valid localhost URL");
@@ -4678,7 +4866,7 @@ pub fn run() {
                 .cloned()
                 .expect("Failed to load tray icon - ensure icon is set in tauri.conf.json");
             
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .tooltip("AeroCloud - Idle")
                 .menu(&tray_menu)
@@ -4824,6 +5012,7 @@ pub fn run() {
             stop_background_sync,
             is_background_sync_running,
             set_tray_status,
+            update_tray_badge_cmd,
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
@@ -5010,6 +5199,15 @@ pub fn run() {
             filesystem::empty_trash,
             filesystem::find_duplicate_files,
             filesystem::scan_disk_usage,
+            // Mission Green Badge - File sync status tracking
+            sync_badge::start_badge_server_cmd,
+            sync_badge::stop_badge_server_cmd,
+            sync_badge::set_file_badge,
+            sync_badge::clear_file_badge,
+            sync_badge::get_badge_status,
+            sync_badge::install_shell_extension_cmd,
+            sync_badge::uninstall_shell_extension_cmd,
+            sync_badge::restart_file_manager_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
