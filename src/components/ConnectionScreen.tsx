@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound } from 'lucide-react';
-import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -53,6 +53,348 @@ interface ConnectionScreenProps {
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
 }
 
+// --- FourSharedConnect: OAuth 1.0 authentication for 4shared ---
+interface FourSharedConnectProps {
+    initialLocalPath?: string;
+    onLocalPathChange?: (path: string) => void;
+    saveConnection?: boolean;
+    onSaveConnectionChange?: (save: boolean) => void;
+    connectionName?: string;
+    onConnectionNameChange?: (name: string) => void;
+    onConnected: (displayName: string) => void;
+}
+
+const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
+    initialLocalPath = '',
+    onLocalPathChange,
+    saveConnection = false,
+    onSaveConnectionChange,
+    connectionName = '',
+    onConnectionNameChange,
+    onConnected,
+}) => {
+    const t = useTranslation();
+    const [hasExistingTokens, setHasExistingTokens] = useState(false);
+    const [isChecking, setIsChecking] = useState(true);
+    const [isAuthenticating, setIsAuthenticating] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [localPath, setLocalPath] = useState(initialLocalPath);
+    const [wantToSave, setWantToSave] = useState(saveConnection);
+    const [saveName, setSaveName] = useState(connectionName);
+    const [consumerKey, setConsumerKey] = useState('');
+    const [consumerSecret, setConsumerSecret] = useState('');
+    const [showCredentialsForm, setShowCredentialsForm] = useState(false);
+    const [wantsNewAccount, setWantsNewAccount] = useState(false);
+    const [showSecret, setShowSecret] = useState(false);
+
+    // Load consumer key/secret from credential store
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const key = await invoke<string>('get_credential', { account: 'oauth_fourshared_client_id' });
+                if (key) setConsumerKey(key);
+            } catch { /* no stored key */ }
+            try {
+                const secret = await invoke<string>('get_credential', { account: 'oauth_fourshared_client_secret' });
+                if (secret) setConsumerSecret(secret);
+            } catch { /* no stored secret */ }
+        };
+        load();
+    }, []);
+
+    // Check for existing tokens
+    useEffect(() => {
+        const check = async () => {
+            setIsChecking(true);
+            try {
+                const exists = await invoke<boolean>('fourshared_has_tokens');
+                setHasExistingTokens(exists);
+            } catch {
+                setHasExistingTokens(false);
+            }
+            setIsChecking(false);
+        };
+        check();
+    }, []);
+
+    const browseLocalFolder = async () => {
+        try {
+            const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
+            if (selected && typeof selected === 'string') {
+                setLocalPath(selected);
+                onLocalPathChange?.(selected);
+            }
+        } catch { /* cancelled */ }
+    };
+
+    const handleSignIn = async () => {
+        if (!consumerKey || !consumerSecret) {
+            setShowCredentialsForm(true);
+            return;
+        }
+        setIsAuthenticating(true);
+        setError(null);
+        // Save credentials to vault
+        invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }).catch(() => {});
+        invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }).catch(() => {});
+        try {
+            await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
+            setHasExistingTokens(true);
+            // Now connect
+            await handleConnect();
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setIsAuthenticating(false);
+        }
+    };
+
+    const handleConnect = async () => {
+        if (!consumerKey || !consumerSecret) {
+            setShowCredentialsForm(true);
+            return;
+        }
+        setIsConnecting(true);
+        setError(null);
+        try {
+            const result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
+            onConnected(result.display_name || '4shared');
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await invoke('fourshared_logout');
+            setHasExistingTokens(false);
+            setWantsNewAccount(false);
+        } catch (e) {
+            setError(String(e));
+        }
+    };
+
+    if (isChecking) {
+        return (
+            <div className="flex items-center justify-center p-4">
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    // Active state — already authenticated
+    if (hasExistingTokens && !wantsNewAccount) {
+        return (
+            <div className="space-y-4">
+                <div className="p-4 rounded-xl border-2 border-blue-500/30 bg-blue-500/5">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-500/20">
+                            <Cloud size={24} className="text-blue-500" />
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                <span className="font-medium">4shared</span>
+                                <span className="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 rounded-full flex items-center gap-1">
+                                    <Check size={12} />
+                                    Active
+                                </span>
+                            </div>
+                            <span className="text-sm text-gray-500">Previously authenticated</span>
+                        </div>
+                    </div>
+                </div>
+                <button
+                    onClick={handleConnect}
+                    disabled={isConnecting || isAuthenticating}
+                    className="w-full py-3 px-4 rounded-xl text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isConnecting ? (
+                        <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Connecting...
+                        </>
+                    ) : (
+                        <>
+                            <Cloud size={18} />
+                            Connect to 4shared
+                        </>
+                    )}
+                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setWantsNewAccount(true)}
+                        className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                        Use Different Account
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="Disconnect account"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+                {error && (
+                    <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+                        <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // Sign-in state
+    return (
+        <div className="space-y-4">
+            {/* Local Path */}
+            <div>
+                <label className="block text-sm font-medium mb-1.5">Local Folder (optional)</label>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={localPath}
+                        onChange={(e) => { setLocalPath(e.target.value); onLocalPathChange?.(e.target.value); }}
+                        placeholder="~/Downloads"
+                        className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                    />
+                    <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl" title="Browse...">
+                        <FolderOpen size={18} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Save Connection */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                <input
+                    type="checkbox"
+                    id="save-fourshared"
+                    checked={wantToSave}
+                    onChange={(e) => { setWantToSave(e.target.checked); onSaveConnectionChange?.(e.target.checked); }}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="save-fourshared" className="flex-1">
+                    <span className="text-sm font-medium">Save this connection</span>
+                    <p className="text-xs text-gray-500">Quick connect next time</p>
+                </label>
+                <Save size={16} className="text-gray-400" />
+            </div>
+
+            {wantToSave && (
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">Connection Name</label>
+                    <input
+                        type="text"
+                        value={saveName}
+                        onChange={(e) => { setSaveName(e.target.value); onConnectionNameChange?.(e.target.value); }}
+                        placeholder="My 4shared"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                    />
+                </div>
+            )}
+
+            {/* Sign In Button */}
+            <button
+                onClick={hasExistingTokens ? handleConnect : handleSignIn}
+                disabled={isAuthenticating || isConnecting}
+                className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isAuthenticating || isConnecting ? (
+                    <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        {isAuthenticating ? 'Authenticating...' : 'Connecting...'}
+                    </>
+                ) : (
+                    <>
+                        <Cloud size={18} />
+                        Sign in with 4shared
+                    </>
+                )}
+            </button>
+
+            {error && (
+                <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+                    <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
+                </div>
+            )}
+
+            {/* Credentials Form */}
+            {showCredentialsForm && (
+                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-sm">OAuth 1.0 Credentials</h4>
+                        <button
+                            onClick={() => { try { invoke('open_url', { url: 'https://www.4shared.com/developer/' }); } catch { /* ignore */ } }}
+                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                        >
+                            Get credentials <ExternalLink size={12} />
+                        </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Create a developer app at 4shared.com/developer and enter the Consumer Key and Secret below.
+                    </p>
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Consumer Key</label>
+                        <input
+                            type="text"
+                            value={consumerKey}
+                            onChange={(e) => setConsumerKey(e.target.value)}
+                            placeholder="Enter Consumer Key"
+                            className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Consumer Secret</label>
+                        <div className="relative">
+                            <input
+                                type={showSecret ? 'text' : 'password'}
+                                value={consumerSecret}
+                                onChange={(e) => setConsumerSecret(e.target.value)}
+                                placeholder="Enter Consumer Secret"
+                                className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                            />
+                            <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={() => setShowCredentialsForm(false)} className="flex-1 py-2 px-3 text-sm border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSignIn}
+                            disabled={!consumerKey || !consumerSecret}
+                            className="flex-1 py-2 px-3 text-sm text-white rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+                        >
+                            Continue
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {!showCredentialsForm && (
+                <button
+                    onClick={() => setShowCredentialsForm(true)}
+                    className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1"
+                >
+                    <Settings size={16} />
+                    Configure OAuth 1.0 credentials
+                </button>
+            )}
+
+            {wantsNewAccount && hasExistingTokens && (
+                <button onClick={() => setWantsNewAccount(false)} className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 flex items-center justify-center gap-1">
+                    &larr; Back to existing account
+                </button>
+            )}
+        </div>
+    );
+};
+
 export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     connectionParams,
     quickConnectDirs,
@@ -88,6 +430,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
+
+    // When re-opening dropdown with a protocol already selected, clear the selection
+    const handleProtocolSelectorOpenChange = (open: boolean) => {
+        setIsProtocolSelectorOpen(open);
+        if (open && protocol) {
+            onConnectionParamsChange({
+                ...connectionParams,
+                protocol: undefined,
+            });
+            setSelectedProviderId(null);
+            if (editingProfileId) {
+                setEditingProfileId(null);
+                setConnectionName('');
+                setSaveConnection(false);
+            }
+        }
+    };
 
     // Export/Import dialog state
     const [showExportImport, setShowExportImport] = useState(false);
@@ -226,6 +585,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleEdit = async (profile: ServerProfile) => {
+        // Close protocol selector dropdown so the form becomes visible
+        setIsProtocolSelectorOpen(false);
+
         // Reset form FIRST to clear previous server's data immediately
         // This prevents stale data from showing when switching between servers
         setEditingProfileId(profile.id);
@@ -406,7 +768,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             value={protocol}
                             onChange={handleProtocolChange}
                             disabled={loading}
-                            onOpenChange={setIsProtocolSelectorOpen}
+                            onOpenChange={handleProtocolSelectorOpenChange}
                         />
 
                         {/* Show form only when protocol is selected AND selector is closed */}
@@ -486,7 +848,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-xs mb-1">
                                                     <Clock size={12} /> {t('connection.syncInterval')}
                                                 </div>
-                                                <p className="text-xs font-medium">{Math.round(aeroCloudConfig.sync_interval_secs / 60)} minutes</p>
+                                                <p className="text-xs font-medium">{Math.round(aeroCloudConfig.sync_interval_secs / 60)} {t('connection.minutes')}</p>
                                             </div>
                                         </div>
 
@@ -528,22 +890,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 )}
                             </div>
-                        ) : isOAuthProvider(protocol) ? (
-                            <OAuthConnect
-                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud'}
+                        ) : isFourSharedProvider(protocol) ? (
+                            <FourSharedConnect
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 saveConnection={saveConnection}
                                 onSaveConnectionChange={setSaveConnection}
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
-                                onConnected={(displayName) => {
-                                    // Save OAuth connection if requested
+                                onConnected={async (displayName) => {
                                     if (saveConnection) {
-                                        // Load from localStorage synchronously, then persist to vault
-                                        const existingServers: ServerProfile[] = JSON.parse(localStorage.getItem(SERVERS_STORAGE_KEY) || '[]');
+                                        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
                                         const saveName = connectionName || displayName;
-                                        // Check for duplicate: same name and protocol
                                         const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
                                             const newServer: ServerProfile = {
@@ -558,18 +916,48 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 localInitialPath: quickConnectDirs.localDir,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
+                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+                                        }
+                                    }
+                                    onConnect();
+                                }}
+                            />
+                        ) : isOAuthProvider(protocol) ? (
+                            <OAuthConnect
+                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud'}
+                                initialLocalPath={quickConnectDirs.localDir}
+                                onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
+                                saveConnection={saveConnection}
+                                onSaveConnectionChange={setSaveConnection}
+                                connectionName={connectionName}
+                                onConnectionNameChange={setConnectionName}
+                                onConnected={async (displayName) => {
+                                    // Save OAuth connection if requested
+                                    if (saveConnection) {
+                                        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+                                        const saveName = connectionName || displayName;
+                                        const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
+                                        if (!duplicate) {
+                                            const newServer: ServerProfile = {
+                                                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                                                name: saveName,
+                                                host: displayName,
+                                                port: 443,
+                                                username: '',
+                                                password: '',
+                                                protocol: protocol as ProviderType,
+                                                initialPath: '/',
+                                                localInitialPath: quickConnectDirs.localDir,
+                                            };
+                                            const newServers = [...existingServers, newServer];
                                             secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
                                         } else {
-                                            // Update existing entry
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? { ...s, localInitialPath: quickConnectDirs.localDir, lastConnected: new Date().toISOString() } : s
                                             );
-                                            localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
                                             secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                                         }
                                     }
-                                    // After OAuth completes, trigger connection
                                     onConnect();
                                 }}
                             />
@@ -613,10 +1001,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
-                                                    title="Documentation"
+                                                    title={t('connection.docs')}
                                                 >
                                                     <ExternalLink size={12} />
-                                                    Docs
+                                                    {t('connection.docs')}
                                                 </a>
                                             )}
                                             <button
@@ -645,19 +1033,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     port: 443
                                                 })}
                                                 className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder="your@email.com"
+                                                placeholder={t('connection.megaEmailPlaceholder')}
                                                 autoFocus
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">Password</label>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
                                                     className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                    placeholder="Filen account password"
+                                                    placeholder={t('connection.filenPasswordPlaceholder')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -683,17 +1071,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
-                                            <p className="font-medium mb-1">Zero-Knowledge Encryption</p>
+                                            <p className="font-medium mb-1">{t('connection.filenEncryptionTitle')}</p>
                                             <p className="opacity-80">
-                                                All files are encrypted client-side with AES-256-GCM before upload.
-                                                Filen cannot access your data. Your password never leaves this device.
+                                                {t('connection.filenEncryptionDesc')}
                                             </p>
                                         </div>
 
                                         {/* Optional Remote Path */}
                                         <div className="pt-2">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                Optional Settings
+                                                {t('connection.optionalSettings')}
                                             </label>
                                             <div className="space-y-2">
                                                 <input
@@ -701,7 +1088,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder="Initial remote folder (e.g. /Documents)"
+                                                    placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
                                                     <input
@@ -709,13 +1096,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder="Initial local folder"
+                                                        placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
                                                         type="button"
                                                         onClick={handleBrowseLocalDir}
                                                         className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title="Browse"
+                                                        title={t('common.browse')}
                                                     >
                                                         <FolderOpen size={16} />
                                                     </button>
@@ -734,7 +1121,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 />
                                                 <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
                                                     <Save size={14} />
-                                                    Save to Saved Servers
+                                                    {t('connection.saveToServers')}
                                                 </span>
                                             </label>
 
@@ -744,7 +1131,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder="Connection Name (e.g. My Filen Cloud)"
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                                     />
                                                 </div>
@@ -759,13 +1146,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                                             >
                                                 {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Connecting...</>
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> Secure Login</>
+                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
-                                                <Lock size={12} /> End-to-end encrypted with AES-256-GCM
+                                                <Lock size={12} /> {t('connection.endToEndAes')}
                                             </p>
                                         </div>
                                     </div>
@@ -789,7 +1176,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">Password</label>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -805,16 +1192,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
-                                            <p className="font-medium mb-1">⚠️ Requirement: MEGAcmd</p>
+                                            <p className="font-medium mb-1">{t('connection.megaRequirement')}</p>
                                             <p className="opacity-80">
-                                                This feature requires the free <strong>MEGAcmd</strong> tool installed and running on your system.
+                                                {t('connection.megaRequirementDesc')}
                                                 <a
                                                     href="https://mega.io/cmd"
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="block mt-1 underline hover:text-blue-600 dark:hover:text-blue-300"
                                                 >
-                                                    Download MEGAcmd
+                                                    {t('connection.downloadMegacmd')}
                                                 </a>
                                             </p>
                                         </div>
@@ -831,9 +1218,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
                                                 />
                                                 <div>
-                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">Remember session (24h)</span>
+                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                        Session keys stored securely in system keyring
+                                                        {t('connection.sessionKeysStored')}
                                                     </p>
                                                 </div>
                                             </label>
@@ -849,9 +1236,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
                                                 />
                                                 <div>
-                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">Logout on disconnect</span>
+                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                        Terminate MEGAcmd session when closing connection
+                                                        {t('connection.logoutOnDisconnectDesc')}
                                                     </p>
                                                 </div>
                                             </label>
@@ -860,7 +1247,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* Optional Remote Path */}
                                         <div className="pt-2">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                Optional Settings
+                                                {t('connection.optionalSettings')}
                                             </label>
                                             <div className="space-y-2">
                                                 <input
@@ -868,7 +1255,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder="Initial remote folder (e.g. /Backup)"
+                                                    placeholder={t('connection.initialRemotePathMega')}
                                                 />
                                                 <div className="flex gap-2">
                                                     <input
@@ -876,13 +1263,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder="Initial local folder"
+                                                        placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
                                                         type="button"
                                                         onClick={handleBrowseLocalDir}
                                                         className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title="Browse"
+                                                        title={t('common.browse')}
                                                     >
                                                         <FolderOpen size={16} />
                                                     </button>
@@ -901,7 +1288,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 />
                                                 <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
                                                     <Save size={14} />
-                                                    Save to Saved Servers
+                                                    {t('connection.saveToServers')}
                                                 </span>
                                             </label>
 
@@ -911,7 +1298,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder="Connection Name (e.g. My Personal MEGA)"
+                                                        placeholder={t('connection.megaConnectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                                     />
                                                 </div>
@@ -926,15 +1313,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
                                             >
                                                 {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Connecting...</>
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : saveConnection ? (
-                                                    <><Save size={18} /> Save</>
+                                                    <><Save size={18} /> {t('common.save')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> Secure Login</>
+                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
-                                                <Lock size={12} /> End-to-end encrypted connection
+                                                <Lock size={12} /> {t('connection.endToEndEncrypted')}
                                             </p>
                                         </div>
                                     </div>
@@ -943,7 +1330,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <>
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">
-                                                {protocol === 's3' ? 'Endpoint' : t('connection.server')}
+                                                {protocol === 's3' ? t('protocol.s3Endpoint') : t('connection.server')}
                                             </label>
                                             <input
                                                 type="text"
@@ -1008,7 +1395,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     value={quickConnectDirs.localDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
                                                     className="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                                    placeholder="/home/user/projects"
+                                                    placeholder={t('connection.localPathPlaceholder')}
                                                 />
                                                 <button
                                                     type="button"
@@ -1032,7 +1419,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 />
                                                 <span className="text-sm flex items-center gap-1">
                                                     <Save size={14} />
-                                                    Save this connection
+                                                    {t('connection.saveThisConnection')}
                                                 </span>
                                             </label>
 
@@ -1041,7 +1428,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder="Connection name (optional)"
+                                                    placeholder={t('connection.connectionNameOptional')}
                                                     className="w-full mt-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                 />
                                             )}
@@ -1052,7 +1439,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <button
                                                     onClick={handleCancelEdit}
                                                     className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                                                    title="Cancel Editing"
+                                                    title={t('connection.cancelEditing')}
                                                 >
                                                     <X size={20} />
                                                 </button>
@@ -1070,10 +1457,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ) : editingProfileId ? (
                                                     <>
                                                         <Save size={18} />
-                                                        Save Changes
+                                                        {t('connection.saveChanges')}
                                                     </>
                                                 ) : (
-                                                    saveConnection ? <><Save size={18} /> Save</> : t('common.connect')
+                                                    saveConnection ? <><Save size={18} /> {t('common.save')}</> : t('common.connect')
                                                 )}
                                             </button>
                                         </div>

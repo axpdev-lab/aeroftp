@@ -39,7 +39,7 @@ The previous dual-mode system (OS Keyring primary + encrypted vault fallback) su
 | FTP | None (configurable) | Plain-text by default; supports Explicit TLS, Implicit TLS, or opportunistic TLS upgrade |
 | FTPS | TLS/SSL | Explicit TLS (AUTH TLS, port 21) or Implicit TLS (port 990). Certificate verification configurable. |
 | SFTP | SSH | Native Rust implementation (russh 0.57) |
-| WebDAV | HTTPS | TLS encrypted |
+| WebDAV | HTTPS | TLS encrypted, HTTP Digest auth (RFC 2617) auto-detection |
 | S3 | HTTPS | SigV4 authentication with TLS |
 | Google Drive | HTTPS + OAuth2 | PKCE flow with token refresh |
 | Dropbox | HTTPS + OAuth2 | PKCE flow with token refresh |
@@ -64,6 +64,22 @@ AeroFTP supports all standard FTPS encryption modes:
 Additional options:
 - **Certificate verification**: Enabled by default; can be disabled per-connection for self-signed certificates
 - **TLS backend**: `native-tls` (system TLS library: OpenSSL on Linux, Secure Transport on macOS, SChannel on Windows)
+
+### WebDAV Digest Authentication (v2.0.5)
+
+AeroFTP implements HTTP Digest Authentication (RFC 2617) with automatic detection for WebDAV servers that require it (e.g., CloudMe). When a WebDAV server responds with `401 Unauthorized` and a `WWW-Authenticate: Digest` challenge, AeroFTP transparently switches from Basic to Digest auth.
+
+| Aspect | Details |
+| ------ | ------- |
+| **Standard** | RFC 2617 (HTTP Digest Access Authentication) |
+| **Algorithm** | MD5 (server-negotiated) |
+| **Challenge-response** | Password is never transmitted — only MD5 hashes of username:realm:password |
+| **Replay protection** | Nonce counting (`nc`) incremented per request, random `cnonce` per request |
+| **Request integrity** | Hash includes HTTP method and URI path (prevents request tampering) |
+| **Auto-detection** | Transparent fallback — tries Basic first, switches to Digest on 401 challenge |
+| **Compatibility** | All existing WebDAV providers (Nextcloud, Koofr, etc.) continue to use Basic auth unaffected |
+
+**Security advantage over Basic auth**: Even without TLS, Digest auth protects the password from eavesdropping. With TLS (HTTPS), it provides defense-in-depth — a compromised TLS proxy cannot extract the plaintext password from Digest auth headers.
 
 ### OAuth2 Security
 
@@ -276,6 +292,7 @@ AeroFTP is designed as a **privacy-enhanced** file manager. While no software ca
 | **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis + fail-closed validation |
 | **AeroFile Hardening** | Path validation on all commands + symlink safety + resource exhaustion limits + preview size caps + iframe sandbox + filename validation |
 | **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
+| **WebDAV Digest Auth** | RFC 2617 Digest authentication with auto-detection — password never transmitted, nonce-based replay protection, request integrity verification |
 | **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS for full control over encryption level |
 
 ## Known Issues
@@ -302,4 +319,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.4 - 10 February 2026*
+*AeroFTP v2.0.5 - 10 February 2026*

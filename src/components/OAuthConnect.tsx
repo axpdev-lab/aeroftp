@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw } from 'lucide-react';
+import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
@@ -120,6 +120,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [saveName, setSaveName] = useState(connectionName);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
 
   const oauthProvider = providerMap[provider];
   const oauthApp = OAUTH_APPS[oauthProvider];
@@ -481,13 +482,18 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
           <div>
             <label className="block text-xs font-medium mb-1">Client Secret</label>
-            <input
-              type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Enter Client Secret"
-              className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-            />
+            <div className="relative">
+              <input
+                type={showSecret ? 'text' : 'password'}
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder="Enter Client Secret"
+                className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+              />
+              <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-2">

@@ -1605,3 +1605,439 @@ pub async fn provider_compare_directories(
 
     Ok(results)
 }
+
+// ============ 4shared OAuth 1.0 Commands ============
+
+/// Parameters for 4shared OAuth 1.0 authentication
+#[derive(Debug, Clone, Deserialize)]
+pub struct FourSharedAuthParams {
+    pub consumer_key: String,
+    pub consumer_secret: String,
+}
+
+/// Result from starting 4shared OAuth flow
+#[derive(Debug, Clone, Serialize)]
+pub struct FourSharedAuthStarted {
+    pub auth_url: String,
+    pub request_token: String,
+    pub request_token_secret: String,
+}
+
+/// Vault key for 4shared OAuth tokens
+const FOURSHARED_TOKEN_KEY: &str = "oauth_fourshared";
+
+/// Store 4shared tokens in credential vault (same pattern as OAuth2)
+fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Result<(), String> {
+    let token_data = format!("{}:{}", access_token, access_token_secret);
+
+    // Try vault first
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        store.store(FOURSHARED_TOKEN_KEY, &token_data)
+            .map_err(|e| format!("Failed to store tokens: {}", e))?;
+        return Ok(());
+    }
+
+    // Try auto-init vault
+    if crate::credential_store::CredentialStore::init().is_ok() {
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            store.store(FOURSHARED_TOKEN_KEY, &token_data)
+                .map_err(|e| format!("Failed to store tokens: {}", e))?;
+            return Ok(());
+        }
+    }
+
+    Err("Credential vault not available. Please unlock the vault first.".to_string())
+}
+
+/// Load 4shared tokens from credential vault
+fn load_fourshared_tokens() -> Result<(String, String), String> {
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        if let Ok(data) = store.get(FOURSHARED_TOKEN_KEY) {
+            let parts: Vec<&str> = data.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                return Ok((parts[0].to_string(), parts[1].to_string()));
+            }
+        }
+    }
+    Err("No 4shared tokens found. Please authenticate first.".to_string())
+}
+
+/// Start 4shared OAuth 1.0 flow — obtain request token, return auth URL
+#[tauri::command]
+pub async fn fourshared_start_auth(
+    params: FourSharedAuthParams,
+) -> Result<FourSharedAuthStarted, String> {
+    use crate::providers::oauth1;
+
+    info!("Starting 4shared OAuth 1.0 flow");
+
+    // Bind a local callback listener to get a port
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    let port = listener.local_addr()
+        .map_err(|e| format!("Failed to get listener port: {}", e))?.port();
+    drop(listener);
+
+    let callback_url = format!("http://127.0.0.1:{}/callback", port);
+
+    let (request_token, request_token_secret) = oauth1::request_token(
+        &params.consumer_key,
+        &params.consumer_secret,
+        "https://api.4shared.com/v1_2/oauth/initiate",
+        &callback_url,
+    ).await?;
+
+    let auth_url = oauth1::authorize_url(
+        "https://api.4shared.com/v1_2/oauth/authorize",
+        &request_token,
+    );
+
+    if let Err(e) = open::that(&auth_url) {
+        info!("Could not open browser: {}", e);
+    }
+
+    Ok(FourSharedAuthStarted {
+        auth_url,
+        request_token,
+        request_token_secret,
+    })
+}
+
+/// Complete 4shared OAuth 1.0 flow — exchange request token + verifier for access token
+#[tauri::command]
+pub async fn fourshared_complete_auth(
+    params: FourSharedAuthParams,
+    request_token: String,
+    request_token_secret: String,
+    verifier: String,
+) -> Result<String, String> {
+    use crate::providers::oauth1;
+
+    info!("Completing 4shared OAuth 1.0 flow");
+
+    let (access_token, access_token_secret) = oauth1::access_token(
+        &params.consumer_key,
+        &params.consumer_secret,
+        "https://api.4shared.com/v1_2/oauth/token",
+        &request_token,
+        &request_token_secret,
+        &verifier,
+    ).await?;
+
+    store_fourshared_tokens(&access_token, &access_token_secret)?;
+
+    info!("4shared OAuth 1.0 authentication completed successfully");
+    Ok("Authentication successful".to_string())
+}
+
+/// Full 4shared OAuth 1.0 flow — start server, open browser, wait for callback, exchange tokens
+#[tauri::command]
+pub async fn fourshared_full_auth(
+    params: FourSharedAuthParams,
+) -> Result<String, String> {
+    use crate::providers::oauth1;
+
+    info!("Starting full 4shared OAuth 1.0 flow");
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    let port = listener.local_addr()
+        .map_err(|e| format!("Failed to get listener port: {}", e))?.port();
+
+    let callback_url = format!("http://127.0.0.1:{}/callback", port);
+
+    // Step 1: Request token
+    let (request_token, request_token_secret) = oauth1::request_token(
+        &params.consumer_key,
+        &params.consumer_secret,
+        "https://api.4shared.com/v1_2/oauth/initiate",
+        &callback_url,
+    ).await?;
+
+    // Step 2: Open authorization URL
+    let auth_url = oauth1::authorize_url(
+        "https://api.4shared.com/v1_2/oauth/authorize",
+        &request_token,
+    );
+
+    if let Err(e) = open::that(&auth_url) {
+        return Err(format!("Could not open browser: {}. Open manually: {}", e, auth_url));
+    }
+
+    info!("Browser opened, waiting for OAuth 1.0 callback on port {}...", port);
+
+    // Step 3: Wait for callback
+    let (token, verifier) = tokio::time::timeout(
+        tokio::time::Duration::from_secs(300),
+        wait_for_oauth1_callback(listener),
+    )
+    .await
+    .map_err(|_| "OAuth timeout: no response within 5 minutes".to_string())?
+    .map_err(|e| format!("Callback error: {}", e))?;
+
+    if token != request_token {
+        return Err("OAuth token mismatch — possible CSRF attack".to_string());
+    }
+
+    // Step 4: Exchange for access token
+    let (access_token, access_token_secret) = oauth1::access_token(
+        &params.consumer_key,
+        &params.consumer_secret,
+        "https://api.4shared.com/v1_2/oauth/token",
+        &request_token,
+        &request_token_secret,
+        &verifier,
+    ).await?;
+
+    store_fourshared_tokens(&access_token, &access_token_secret)?;
+
+    info!("4shared OAuth 1.0 full auth completed successfully");
+    Ok("Authentication successful! You can now connect.".to_string())
+}
+
+/// Wait for OAuth 1.0 callback (returns oauth_token, oauth_verifier).
+/// oauth_verifier is optional — 4shared uses OAuth 1.0 (not 1.0a) and does NOT send a verifier.
+/// Accepts connections in a loop to handle browser prefetch/favicon requests.
+async fn wait_for_oauth1_callback(
+    listener: tokio::net::TcpListener,
+) -> Result<(String, String), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // Accept connections in a loop — browsers may send favicon or prefetch requests first
+    loop {
+        let (mut stream, _) = listener.accept().await
+            .map_err(|e| format!("Accept error: {}", e))?;
+
+        let mut buf = vec![0u8; 4096];
+        let n = stream.read(&mut buf).await
+            .map_err(|e| format!("Read error: {}", e))?;
+
+        let request = String::from_utf8_lossy(&buf[..n]);
+
+        // Parse the request line: GET /callback?oauth_token=xxx HTTP/1.1
+        let request_path = request
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .unwrap_or("");
+
+        // Ignore non-callback requests (favicon, prefetch, etc.)
+        if !request_path.starts_with("/callback") {
+            let response_404 = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response_404.as_bytes()).await;
+            let _ = stream.shutdown().await;
+            continue;
+        }
+
+        let query = request_path.split('?').nth(1).unwrap_or("");
+
+        let params: std::collections::HashMap<&str, &str> = query
+            .split('&')
+            .filter_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                Some((parts.next()?, parts.next()?))
+            })
+            .collect();
+
+        let oauth_token = params.get("oauth_token")
+            .ok_or("Missing oauth_token in callback")?
+            .to_string();
+        // oauth_verifier is optional — 4shared (OAuth 1.0, not 1.0a) doesn't send it
+        let oauth_verifier = params.get("oauth_verifier")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+
+        let response = r#"HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Connection: close
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AeroFTP - Authorization Complete</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+        .bg-particles {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; overflow: hidden; z-index: 0;
+        }
+        .particle {
+            position: absolute; width: 4px; height: 4px;
+            background: rgba(0, 212, 255, 0.3); border-radius: 50%;
+            animation: float 15s infinite;
+        }
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 2s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 4s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 6s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 8s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 10s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 12s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 14s; }
+        .particle:nth-child(9) { left: 90%; animation-delay: 1s; }
+        .particle:nth-child(10) { left: 95%; animation-delay: 3s; }
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; } 90% { opacity: 1; }
+            100% { transform: translateY(-100vh) scale(1); opacity: 0; }
+        }
+        .container {
+            position: relative; z-index: 1; text-align: center;
+            padding: 60px 50px;
+            background: rgba(22, 33, 62, 0.8);
+            backdrop-filter: blur(20px); border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            max-width: 440px; animation: slideUp 0.6s ease-out;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .logo { margin-bottom: 30px; }
+        .app-name {
+            font-size: 28px; font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff, #0099ff);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-top: 12px; letter-spacing: -0.5px;
+        }
+        .success-icon {
+            width: 90px; height: 90px; margin: 20px auto 30px;
+            background: linear-gradient(135deg, #00d4ff, #00ff88);
+            border-radius: 50%; display: flex;
+            justify-content: center; align-items: center;
+            animation: pulse 2s infinite;
+            box-shadow: 0 10px 40px rgba(0, 212, 255, 0.3);
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 10px 40px rgba(0, 212, 255, 0.3); }
+            50% { box-shadow: 0 10px 60px rgba(0, 212, 255, 0.5); }
+        }
+        .success-icon svg {
+            width: 45px; height: 45px; stroke: #fff;
+            stroke-width: 3; fill: none;
+            animation: checkmark 0.8s ease-out 0.3s both;
+        }
+        @keyframes checkmark {
+            from { stroke-dashoffset: 50; }
+            to { stroke-dashoffset: 0; }
+        }
+        .success-icon svg path { stroke-dasharray: 50; stroke-dashoffset: 0; }
+        h1 { font-size: 26px; font-weight: 600; color: #fff; margin-bottom: 12px; }
+        .subtitle {
+            font-size: 16px; color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6; margin-bottom: 30px;
+        }
+        .provider-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 20px; background: rgba(255, 255, 255, 0.1);
+            border-radius: 30px; font-size: 14px;
+            color: rgba(255, 255, 255, 0.9); margin-bottom: 30px;
+        }
+        .provider-badge svg { width: 20px; height: 20px; }
+        .close-hint {
+            font-size: 13px; color: rgba(255, 255, 255, 0.5);
+            padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .close-hint kbd {
+            display: inline-block; padding: 2px 8px;
+            background: rgba(255, 255, 255, 0.1); border-radius: 4px;
+            font-family: monospace; font-size: 12px; margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-particles">
+        <div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div>
+        <div class="particle"></div><div class="particle"></div>
+    </div>
+    <div class="container">
+        <div class="logo">
+            <div class="app-name">AeroFTP</div>
+        </div>
+        <div class="success-icon">
+            <svg viewBox="0 0 24 24">
+                <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <h1>Authorization Successful</h1>
+        <p class="subtitle">Your 4shared account has been connected securely.<br>You're all set to access your files!</p>
+        <div class="provider-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            4shared Connected
+        </div>
+        <p class="close-hint">You can close this window and return to AeroFTP<br>or press <kbd>Alt</kbd> + <kbd>F4</kbd></p>
+    </div>
+</body>
+</html>"#;
+        let _ = stream.write_all(response.as_bytes()).await;
+        let _ = stream.shutdown().await;
+
+        return Ok((oauth_token, oauth_verifier));
+    }
+}
+
+/// Connect to 4shared after authentication
+#[tauri::command]
+pub async fn fourshared_connect(
+    state: State<'_, ProviderState>,
+    params: FourSharedAuthParams,
+) -> Result<OAuth2ConnectResult, String> {
+    use crate::providers::{FourSharedProvider, types::FourSharedConfig};
+
+    info!("Connecting to 4shared...");
+
+    let (access_token, access_token_secret) = load_fourshared_tokens()?;
+
+    let config = FourSharedConfig {
+        consumer_key: params.consumer_key,
+        consumer_secret: params.consumer_secret,
+        access_token,
+        access_token_secret,
+    };
+
+    let mut provider = FourSharedProvider::new(config);
+    provider.connect().await
+        .map_err(|e| format!("4shared connection failed: {}", e))?;
+
+    let display_name = provider.display_name();
+    let account_email = provider.account_email();
+
+    let mut provider_lock = state.provider.lock().await;
+    *provider_lock = Some(Box::new(provider));
+
+    info!("Connected to 4shared ({})", account_email.as_deref().unwrap_or("no email"));
+    Ok(OAuth2ConnectResult { display_name, account_email })
+}
+
+/// Check if 4shared tokens exist
+#[tauri::command]
+pub async fn fourshared_has_tokens() -> Result<bool, String> {
+    Ok(load_fourshared_tokens().is_ok())
+}
+
+/// Clear 4shared tokens (logout)
+#[tauri::command]
+pub async fn fourshared_logout() -> Result<(), String> {
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        let _ = store.delete(FOURSHARED_TOKEN_KEY);
+    }
+    info!("Logged out from 4shared");
+    Ok(())
+}

@@ -19,6 +19,14 @@ export interface VolumeInfo {
   is_ejectable: boolean;
 }
 
+/** Unmounted partition detected by Rust `list_unmounted_partitions` command */
+export interface UnmountedPartition {
+  name: string;
+  device: string;
+  fs_type: string;
+  size_bytes: number;
+}
+
 /** Subdirectory entry returned by Rust `list_subdirectories` command */
 export interface SubDirectory {
   name: string;

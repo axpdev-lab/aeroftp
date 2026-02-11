@@ -7,7 +7,7 @@ import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession,
-  ProviderType, isOAuthProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink
 } from './types';
 
 interface DownloadFolderParams {
@@ -1026,6 +1026,34 @@ const App: React.FC = () => {
     return () => { unlisten.then(fn => fn()); };
   }, [isConnected, currentLocalPath, theme, debugMode]);
 
+  // Rebuild native menu with translated labels when language changes
+  useEffect(() => {
+    const labels: Record<string, string> = {
+      file: t('menu.file'),
+      edit: t('menu.edit'),
+      view: t('menu.view'),
+      help: t('menu.help'),
+      newFolder: t('menu.newFolder'),
+      settings: t('menu.settings'),
+      debugMode: t('menu.debugMode'),
+      dependencies: t('menu.dependencies'),
+      quit: t('menu.quit'),
+      rename: t('menu.rename'),
+      delete: t('menu.delete'),
+      refresh: t('menu.refresh'),
+      toggleTheme: t('menu.toggleTheme'),
+      devtools: t('menu.devtools'),
+      toggleDevtools: t('menu.toggleDevtools'),
+      toggleEditor: t('menu.toggleEditor'),
+      toggleTerminal: t('menu.toggleTerminal'),
+      toggleAgent: t('menu.toggleAgent'),
+      shortcuts: t('menu.shortcuts'),
+      support: t('menu.support'),
+      about: t('menu.about'),
+    };
+    invoke('rebuild_menu', { labels }).catch(() => {});
+  }, [t]);
+
   // File loading (race-condition safe: stale responses are discarded)
   const loadLocalFiles = useCallback(async (path: string): Promise<boolean> => {
     const callId = ++loadLocalCallIdRef.current;
@@ -1203,17 +1231,17 @@ const App: React.FC = () => {
     const protocol = connectionParams.protocol;
     logger.debug('[connectToFtp] connectionParams:', connectionParams);
     logger.debug('[connectToFtp] protocol:', protocol);
-    const isOAuth = !!protocol && isOAuthProvider(protocol);
+    const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
     const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
-      // OAuth provider is already connected via OAuthConnect component
+      // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
       // Just switch to file manager view
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
-      const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+      const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
       const providerName = providerNames[protocol] || protocol;
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
       // Load remote files for OAuth provider - pass protocol explicitly
@@ -1504,7 +1532,7 @@ const App: React.FC = () => {
 
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
-    const isOAuth = !!protocol && isOAuthProvider(protocol);
+    const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
     // Treat 'mega' as a general provider like S3/WebDAV, not legacy FTP
     const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
 
@@ -4212,16 +4240,16 @@ const App: React.FC = () => {
               // The form should only appear when clicking Edit, not when connecting
 
               // Check if this is an OAuth provider
-              const isOAuth = params.protocol && isOAuthProvider(params.protocol);
+              const isOAuth = params.protocol && (isOAuthProvider(params.protocol) || isFourSharedProvider(params.protocol));
               logger.debug('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
               logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
 
               if (isOAuth) {
-                // OAuth provider is already connected via SavedServers component
+                // OAuth provider is already connected via SavedServers/FourSharedConnect component
                 // Just switch to file manager view
                 setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 setShowConnectionScreen(false);
-                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
                 const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
                 notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                 // Load remote files for OAuth provider - pass protocol explicitly
@@ -5085,6 +5113,7 @@ const App: React.FC = () => {
                       t={t}
                       recentPaths={recentPaths}
                       onClearRecent={() => setRecentPaths([])}
+                      onRemoveRecent={(path) => setRecentPaths(prev => prev.filter(p => p !== path))}
                       isTrashView={isTrashView}
                       onNavigateTrash={handleNavigateTrash}
                     />

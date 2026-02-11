@@ -39,6 +39,8 @@ pub enum ProviderType {
     Azure,
     /// Filen.io (E2E Encrypted)
     Filen,
+    /// 4shared (OAuth 1.0)
+    FourShared,
 }
 
 impl fmt::Display for ProviderType {
@@ -58,6 +60,7 @@ impl fmt::Display for ProviderType {
             ProviderType::PCloud => write!(f, "pCloud"),
             ProviderType::Azure => write!(f, "Azure Blob"),
             ProviderType::Filen => write!(f, "Filen"),
+            ProviderType::FourShared => write!(f, "4shared"),
         }
     }
 }
@@ -80,6 +83,7 @@ impl ProviderType {
             ProviderType::PCloud => 443,
             ProviderType::Azure => 443,
             ProviderType::Filen => 443,
+            ProviderType::FourShared => 443,
         }
     }
     
@@ -99,7 +103,8 @@ impl ProviderType {
             ProviderType::Box |
             ProviderType::PCloud |
             ProviderType::Azure |
-            ProviderType::Filen
+            ProviderType::Filen |
+            ProviderType::FourShared
         )
     }
 
@@ -239,15 +244,19 @@ impl WebDavConfig {
             format!(":{}", config.effective_port())
         };
         
-        let url = if config.host.starts_with("http://") || config.host.starts_with("https://") {
+        let raw_url = if config.host.starts_with("http://") || config.host.starts_with("https://") {
             config.host.clone()
         } else {
             format!("{}://{}{}", scheme, config.host, port_suffix)
         };
-        
+
+        // Resolve {username} template in URL (used by CloudMe, Nextcloud presets)
+        let username = config.username.clone().unwrap_or_default();
+        let url = raw_url.replace("{username}", &username);
+
         Ok(Self {
             url,
-            username: config.username.clone().unwrap_or_default(),
+            username,
             password: config.password.clone().unwrap_or_default(),
             initial_path: config.initial_path.clone(),
         })
@@ -520,6 +529,15 @@ impl FilenConfig {
         let two_factor_code = config.extra.get("two_factor_code").cloned();
         Ok(Self { email, password: password.into(), two_factor_code })
     }
+}
+
+/// 4shared configuration (OAuth 1.0)
+#[derive(Debug, Clone)]
+pub struct FourSharedConfig {
+    pub consumer_key: String,
+    pub consumer_secret: String,
+    pub access_token: String,
+    pub access_token_secret: String,
 }
 
 /// Remote file/directory entry

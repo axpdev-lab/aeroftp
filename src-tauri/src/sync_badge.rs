@@ -15,15 +15,15 @@ use tracing::{error, info, warn};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixListener;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use tokio::sync::broadcast;
 
 /// Maximum line length for socket protocol reads (prevents memory exhaustion DoS)
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 const MAX_LINE_LENGTH: usize = 8192;
 
 // ============================================================================
@@ -156,7 +156,7 @@ static BADGE_TRACKER: LazyLock<Arc<RwLock<SyncStateTracker>>> =
 
 static BADGE_SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 static SHUTDOWN_TX: LazyLock<Arc<RwLock<Option<broadcast::Sender<()>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(None)));
 
@@ -179,6 +179,12 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
         return Err("Path too long".to_string());
     }
 
+    // Block UNC paths on Windows (network traversal prevention — audit fix SBA-005)
+    #[cfg(windows)]
+    if path.starts_with(r"\\") {
+        return Err("UNC network paths not allowed".to_string());
+    }
+
     let path_buf = PathBuf::from(path);
 
     // Require absolute path (audit fix GB-003)
@@ -199,24 +205,195 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
 // Bounded Line Reader (audit fix GB-001: prevent memory exhaustion)
 // ============================================================================
 
-/// Read a line from the reader with a maximum length limit.
-/// Returns Err if the line exceeds MAX_LINE_LENGTH bytes.
-#[cfg(unix)]
-async fn read_line_limited(
-    reader: &mut BufReader<tokio::net::unix::OwnedReadHalf>,
+/// Read a line from any AsyncBufRead with a maximum length limit.
+/// Uses fill_buf() to enforce the limit BEFORE growing the output buffer,
+/// preventing memory exhaustion from malicious clients sending huge lines.
+/// The intermediate `to_vec()` is bounded by BufReader's internal buffer (~8KB).
+#[cfg(any(unix, windows))]
+async fn read_line_limited_generic<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
     buf: &mut String,
 ) -> Result<usize, String> {
     buf.clear();
-    let n = reader
-        .read_line(buf)
-        .await
-        .map_err(|e| format!("Read error: {}", e))?;
+    let mut total = 0usize;
 
-    if buf.len() > MAX_LINE_LENGTH {
-        return Err(format!("Line exceeds maximum length of {} bytes", MAX_LINE_LENGTH));
+    loop {
+        // Peek at buffered data and copy relevant chunk (releases borrow for consume)
+        let chunk = {
+            let available = reader
+                .fill_buf()
+                .await
+                .map_err(|e| format!("Read error: {}", e))?;
+
+            if available.is_empty() {
+                return Ok(total); // EOF
+            }
+
+            // Copy up to newline (bounded by BufReader internal buffer, typically 8KB)
+            if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+                available[..=pos].to_vec()
+            } else {
+                available.to_vec()
+            }
+        };
+        // `available` dropped here — reader borrow released
+
+        let chunk_len = chunk.len();
+        let found_newline = chunk.last() == Some(&b'\n');
+
+        // Check limit BEFORE appending to output buffer
+        if total + chunk_len > MAX_LINE_LENGTH {
+            reader.consume(chunk_len);
+            return Err(format!(
+                "Line exceeds maximum length of {} bytes",
+                MAX_LINE_LENGTH
+            ));
+        }
+
+        let s = std::str::from_utf8(&chunk)
+            .map_err(|e| format!("UTF-8 error: {}", e))?;
+        buf.push_str(s);
+        total += chunk_len;
+        reader.consume(chunk_len);
+
+        if found_newline {
+            return Ok(total);
+        }
+    }
+}
+
+/// Handle a single protocol line from any AsyncBufRead + AsyncWrite pair.
+#[cfg(any(unix, windows))]
+async fn handle_protocol_line_generic<R, W>(
+    line: &str,
+    reader: &mut R,
+    writer: &mut W,
+) -> Result<(), String>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    if line == "VERSION:" {
+        writer
+            .write_all(b"VERSION:1.0:AeroCloud\n")
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
+        return Ok(());
     }
 
-    Ok(n)
+    if line == "RETRIEVE_FILE_STATUS" {
+        let mut path_line = String::new();
+        read_line_limited_generic(reader, &mut path_line).await?;
+
+        let path_line = path_line.trim();
+        if !path_line.starts_with("path\t") {
+            return Err("Expected 'path\\t' line".to_string());
+        }
+
+        let path_str = &path_line[5..];
+        let path = validate_path(path_str)?;
+
+        let mut done_line = String::new();
+        read_line_limited_generic(reader, &mut done_line).await?;
+
+        if done_line.trim() != "done" {
+            return Err("Expected 'done' line".to_string());
+        }
+
+        let status = {
+            let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
+            if let Some(state) = tracker.get_state(&path) {
+                state.to_status_str().to_string()
+            } else if tracker.is_in_sync_root(&path) {
+                "OK".to_string()
+            } else {
+                "NOP".to_string()
+            }
+        };
+
+        let safe_path = path_str.replace('\n', "").replace('\r', "");
+        let response = format!("STATUS:{}:{}\ndone\n", status, safe_path);
+        writer
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
+
+        return Ok(());
+    }
+
+    Ok(())
+}
+
+/// Idle timeout for connected clients (audit fix SBA-004)
+#[cfg(any(unix, windows))]
+const CLIENT_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Handle a client connection using generic reader/writer with rate limiting, idle timeout and shutdown.
+#[cfg(any(unix, windows))]
+async fn handle_client_generic<R, W>(
+    reader: R,
+    mut writer: W,
+    conn_id: u32,
+    mut shutdown_rx: broadcast::Receiver<()>,
+) where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    info!("Client {} connected", conn_id);
+
+    let mut buf_reader = BufReader::new(reader);
+    let mut line_buf = String::new();
+
+    let mut window_start = std::time::Instant::now();
+    let mut window_count = 0u32;
+
+    loop {
+        line_buf.clear();
+
+        tokio::select! {
+            result = tokio::time::timeout(CLIENT_IDLE_TIMEOUT, read_line_limited_generic(&mut buf_reader, &mut line_buf)) => {
+                match result {
+                    Ok(Ok(0)) => break, // EOF
+                    Ok(Ok(_)) => {
+                        let elapsed = window_start.elapsed();
+                        if elapsed.as_secs() >= 1 {
+                            window_start = std::time::Instant::now();
+                            window_count = 0;
+                        }
+                        window_count += 1;
+                        if window_count > 100 {
+                            warn!("Client {} exceeded rate limit (100/s), closing", conn_id);
+                            break;
+                        }
+
+                        let line = line_buf.trim();
+                        if line.is_empty() {
+                            continue;
+                        }
+
+                        if let Err(e) = handle_protocol_line_generic(line, &mut buf_reader, &mut writer).await {
+                            error!("Client {} protocol error: {}", conn_id, e);
+                            break;
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        error!("Client {} error: {}", conn_id, e);
+                        break;
+                    }
+                    Err(_) => {
+                        info!("Client {} idle timeout ({}s), closing", conn_id, CLIENT_IDLE_TIMEOUT.as_secs());
+                        break;
+                    }
+                }
+            }
+            _ = shutdown_rx.recv() => {
+                info!("Client {} received shutdown signal", conn_id);
+                break;
+            }
+        }
+    }
+
+    info!("Client {} disconnected", conn_id);
 }
 
 // ============================================================================
@@ -312,9 +489,105 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
     Ok(())
 }
 
-#[cfg(not(unix))]
+// ============================================================================
+// Windows Named Pipe Server Implementation
+// ============================================================================
+
+#[cfg(windows)]
+const PIPE_NAME: &str = r"\\.\pipe\aerocloud-sync";
+
+#[cfg(windows)]
 pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), String> {
-    Err("Badge server only supported on Unix systems".to_string())
+    use tokio::net::windows::named_pipe::ServerOptions;
+
+    if BADGE_SERVER_RUNNING.load(Ordering::Acquire) {
+        return Err("Badge server already running".to_string());
+    }
+
+    info!("Starting Named Pipe badge server at {}", PIPE_NAME);
+
+    // Test-create the first pipe instance to fail fast
+    let first_pipe = ServerOptions::new()
+        .first_pipe_instance(true) // Prevent pipe squatting (security)
+        .reject_remote_clients(true) // Block network access (local-only IPC)
+        .create(PIPE_NAME)
+        .map_err(|e| format!("Failed to create named pipe: {}", e))?;
+
+    // Create shutdown channel
+    let (shutdown_tx, _) = broadcast::channel(1);
+    *SHUTDOWN_TX.write().unwrap_or_else(|p| p.into_inner()) = Some(shutdown_tx.clone());
+
+    BADGE_SERVER_RUNNING.store(true, Ordering::Release);
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
+
+    tokio::spawn(async move {
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let mut conn_id = 0u32;
+        let mut server = first_pipe;
+
+        loop {
+            tokio::select! {
+                result = server.connect() => {
+                    match result {
+                        Ok(()) => {
+                            let permit = match semaphore.clone().try_acquire_owned() {
+                                Ok(permit) => permit,
+                                Err(_) => {
+                                    warn!("Max concurrent pipe connections (10) reached, rejecting");
+                                    // Create new pipe for next client, drop current
+                                    match ServerOptions::new().reject_remote_clients(true).create(PIPE_NAME) {
+                                        Ok(new_pipe) => server = new_pipe,
+                                        Err(e) => {
+                                            error!("Failed to create replacement pipe: {}", e);
+                                            break;
+                                        }
+                                    }
+                                    continue;
+                                }
+                            };
+
+                            conn_id = conn_id.wrapping_add(1);
+                            let client_shutdown_rx = shutdown_tx.subscribe();
+                            let id = conn_id;
+
+                            // Split the connected pipe for the client
+                            let (reader, writer) = tokio::io::split(server);
+
+                            tokio::spawn(async move {
+                                handle_client_generic(reader, writer, id, client_shutdown_rx).await;
+                                drop(permit);
+                            });
+
+                            // Create a new pipe instance for the next client
+                            match ServerOptions::new().create(PIPE_NAME) {
+                                Ok(new_pipe) => server = new_pipe,
+                                Err(e) => {
+                                    error!("Failed to create next pipe instance: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Named pipe accept error: {}", e);
+                        }
+                    }
+                }
+                _ = shutdown_rx.recv() => {
+                    info!("Shutdown signal received, stopping pipe accept loop");
+                    break;
+                }
+            }
+        }
+    });
+
+    info!("Named Pipe badge server started successfully");
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), String> {
+    Err("Badge server not supported on this platform".to_string())
 }
 
 /// Stop the badge server and clean up
@@ -340,9 +613,26 @@ pub async fn stop_badge_server() {
     info!("Badge server stopped");
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 pub async fn stop_badge_server() {
-    // No-op on non-Unix
+    if !BADGE_SERVER_RUNNING.load(Ordering::Acquire) {
+        return;
+    }
+
+    info!("Stopping Named Pipe badge server");
+
+    if let Some(tx) = SHUTDOWN_TX.write().unwrap_or_else(|p| p.into_inner()).take() {
+        let _ = tx.send(());
+    }
+
+    // Named pipes are kernel objects — no file cleanup needed
+    BADGE_SERVER_RUNNING.store(false, Ordering::Release);
+    info!("Named Pipe badge server stopped");
+}
+
+#[cfg(not(any(unix, windows)))]
+pub async fn stop_badge_server() {
+    // No-op on unsupported platforms
 }
 
 /// Update state for a single file
@@ -387,14 +677,33 @@ pub async fn get_file_state(path: &Path) -> Option<SyncBadgeState> {
 
 /// Register a sync root directory
 pub async fn register_sync_root(path: PathBuf) {
-    let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-    tracker.add_sync_root(path);
+    {
+        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
+        tracker.add_sync_root(path.clone());
+    }
+
+    // On Windows, also register with Cloud Filter API for native Explorer badges
+    #[cfg(windows)]
+    {
+        if let Err(e) = crate::cloud_filter_badge::register_cloud_sync_root(&path, "AeroCloud") {
+            warn!("Cloud Filter registration failed for {:?}: {}", path, e);
+        }
+    }
 }
 
 /// Unregister a sync root
 pub async fn unregister_sync_root(path: &Path) {
-    let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-    tracker.remove_sync_root(path);
+    {
+        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
+        tracker.remove_sync_root(path);
+    }
+
+    #[cfg(windows)]
+    {
+        if let Err(e) = crate::cloud_filter_badge::unregister_cloud_sync_root(path) {
+            warn!("Cloud Filter deregistration failed for {:?}: {}", path, e);
+        }
+    }
 }
 
 /// Clear all tracked states
@@ -422,128 +731,15 @@ fn get_socket_path() -> Result<PathBuf, String> {
     }
 }
 
+/// Unix socket client handler — delegates to generic handler
 #[cfg(unix)]
 async fn handle_client(
     stream: tokio::net::UnixStream,
     conn_id: u32,
-    mut shutdown_rx: broadcast::Receiver<()>,
+    shutdown_rx: broadcast::Receiver<()>,
 ) {
-    info!("Client {} connected", conn_id);
-
-    let (reader, mut writer) = stream.into_split();
-    let mut reader = BufReader::new(reader);
-    let mut line_buf = String::new();
-
-    // Sliding window rate limiter (audit fix GB-006)
-    let mut window_start = std::time::Instant::now();
-    let mut window_count = 0u32;
-
-    loop {
-        line_buf.clear();
-
-        tokio::select! {
-            result = read_line_limited(&mut reader, &mut line_buf) => {
-                match result {
-                    Ok(0) => break, // EOF
-                    Ok(_) => {
-                        // Sliding window rate limit: max 100 queries per 1-second window
-                        let elapsed = window_start.elapsed();
-                        if elapsed.as_secs() >= 1 {
-                            window_start = std::time::Instant::now();
-                            window_count = 0;
-                        }
-                        window_count += 1;
-                        if window_count > 100 {
-                            warn!("Client {} exceeded rate limit (100/s), closing", conn_id);
-                            break;
-                        }
-
-                        let line = line_buf.trim();
-                        if line.is_empty() {
-                            continue;
-                        }
-
-                        if let Err(e) = handle_protocol_line(line, &mut reader, &mut writer).await {
-                            error!("Client {} protocol error: {}", conn_id, e);
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        error!("Client {} error: {}", conn_id, e);
-                        break;
-                    }
-                }
-            }
-            _ = shutdown_rx.recv() => {
-                info!("Client {} received shutdown signal", conn_id);
-                break;
-            }
-        }
-    }
-
-    info!("Client {} disconnected", conn_id);
-}
-
-#[cfg(unix)]
-async fn handle_protocol_line(
-    line: &str,
-    reader: &mut BufReader<tokio::net::unix::OwnedReadHalf>,
-    writer: &mut tokio::net::unix::OwnedWriteHalf,
-) -> Result<(), String> {
-    if line == "VERSION:" {
-        writer
-            .write_all(b"VERSION:1.0:AeroCloud\n")
-            .await
-            .map_err(|e| format!("Write error: {}", e))?;
-        return Ok(());
-    }
-
-    if line == "RETRIEVE_FILE_STATUS" {
-        // Read path line (bounded)
-        let mut path_line = String::new();
-        read_line_limited(reader, &mut path_line).await?;
-
-        let path_line = path_line.trim();
-        if !path_line.starts_with("path\t") {
-            return Err("Expected 'path\\t' line".to_string());
-        }
-
-        let path_str = &path_line[5..]; // Skip "path\t"
-        let path = validate_path(path_str)?;
-
-        // Read done line (bounded)
-        let mut done_line = String::new();
-        read_line_limited(reader, &mut done_line).await?;
-
-        if done_line.trim() != "done" {
-            return Err("Expected 'done' line".to_string());
-        }
-
-        // Get status (audit fix GB-005: handle poisoned lock)
-        let status = {
-            let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-            if let Some(state) = tracker.get_state(&path) {
-                state.to_status_str().to_string()
-            } else if tracker.is_in_sync_root(&path) {
-                "OK".to_string()
-            } else {
-                "NOP".to_string()
-            }
-        };
-
-        // Respond with sanitized path (audit fix GB-007: strip control chars)
-        let safe_path = path_str.replace('\n', "").replace('\r', "");
-        let response = format!("STATUS:{}:{}\ndone\n", status, safe_path);
-        writer
-            .write_all(response.as_bytes())
-            .await
-            .map_err(|e| format!("Write error: {}", e))?;
-
-        return Ok(());
-    }
-
-    // Unknown command - ignore
-    Ok(())
+    let (reader, writer) = stream.into_split();
+    handle_client_generic(reader, writer, conn_id, shutdown_rx).await;
 }
 
 #[cfg(unix)]
@@ -553,9 +749,22 @@ async fn notify_update(path: &Path) {
     let _ = path;
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+async fn notify_update(path: &Path) {
+    // Update Windows Cloud Filter sync state for Explorer badges
+    if let Some(state) = {
+        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
+        tracker.get_state(path)
+    } {
+        if let Err(e) = crate::cloud_filter_badge::set_cloud_sync_state(path, state) {
+            warn!("Cloud Filter badge update failed for {:?}: {}", path, e);
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 async fn notify_update(_path: &Path) {
-    // No-op on non-Unix
+    // No-op on unsupported platforms
 }
 
 // ============================================================================
@@ -563,6 +772,7 @@ async fn notify_update(_path: &Path) {
 // ============================================================================
 
 /// Set GIO emblem for a file (pub(crate) — callers must pre-validate path)
+#[cfg(unix)]
 pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), String> {
     let emblem_name = state.to_emblem_name();
     let path_str = path
@@ -585,6 +795,7 @@ pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), S
 }
 
 /// Clear GIO emblem for a file
+#[cfg(unix)]
 pub(crate) fn clear_gio_emblem(path: &Path) -> Result<(), String> {
     let path_str = path
         .to_str()
@@ -657,9 +868,14 @@ pub fn install_shell_extension() -> Result<String, String> {
     Ok("Shell extensions installed successfully! Click \"Restart File Manager\" below to activate badges, or restart it manually later.".to_string())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 pub fn install_shell_extension() -> Result<String, String> {
-    Err("Shell extensions only supported on Unix systems".to_string())
+    Ok("Sync badges are managed automatically via Windows Cloud Filter API. No manual installation needed.".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn install_shell_extension() -> Result<String, String> {
+    Err("Shell extensions not supported on this platform".to_string())
 }
 
 /// Uninstall shell extensions
@@ -689,9 +905,15 @@ pub fn uninstall_shell_extension() -> Result<String, String> {
     Ok("Shell extensions removed. Click \"Restart File Manager\" below or restart it manually.".to_string())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 pub fn uninstall_shell_extension() -> Result<String, String> {
-    Err("Shell extensions only supported on Unix systems".to_string())
+    crate::cloud_filter_badge::cleanup_all_roots()?;
+    Ok("Cloud Filter sync roots deregistered. Explorer badges removed.".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn uninstall_shell_extension() -> Result<String, String> {
+    Err("Shell extensions not supported on this platform".to_string())
 }
 
 #[cfg(unix)]
@@ -819,8 +1041,9 @@ pub async fn set_file_badge(path: String, state: String) -> Result<(), String> {
 
     update_file_state(&path_buf, badge_state).await;
 
-    // Also set GIO emblem as fallback
-    let _ = set_gio_emblem(&path_buf, badge_state);
+    // Also set GIO emblem as fallback (Linux only — gio command doesn't exist on Windows)
+    #[cfg(unix)]
+    { let _ = set_gio_emblem(&path_buf, badge_state); }
 
     Ok(())
 }
@@ -834,7 +1057,8 @@ pub async fn clear_file_badge(path: String) -> Result<(), String> {
         tracker.remove_state(&path_buf);
     }
 
-    let _ = clear_gio_emblem(&path_buf);
+    #[cfg(unix)]
+    { let _ = clear_gio_emblem(&path_buf); }
 
     notify_update(&path_buf).await;
     Ok(())
@@ -898,8 +1122,23 @@ pub async fn restart_file_manager_cmd() -> Result<String, String> {
     }
 }
 
-#[cfg(not(unix))]
+/// Refresh Windows Explorer shell to pick up badge changes via SHChangeNotify.
+#[cfg(windows)]
 #[tauri::command]
 pub async fn restart_file_manager_cmd() -> Result<String, String> {
-    Err("File manager restart only supported on Unix systems".to_string())
+    use windows::Win32::UI::Shell::SHChangeNotify;
+    use windows::Win32::UI::Shell::SHCNE_ASSOCCHANGED;
+    use windows::Win32::UI::Shell::SHCNF_IDLIST;
+
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
+    }
+
+    Ok("Explorer refreshed. Sync badges will update automatically.".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
+#[tauri::command]
+pub async fn restart_file_manager_cmd() -> Result<String, String> {
+    Err("File manager restart not supported on this platform".to_string())
 }

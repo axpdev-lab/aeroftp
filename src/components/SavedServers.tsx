@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock, GripVertical } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider } from '../types';
+import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -109,10 +109,11 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     if (proto === 'webdav') {
         if (host.includes('drivehq')) return 'drivehq';
         if (host.includes('nextcloud')) return 'nextcloud';
-        if (host.includes('owncloud')) return 'owncloud';
         if (host.includes('koofr')) return 'koofr';
         if (host.includes('jianguoyun')) return 'jianguoyun';
         if (host.includes('teracloud') || host.includes('infini-cloud')) return 'infinicloud';
+        if (host.includes('4shared')) return '4shared';
+        if (host.includes('cloudme')) return 'cloudme';
     }
     return undefined;
 };
@@ -156,6 +157,21 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Filter servers by search query (name, host, protocol, username)
+    const SEARCH_THRESHOLD = 10;
+    const showSearch = servers.length >= SEARCH_THRESHOLD;
+    const filteredServers = useMemo(() => {
+        if (!searchQuery.trim()) return servers;
+        const q = searchQuery.toLowerCase();
+        return servers.filter(s =>
+            (s.name || '').toLowerCase().includes(q) ||
+            (s.host || '').toLowerCase().includes(q) ||
+            (s.protocol || '').toLowerCase().includes(q) ||
+            (s.username || '').toLowerCase().includes(q)
+        );
+    }, [servers, searchQuery]);
 
     // Drag-to-reorder state
     const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -215,6 +231,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         pcloud: 'from-green-500 to-teal-400',
         azure: 'from-blue-600 to-indigo-500',
         filen: 'from-emerald-500 to-green-400',
+        fourshared: 'from-blue-500 to-cyan-400',
     };
 
     useEffect(() => {
@@ -347,6 +364,63 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             return;
         }
 
+        // 4shared OAuth 1.0 — separate flow from OAuth2
+        if (server.protocol && isFourSharedProvider(server.protocol)) {
+            // Load consumer credentials from vault
+            let consumerKey = '';
+            let consumerSecret = '';
+            try {
+                consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
+                consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
+            } catch {
+                // ignore
+            }
+            if (!consumerKey || !consumerSecret) {
+                setOauthError('Please configure 4shared credentials in Settings > Cloud Providers.');
+                return;
+            }
+
+            setOauthConnecting(server.id);
+            try {
+                const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
+                const hasTokens = await invoke<boolean>('fourshared_has_tokens');
+
+                if (!hasTokens) {
+                    await invoke('fourshared_full_auth', { params });
+                }
+
+                let result: { display_name: string; account_email: string | null };
+                try {
+                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                } catch (connectErr) {
+                    // Token expired — re-authenticate
+                    await invoke('fourshared_full_auth', { params });
+                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                }
+
+                const updatedUsername = result.account_email || server.username;
+                const updated = servers.map(s =>
+                    s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s
+                );
+                setServers(updated);
+                saveServers(updated);
+
+                onConnect({
+                    server: result.display_name,
+                    username: updatedUsername,
+                    password: '',
+                    protocol: server.protocol,
+                    displayName: server.name,
+                    providerId: server.providerId,
+                }, server.initialPath, server.localInitialPath);
+            } catch (e) {
+                setOauthError(e instanceof Error ? e.message : String(e));
+            } finally {
+                setOauthConnecting(null);
+            }
+            return;
+        }
+
         // Non-OAuth: Update last connected
         const updated = servers.map(s =>
             s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
@@ -432,19 +506,45 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 </div>
             )}
 
-            <div ref={listRef} className="space-y-2">
-                {servers.map((server, idx) => (
+            <div ref={listRef} className="space-y-2 max-h-[calc(100vh-265px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+                {/* Search bar inside scrollable container — sticky at top, same width as servers */}
+                {showSearch && (
+                    <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pb-1">
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder={t('connection.searchServers')}
+                                className="w-full pl-9 pr-8 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {filteredServers.map((server, idx) => {
+                    // Disable drag-to-reorder when search is active (indices don't match full list)
+                    const isDraggable = !searchQuery;
+                    return (
                     <div
                         key={server.id}
-                        draggable
-                        onDragStart={(e) => handleReorderDragStart(e, idx)}
-                        onDragOver={(e) => handleReorderDragOver(e, idx)}
-                        onDrop={(e) => handleReorderDrop(e, idx)}
-                        onDragEnd={handleReorderDragEnd}
+                        draggable={isDraggable}
+                        onDragStart={isDraggable ? (e) => handleReorderDragStart(e, idx) : undefined}
+                        onDragOver={isDraggable ? (e) => handleReorderDragOver(e, idx) : undefined}
+                        onDrop={isDraggable ? (e) => handleReorderDrop(e, idx) : undefined}
+                        onDragEnd={isDraggable ? handleReorderDragEnd : undefined}
                         className={`flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 group ${oauthConnecting === server.id ? 'opacity-75' : ''} ${dragIdx === idx ? 'scale-[0.97] shadow-lg ring-2 ring-blue-400/50' : ''} ${overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-t-2 border-blue-400' : 'border-t-2 border-transparent'}`}
                     >
-                        {/* Drag handle */}
-                        <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 -ml-1"
+                        {/* Drag handle (hidden during search) */}
+                        <div className={`cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0 -ml-1 ${isDraggable ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 pointer-events-none w-0 -ml-0'}`}
                              title="Drag to reorder">
                             <GripVertical size={16} />
                         </div>
@@ -481,8 +581,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     </span>
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    {isOAuthProvider(server.protocol || 'ftp')
-                                        ? `OAuth2 — ${server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' } as Record<string, string>)[server.protocol || ''] || server.protocol}`
+                                    {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
+                                        ? `OAuth — ${server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' } as Record<string, string>)[server.protocol || ''] || server.protocol}`
                                         : server.protocol === 'filen'
                                             ? `E2E AES-256 — ${server.username}`
                                             : server.protocol === 'mega'
@@ -522,10 +622,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                             </button>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
+                {/* No results message when search is active */}
+                {searchQuery && filteredServers.length === 0 && servers.length > 0 && (
+                    <p className="text-gray-400 text-sm text-center py-6">
+                        {t('search.results', { count: '0' })}
+                    </p>
+                )}
             </div>
-
-            {/* Form removed - use main panel for adding/editing */}
         </div>
     );
 };

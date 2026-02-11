@@ -118,8 +118,15 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 
 ### WebDAV
 - **URL format**: full URL including path, e.g. \`https://cloud.example.com/remote.php/dav/files/username/\`
-- **Nextcloud/ownCloud**: use the DAV endpoint above with your username/password or app password.
+- **Nextcloud**: use the DAV endpoint above with your username/password or app password.
+- **CloudMe**: WebDAV at \`https://webdav.cloudme.com/{username}\`. Swedish cloud, 3 GB free. EU data residency.
 - **Auth**: Basic or Digest. HTTPS strongly recommended.
+
+### 4shared
+- **Auth**: OAuth 1.0 (HMAC-SHA1). Configure Consumer Key/Secret in Settings > Cloud Providers.
+- **API**: Native REST API v1.2 at \`https://api.4shared.com/v1_2/\`.
+- **Storage**: 15 GB free. ID-based file system with folder/file caching.
+- **Upload**: \`https://upload.4shared.com/v1_2/files\` (octet-stream).
 
 ### Google Drive
 - **Auth**: OAuth 2.0 with PKCE. Click "Connect", authorize in browser, token stored securely.
@@ -232,7 +239,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         ftp: '### FTP / FTPS\n- **Port**: 21 (FTP), 21 or 990 (FTPS)\n- **TLS**: explicit/implicit. Passive mode enabled by default.',
         sftp: '### SFTP\n- **Port**: 22 (SSH)\n- **Auth**: password or SSH key. Key passphrase supported.',
         s3: '### S3\n- **Required**: Endpoint URL, Access Key, Secret Key, Bucket, Region.\n- **Compatible**: MinIO, B2, Wasabi, DO Spaces, Cloudflare R2.',
-        webdav: '### WebDAV\n- **URL format**: full URL including path. Basic or Digest auth. HTTPS recommended.',
+        webdav: '### WebDAV\n- **URL format**: full URL including path. Basic or Digest auth. HTTPS recommended.\n- **CloudMe**: `webdav.cloudme.com/{user}` (3 GB free, EU).\n- **4shared**: Now uses native REST API (OAuth 1.0) — select "4shared" protocol directly.',
         googledrive: '### Google Drive\n- **Auth**: OAuth 2.0 with PKCE.',
         dropbox: '### Dropbox\n- **Auth**: OAuth 2.0 with PKCE. 150MB per upload.',
         onedrive: '### OneDrive\n- **Auth**: OAuth 2.0 via Microsoft Graph.',
@@ -240,6 +247,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         box: '### Box\n- **Auth**: OAuth 2.0 with PKCE.',
         pcloud: '### pCloud\n- **Auth**: OAuth 2.0. US or EU region.',
         azure: '### Azure Blob\n- **Required**: Account Name, Access Key, Container.',
+        fourshared: '### 4shared\n- **Auth**: OAuth 1.0 (HMAC-SHA1). 15 GB free. Native REST API v1.2.',
         filen: '### Filen\n- **Auth**: email + password. Zero-knowledge AES-256.',
     };
 

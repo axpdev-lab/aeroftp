@@ -56,8 +56,8 @@ impl TrayBadgeState {
 // Current tray state (atomic for lock-free reads)
 static CURRENT_TRAY_STATE: AtomicU8 = AtomicU8::new(0);
 
-// Base icon bytes (embedded at compile time)
-const BASE_ICON_BYTES: &[u8] = include_bytes!("../icons/icon.png");
+// Base icon bytes — white monochrome (standard for system tray)
+const BASE_ICON_BYTES: &[u8] = include_bytes!("../../icons/AeroFTP_simbol_white_120x120.png");
 
 /// Draw a thick line segment between two points using distance-based rasterization.
 /// Pixels within `half_w` distance of the line segment get colored.
@@ -212,18 +212,17 @@ fn generate_badge_icon(
     let mut rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
 
-    // Badge parameters
-    let badge_radius = (width as f32 * 0.22).round() as i32; // 22% of width (44% diameter) — visible like Ubuntu Livepatch
-    let badge_center_x = width as i32 - badge_radius - 1;
-    let badge_center_y = height as i32 - badge_radius - 1;
-    let border_color = Rgba([255, 255, 255, 230]); // White border for contrast on dark panels
+    // Badge parameters — bottom-right, nudged 1px up + 1px right (no white border, like Ubuntu Livepatch)
+    let badge_radius = (width as f32 * 0.22).round() as i32; // 22% of width — visible like Ubuntu Livepatch
+    let badge_center_x = width as i32 - badge_radius;         // 1px more right than original
+    let badge_center_y = height as i32 - badge_radius - 2;    // 1px more up than original
     let badge_rgba = Rgba(badge_color);
 
-    // Draw badge circle with border
-    let x_min = (badge_center_x - badge_radius - 1).max(0);
-    let x_max = (badge_center_x + badge_radius + 1).min(width as i32 - 1);
-    let y_min = (badge_center_y - badge_radius - 1).max(0);
-    let y_max = (badge_center_y + badge_radius + 1).min(height as i32 - 1);
+    // Draw solid badge circle (no border — matches Ubuntu Livepatch style)
+    let x_min = (badge_center_x - badge_radius).max(0);
+    let x_max = (badge_center_x + badge_radius).min(width as i32 - 1);
+    let y_min = (badge_center_y - badge_radius).max(0);
+    let y_max = (badge_center_y + badge_radius).min(height as i32 - 1);
 
     for y in y_min..=y_max {
         for x in x_min..=x_max {
@@ -231,11 +230,8 @@ fn generate_badge_icon(
             let dy = y - badge_center_y;
             let dist_sq = dx * dx + dy * dy;
             let radius_sq = badge_radius * badge_radius;
-            let border_radius_sq = (badge_radius + 1) * (badge_radius + 1);
 
-            if dist_sq <= border_radius_sq && dist_sq > radius_sq {
-                rgba.put_pixel(x as u32, y as u32, border_color);
-            } else if dist_sq <= radius_sq {
+            if dist_sq <= radius_sq {
                 rgba.put_pixel(x as u32, y as u32, badge_rgba);
             }
         }

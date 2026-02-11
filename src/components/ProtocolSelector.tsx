@@ -17,7 +17,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -95,17 +95,7 @@ const PROTOCOLS: ProtocolInfo[] = [
         defaultPort: 21,
         badge: 'TLS',
         color: 'text-blue-500',
-        tooltip: 'FTP with opportunistic TLS encryption (port 21). Upgrades to TLS when available.',
-    },
-    {
-        type: 'ftps',
-        name: 'FTPS',
-        icon: <ShieldCheck size={16} />,
-        description: 'FTP over TLS/SSL',
-        defaultPort: 990,
-        badge: 'TLS',
-        color: 'text-green-500',
-        tooltip: 'FTP with TLS/SSL encryption - secure connection',
+        tooltip: 'FTP with configurable TLS encryption. Supports Explicit, Implicit (FTPS), and opportunistic modes.',
     },
     {
         type: 'sftp',
@@ -121,11 +111,11 @@ const PROTOCOLS: ProtocolInfo[] = [
         type: 'webdav',
         name: 'WebDAV',
         icon: <Cloud size={16} />,
-        description: 'Nextcloud, ownCloud, Synology',
+        description: 'Nextcloud, CloudMe, Koofr',
         defaultPort: 443,
         badge: 'TLS',
         color: 'text-orange-500',
-        tooltip: 'WebDAV protocol - compatible with Nextcloud, ownCloud, Synology NAS',
+        tooltip: 'WebDAV protocol - compatible with Nextcloud, CloudMe, Koofr, Synology NAS',
     },
     {
         type: 's3',
@@ -228,6 +218,17 @@ const PROTOCOLS: ProtocolInfo[] = [
         disabled: !import.meta.env.DEV,
     },
     {
+        type: 'fourshared',
+        name: '4shared',
+        icon: <FourSharedLogo size={18} />,
+        description: '15 GB Free Cloud Storage',
+        defaultPort: 443,
+        badge: 'OAuth',
+        isOAuth: true,
+        isCloudStorage: true,
+        tooltip: '4shared - 15GB free storage, OAuth 1.0 authentication',
+    },
+    {
         type: 'azure',
         name: 'Azure Blob',
         icon: <AzureLogo size={18} />,
@@ -265,6 +266,13 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     const t = useTranslation();
     const selectedProtocol = value ? getProtocolInfo(value) : null;
     const [isOpen, setIsOpen] = React.useState(false);
+
+    // Close dropdown when value is set externally (e.g., Edit button)
+    React.useEffect(() => {
+        if (value) {
+            setIsOpen(false);
+        }
+    }, [value]);
 
     // Notify parent when isOpen changes
     const handleOpenChange = (newIsOpen: boolean) => {
@@ -485,7 +493,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 onClick={onBrowseKeyFile}
                                 disabled={disabled}
                                 className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
-                                title="Browse for key file"
+                                title={t('protocol.browseKeyFile')}
                             >
                                 <HardDrive size={16} />
                             </button>
@@ -563,7 +571,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 disabled={disabled}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                             >
-                                <option value="">Select region...</option>
+                                <option value="">{t('protocol.selectRegion')}</option>
                                 {regionField!.options!.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
@@ -616,7 +624,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 mt-1"
                     >
                         <ExternalLink size={12} />
-                        {providerConfig.name} Documentation
+                        {t('protocol.providerDocumentation', { name: providerConfig.name })}
                     </a>
                 )}
             </div>
@@ -624,7 +632,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     }
 
     if (protocol === 'webdav') {
-        const isNextcloud = selectedProviderId === 'nextcloud' || selectedProviderId === 'owncloud';
+        const isNextcloud = selectedProviderId === 'nextcloud';
         const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
         const showNextcloudHint = isNextcloud || isCustomOrGeneric;
 
@@ -637,7 +645,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             <span>{t('protocol.webdavNote')}</span>
                         </div>
                         <p className="text-xs text-gray-500">
-                            Example: <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
+                            {t('protocol.webdavExampleLabel')} <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
                         </p>
                     </>
                 )}
@@ -646,8 +654,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <Cloud size={14} />
                         <span>
                             {providerConfig.defaults?.basePath
-                                ? `Base path: ${providerConfig.defaults.basePath}`
-                                : `Connect to ${providerConfig.name} via WebDAV`}
+                                ? t('protocol.webdavBasePath', { path: providerConfig.defaults.basePath })
+                                : t('protocol.webdavConnectVia', { name: providerConfig.name })}
                         </span>
                     </div>
                 )}
@@ -659,7 +667,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
                     >
                         <ExternalLink size={12} />
-                        {providerConfig.name} Documentation
+                        {t('protocol.providerDocumentation', { name: providerConfig.name })}
                     </a>
                 )}
             </div>
@@ -671,22 +679,22 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Database size={14} />
-                    Azure Blob Storage
+                    {t('protocol.azureBlobStorage')}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">Container Name *</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('protocol.azureContainerName')}</label>
                     <input
                         type="text"
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                        placeholder="my-container"
+                        placeholder={t('protocol.azureContainerPlaceholder')}
                         required
                     />
                 </div>
                 <p className="text-xs text-gray-500">
-                    Use <strong>Account Name</strong> as username and <strong>Access Key</strong> as password. Alternatively, leave password empty and provide a SAS token in the endpoint field.
+                    {t('protocol.azureAuthHelp')}
                 </p>
             </div>
         );
@@ -697,7 +705,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Cloud size={14} />
-                    pCloud Region
+                    {t('protocol.pcloudRegion')}
                 </div>
                 <div className="flex gap-3">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -709,7 +717,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             disabled={disabled}
                             className="text-blue-500 focus:ring-blue-500"
                         />
-                        US (api.pcloud.com)
+                        {t('protocol.pcloudUS')}
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
@@ -720,11 +728,11 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             disabled={disabled}
                             className="text-blue-500 focus:ring-blue-500"
                         />
-                        EU (eapi.pcloud.com)
+                        {t('protocol.pcloudEU')}
                     </label>
                 </div>
                 <p className="text-xs text-gray-500">
-                    Select the region matching your pCloud account registration.
+                    {t('protocol.pcloudRegionHelp')}
                 </p>
             </div>
         );
@@ -832,6 +840,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         pcloud: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         filen: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+        fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
     };
 
     return (

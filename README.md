@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 13 protocols, 4 integrated tools, 51 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 14 protocols, 4 integrated tools, 51 languages, one app.
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202%20%2B%20React%2018-purple?style=for-the-badge" alt="Built with">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Languages-51-blue?style=for-the-badge" alt="Languages">
-  <img src="https://img.shields.io/badge/Protocols-13-teal?style=for-the-badge" alt="Protocols">
+  <img src="https://img.shields.io/badge/Protocols-14-teal?style=for-the-badge" alt="Protocols">
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 13 protocols and a complete file management platform through four integrated tools.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 14 protocols and a complete file management platform through four integrated tools.
 
 ---
 
@@ -39,14 +39,14 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any FTP server** into a private personal cloud. Connect to 13 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any FTP server** into a private personal cloud. Connect to 14 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
 | **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
 | **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
 | **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA |
-| **WebDAV** | HTTPS | Nextcloud, ownCloud, Koofr, Jianguoyun, InfiniCLOUD. File locking (RFC 4918) |
+| **WebDAV** | HTTPS | Nextcloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD. HTTP Digest auth (RFC 2617), file locking (RFC 4918) |
 | **S3** | HTTPS | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
 | **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share permissions, workspace export |
 | **Dropbox** | OAuth2 PKCE | File versions, thumbnails, native sharing |
@@ -55,11 +55,12 @@ Turn **any FTP server** into a private personal cloud. Connect to 13 protocols t
 | **Box** | OAuth2 PKCE | 10GB free, enterprise-grade, file versions, share links |
 | **pCloud** | OAuth2 | 10GB free, US/EU regions, file versions, share links |
 | **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
+| **4shared** | OAuth 1.0 (HMAC-SHA1) | 15GB free, native REST API, folder/file management |
 | **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, PBKDF2 |
 
 **Cloud features**: Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
-**Native OS File Manager Badges** (v2.0.4): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install from Settings. Competing feature-for-feature with Dropbox, OneDrive, and Google Drive overlay icons.
+**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows. Competing feature-for-feature with Dropbox, OneDrive, and Google Drive overlay icons.
 
 ---
 
@@ -67,7 +68,7 @@ Turn **any FTP server** into a private personal cloud. Connect to 13 protocols t
 
 A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side.
 
-- **Places Sidebar**: Nautilus-style with user directories, custom locations, recent locations, mounted drives with usage bars, and folder tree toggle (Ctrl+B)
+- **Places Sidebar**: Nautilus-style with user directories, custom locations, recent locations (with per-item delete), mounted drives with usage bars, GVFS network shares (SMB/SFTP/NFS/WebDAV), unmounted partition detection with one-click mount, EFI/swap/recovery hidden, and folder tree toggle (Ctrl+B)
 - **Breadcrumb Navigation**: Clickable path segments with chevron dropdown for sibling browsing, overflow collapse, and edit mode (Ctrl+L)
 - **3 View Modes**: List (detailed table), Grid (icon thumbnails), Large Icons (96px with full thumbnails). Toggle via Ctrl+1/2/3
 - **Drive Detection**: Cross-platform volume detection (internal, removable, network, optical) with filesystem type, free/total space, and colored usage bars
@@ -114,7 +115,7 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 ### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **28 provider-agnostic tools** that work across all 13 protocols. 10 AI providers, vision support, RAG indexing, and a plugin system.
+An AI assistant with **28 provider-agnostic tools** that work across all 14 protocols. 10 AI providers, vision support, RAG indexing, and a plugin system.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Custom
 
@@ -180,6 +181,7 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 - **Keystore backup/restore**: Export/import `.aeroftp-keystore` with Argon2id + AES-256-GCM
 - **Universal Vault**: Single `vault.key` + `vault.db` backend — no OS keyring dependency
 - **XSS-hardened AI chat**: Source-level HTML escaping pipeline (`escapeHtml → renderMarkdown → formatToolCallDisplay`)
+- **WebDAV Digest auth (RFC 2617)**: Auto-detection of HTTP Digest authentication with HMAC-MD5 challenge-response — password never transmitted, replay protection via nonce counting
 - **SFTP host key verification**: Trust On First Use with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)
 - **FTP insecure warning**: Visual banner on unencrypted FTP connections

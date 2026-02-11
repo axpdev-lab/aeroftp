@@ -10,8 +10,8 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | -------- | ----------- |
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
-| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (13 protocols) |
-| **[COMPETITOR-ANALYSIS.md](./COMPETITOR-ANALYSIS.md)** | Market and competitor analysis |
+| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (14 protocols) |
+| **[COMPETITOR-ANALYSIS.md](./dev/COMPETITOR-ANALYSIS.md)** | Market and competitor analysis (internal) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[UBUNTU-COMPATIBILITY.md](./UBUNTU-COMPATIBILITY.md)** | Ubuntu 22.04/24.04 LTS compatibility audit |
 | **[WINDOWS-COMPATIBILITY.md](./WINDOWS-COMPATIBILITY.md)** | Windows 10/11 compatibility audit |
@@ -65,9 +65,9 @@ Currently supported: **51 languages** at 100% coverage
 
 ---
 
-## Security (v1.9.0)
+## Security (v2.0.5)
 
-AeroFTP v1.9.0 introduces the **Unified Encrypted Keystore**: all sensitive data (server profiles, AI configuration, OAuth credentials) is now stored in the AES-256-GCM encrypted vault. The release also adds **keystore backup/restore** (`.aeroftp-keystore` format with Argon2id + AES-256-GCM) and a **migration wizard** that automatically moves legacy localStorage data to the encrypted vault on first launch. Dual security audit (Claude Opus 4.6 + GPT-5.2-Codex) with all findings resolved. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) and [SECURITY.md](../SECURITY.md) for full details.
+AeroFTP v2.0.5 adds **WebDAV HTTP Digest Authentication (RFC 2617)** with auto-detection — the password is never transmitted, only MD5 challenge-response hashes. CloudMe is the only cloud service requiring Digest auth, and AeroFTP is one of the few clients that support it correctly. The **Unified Encrypted Keystore** (v1.9.0) stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) and [SECURITY.md](../SECURITY.md) for full details.
 
 ## AeroVault Directory Support (v1.9.0)
 
@@ -79,8 +79,8 @@ AeroAgent now features **27 tools** (up from 25), including **RAG integration** 
 
 ---
 
-- **Documentation Version**: 2.0.4
-- **Last Update**: 2026-02-10
+- **Documentation Version**: 2.0.5
+- **Last Update**: 2026-02-11
 
 ---
 

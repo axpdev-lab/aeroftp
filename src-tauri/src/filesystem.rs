@@ -58,6 +58,15 @@ pub struct VolumeInfo {
     pub is_ejectable: bool,
 }
 
+/// An unmounted partition detected via lsblk (mountable by user).
+#[derive(Serialize, Clone)]
+pub struct UnmountedPartition {
+    pub name: String,
+    pub device: String,
+    pub fs_type: String,
+    pub size_bytes: u64,
+}
+
 /// A subdirectory entry for tree/breadcrumb navigation.
 #[derive(Serialize, Clone)]
 pub struct SubDirectory {
@@ -131,6 +140,10 @@ pub async fn list_mounted_volumes() -> Result<Vec<VolumeInfo>, String> {
 }
 
 /// Pseudo-filesystem types to exclude from volume listings.
+/// NOTE: `fuse.gvfsd-fuse` is here intentionally — the GVFS FUSE root mount at
+/// `/run/user/<uid>/gvfs` is filtered out, and individual GVFS network shares are
+/// enumerated separately by the GVFS scanning block in `list_mounted_volumes_linux()`.
+/// Do NOT remove `fuse.gvfsd-fuse` without also removing the GVFS block (audit fix FS-004).
 #[cfg(target_os = "linux")]
 const PSEUDO_FS_TYPES: &[&str] = &[
     "proc", "sysfs", "devtmpfs", "tmpfs", "cgroup", "cgroup2",
@@ -195,8 +208,99 @@ async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
         });
     }
 
+    // ── GVFS network shares (mounted via Nautilus/gio) ──
+    // GVFS shares appear as subdirectories of /run/user/<uid>/gvfs/,
+    // not as separate entries in /proc/mounts.
+    if let Some(uid) = get_current_uid() {
+        let gvfs_dir = format!("/run/user/{}/gvfs", uid);
+        if let Ok(entries) = std::fs::read_dir(&gvfs_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let mount_point = path.to_string_lossy().to_string();
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                let name = parse_gvfs_share_name(&dir_name);
+                let (total_bytes, free_bytes) = get_disk_space(&mount_point);
+
+                volumes.push(VolumeInfo {
+                    name,
+                    mount_point,
+                    volume_type: "network".to_string(),
+                    total_bytes,
+                    free_bytes,
+                    fs_type: gvfs_fs_type(&dir_name),
+                    is_ejectable: true, // Can be unmounted
+                });
+            }
+        }
+    }
+
     info!("Detected {} mounted volumes", volumes.len());
     Ok(volumes)
+}
+
+/// Get the current user's UID (for GVFS path).
+#[cfg(target_os = "linux")]
+fn get_current_uid() -> Option<u32> {
+    // SAFETY: getuid() is always safe and has no failure mode
+    Some(unsafe { libc::getuid() })
+}
+
+/// Parse a GVFS directory name into a friendly display name.
+///
+/// Examples:
+/// - `smb-share:server=mycloudex2ultra.local,share=ale` → `ale su mycloudex2ultra.local`
+/// - `sftp:host=192.168.1.1,user=root` → `root su 192.168.1.1`
+/// - `dav:host=nextcloud.example.com,ssl=true` → `nextcloud.example.com`
+/// - `ftp:host=files.example.com` → `files.example.com`
+#[cfg(target_os = "linux")]
+fn parse_gvfs_share_name(dir_name: &str) -> String {
+    // Parse key=value pairs from the part after the colon
+    let params_str = dir_name.split(':').skip(1).collect::<Vec<_>>().join(":");
+    let mut params = std::collections::HashMap::new();
+    for pair in params_str.split(',') {
+        if let Some((k, v)) = pair.split_once('=') {
+            params.insert(k, v);
+        }
+    }
+
+    let server = params.get("server").or(params.get("host")).copied().unwrap_or("");
+    let share = params.get("share").copied();
+    let user = params.get("user").copied();
+
+    // Build friendly name: "share su server" or "user su server" or just "server"
+    if let Some(share) = share {
+        if server.is_empty() {
+            share.to_string()
+        } else {
+            format!("{} su {}", share, server)
+        }
+    } else if let Some(user) = user {
+        if server.is_empty() {
+            user.to_string()
+        } else {
+            format!("{} su {}", user, server)
+        }
+    } else if !server.is_empty() {
+        server.to_string()
+    } else {
+        // Fallback: use the raw directory name
+        dir_name.to_string()
+    }
+}
+
+/// Determine filesystem type from GVFS directory name prefix.
+#[cfg(target_os = "linux")]
+fn gvfs_fs_type(dir_name: &str) -> String {
+    if dir_name.starts_with("smb-share:") { "cifs".to_string() }
+    else if dir_name.starts_with("sftp:") { "sftp".to_string() }
+    else if dir_name.starts_with("ftp:") { "ftp".to_string() }
+    else if dir_name.starts_with("dav:") || dir_name.starts_with("davs:") { "webdav".to_string() }
+    else if dir_name.starts_with("nfs:") { "nfs".to_string() }
+    else if dir_name.starts_with("afp:") { "afp".to_string() }
+    else { "network".to_string() }
 }
 
 /// Check if a mount point should be skipped (system pseudo-paths).
@@ -220,6 +324,12 @@ fn should_skip_mount_point(mount_point: &str) -> bool {
     }
     // Skip /run itself (exact match)
     if mount_point == "/run" {
+        return true;
+    }
+
+    // Skip boot/EFI partitions (system-only, like Nautilus)
+    // Covers /boot/efi (GRUB), /boot (kernel), /efi (systemd-boot)
+    if mount_point == "/boot/efi" || mount_point == "/boot" || mount_point == "/efi" {
         return true;
     }
 
@@ -568,6 +678,22 @@ fn validate_device_path(path: &str) -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
+    // GVFS mounts (Nautilus network shares) need `gio mount -u` — not udisksctl/umount
+    if mount_point.contains("/gvfs/") {
+        let result = std::process::Command::new("gio")
+            .args(["mount", "-u", mount_point])
+            .output()
+            .map_err(|e| format!("Failed to execute gio mount -u: {}", e))?;
+
+        if result.status.success() {
+            let msg = format!("GVFS share unmounted successfully: {}", mount_point);
+            info!("{}", msg);
+            return Ok(msg);
+        }
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        return Err(format!("Failed to unmount GVFS share {}: {}", mount_point, stderr.trim()));
+    }
+
     // First, try to find the device for this mount point from /proc/mounts
     let device = find_device_for_mount(mount_point);
 
@@ -635,6 +761,144 @@ async fn eject_volume_macos(mount_point: &str) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&result.stderr);
         Err(format!("Failed to eject {}: {}", mount_point, stderr.trim()))
     }
+}
+
+// ─── Unmounted Partition Detection ────────────────────────────────────────────
+
+/// List unmounted partitions via `lsblk -J -b` (Linux only).
+/// Shows partitions that exist on disk but are not currently mounted,
+/// allowing users to mount them from the sidebar (like Nautilus).
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
+    let output = std::process::Command::new("lsblk")
+        .args(["-J", "-b", "-o", "NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT"])
+        .output()
+        .map_err(|e| format!("Failed to run lsblk: {}", e))?;
+
+    if !output.status.success() {
+        return Err("lsblk returned non-zero exit code".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse lsblk JSON: {}", e))?;
+
+    let mut partitions = Vec::new();
+
+    let devices = parsed["blockdevices"]
+        .as_array()
+        .ok_or("Invalid lsblk output: missing blockdevices")?;
+
+    // Collect partitions from top-level and children
+    let mut all_parts: Vec<&serde_json::Value> = Vec::new();
+    for dev in devices {
+        let dev_type = dev["type"].as_str().unwrap_or("");
+        if dev_type == "part" {
+            all_parts.push(dev);
+        }
+        if let Some(children) = dev["children"].as_array() {
+            for child in children {
+                if child["type"].as_str().unwrap_or("") == "part" {
+                    all_parts.push(child);
+                }
+            }
+        }
+    }
+
+    for part in all_parts {
+        // Skip if already mounted
+        if !part["mountpoint"].is_null() && part["mountpoint"].as_str().unwrap_or("") != "" {
+            continue;
+        }
+
+        let fs_type = match part["fstype"].as_str() {
+            Some(fs) if !fs.is_empty() => fs,
+            _ => continue, // Skip partitions with no filesystem (MSR, unformatted)
+        };
+
+        // Some lsblk versions return size as string, not number (audit fix FS-002)
+        let size = part["size"].as_u64()
+            .or_else(|| part["size"].as_str().and_then(|s| s.parse::<u64>().ok()))
+            .unwrap_or(0);
+        let label = part["label"].as_str().unwrap_or("");
+        let name_raw = part["name"].as_str().unwrap_or("");
+
+        // Skip swap partitions
+        if fs_type == "swap" || fs_type == "linux-swap" {
+            continue;
+        }
+
+        // Skip small vfat partitions (EFI/boot, typically < 1GB)
+        if fs_type == "vfat" && size < 1_073_741_824 {
+            continue;
+        }
+
+        // Skip recovery partitions
+        let label_lower = label.to_lowercase();
+        if label_lower.contains("recovery")
+            || label_lower.contains("windows re")
+            || label_lower.contains("winre")
+        {
+            continue;
+        }
+
+        let display_name = if !label.is_empty() {
+            label.to_string()
+        } else {
+            name_raw.to_string()
+        };
+
+        partitions.push(UnmountedPartition {
+            name: display_name,
+            device: format!("/dev/{}", name_raw),
+            fs_type: fs_type.to_string(),
+            size_bytes: size,
+        });
+    }
+
+    info!("Detected {} unmounted partitions", partitions.len());
+    Ok(partitions)
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
+    Ok(Vec::new())
+}
+
+/// Mount an unmounted partition via `udisksctl` (unprivileged, PolicyKit).
+/// Returns the mount point path on success (e.g. "/media/user/Windows").
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn mount_partition(device: String) -> Result<String, String> {
+    validate_device_path(&device)?;
+
+    let output = std::process::Command::new("udisksctl")
+        .args(["mount", "-b", &device, "--no-user-interaction"])
+        .output()
+        .map_err(|e| format!("Failed to run udisksctl: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Parse "Mounted /dev/nvme0n1p3 at /media/axpdev/Windows."
+        if let Some(at_pos) = stdout.find(" at ") {
+            let mount_point = stdout[at_pos + 4..].trim().trim_end_matches('.');
+            info!("Mounted {} at {}", device, mount_point);
+            return Ok(mount_point.to_string());
+        }
+        info!("Mounted {}: {}", device, stdout.trim());
+        Ok(stdout.trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to mount {}: {}", device, stderr.trim()))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn mount_partition(device: String) -> Result<String, String> {
+    Err(format!("Mounting partitions is not supported on this platform (device: {})", device))
 }
 
 // ─── Structs (AeroFile Phase B+C) ───────────────────────────────────────────

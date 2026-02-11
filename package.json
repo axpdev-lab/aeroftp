@@ -1,7 +1,7 @@
 {
   "name": "aeroftp",
   "private": true,
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "AeroFTP - Fast, Beautiful, Reliable FTP Client",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.9.1",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.4",
     "@tauri-apps/plugin-log": "^2.8.0",

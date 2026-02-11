@@ -70,7 +70,7 @@ AeroFTP demonstrates **production-grade Windows compatibility** with comprehensi
 > 4. **Edge-case verification** of all fixes for correctness across Windows, Linux, and macOS
 > 5. **Cross-platform impact assessment** confirming zero regressions on Linux/macOS
 >
-> **All 13 protocols**, **4 archive formats**, **AeroVault v2 encryption**, **Cryptomator interop**, **AI agent tools**, **Smart Sync**, and **terminal emulation** operate correctly on Windows.
+> **All 14 protocols**, **4 archive formats**, **AeroVault v2 encryption**, **Cryptomator interop**, **AI agent tools**, **Smart Sync**, and **terminal emulation** operate correctly on Windows.
 
 ### Cross-Platform Impact Assessment
 

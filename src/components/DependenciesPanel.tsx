@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loader2, Copy } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from '../i18n';
 
 interface DependencyInfo {
     name: string;
@@ -46,6 +47,7 @@ const StatusBadge: React.FC<{ status: DependencyWithLatest['status'] }> = ({ sta
 };
 
 const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClose }) => {
+    const t = useTranslation();
     const [deps, setDeps] = useState<DependencyWithLatest[]>([]);
     const [loading, setLoading] = useState(true);
     const [checking, setChecking] = useState(false);
@@ -63,7 +65,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                 ...catDeps.map(d => `${d.name.padEnd(30)} ${d.version.padEnd(10)} ${(d.latestVersion || '—').padEnd(10)} ${statusLabel(d.status)}`)
             ];
         });
-        const text = `AeroFTP Dependencies Check\n${'='.repeat(65)}` + lines.join('\n');
+        const text = `${t('dependencies.copyTitle')}\n${'='.repeat(65)}` + lines.join('\n');
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -142,8 +144,8 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
                         <Package size={18} className="text-blue-500" />
-                        <h2 className="text-base font-semibold">Dependencies</h2>
-                        <span className="text-xs text-gray-500">({stats.total} crates)</span>
+                        <h2 className="text-base font-semibold">{t('dependencies.title')}</h2>
+                        <span className="text-xs text-gray-500">({stats.total} {t('dependencies.crates')})</span>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Stats badges */}
@@ -165,10 +167,10 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                         <button
                             onClick={copyResults}
                             className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            title="Copy results to clipboard"
+                            title={t('dependencies.copy')}
                         >
                             <Copy size={12} />
-                            {copied ? 'Copied!' : 'Copy'}
+                            {copied ? t('dependencies.copied') : t('dependencies.copy')}
                         </button>
                         <button
                             onClick={checkVersions}
@@ -176,7 +178,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                             className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
                         >
                             <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
-                            {checking ? 'Checking...' : 'Check Updates'}
+                            {checking ? t('dependencies.checking') : t('dependencies.checkUpdates')}
                         </button>
                         <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
                             <X size={16} />
@@ -203,10 +205,10 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                                         <table className="w-full text-sm">
                                             <thead>
                                                 <tr className="text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700">
-                                                    <th className="text-left py-1.5 px-3 font-medium">Crate</th>
-                                                    <th className="text-left py-1.5 px-3 font-medium">Current</th>
-                                                    <th className="text-left py-1.5 px-3 font-medium">Latest</th>
-                                                    <th className="text-center py-1.5 px-3 font-medium w-16">Status</th>
+                                                    <th className="text-left py-1.5 px-3 font-medium">{t('dependencies.crate')}</th>
+                                                    <th className="text-left py-1.5 px-3 font-medium">{t('dependencies.current')}</th>
+                                                    <th className="text-left py-1.5 px-3 font-medium">{t('dependencies.latest')}</th>
+                                                    <th className="text-center py-1.5 px-3 font-medium w-16">{t('dependencies.status')}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -241,7 +243,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
 
                 {/* Footer */}
                 <div className="px-5 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500">
-                    Version data from crates.io API. Versions shown are resolved (Cargo.lock) versions.
+                    {t('dependencies.footer')}
                 </div>
             </div>
         </div>

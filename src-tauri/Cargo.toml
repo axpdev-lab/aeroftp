@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.0.4"
+version = "2.0.5"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -40,6 +40,7 @@ notify = { version = "6", default-features = true }
 notify-debouncer-mini = "0.4"
 tauri-plugin-single-instance = "2.3.6"
 tauri-plugin-localhost = "2"                                               # Serve frontend via real HTTP to fix WebKitGTK rendering
+tauri-plugin-autostart = "2"                                               # Launch on system startup
 
 # Multi-protocol providers (Sprint 1)
 async-trait = "0.1"
@@ -105,6 +106,16 @@ jsonwebtoken = "10.3"                                                   # JWT pa
 chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 for cascade mode
 aes-gcm-siv = "0.11"                                                   # AES-GCM-SIV nonce-misuse resistant (RFC 8452)
 hkdf = "0.12"                                                          # HKDF key derivation (RFC 5869)
+
+# Windows Explorer badge integration (v2.0.5)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Storage_CloudFilters",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_UI_Shell",
+] }
 
 [dev-dependencies]
 tempfile = "3"

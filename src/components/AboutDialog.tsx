@@ -302,7 +302,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                     Google Drive / Dropbox / OneDrive / MEGA / Box / Filen
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono mt-1">
-                                    13 protocols &middot; 51 languages &middot; AES-256 archives
+                                    14 protocols &middot; 51 languages &middot; AES-256 archives
                                 </p>
                             </div>
 

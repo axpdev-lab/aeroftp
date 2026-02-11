@@ -27,7 +27,7 @@ export interface AgentToolCall {
     validation?: { valid: boolean; errors: string[]; warnings: string[] };
 }
 
-// Provider-agnostic tool definitions (works with all 13 protocols)
+// Provider-agnostic tool definitions (works with all 14 protocols)
 export const AGENT_TOOLS: AITool[] = [
     // Safe — auto-execute
     {

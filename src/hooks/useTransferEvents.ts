@@ -253,42 +253,64 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       // ========== DELETE EVENTS ==========
       else if (data.event_type === 'delete_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        const displayName = data.path || data.filename;
+        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');
+        // Track by transfer_id (like upload/download) so delete_complete can find it
+        transferIdToLogId.current.set(data.transfer_id, logId);
         pendingDeleteLogIds.current.set(data.filename, logId);
       } else if (data.event_type === 'delete_file_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: data.filename }, 'running');
+        const displayName = data.path || data.filename;
+        const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');
         pendingDeleteLogIds.current.set(data.filename, logId);
       } else if (data.event_type === 'delete_file_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
         const existingId = pendingDeleteLogIds.current.get(data.filename);
         if (existingId) {
-          const msg = t('activity.delete_file_success', { location: loc, filename: data.filename });
+          const msg = t('activity.delete_file_success', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'success', message: msg });
           pendingDeleteLogIds.current.delete(data.filename);
         } else {
-          humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+          humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: displayName }, 'success');
         }
       } else if (data.event_type === 'delete_dir_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
         const existingId = pendingDeleteLogIds.current.get(data.filename);
         if (existingId) {
-          const msg = t('activity.delete_dir_success', { location: loc, filename: data.filename });
+          const msg = t('activity.delete_dir_success', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'success', message: msg });
           pendingDeleteLogIds.current.delete(data.filename);
         } else {
-          humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: data.filename }, 'success');
+          humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: displayName }, 'success');
         }
       } else if (data.event_type === 'delete_complete') {
+        // Update the overall delete log entry to "success" (same pattern as upload/download complete)
+        const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
+        const displayName = data.path || data.filename;
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        if (logId) {
+          const msg = t('activity.delete_success', { location: loc, filename: displayName });
+          activityLog.updateEntry(logId, { status: 'success', message: msg });
+          transferIdToLogId.current.delete(data.transfer_id);
+        }
+        // Also clean up any remaining pending delete log for this filename
+        pendingDeleteLogIds.current.delete(data.filename);
+
         const { loadRemoteFiles, loadLocalFiles, currentLocalPath } = optRef.current;
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        const displayName = data.path || data.filename;
+        // Try transfer_id first (overall delete), then filename (file-level)
+        const logId = transferIdToLogId.current.get(data.transfer_id);
+        const existingId = logId || pendingDeleteLogIds.current.get(data.filename);
         if (existingId) {
-          const msg = t('activity.delete_error', { location: loc, filename: data.filename });
+          const msg = t('activity.delete_error', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'error', message: msg });
+          if (logId) transferIdToLogId.current.delete(data.transfer_id);
           pendingDeleteLogIds.current.delete(data.filename);
         } else {
           humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');

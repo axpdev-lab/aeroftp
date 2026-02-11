@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 10 February 2026
-> Version: v2.0.4 (Mission Green Badge, Folder Transfer UX, Transfer Reliability)
+> Version: v2.0.5 (4shared Native API, System Startup, Places Sidebar Pro)
 
 ---
 
@@ -14,7 +14,7 @@
 | **FTP** | None | Password | Universal Vault | N/A |
 | **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
 | **SFTP** | SSH | Password / SSH Key | Universal Vault | TOFU + known_hosts |
-| **WebDAV** | HTTPS | Password | Universal Vault | TLS Certificate |
+| **WebDAV** | HTTPS | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
 | **S3** | HTTPS | Access Key + Secret | Universal Vault | TLS Certificate |
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Dropbox** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
@@ -23,20 +23,23 @@
 | **Box** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **pCloud** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Azure Blob** | HTTPS | Shared Key HMAC / SAS | Universal Vault | TLS Certificate |
+| **4shared** | HTTPS | OAuth 1.0 (HMAC-SHA1) | Universal Vault | TLS Certificate |
 | **Filen** | Client-side AES-256-GCM | Password (PBKDF2) | secrecy (zero-on-drop) | E2E Encrypted |
 
 ### Security Features by Protocol
 
-| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | Filen |
-|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|-------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - |
-| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | - |
-| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - |
-| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - |
-| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - |
-| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | - |
-| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | Yes |
-| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen |
+|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|
+| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - |
+| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - |
+| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - |
+| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - |
+| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - |
+| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - |
+| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes |
+| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -44,40 +47,40 @@
 
 ### Core Operations
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | Filen |
-|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|-------|
-| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes |
-| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No |
-| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | Yes |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen |
+|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|
+| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes |
+| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
+| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete
 
 ### Advanced Operations (v1.4.0)
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | Filen |
-|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|-------|
-| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - |
-| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - |
-| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - |
-| **Locking** | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - |
-| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - |
-| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - |
-| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - |
-| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - |
-| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - |
-| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen |
+|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|
+| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - |
+| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - |
+| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - |
+| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - |
+| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - |
+| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - |
+| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - |
+| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
 
 ---
 
@@ -94,6 +97,7 @@
 | **MEGA.nz** | Native | `provider_create_share_link` | `mega-export` via MEGAcmd |
 | **Box** | Native | `provider_create_share_link` | "open" access shared link |
 | **pCloud** | Native | `provider_create_share_link` | Public link via `getfilepublink` |
+| **4shared** | — | — | Not yet implemented |
 | **Filen** | Native | `provider_create_share_link` | E2E encrypted share link |
 
 ---
@@ -198,6 +202,7 @@ Bidirectional directory synchronization compares local and remote files by times
 | **Box** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **pCloud** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Azure Blob** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **4shared** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Filen** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 
 ### Sync Modes
@@ -227,7 +232,7 @@ Persistent JSON index stored at `~/.config/aeroftp/sync-index/` enables:
 
 ## Provider Keep-Alive (v1.5.1)
 
-All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen.
+All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, and Filen.
 
 ---
 
@@ -238,8 +243,8 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 | **Koofr** | Stable | EU-based, 10 GB free |
 | **Jianguoyun** | Stable | China-based WebDAV |
 | **InfiniCLOUD** | Stable | Japan-based, 20 GB free |
+| **CloudMe** | Stable | Swedish, 3 GB free, Digest auth (auto-detected) |
 | **Nextcloud** | Beta | Self-hosted WebDAV |
-| **ownCloud** | Beta | Self-hosted WebDAV |
 
 ---
 
@@ -262,6 +267,13 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 - API: `https://{account}.blob.core.windows.net/{container}/`
 - Flat namespace with `/` delimiter (like S3)
 - XML response parsing via quick-xml
+
+### 4shared (v2.0.5)
+- Native REST API v1.2 with OAuth 1.0 (HMAC-SHA1) authentication
+- ID-based file system with folder/file caching
+- API: `https://api.4shared.com/v1_2/`
+- Upload: `https://upload.4shared.com/v1_2/files`
+- 15 GB free storage, storage quota support
 
 ### Filen (Beta)
 - Zero-knowledge E2E encryption: PBKDF2(SHA512, 200k iterations) + AES-256-GCM
@@ -290,7 +302,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 28 tools work identically across all 13 protocols via the `StorageProvider` trait:
+All 28 tools work identically across all 14 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -331,7 +343,7 @@ All 28 tools work identically across all 13 protocols via the `StorageProvider` 
 | Chat history | Done (v1.6.0) | 50 conversations, 200 msgs each, persisted to disk |
 | Cost tracking | Done (v1.6.0) | Per-message token count + cost estimate |
 | Context awareness | Done (v1.7.0) | Provider, server host/port/user, path, selected files |
-| Protocol expertise | Done (v1.7.0) | System prompt with all 13 provider configs, ports, auth |
+| Protocol expertise | Done (v1.7.0) | System prompt with all 14 provider configs, ports, auth |
 | Styled tool display | Done (v1.7.0) | Inline chips with wrench icon replace raw TOOL/ARGS |
 | Auto-routing | Done (v1.4.0) | Task-type detection routes to optimal model |
 | Rate limiting | Done (v1.4.0) | 20 RPM per provider, frontend token bucket |
@@ -463,6 +475,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v1.9.0 | **Unified Keystore** (localStorage to vault migration), **keystore backup/restore** (.aeroftp-keystore), **migration wizard**, AI multi-step tools, Ollama auto-detection, conversation export, Monaco bidirectional sync, terminal command execution | Done |
 | v2.0.0 | **AeroAgent Pro** — Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
 | v2.0.1 | **3 Asian AI Providers** (Kimi, Qwen, DeepSeek) with thinking modes, web search, FIM, context caching, file analysis. **AeroFile Pro** Places Sidebar, BreadcrumbBar, Large Icons, drive detection, custom sidebar locations. Official SVG provider logos for all 10 providers | Done |
+| v2.0.5 | **4shared native REST API** (OAuth 1.0, 14th protocol), CloudMe WebDAV preset, Places Sidebar GVFS/unmounted partitions, Autostart, Windows Explorer badges, OwnCloud removal | Done |
 
 ### Planned
 

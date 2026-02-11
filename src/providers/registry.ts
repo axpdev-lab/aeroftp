@@ -493,6 +493,46 @@ export const PROVIDERS: ProviderConfig[] = [
     // WEBDAV PROVIDERS
     // =========================================================================
     {
+        id: '4shared',
+        name: '4shared',
+        description: 'File hosting with 15 GB free storage (OAuth 1.0)',
+        protocol: 'fourshared',
+        category: 'oauth',
+        icon: 'Cloud',
+        color: '#008BF6',
+        stable: true,
+        fields: [],
+        defaults: {},
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
+    },
+    {
+        id: 'cloudme',
+        name: 'CloudMe',
+        description: 'Swedish cloud storage with WebDAV (3 GB free)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#00AEEF',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, placeholder: 'Your CloudMe username' },
+            { ...COMMON_FIELDS.password },
+        ],
+        defaults: {
+            server: 'https://webdav.cloudme.com/{username}',
+            port: 443,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://www.cloudme.com/en/webdav',
+    },
+    {
         id: 'drivehq',
         name: 'DriveHQ',
         description: 'Enterprise cloud storage and file sharing',
@@ -648,37 +688,6 @@ export const PROVIDERS: ProviderConfig[] = [
             trash: true,
         },
         helpUrl: 'https://docs.nextcloud.com/',
-    },
-    {
-        id: 'owncloud',
-        name: 'ownCloud',
-        description: 'Open-source file sync and share',
-        protocol: 'webdav',
-        category: 'webdav',
-        icon: 'Cloud',
-        color: '#1D2D44',
-        stable: false, // Not tested yet
-        fields: [
-            {
-                ...COMMON_FIELDS.server,
-                label: 'ownCloud URL',
-                placeholder: 'https://cloud.example.com'
-            },
-            { ...COMMON_FIELDS.username },
-            { ...COMMON_FIELDS.password },
-        ],
-        defaults: {
-            basePath: '/remote.php/webdav/',
-        },
-        endpoints: {
-            webdavPath: '/remote.php/webdav/',
-            shareLink: '/ocs/v1.php/apps/files_sharing/api/v1/shares',
-        },
-        features: {
-            shareLink: true,
-            sync: true,
-        },
-        helpUrl: 'https://doc.owncloud.com/',
     },
     {
         id: 'mega',

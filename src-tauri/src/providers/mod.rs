@@ -33,6 +33,8 @@ pub mod box_provider;
 pub mod pcloud;
 pub mod azure;
 pub mod filen;
+pub mod oauth1;
+pub mod fourshared;
 
 pub use types::*;
 pub use ftp::FtpProvider;
@@ -47,6 +49,7 @@ pub use box_provider::BoxProvider;
 pub use pcloud::PCloudProvider;
 pub use azure::AzureProvider;
 pub use filen::FilenProvider;
+pub use fourshared::FourSharedProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -406,6 +409,12 @@ impl ProviderFactory {
                     "OAuth2 providers must be connected using oauth2_start_auth and oauth2_connect commands".to_string()
                 ))
             }
+            ProviderType::FourShared => {
+                // OAuth1 provider — use fourshared_connect command
+                Err(ProviderError::NotSupported(
+                    "4shared must be connected using fourshared_start_auth and fourshared_connect commands".to_string()
+                ))
+            }
             ProviderType::Mega => {
                 let mega_config = MegaConfig::from_provider_config(config)?;
                 Ok(Box::new(MegaProvider::new(mega_config)))
@@ -439,6 +448,7 @@ impl ProviderFactory {
             ProviderType::PCloud,
             ProviderType::Azure,
             ProviderType::Filen,
+            ProviderType::FourShared,
         ]
     }
 }

@@ -77,7 +77,7 @@ AeroFTP demonstrates **production-grade Ubuntu compatibility** with comprehensiv
 > 5. **i18n validation** of all 51 languages (1025 keys, 0 missing)
 > 6. **Cross-platform regression analysis** confirming zero regressions from Windows compatibility fixes
 >
-> **All 13 protocols**, **4 archive formats**, **AeroVault v2 encryption**, **Cryptomator interop**, **AI agent tools**, **Smart Sync**, and **terminal emulation** operate correctly on Ubuntu.
+> **All 14 protocols**, **4 archive formats**, **AeroVault v2 encryption**, **Cryptomator interop**, **AI agent tools**, **Smart Sync**, and **terminal emulation** operate correctly on Ubuntu.
 
 ### Certification Scope
 

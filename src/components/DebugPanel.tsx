@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { X, Wifi, Activity, Monitor, ScrollText, Layout, ChevronDown, ChevronUp, Copy, Trash2, Pause, Play } from 'lucide-react';
+import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface SystemInfo {
     app_version: string;
@@ -34,12 +35,12 @@ interface TransferEvent {
 
 type TabId = 'connection' | 'network' | 'system' | 'logs' | 'frontend';
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'connection', label: 'Connection', icon: <Wifi size={13} /> },
-    { id: 'network', label: 'Network', icon: <Activity size={13} /> },
-    { id: 'system', label: 'System', icon: <Monitor size={13} /> },
-    { id: 'logs', label: 'Logs', icon: <ScrollText size={13} /> },
-    { id: 'frontend', label: 'Frontend', icon: <Layout size={13} /> },
+const TAB_IDS: { id: TabId; icon: React.ReactNode }[] = [
+    { id: 'connection', icon: <Wifi size={13} /> },
+    { id: 'network', icon: <Activity size={13} /> },
+    { id: 'system', icon: <Monitor size={13} /> },
+    { id: 'logs', icon: <ScrollText size={13} /> },
+    { id: 'frontend', icon: <Layout size={13} /> },
 ];
 
 const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?: boolean }> = ({ label, value, mono }) => (
@@ -68,6 +69,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     connectionParams,
     currentRemotePath,
 }) => {
+    const t = useTranslation();
     const [activeTab, setActiveTab] = useState<TabId>('connection');
     const [height, setHeight] = useState(320);
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -204,7 +206,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
             {/* Header with tabs */}
             <div className="flex items-center justify-between px-3 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
                 <div className="flex items-center gap-1">
-                    {TABS.map(tab => (
+                    {TAB_IDS.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
@@ -215,7 +217,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                             }`}
                         >
                             {tab.icon}
-                            {tab.label}
+                            {t(`debug.tabs.${tab.id}`)}
                         </button>
                     ))}
                 </div>
@@ -230,28 +232,28 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 {activeTab === 'connection' && (
                     <div className="p-2">
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                            <InfoRow label="Status" value={
+                            <InfoRow label={t('debug.connection.status')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={isConnected} />
-                                    {isConnected ? 'Connected' : 'Disconnected'}
+                                    {isConnected ? t('debug.connection.connected') : t('debug.connection.disconnected')}
                                 </span>
                             } />
-                            <InfoRow label="Protocol" value={connectionParams.protocol?.toUpperCase() || '—'} mono />
-                            <InfoRow label="Server" value={connectionParams.server || '—'} mono />
-                            <InfoRow label="Username" value={connectionParams.username || '—'} mono />
-                            <InfoRow label="Remote Path" value={currentRemotePath || '/'} mono />
-                            <InfoRow label="Uptime" value={uptimeStr} mono />
-                            <InfoRow label="Credential Storage" value={systemInfo?.keyring_backend || 'Loading...'} />
-                            <InfoRow label="Vault File" value={
+                            <InfoRow label={t('debug.connection.protocol')} value={connectionParams.protocol?.toUpperCase() || '—'} mono />
+                            <InfoRow label={t('debug.connection.server')} value={connectionParams.server || '—'} mono />
+                            <InfoRow label={t('debug.connection.username')} value={connectionParams.username || '—'} mono />
+                            <InfoRow label={t('debug.connection.remotePath')} value={currentRemotePath || '/'} mono />
+                            <InfoRow label={t('debug.connection.uptime')} value={uptimeStr} mono />
+                            <InfoRow label={t('debug.connection.credentialStorage')} value={systemInfo?.keyring_backend || t('common.loading')} />
+                            <InfoRow label={t('debug.connection.vaultFile')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={systemInfo?.vault_exists || false} />
-                                    {systemInfo?.vault_exists ? 'Present' : 'Not created'}
+                                    {systemInfo?.vault_exists ? t('debug.connection.present') : t('debug.connection.notCreated')}
                                 </span>
                             } />
-                            <InfoRow label="Known Hosts" value={
+                            <InfoRow label={t('debug.connection.knownHosts')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={systemInfo?.known_hosts_exists || false} />
-                                    {systemInfo?.known_hosts_exists ? 'Present' : 'Not created'}
+                                    {systemInfo?.known_hosts_exists ? t('debug.connection.present') : t('debug.connection.notCreated')}
                                 </span>
                             } />
                         </div>
@@ -262,24 +264,24 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 {activeTab === 'network' && (
                     <div className="p-2">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-gray-500">Transfer events ({networkEvents.length})</span>
+                            <span className="text-xs text-gray-500">{t('debug.network.transferEvents')} ({networkEvents.length})</span>
                             <button
                                 onClick={() => setNetworkEvents([])}
                                 className="flex items-center gap-1 text-xs px-2 py-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500"
                             >
-                                <Trash2 size={11} /> Clear
+                                <Trash2 size={11} /> {t('debug.network.clear')}
                             </button>
                         </div>
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-y-auto" style={{ maxHeight: height - 80 }}>
                             {networkEvents.length === 0 ? (
-                                <div className="p-4 text-center text-gray-400">No network activity yet. Transfer files to see events.</div>
+                                <div className="p-4 text-center text-gray-400">{t('debug.network.noActivity')}</div>
                             ) : (
                                 <table className="w-full">
                                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr className="text-[10px] text-gray-500 border-b border-gray-200 dark:border-gray-700">
-                                            <th className="text-left py-1 px-2 w-20">Time</th>
-                                            <th className="text-left py-1 px-2 w-28">Event</th>
-                                            <th className="text-left py-1 px-2">Detail</th>
+                                            <th className="text-left py-1 px-2 w-20">{t('debug.network.time')}</th>
+                                            <th className="text-left py-1 px-2 w-28">{t('debug.network.event')}</th>
+                                            <th className="text-left py-1 px-2">{t('debug.network.detail')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="font-mono text-[11px]">
@@ -310,28 +312,28 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 {activeTab === 'system' && (
                     <div className="p-2">
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                            <InfoRow label="AeroFTP Version" value={systemInfo?.app_version || '...'} mono />
-                            <InfoRow label="Operating System" value={`${systemInfo?.os || '...'} (${systemInfo?.arch || '...'})`} mono />
-                            <InfoRow label="Tauri Version" value={systemInfo?.tauri_version || '...'} mono />
-                            <InfoRow label="Rust Toolchain" value={systemInfo?.rust_version || '...'} mono />
-                            <InfoRow label="Keyring Backend" value={systemInfo?.keyring_backend || '...'} />
-                            <InfoRow label="Config Directory" value={systemInfo?.config_dir || '...'} mono />
-                            <InfoRow label="Vault (vault.db)" value={
+                            <InfoRow label={t('debug.system.appVersion')} value={systemInfo?.app_version || '...'} mono />
+                            <InfoRow label={t('debug.system.os')} value={`${systemInfo?.os || '...'} (${systemInfo?.arch || '...'})`} mono />
+                            <InfoRow label={t('debug.system.tauriVersion')} value={systemInfo?.tauri_version || '...'} mono />
+                            <InfoRow label={t('debug.system.rustToolchain')} value={systemInfo?.rust_version || '...'} mono />
+                            <InfoRow label={t('debug.system.keyringBackend')} value={systemInfo?.keyring_backend || '...'} />
+                            <InfoRow label={t('debug.system.configDir')} value={systemInfo?.config_dir || '...'} mono />
+                            <InfoRow label={t('debug.system.vault')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={systemInfo?.vault_exists || false} />
-                                    {systemInfo?.vault_exists ? 'Exists (AES-256-GCM + Argon2id)' : 'Not created'}
+                                    {systemInfo?.vault_exists ? t('debug.system.vaultExists') : t('debug.system.notCreated')}
                                 </span>
                             } />
-                            <InfoRow label="Known Hosts" value={
+                            <InfoRow label={t('debug.system.knownHosts')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={systemInfo?.known_hosts_exists || false} />
-                                    {systemInfo?.known_hosts_exists ? 'Exists (~/.ssh/known_hosts)' : 'Not created'}
+                                    {systemInfo?.known_hosts_exists ? t('debug.system.knownHostsExists') : t('debug.system.notCreated')}
                                 </span>
                             } />
-                            <InfoRow label="Snap Package" value={
+                            <InfoRow label={t('debug.system.snapPackage')} value={
                                 <span className="flex items-center gap-1.5">
                                     <StatusDot active={!!(window as any).__TAURI_INTERNALS__} />
-                                    {typeof window !== 'undefined' ? 'Tauri Runtime' : 'Browser'}
+                                    {typeof window !== 'undefined' ? t('debug.system.tauriRuntime') : t('debug.system.browser')}
                                 </span>
                             } />
                         </div>
@@ -348,22 +350,22 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                     onChange={e => setLogFilter(e.target.value)}
                                     className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
                                 >
-                                    <option value="ALL">All Levels</option>
-                                    <option value="ERROR">Error</option>
-                                    <option value="WARN">Warning</option>
-                                    <option value="INFO">Info</option>
-                                    <option value="DEBUG">Debug</option>
+                                    <option value="ALL">{t('debug.logs.allLevels')}</option>
+                                    <option value="ERROR">{t('debug.logs.error')}</option>
+                                    <option value="WARN">{t('debug.logs.warning')}</option>
+                                    <option value="INFO">{t('debug.logs.info')}</option>
+                                    <option value="DEBUG">{t('debug.logs.debug')}</option>
                                 </select>
-                                <span className="text-gray-400 text-[10px]">{logs.length} entries</span>
+                                <span className="text-gray-400 text-[10px]">{logs.length} {t('debug.logs.entries')}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                                <button onClick={() => setLogPaused(!logPaused)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={logPaused ? 'Resume' : 'Pause'}>
+                                <button onClick={() => setLogPaused(!logPaused)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={logPaused ? t('debug.logs.resume') : t('debug.logs.pause')}>
                                     {logPaused ? <Play size={12} /> : <Pause size={12} />}
                                 </button>
-                                <button onClick={copyLogs} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title="Copy all">
+                                <button onClick={copyLogs} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={t('debug.logs.copyAll')}>
                                     <Copy size={12} />
                                 </button>
-                                <button onClick={() => setLogs([])} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title="Clear">
+                                <button onClick={() => setLogs([])} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={t('debug.logs.clear')}>
                                     <Trash2 size={12} />
                                 </button>
                             </div>
@@ -380,7 +382,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 ))}
                             <div ref={logEndRef} />
                             {logs.length === 0 && (
-                                <div className="text-gray-600 text-center py-4">Console output will appear here when Debug Mode is active.</div>
+                                <div className="text-gray-600 text-center py-4">{t('debug.logs.emptyMessage')}</div>
                             )}
                         </div>
                     </div>
@@ -390,20 +392,20 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 {activeTab === 'frontend' && (
                     <div className="p-2">
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                            <InfoRow label="React Mode" value={React.version ? `React ${React.version}` : 'Unknown'} mono />
-                            <InfoRow label="Language" value={document.documentElement.lang || navigator.language} mono />
-                            <InfoRow label="LocalStorage Keys" value={`${localStorage.length} keys`} mono />
-                            <InfoRow label="LocalStorage Size" value={`${localStorageSize} KB`} mono />
-                            <InfoRow label="Window Size" value={`${window.innerWidth} x ${window.innerHeight}`} mono />
-                            <InfoRow label="Device Pixel Ratio" value={`${window.devicePixelRatio}x`} mono />
-                            <InfoRow label="Color Scheme" value={window.matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light'} />
-                            <InfoRow label="User Agent" value={
+                            <InfoRow label={t('debug.frontend.reactMode')} value={React.version ? `React ${React.version}` : 'Unknown'} mono />
+                            <InfoRow label={t('debug.frontend.language')} value={document.documentElement.lang || navigator.language} mono />
+                            <InfoRow label={t('debug.frontend.localStorageKeys')} value={`${localStorage.length} ${t('debug.frontend.keys')}`} mono />
+                            <InfoRow label={t('debug.frontend.localStorageSize')} value={`${localStorageSize} KB`} mono />
+                            <InfoRow label={t('debug.frontend.windowSize')} value={`${window.innerWidth} x ${window.innerHeight}`} mono />
+                            <InfoRow label={t('debug.frontend.devicePixelRatio')} value={`${window.devicePixelRatio}x`} mono />
+                            <InfoRow label={t('debug.frontend.colorScheme')} value={window.matchMedia('(prefers-color-scheme: dark)').matches ? t('debug.frontend.dark') : t('debug.frontend.light')} />
+                            <InfoRow label={t('debug.frontend.userAgent')} value={
                                 <span className="break-all text-[10px]">{navigator.userAgent}</span>
                             } />
                         </div>
 
                         {/* localStorage keys list */}
-                        <h4 className="text-xs text-gray-500 mt-3 mb-1 font-semibold">LocalStorage Keys</h4>
+                        <h4 className="text-xs text-gray-500 mt-3 mb-1 font-semibold">{t('debug.frontend.localStorageKeysTitle')}</h4>
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                             {Array.from({ length: localStorage.length }).map((_, i) => {
                                 const key = localStorage.key(i);

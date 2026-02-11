@@ -1,7 +1,7 @@
 //! AI Tool Execution via StorageProvider trait + FTP fallback
 //!
 //! Provides a unified `execute_ai_tool` command that routes AI tool calls
-//! through the active StorageProvider (13 protocols). When no provider is
+//! through the active StorageProvider (14 protocols). When no provider is
 //! connected, falls back to `AppState.ftp_manager` for FTP/FTPS sessions.
 
 use serde_json::{json, Value};

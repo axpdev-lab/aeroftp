@@ -12,7 +12,7 @@
     <p>
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
-      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, and Filen. 13 protocols,
+      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, and Filen. 14 protocols,
       30 presets, one app.
     </p>
     <p>Security and Encryption:</p>
@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.5" date="2026-02-10">
+      <description>
+        <p>System Startup, Tray Icon, Windows Explorer Badge and Provider Cleanup: Autostart on system boot with toggle in Settings (cross-platform: LaunchAgent, .desktop, Registry). Standard white monochrome tray icon. Windows Explorer native sync badges via Cloud Filter API and Named Pipe IPC server. OwnCloud provider removed after Kiteworks acquisition. Protocol Selector UX fixes. Security audit: 7 findings fixed (bounded reader, reject remote pipe clients, idle timeout, UNC path blocking, RwLock poison recovery).</p>
+      </description>
+    </release>
     <release version="2.0.4" date="2026-02-10">
       <description>
         <p>Mission Green Badge, Folder Transfer UX and Transfer Reliability: Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync status (green checkmark for synced, blue arrows for syncing, red X for errors). Tray icon with overlay icons inside colored dots. Folder transfer cancel support, file-count progress display, path-aware logging. Transfer event system rewritten for zero event loss.</p>

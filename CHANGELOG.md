@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-02-10
+
+### 4shared Native API, System Startup, Places Sidebar Pro, Windows Explorer Badge
+
+14th cloud protocol: 4shared native REST API with OAuth 1.0 (replacing broken WebDAV), CloudMe WebDAV preset. Desktop integration: Places Sidebar with GVFS network shares and unmounted partitions, autostart on system boot, monochrome tray icon, Windows Explorer badges via Cloud Filter API, OwnCloud removal, and Protocol Selector UX improvements.
+
+#### Added
+
+- **4shared native REST API provider**: Full cloud storage integration via 4shared REST API v1.2 with OAuth 1.0 (HMAC-SHA1) authentication. 15 GB free storage. ID-based file system with folder/file caching, per-entry JSON parsing with `string_or_i64` deserializer for robust API response handling, status filtering (deleted/trashed/incomplete), and `resolve_path()` for relative path navigation across all StorageProvider trait methods
+- **OAuth 1.0 signing module**: Reusable `oauth1.rs` with RFC 5849 compliant HMAC-SHA1 signature generation, percent encoding, nonce/timestamp generation, and 3-step token flow (request token → authorize → access token). Zero new Cargo dependencies (reuses existing hmac, sha1, base64, rand, urlencoding)
+- **WebDAV HTTP Digest Authentication (RFC 2617)**: Auto-detection of Digest auth for WebDAV servers that require it (e.g., CloudMe). When server responds 401 with `WWW-Authenticate: Digest`, AeroFTP transparently switches from Basic to Digest auth with HMAC-MD5 challenge-response. Password never transmitted, nonce-based replay protection, request integrity via method+URI hashing. Zero new dependencies (reuses existing `md-5` and `rand` crates). CloudMe is the only cloud service requiring exclusively Digest auth — most competing clients (rclone, Joplin, Zotero) do not support it
+- **CloudMe WebDAV preset**: Swedish cloud storage with 3 GB free. Pre-configured WebDAV endpoint (`webdav.cloudme.com:443`), Digest authentication auto-detected
+- **Places Sidebar: GVFS network share detection**: Network mounts via Nautilus/GIO (SMB, SFTP, FTP, WebDAV, NFS, AFP) now appear in Other Locations with Globe icon, size info, and Eject button. GVFS directory names parsed into friendly display names (e.g. "ale su mycloudex2ultra.local")
+- **Places Sidebar: Unmounted partition detection**: Block device partitions not currently mounted (e.g. Windows NTFS) shown in Other Locations with Play button to mount via `udisksctl`. EFI, swap, recovery, and MSR partitions automatically hidden
+- **Places Sidebar: EFI partition hidden**: `/boot/efi`, `/boot`, and `/efi` mount points now filtered from volume listing, matching Nautilus behavior
+- **Recent locations: individual delete**: Each recent location entry now has an X button on hover to remove it individually (previously only "Clear All" was available)
+- **Autostart on system startup**: New `tauri-plugin-autostart` integration with toggle in Settings > General > Startup. Cross-platform: LaunchAgent (macOS), `.desktop` (Linux), Registry (Windows). OS state synced on panel open, idempotent enable/disable with UI rollback on failure. Recommended hint for AeroCloud Sync users
+- **Windows Named Pipe IPC server (#102)**: Badge daemon now serves the Nextcloud-compatible protocol over `\\.\pipe\aerocloud-sync` on Windows. Same security measures as Unix: `first_pipe_instance(true)` anti-squatting, `reject_remote_clients(true)` local-only IPC, Semaphore(10) connection limit, sliding window rate limiter (100 query/s), bounded reads (8192 bytes), 60-second idle timeout
+- **Windows Cloud Filter API badges (#101)**: Native Explorer sync status icons via `CfSetInSyncState` / `CfRegisterSyncRoot`. Synced files show green checkmark, pending files show sync arrows — no COM DLL required, works on Windows 10 1709+
+- **NSIS installer hooks stub (#104)**: `installer/hooks.nsh` prepared for future Shell Icon Overlay COM DLL registration
+- **Cross-platform protocol engine**: IPC protocol refactored into generic async functions (`read_line_limited_generic`, `handle_protocol_line_generic`, `handle_client_generic`) using `AsyncBufRead + AsyncWrite` traits — Unix socket and Named Pipe share identical protocol logic
+- **Platform-aware badge UI**: SettingsPanel detects Windows and shows "managed automatically via Cloud Filter API" instead of Install/Uninstall/Restart buttons
+- **New Windows dependency**: `windows 0.58` crate (conditional `#[cfg(windows)]`) with Cloud Filter, Shell, Foundation, FileSystem, Security features
+- **3 new i18n keys**: `settings.startupOptions`, `settings.launchOnStartup`, `settings.launchOnStartupDesc` — translated for Italian, 50 other languages with placeholders
+
+#### Fixed
+
+- **Protocol Selector Edit button**: Clicking "Edit" on a saved server while the protocol dropdown was open now correctly closes the dropdown and shows the connection form
+- **Protocol Selector reset on re-open**: Re-clicking the "Select protocol" dropdown while a protocol is already selected now clears the previous selection, preventing desync between internal ProtocolSelector state and parent ConnectionScreen state
+- **StatusBar path/quota overlap**: Long remote paths no longer overlap with storage quota display — left section now uses `min-w-0 flex-1` with flexible truncation instead of fixed `max-w-md`
+- **GVFS eject support**: Network shares mounted via Nautilus/GIO now correctly unmount with `gio mount -u` instead of `udisksctl`/`umount` (audit fix INT-001)
+- **Recent delete scrollbar overlap**: Clear All and per-item delete buttons repositioned with `pr-4`/`right-4` padding to avoid scrollbar overlap when Other Locations is expanded
+- **Invisible delete button hit area**: Recent location delete buttons now use `pointer-events-none` when hidden (opacity-0), preventing ghost clicks on the invisible element (audit fix PS-006)
+- **lsblk size string fallback**: Unmounted partition size parsing now handles string-type size values from older lsblk versions (audit fix FS-002)
+- **EFI mount point `/efi`**: Added systemd-boot EFI path to mount point filter (audit fix FS-008)
+- **Security audit (7 findings, all fixed)**: 3-auditor Opus security review — SBA-001 (High: bounded line reader rewritten with `fill_buf()` + `to_vec()` to enforce limits before buffer growth), SBA-002 (Medium: `reject_remote_clients(true)` on all Named Pipe instances), SBA-004 (Medium: 60s idle timeout for connected clients), SBA-005 (Medium: UNC path blocking `\\` in `validate_path()`), GB2-001 (Medium: simplified `CfRegisterSyncRoot` unsafe block), GB2-002 (Medium: `#[cfg(unix)]` on GIO emblem functions), GB2-012/013 (Low: RwLock poison recovery via `unwrap_or_else`)
+- **Places Sidebar audit (30 findings, 6 fixed)**: 3-auditor Opus review of GVFS/unmounted/recent code — INT-001 (High: GVFS eject via gio), FS-002 (Medium: lsblk size fallback), FS-004 (Medium: PSEUDO_FS_TYPES/GVFS comment), FS-008 (Low: /efi filter), PS-006 (Low: pointer-events-none), PS-007 (Low: scrollbar alignment)
+
+#### Changed
+
+- **White monochrome tray icon**: Replaced full-color tray icon with standard white monochrome `AeroFTP_simbol_white_120x120.png`, matching the system tray conventions used by Dropbox, Slack, Discord, and other professional desktop apps. Both initial tray icon (`lib.rs`) and badge system base icon (`tray_badge.rs`) updated for consistency
+- **Tray badge style**: Removed white border from badge dot for solid color fill matching Ubuntu Livepatch style. Badge position fine-tuned to bottom-right
+
+#### Removed
+
+- **OwnCloud WebDAV preset**: Removed after Kiteworks acquisition — OwnCloud now offers only paid plans with no developer access. Removed from provider registry, ProtocolSelector, ProviderLogos, SavedServers hostname auto-detect, AI system prompt, 51 locale files, README, and snapcraft description. Historical CHANGELOG references preserved
+
+---
+
 ## [2.0.4] - 2026-02-10
 
 ### Mission Green Badge, Folder Transfer UX and Transfer Reliability

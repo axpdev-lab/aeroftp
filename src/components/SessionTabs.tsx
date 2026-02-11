@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
-import { FtpSession, SessionStatus, ProviderType, isOAuthProvider } from '../types';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, PROVIDER_LOGOS } from './ProviderLogos';
 
 interface CloudTabState {
     enabled: boolean;
@@ -33,7 +33,7 @@ const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -100,6 +100,8 @@ const ProviderIcon: React.FC<{
             return <AzureLogo size={size} />;
         case 'filen':
             return <FilenLogo size={size} />;
+        case 'fourshared':
+            return <FourSharedLogo size={size} />;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -122,6 +124,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'pcloud': return 'text-cyan-500';
         case 'azure': return 'text-blue-500';
         case 'filen': return 'text-emerald-600';
+        case 'fourshared': return 'text-blue-500';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green
@@ -231,7 +234,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 const isActive = session.id === activeSessionId;
                 const protocol = session.connectionParams?.protocol;
                 const isProvider = isProviderProtocol(protocol);
-                const isOAuth = protocol && isOAuthProvider(protocol);
+                const isOAuth = protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
                 const isConnected = session.status === 'connected';
                 const status = statusConfig[session.status];
                 const isDragTarget = overIdx === idx && dragIdx !== null && dragIdx !== idx;

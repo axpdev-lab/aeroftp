@@ -40,6 +40,8 @@ mod windows_acl;
 mod filesystem;
 mod tray_badge;
 mod sync_badge;
+#[cfg(windows)]
+mod cloud_filter_badge;
 
 use filesystem::validate_path;
 use ftp::{FtpManager, RemoteFile};
@@ -2041,9 +2043,9 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(format!("Deleting remote file: {}", file_name)),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
-        
+
         match ftp_manager.remove(&path).await {
             Ok(_) => {
                 let _ = app.emit("transfer_event", TransferEvent {
@@ -2053,7 +2055,7 @@ async fn delete_remote_file(
                     direction: "remote".to_string(),
                     message: Some(format!("Deleted remote file: {}", file_name)),
                     progress: None,
-                    path: None,
+                    path: Some(path.clone()),
                 });
                 Ok(format!("Deleted: {}", file_name))
             }
@@ -2065,7 +2067,7 @@ async fn delete_remote_file(
                     direction: "remote".to_string(),
                     message: Some(format!("Failed to delete: {}", e)),
                     progress: None,
-                    path: None,
+                    path: Some(path.clone()),
                 });
                 Err(format!("Failed to delete file: {}", e))
             }
@@ -2079,7 +2081,7 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(format!("Scanning remote folder: {}", file_name)),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
         
         let original_path = ftp_manager.current_path();
@@ -2157,9 +2159,9 @@ async fn delete_remote_file(
                 direction: "remote".to_string(),
                 message: Some(format!("Deleting: {}", item.path)),
                 progress: None,
-                path: None,
+                path: Some(item.path.clone()),
             });
-            
+
             match ftp_manager.remove(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
@@ -2170,7 +2172,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Deleted: {}", item.name)),
                         progress: None,
-                        path: None,
+                        path: Some(item.path.clone()),
                     });
                 }
                 Err(e) => {
@@ -2183,7 +2185,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Failed: {} - {}", item.name, e)),
                         progress: None,
-                        path: None,
+                        path: Some(item.path.clone()),
                     });
                 }
             }
@@ -2203,7 +2205,7 @@ async fn delete_remote_file(
                         direction: "remote".to_string(),
                         message: Some(format!("Removed folder: {}", dir_name)),
                         progress: None,
-                        path: None,
+                        path: Some(dir_path.to_string()),
                     });
                 }
                 Err(e) => {
@@ -2229,9 +2231,9 @@ async fn delete_remote_file(
             direction: "remote".to_string(),
             message: Some(result_message.clone()),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
-        
+
         Ok(result_message)
     }
 }
@@ -2257,9 +2259,9 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(format!("Deleting local file: {}", file_name)),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
-        
+
         match tokio::fs::remove_file(&path).await {
             Ok(_) => {
                 let _ = app.emit("transfer_event", TransferEvent {
@@ -2269,7 +2271,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                     direction: "local".to_string(),
                     message: Some(format!("Deleted local file: {}", file_name)),
                     progress: None,
-                    path: None,
+                    path: Some(path.clone()),
                 });
                 Ok(format!("Deleted: {}", file_name))
             }
@@ -2281,7 +2283,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                     direction: "local".to_string(),
                     message: Some(format!("Failed to delete: {}", e)),
                     progress: None,
-                    path: None,
+                    path: Some(path.clone()),
                 });
                 Err(format!("Failed to delete file: {}", e))
             }
@@ -2295,7 +2297,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(format!("Scanning local folder: {}", file_name)),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
         
         // Phase 1: Collect all files and directories
@@ -2380,7 +2382,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                             direction: "local".to_string(),
                             message: Some(format!("Deleted [{}/{}]: {}", deleted_files, total_files, item.name)),
                             progress: None,
-                            path: None,
+                            path: Some(item.path.display().to_string()),
                         });
                         last_emit = std::time::Instant::now();
                     }
@@ -2394,7 +2396,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                         direction: "local".to_string(),
                         message: Some(format!("Failed: {} - {}", item.name, e)),
                         progress: None,
-                        path: None,
+                        path: Some(item.path.display().to_string()),
                     });
                 }
             }
@@ -2418,7 +2420,7 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
                         direction: "local".to_string(),
                         message: Some(format!("Removed folder: {}", dir_path.display())),
                         progress: None,
-                        path: None,
+                        path: Some(dir_path.display().to_string()),
                     });
                 }
                 Err(e) => {
@@ -2441,9 +2443,9 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             direction: "local".to_string(),
             message: Some(result_message.clone()),
             progress: None,
-            path: None,
+            path: Some(path.clone()),
         });
-        
+
         Ok(result_message)
     }
 }
@@ -3422,6 +3424,118 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
     } else {
         let _ = window.remove_menu();
     }
+}
+
+#[tauri::command]
+fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String>) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
+
+    let get = |key: &str, fallback: &str| -> String {
+        labels.get(key).cloned().unwrap_or_else(|| fallback.to_string())
+    };
+
+    let quit = MenuItem::with_id(&app, "quit", &get("quit", "Quit AeroFTP"), true, Some("CmdOrCtrl+Q"))
+        .map_err(|e| e.to_string())?;
+    let about = MenuItem::with_id(&app, "about", &get("about", "About AeroFTP"), true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let settings = MenuItem::with_id(&app, "settings", &get("settings", "Settings..."), true, Some("CmdOrCtrl+,"))
+        .map_err(|e| e.to_string())?;
+    let refresh = MenuItem::with_id(&app, "refresh", &get("refresh", "Refresh"), true, Some("CmdOrCtrl+R"))
+        .map_err(|e| e.to_string())?;
+    let shortcuts = MenuItem::with_id(&app, "shortcuts", &get("shortcuts", "Keyboard Shortcuts"), true, Some("F1"))
+        .map_err(|e| e.to_string())?;
+    let support = MenuItem::with_id(&app, "support", &get("support", "Support Development"), true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    let file_menu = Submenu::with_items(
+        &app,
+        &get("file", "File"),
+        true,
+        &[
+            &MenuItem::with_id(&app, "new_folder", &get("newFolder", "New Folder"), true, Some("CmdOrCtrl+N"))
+                .map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &settings,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "toggle_debug_mode", &get("debugMode", "Debug Mode"), true, Some("CmdOrCtrl+Shift+F12"))
+                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "show_dependencies", &get("dependencies", "Dependencies..."), true, None::<&str>)
+                .map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &quit,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let edit_menu = Submenu::with_items(
+        &app,
+        &get("edit", "Edit"),
+        true,
+        &[
+            &PredefinedMenuItem::undo(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::redo(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::cut(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::copy(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::paste(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::select_all(&app, None).map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "rename", &get("rename", "Rename"), true, Some("F2"))
+                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "delete", &get("delete", "Delete"), true, Some("Delete"))
+                .map_err(|e| e.to_string())?,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let devtools_submenu = Submenu::with_items(
+        &app,
+        &get("devtools", "DevTools"),
+        true,
+        &[
+            &MenuItem::with_id(&app, "toggle_devtools", &get("toggleDevtools", "Toggle DevTools"), true, Some("CmdOrCtrl+Shift+D"))
+                .map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "toggle_editor", &get("toggleEditor", "Toggle Editor"), true, Some("CmdOrCtrl+1"))
+                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "toggle_terminal", &get("toggleTerminal", "Toggle Terminal"), true, Some("CmdOrCtrl+2"))
+                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "toggle_agent", &get("toggleAgent", "Toggle Agent"), true, Some("CmdOrCtrl+3"))
+                .map_err(|e| e.to_string())?,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let view_menu = Submenu::with_items(
+        &app,
+        &get("view", "View"),
+        true,
+        &[
+            &refresh,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &MenuItem::with_id(&app, "toggle_theme", &get("toggleTheme", "Toggle Theme"), true, Some("CmdOrCtrl+T"))
+                .map_err(|e| e.to_string())?,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &devtools_submenu,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let help_menu = Submenu::with_items(
+        &app,
+        &get("help", "Help"),
+        true,
+        &[
+            &shortcuts,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &support,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            &about,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
+        .map_err(|e| e.to_string())?;
+    app.set_menu(menu).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 // ============ Sync Commands ============
@@ -4730,6 +4844,10 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // When a second instance is launched, show and focus the existing window
             if let Some(window) = app.get_webview_window("main") {
@@ -4861,10 +4979,13 @@ pub fn run() {
                 &tray_quit,
             ])?;
             
-            // Build tray icon using the app's default icon
-            let icon = app.default_window_icon()
-                .cloned()
-                .expect("Failed to load tray icon - ensure icon is set in tauri.conf.json");
+            // Build tray icon using white monochrome icon (standard for system tray)
+            let tray_png = image::load_from_memory(
+                include_bytes!("../../icons/AeroFTP_simbol_white_120x120.png")
+            ).expect("Failed to decode tray icon");
+            let tray_rgba = tray_png.to_rgba8();
+            let (w, h) = tray_rgba.dimensions();
+            let icon = tauri::image::Image::new_owned(tray_rgba.into_raw(), w, h);
             
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -4992,6 +5113,7 @@ pub fn run() {
             save_local_file,
             save_remote_file,
             toggle_menu_bar,
+            rebuild_menu,
             compare_directories,
             get_compare_options_default,
             load_sync_index_cmd,
@@ -5130,6 +5252,13 @@ pub fn run() {
             provider_commands::oauth2_full_auth,
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,
+            // 4shared OAuth 1.0 commands
+            provider_commands::fourshared_start_auth,
+            provider_commands::fourshared_complete_auth,
+            provider_commands::fourshared_full_auth,
+            provider_commands::fourshared_connect,
+            provider_commands::fourshared_has_tokens,
+            provider_commands::fourshared_logout,
             provider_commands::provider_create_share_link,
             provider_commands::provider_remove_share_link,
             provider_commands::provider_import_link,
@@ -5191,6 +5320,8 @@ pub fn run() {
             filesystem::list_mounted_volumes,
             filesystem::list_subdirectories,
             filesystem::eject_volume,
+            filesystem::list_unmounted_partitions,
+            filesystem::mount_partition,
             filesystem::get_file_properties,
             filesystem::calculate_folder_size,
             filesystem::delete_to_trash,

@@ -33,6 +33,9 @@
     "log:default",
     "core:path:default",
     "shell:allow-open",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
     {
       "identifier": "fs:scope",
       "allow": [

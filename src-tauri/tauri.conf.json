@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -14,7 +14,7 @@
             {
                 "title": "AeroFTP",
                 "width": 1440,
-                "height": 1000,
+                "height": 1050,
                 "minWidth": 1024,
                 "minHeight": 800,
                 "resizable": true,
@@ -48,7 +48,7 @@
             "icons/icon.ico"
         ],
         "shortDescription": "Modern Multi-Protocol File Client with AI, Encryption & Cloud Storage",
-        "longDescription": "AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, and Filen — 13 protocols, 30 presets, one app. Features include AeroVault (AES-256-GCM encrypted containers), Cryptomator vault support, AeroAgent AI assistant with 24 tools and 7 providers, Monaco code editor, integrated terminal, dual-pane file browser, AeroCloud personal sync, archive browser (ZIP/7z/TAR/RAR), 51 languages, and dark mode. Built with Rust (Tauri 2) + React 18. Open source under GPL-3.0.",
+        "longDescription": "AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, and Filen — 14 protocols, 30 presets, one app. Features include AeroVault (AES-256-GCM encrypted containers), Cryptomator vault support, AeroAgent AI assistant with 28 tools and 10 providers, Monaco code editor, integrated terminal, dual-pane file browser, AeroCloud personal sync, archive browser (ZIP/7z/TAR/RAR), 51 languages, and dark mode. Built with Rust (Tauri 2) + React 18. Open source under GPL-3.0.",
         "category": "Utility",
         "copyright": "Copyright © 2025-2026 axpdev",
         "license": "GPL-3.0",
@@ -72,7 +72,8 @@
             "nsis": {
                 "installerIcon": "icons/icon.ico",
                 "headerImage": "installer/header.bmp",
-                "sidebarImage": "installer/sidebar.bmp"
+                "sidebarImage": "installer/sidebar.bmp",
+                "installerHooks": "installer/hooks.nsh"
             }
         }
     },

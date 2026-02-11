@@ -1,15 +1,16 @@
 name: aeroftp
-version: '2.0.4'
-summary: Multi-Protocol File Transfer & Cloud Client — 13 Protocols, AI, Encryption
+version: '2.0.5'
+summary: Multi-Protocol File Transfer & Cloud Client — 14 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
   Connect to FTP/FTPS servers, SFTP, WebDAV, S3-compatible storage, and major
   cloud providers — all from a single, elegant interface.
 
-  Supported Protocols (13):
+  Supported Protocols (14):
   - FTP / FTPS (TLS 1.3)
   - SFTP (SSH File Transfer)
-  - WebDAV (Nextcloud, ownCloud, Synology, DriveHQ)
+  - WebDAV (Nextcloud, CloudMe, Koofr, DriveHQ)
+  - 4shared (OAuth 1.0, 15 GB free)
   - S3-compatible (AWS, Backblaze B2, Wasabi, MinIO)
   - Google Drive, Dropbox, OneDrive (OAuth2)
   - MEGA.nz, Filen (E2E encryption)

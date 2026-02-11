@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck } from 'lucide-react';
-import { ServerProfile, isOAuthProvider, ProviderType } from '../types';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power } from 'lucide-react';
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
+import { ServerProfile, isOAuthProvider, isFourSharedProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -32,16 +33,17 @@ const PROTOCOL_COLORS: Record<string, string> = {
     pcloud: 'from-green-500 to-teal-400',
     azure: 'from-blue-600 to-indigo-500',
     filen: 'from-emerald-500 to-green-400',
+    fourshared: 'from-blue-500 to-blue-400',
 };
 
 // Get display info for a server (matches SavedServers sidebar schema)
 const getServerDisplayInfo = (server: ServerProfile) => {
     const protocol = server.protocol || 'ftp';
-    const isOAuth = isOAuthProvider(protocol as ProviderType);
+    const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
 
     if (isOAuth) {
-        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
-        return `OAuth2 — ${server.username || providerNames[protocol] || protocol}`;
+        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
+        return `OAuth — ${server.username || providerNames[protocol] || protocol}`;
     }
 
     if (protocol === 'filen') {
@@ -102,6 +104,7 @@ interface OAuthSettings {
     onedrive: { clientId: string; clientSecret: string };
     box: { clientId: string; clientSecret: string };
     pcloud: { clientId: string; clientSecret: string };
+    fourshared: { clientId: string; clientSecret: string };
 }
 
 const defaultOAuthSettings: OAuthSettings = {
@@ -110,6 +113,7 @@ const defaultOAuthSettings: OAuthSettings = {
     onedrive: { clientId: '', clientSecret: '' },
     box: { clientId: '', clientSecret: '' },
     pcloud: { clientId: '', clientSecret: '' },
+    fourshared: { clientId: '', clientSecret: '' },
 };
 
 interface AppSettings {
@@ -146,6 +150,8 @@ interface AppSettings {
     showToastNotifications: boolean;
     // Privacy
     analyticsEnabled: boolean;
+    // Startup
+    launchOnStartup: boolean;
 }
 
 const defaultSettings: AppSettings = {
@@ -173,6 +179,7 @@ const defaultSettings: AppSettings = {
     showFileExtensions: true,
     showToastNotifications: false,  // Default off - use Activity Log instead
     analyticsEnabled: false,
+    launchOnStartup: false,
 };
 
 type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy';
@@ -283,6 +290,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [autoLockTimeout, setAutoLockTimeout] = useState(0); // minutes (0 = disabled)
     const [showMasterPassword, setShowMasterPassword] = useState(false);
     const [masterPasswordError, setMasterPasswordError] = useState('');
+    const [showOAuthSecrets, setShowOAuthSecrets] = useState(false);
 
     // Badge extension feedback
     const [badgeFeedback, setBadgeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -334,7 +342,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 })();
                 // Load OAuth settings from secure credential store (fallback: localStorage)
                 const loadOAuthFromStore = async () => {
-                    const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
+                    const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
                     const loaded = { ...defaultOAuthSettings };
                     for (const p of providers) {
                         try {
@@ -357,6 +365,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (savedAnalytics !== null) {
                     setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
                 }
+                // Sync autostart state from OS (authoritative source)
+                isAutostartEnabled()
+                    .then(enabled => setSettings(prev => ({ ...prev, launchOnStartup: enabled })))
+                    .catch(e => logger.debug('Autostart status check failed:', e));
                 // Load credential store status
                 invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number }>('get_credential_store_status')
                     .then(status => {
@@ -389,7 +401,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         // Persist servers to vault (async, removes localStorage copy on success)
         secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});
         // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
-        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud'] as const;
+        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
         for (const p of providers) {
             const creds = oauthSettings[p];
             if (creds.clientId) {
@@ -404,6 +416,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
         // Apply system menu setting immediately
         invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
+        // Apply autostart setting (idempotent — no pre-check needed)
+        try {
+            if (settings.launchOnStartup) {
+                await enableAutostart();
+            } else {
+                await disableAutostart();
+            }
+        } catch (e) {
+            logger.debug('Autostart toggle failed:', e);
+            // Revert UI to actual OS state on next open
+            const actual = await isAutostartEnabled().catch(() => false);
+            setSettings(prev => ({ ...prev, launchOnStartup: actual }));
+        }
         // Notify App.tsx of settings change (for compactMode etc)
         window.dispatchEvent(new CustomEvent('aeroftp-settings-changed'));
         setHasChanges(false);
@@ -605,6 +630,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     </div>
 
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                                            <Power size={14} />
+                                            {t('settings.startupOptions')}
+                                        </h4>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.launchOnStartup}
+                                                    onChange={e => updateSetting('launchOnStartup', e.target.checked)}
+                                                    className="w-4 h-4 rounded"
+                                                />
+                                                <div>
+                                                    <p className="text-sm">{t('settings.launchOnStartup')}</p>
+                                                    <p className="text-xs text-gray-500">{t('settings.launchOnStartupDesc')}</p>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <h4 className="text-sm font-medium mb-2">Software Updates</h4>
                                         <CheckUpdateButton onActivityLog={onActivityLog} />
                                     </div>
@@ -734,7 +780,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="space-y-2">
                                         {servers.map(server => {
                                             const protocol = server.protocol || 'ftp';
-                                            const isOAuth = isOAuthProvider(protocol as ProviderType);
+                                            const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
                                             const isExpired = protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at;
 
                                             return (
@@ -805,7 +851,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 {/* Edit Server Modal */}
                                 {editingServer && (() => {
                                     const protocol = editingServer.protocol || 'ftp';
-                                    const isOAuth = isOAuthProvider(protocol as ProviderType);
+                                    const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
                                     const isMega = protocol === 'mega';
                                     const isFilen = protocol === 'filen';
                                     const isS3 = protocol === 's3';
@@ -839,7 +885,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             protocol: newProtocol as ProviderType,
                                             port: opt?.port || 21,
                                             // Clear fields that don't apply
-                                            host: isOAuthProvider(newProtocol as ProviderType) ? '' : editingServer.host,
+                                            host: (isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType)) ? '' : editingServer.host,
                                             username: '',
                                             password: '',
                                             options: {}
@@ -1252,7 +1298,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         {activeTab === 'cloudproviders' && (
                             <div className="space-y-6">
                                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Cloud Provider Settings</h3>
-                                <p className="text-sm text-gray-500">Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials.</p>
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-gray-500">Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials.</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowOAuthSecrets(!showOAuthSecrets)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+                                    >
+                                        {showOAuthSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        {showOAuthSecrets ? 'Hide' : 'Show'} secrets
+                                    </button>
+                                </div>
 
                                 {/* AeroCloud - First! */}
                                 <div className="p-4 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-900/30 dark:to-blue-900/30 border border-sky-200 dark:border-sky-700 rounded-lg space-y-3">
@@ -1289,6 +1345,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <MonitorCheck size={14} />
                                             File Manager Integration
                                         </div>
+                                        {navigator.platform.startsWith('Win') ? (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                Sync badges are managed automatically via Windows Cloud Filter API. Explorer shows native sync status icons when AeroCloud is active.
+                                            </p>
+                                        ) : (
+                                        <>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">
                                             Show sync status badges on files in Nautilus, Nemo, and other file managers.
                                         </p>
@@ -1363,6 +1425,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 )}
                                             </div>
                                         )}
+                                        </>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1399,7 +1463,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-xs font-medium mb-1">Client Secret</label>
                                             <input
-                                                type="password"
+                                                type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.googledrive.clientSecret}
                                                 onChange={e => updateOAuthSetting('googledrive', 'clientSecret', e.target.value)}
                                                 placeholder="GOCSPX-..."
@@ -1485,7 +1549,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-xs font-medium mb-1">Client Secret</label>
                                             <input
-                                                type="password"
+                                                type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.onedrive.clientSecret}
                                                 onChange={e => updateOAuthSetting('onedrive', 'clientSecret', e.target.value)}
                                                 placeholder="xxxxxxxx~..."
@@ -1528,7 +1592,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-xs font-medium mb-1">Client Secret</label>
                                             <input
-                                                type="password"
+                                                type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.box.clientSecret}
                                                 onChange={e => updateOAuthSetting('box', 'clientSecret', e.target.value)}
                                                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -1571,10 +1635,53 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-xs font-medium mb-1">Client Secret</label>
                                             <input
-                                                type="password"
+                                                type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.pcloud.clientSecret}
                                                 onChange={e => updateOAuthSetting('pcloud', 'clientSecret', e.target.value)}
                                                 placeholder="xxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 4shared (OAuth 1.0) */}
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                                                <Cloud size={16} className="text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium">4shared</h4>
+                                                <p className="text-xs text-gray-500">OAuth 1.0 — 15 GB free storage</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => openUrl('https://www.4shared.com/developer/')}
+                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                        >
+                                            Get credentials <ExternalLink size={12} />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Consumer Key</label>
+                                            <input
+                                                type="text"
+                                                value={oauthSettings.fourshared.clientId}
+                                                onChange={e => updateOAuthSetting('fourshared', 'clientId', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Consumer Secret</label>
+                                            <input
+                                                type={showOAuthSecrets ? 'text' : 'password'}
+                                                value={oauthSettings.fourshared.clientSecret}
+                                                onChange={e => updateOAuthSetting('fourshared', 'clientSecret', e.target.value)}
+                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>

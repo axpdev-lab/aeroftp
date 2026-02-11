@@ -74,7 +74,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     return (
         <div className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">
             {/* Left: Connection Status */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                     {isConnected ? (
                         <>
@@ -111,7 +111,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
 
                 {/* Current Path */}
-                <div className="flex items-center gap-1.5 max-w-md truncate">
+                <div className="flex items-center gap-1.5 min-w-0 truncate">
                     {activePanel === 'remote' ? (
                         <>
                             <Globe size={12} className="text-blue-500 shrink-0" />
@@ -131,7 +131,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </div>
 
             {/* Right: File Count + Sync + DevTools */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 shrink-0">
                 {/* Storage Quota */}
                 {isConnected && storageQuota && storageQuota.total > 0 && (
                     <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>

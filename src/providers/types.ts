@@ -9,7 +9,7 @@
 // Protocol Types
 // ============================================================================
 
-export type BaseProtocol = 'ftp' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega';
+export type BaseProtocol = 'ftp' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared';
 
 export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega';
 

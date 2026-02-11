@@ -1,18 +1,124 @@
 //! WebDAV Storage Provider
 //!
 //! Implementation of the StorageProvider trait for WebDAV protocol.
-//! Compatible with Nextcloud, ownCloud, Synology, QNAP, and other WebDAV servers.
+//! Compatible with Nextcloud, Synology, QNAP, Koofr, and other WebDAV servers.
 //!
 //! WebDAV extends HTTP with methods like PROPFIND, MKCOL, MOVE, COPY, and DELETE
 //! to provide full file system operations over HTTP/HTTPS.
 
 use async_trait::async_trait;
+use md5::{Md5, Digest as _};
+use rand::Rng;
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, WebDavConfig,
 };
+
+// ============ HTTP Digest Authentication (RFC 2617) ============
+
+/// State for HTTP Digest authentication
+struct DigestState {
+    realm: String,
+    nonce: String,
+    qop: String,
+    opaque: Option<String>,
+    nc: u32,
+}
+
+impl DigestState {
+    /// Parse a `WWW-Authenticate: Digest ...` header value
+    fn parse(header: &str) -> Option<Self> {
+        let s = header.strip_prefix("Digest ")?;
+        Some(Self {
+            realm: Self::extract_param(s, "realm")?,
+            nonce: Self::extract_param(s, "nonce")?,
+            qop: Self::extract_param(s, "qop").unwrap_or_default(),
+            opaque: Self::extract_param(s, "opaque"),
+            nc: 0,
+        })
+    }
+
+    /// Extract a parameter value from the Digest challenge string
+    fn extract_param(s: &str, key: &str) -> Option<String> {
+        // Try quoted form: key="value"
+        let quoted = format!("{}=\"", key);
+        if let Some(pos) = s.find(&quoted) {
+            let after = &s[pos + quoted.len()..];
+            let end = after.find('"')?;
+            return Some(after[..end].to_string());
+        }
+        // Try unquoted form: key=value
+        let unquoted = format!("{}=", key);
+        if let Some(pos) = s.find(&unquoted) {
+            let after = &s[pos + unquoted.len()..];
+            let end = after.find(|c: char| c == ',' || c == ' ').unwrap_or(after.len());
+            return Some(after[..end].to_string());
+        }
+        None
+    }
+
+    /// Generate the `Authorization: Digest ...` header value
+    fn authorization(&mut self, method: &str, uri: &str, username: &str, password: &str) -> String {
+        self.nc += 1;
+        let nc_str = format!("{:08x}", self.nc);
+        let cnonce = Self::generate_cnonce();
+
+        let ha1 = md5_hex(&format!("{}:{}:{}", username, self.realm, password));
+        let ha2 = md5_hex(&format!("{}:{}", method, uri));
+
+        let response = if !self.qop.is_empty() {
+            md5_hex(&format!("{}:{}:{}:{}:auth:{}", ha1, self.nonce, nc_str, cnonce, ha2))
+        } else {
+            md5_hex(&format!("{}:{}:{}", ha1, self.nonce, ha2))
+        };
+
+        // Quote algorithm and qop for maximum server compatibility
+        // (Python requests quotes these and works with all servers)
+        let mut header = format!(
+            r#"Digest username="{}", realm="{}", nonce="{}", uri="{}", response="{}", algorithm="MD5""#,
+            username, self.realm, self.nonce, uri, response
+        );
+
+        if !self.qop.is_empty() {
+            header.push_str(&format!(r#", qop="auth", nc={}, cnonce="{}""#, nc_str, cnonce));
+        }
+
+        if let Some(ref opaque) = self.opaque {
+            header.push_str(&format!(r#", opaque="{}""#, opaque));
+        }
+
+        tracing::debug!("[WebDAV Digest] method={} uri={} nc={} response={}", method, uri, nc_str, response);
+
+        header
+    }
+
+    fn generate_cnonce() -> String {
+        let bytes: [u8; 8] = rand::thread_rng().gen();
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+}
+
+/// Compute MD5 hex digest of a string
+fn md5_hex(input: &str) -> String {
+    let digest = Md5::digest(input.as_bytes());
+    format!("{:x}", digest)
+}
+
+/// Extract the path component from a full URL, preserving trailing slash
+fn extract_uri_path(url: &str) -> String {
+    if let Some(idx) = url.find("://") {
+        let after_scheme = &url[idx + 3..];
+        if let Some(slash_idx) = after_scheme.find('/') {
+            let path = after_scheme[slash_idx..].to_string();
+            if !path.is_empty() {
+                return path;
+            }
+        }
+    }
+    "/".to_string()
+}
 
 /// Custom HTTP methods for WebDAV
 mod webdav_methods {
@@ -50,6 +156,8 @@ pub struct WebDavProvider {
     client: Client,
     current_path: String,
     connected: bool,
+    /// Digest auth state (set during connect if server requires it)
+    digest_auth: Option<DigestState>,
 }
 
 impl WebDavProvider {
@@ -66,6 +174,7 @@ impl WebDavProvider {
             client,
             current_path: "/".to_string(),
             connected: false,
+            digest_auth: None,
         }
     }
     
@@ -73,19 +182,29 @@ impl WebDavProvider {
     fn build_url(&self, path: &str) -> String {
         let base = self.config.url.trim_end_matches('/');
         let path = path.trim_start_matches('/');
-        
-        if path.is_empty() {
-            base.to_string()
+
+        if path.is_empty() || path == "/" {
+            // For root/empty path, ensure trailing slash (required by some WebDAV servers
+            // for Digest auth URI matching on directory endpoints)
+            format!("{}/", base)
         } else {
             format!("{}/{}", base, path)
         }
     }
     
-    /// Make an authenticated request
-    async fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
-        self.client
-            .request(method, self.build_url(path))
-            .basic_auth(&self.config.username, Some(&self.config.password))
+    /// Make an authenticated request (Basic or Digest depending on server)
+    fn request(&mut self, method: Method, path: &str) -> reqwest::RequestBuilder {
+        let url = self.build_url(path);
+        let builder = self.client.request(method.clone(), &url);
+
+        if let Some(ref mut state) = self.digest_auth {
+            let uri_path = extract_uri_path(&url);
+            tracing::debug!("[WebDAV] Digest request: {} {} (uri={})", method.as_str(), url, uri_path);
+            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, &self.config.password);
+            builder.header("Authorization", auth)
+        } else {
+            builder.basic_auth(&self.config.username, Some(&self.config.password))
+        }
     }
     
     /// Parse PROPFIND XML response into RemoteEntry list
@@ -285,34 +404,85 @@ impl StorageProvider for WebDavProvider {
     }
     
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // Test connection with a PROPFIND on the root
-        let response = self.request(webdav_methods::propfind(), "/").await
-            .header("Depth", "0")
-            .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+        let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
                     </d:prop>
-                </d:propfind>"#)
+                </d:propfind>"#;
+
+        // First attempt with Basic auth
+        let response = self.request(webdav_methods::propfind(), "/")
+            .header("Depth", "0")
+            .header("Content-Type", "application/xml")
+            .body(propfind_body)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 self.connected = true;
-                
-                // Navigate to initial path if specified
                 if let Some(ref initial_path) = self.config.initial_path {
                     if !initial_path.is_empty() {
                         self.current_path = initial_path.clone();
                     }
                 }
-                
                 Ok(())
             }
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+            StatusCode::UNAUTHORIZED => {
+                // Check if server requires Digest authentication
+                let www_auth = response.headers()
+                    .get("www-authenticate")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+
+                if let Some(state) = DigestState::parse(&www_auth) {
+                    tracing::info!("[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
+                        state.realm, state.qop, &state.nonce[..state.nonce.len().min(12)]);
+                    self.digest_auth = Some(state);
+
+                    // Retry with Digest auth
+                    let response2 = self.request(webdav_methods::propfind(), "/")
+                        .header("Depth", "0")
+                        .header("Content-Type", "application/xml")
+                        .body(propfind_body)
+                        .send()
+                        .await
+                        .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+                    let retry_status = response2.status();
+                    tracing::info!("[WebDAV] Digest auth retry status: {}", retry_status);
+
+                    match retry_status {
+                        StatusCode::OK | StatusCode::MULTI_STATUS => {
+                            tracing::info!("[WebDAV] Digest auth successful");
+                            self.connected = true;
+                            if let Some(ref initial_path) = self.config.initial_path {
+                                if !initial_path.is_empty() {
+                                    self.current_path = initial_path.clone();
+                                }
+                            }
+                            Ok(())
+                        }
+                        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                            // Log the response body for debugging
+                            let body = response2.text().await.unwrap_or_default();
+                            tracing::warn!("[WebDAV] Digest auth failed ({}): {}", retry_status, &body[..body.len().min(200)]);
+                            self.digest_auth = None;
+                            Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
+                        }
+                        status => {
+                            self.digest_auth = None;
+                            Err(ProviderError::ConnectionFailed(format!("Server returned status: {}", status)))
+                        }
+                    }
+                } else {
+                    Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
+                }
+            }
+            StatusCode::FORBIDDEN => {
                 Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
             }
             status => {
@@ -343,7 +513,7 @@ impl StorageProvider for WebDavProvider {
         
         tracing::info!("[WebDAV] Listing path: {}", list_path);
         
-        let response = self.request(webdav_methods::propfind(), &list_path).await
+        let response = self.request(webdav_methods::propfind(), &list_path)
             .header("Depth", "1")
             .header("Content-Type", "application/xml")
             .body(r#"<?xml version="1.0" encoding="utf-8"?>
@@ -403,7 +573,7 @@ impl StorageProvider for WebDavProvider {
         }
         
         // Verify the path exists and is a directory
-        let response = self.request(webdav_methods::propfind(), path).await
+        let response = self.request(webdav_methods::propfind(), path)
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(r#"<?xml version="1.0" encoding="utf-8"?>
@@ -466,7 +636,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(Method::GET, remote_path).await
+        let response = self.request(Method::GET, remote_path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -500,7 +670,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(Method::GET, remote_path).await
+        let response = self.request(Method::GET, remote_path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -535,7 +705,7 @@ impl StorageProvider for WebDavProvider {
         
         let total_size = data.len() as u64;
         
-        let response = self.request(Method::PUT, remote_path).await
+        let response = self.request(Method::PUT, remote_path)
             .body(data)
             .send()
             .await
@@ -565,7 +735,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(webdav_methods::mkcol(), path).await
+        let response = self.request(webdav_methods::mkcol(), path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -592,7 +762,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(Method::DELETE, path).await
+        let response = self.request(Method::DELETE, path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -628,7 +798,7 @@ impl StorageProvider for WebDavProvider {
         
         let destination = self.build_url(to);
         
-        let response = self.request(webdav_methods::move_method(), from).await
+        let response = self.request(webdav_methods::move_method(), from)
             .header("Destination", destination)
             .header("Overwrite", "F") // Don't overwrite existing
             .send()
@@ -657,7 +827,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(webdav_methods::propfind(), path).await
+        let response = self.request(webdav_methods::propfind(), path)
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(r#"<?xml version="1.0" encoding="utf-8"?>
@@ -742,7 +912,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(Method::OPTIONS, "/").await
+        let response = self.request(Method::OPTIONS, "/")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -760,7 +930,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
         
-        let response = self.request(Method::OPTIONS, "/").await
+        let response = self.request(Method::OPTIONS, "/")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -822,7 +992,7 @@ impl StorageProvider for WebDavProvider {
         }
 
         // RFC 4331: WebDAV quota properties
-        let response = self.request(webdav_methods::propfind(), &self.current_path.clone()).await
+        let response = self.request(webdav_methods::propfind(), &self.current_path.clone())
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(r#"<?xml version="1.0" encoding="utf-8"?>
@@ -876,7 +1046,7 @@ impl StorageProvider for WebDavProvider {
                 <d:owner><d:href>AeroFTP</d:href></d:owner>
             </d:lockinfo>"#;
 
-        let response = self.request(webdav_methods::lock(), path).await
+        let response = self.request(webdav_methods::lock(), path)
             .header("Depth", "0")
             .header("Timeout", &timeout_header)
             .header("Content-Type", "application/xml")
@@ -913,7 +1083,7 @@ impl StorageProvider for WebDavProvider {
 
         let token_header = format!("<{}>", lock_token);
 
-        let response = self.request(webdav_methods::unlock(), path).await
+        let response = self.request(webdav_methods::unlock(), path)
             .header("Lock-Token", &token_header)
             .send()
             .await
@@ -939,7 +1109,7 @@ impl StorageProvider for WebDavProvider {
         
         let destination = self.build_url(to);
         
-        let response = self.request(webdav_methods::copy(), from).await
+        let response = self.request(webdav_methods::copy(), from)
             .header("Destination", destination)
             .header("Overwrite", "F")
             .send()

@@ -5,10 +5,10 @@ import {
   Home, Monitor, FileText, Image, Music, Download, Video,
   Trash2, Folder, HardDrive, Usb, Disc, Globe,
   LayoutList, FolderTree as FolderTreeIcon, ChevronDown, ChevronRight,
-  Plus, X, Power, Loader2, Clock,
+  Plus, X, Power, Loader2, Clock, Play,
   type LucideIcon,
 } from 'lucide-react';
-import { UserDirectory, VolumeInfo, SidebarMode } from '../types/aerofile';
+import { UserDirectory, VolumeInfo, UnmountedPartition, SidebarMode } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
 
@@ -55,6 +55,7 @@ interface PlacesSidebarProps {
   t: (key: string, params?: Record<string, string | number>) => string;
   recentPaths?: string[];
   onClearRecent?: () => void;
+  onRemoveRecent?: (path: string) => void;
   isTrashView?: boolean;
   onNavigateTrash?: () => void;
 }
@@ -139,6 +140,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   t,
   recentPaths = [],
   onClearRecent,
+  onRemoveRecent,
   isTrashView = false,
   onNavigateTrash,
 }) => {
@@ -163,8 +165,10 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
   const [showVolumes, setShowVolumes] = useState(false);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
+  const [unmountedPartitions, setUnmountedPartitions] = useState<UnmountedPartition[]>([]);
   const [volumesLoading, setVolumesLoading] = useState(false);
   const [ejectingMount, setEjectingMount] = useState<string | null>(null);
+  const [mountingDevice, setMountingDevice] = useState<string | null>(null);
 
   // Context menu for removing custom locations
   const [removeMenu, setRemoveMenu] = useState<RemoveMenuState>({
@@ -221,8 +225,14 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
   const fetchVolumes = useCallback(async () => {
     try {
-      const vols = await invoke<VolumeInfo[]>('list_mounted_volumes');
-      if (mountedRef.current) setVolumes(vols);
+      const [vols, unmounted] = await Promise.all([
+        invoke<VolumeInfo[]>('list_mounted_volumes'),
+        invoke<UnmountedPartition[]>('list_unmounted_partitions').catch(() => [] as UnmountedPartition[]),
+      ]);
+      if (mountedRef.current) {
+        setVolumes(vols);
+        setUnmountedPartitions(unmounted);
+      }
     } catch {
       // Backend command not available yet
     }
@@ -266,6 +276,24 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       if (mountedRef.current) setEjectingMount(null);
     }
   }, [fetchVolumes]);
+
+  // -----------------------------------------------------------------------
+  // Mount unmounted partition
+  // -----------------------------------------------------------------------
+
+  const handleMount = useCallback(async (device: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMountingDevice(device);
+    try {
+      const mountPoint = await invoke<string>('mount_partition', { device });
+      await fetchVolumes();
+      if (mountPoint) onNavigate(mountPoint);
+    } catch {
+      // Mount failed — permission denied or busy
+    } finally {
+      if (mountedRef.current) setMountingDevice(null);
+    }
+  }, [fetchVolumes, onNavigate]);
 
   // -----------------------------------------------------------------------
   // Custom location management
@@ -403,7 +431,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {/* Recent Locations */}
       {recentPaths.length > 0 && (
         <>
-          <div className="flex items-center justify-between px-2 pt-3 pb-1">
+          <div className="flex items-center justify-between px-2 pr-4 pt-3 pb-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               {t('sidebar.recent')}
             </span>
@@ -421,19 +449,32 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             const folderName = recentPath.split('/').filter(Boolean).pop() || recentPath;
             const isActive = currentPath === recentPath;
             return (
-              <button
+              <div
                 key={recentPath}
-                onClick={() => onNavigate(recentPath)}
-                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                  isActive
-                    ? 'bg-blue-600/20 text-blue-400'
-                    : 'text-gray-300 hover:bg-gray-700/50'
-                }`}
-                title={recentPath}
+                className="group relative flex items-center"
               >
-                <Clock size={14} className="text-gray-500 shrink-0" />
-                <span className="truncate">{folderName}</span>
-              </button>
+                <button
+                  onClick={() => onNavigate(recentPath)}
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                    isActive
+                      ? 'bg-blue-600/20 text-blue-400'
+                      : 'text-gray-300 hover:bg-gray-700/50'
+                  }`}
+                  title={recentPath}
+                >
+                  <Clock size={14} className="text-gray-500 shrink-0" />
+                  <span className="truncate pr-4">{folderName}</span>
+                </button>
+                {onRemoveRecent && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRemoveRecent(recentPath); }}
+                    className="absolute right-4 p-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-gray-500 hover:text-red-400 hover:bg-gray-700/50 transition-all"
+                    title={t('common.delete')}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
             );
           })}
           <div className="border-b border-gray-700 my-1 mx-2" />
@@ -514,6 +555,40 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                   )}
                 </div>
                 <DiskUsageBar usedPercent={usedPercent} />
+              </div>
+            );
+          })}
+          {/* Unmounted partitions */}
+          {unmountedPartitions.map((part) => {
+            const isMounting = mountingDevice === part.device;
+            return (
+              <div
+                key={part.device}
+                className="flex flex-col gap-0.5 px-2 py-1.5 rounded-md transition-colors duration-100 hover:bg-gray-700/50"
+              >
+                <div className="flex items-center gap-2">
+                  <HardDrive size={16} className="opacity-40 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate text-gray-500">
+                      {part.name}
+                    </div>
+                    <div className="text-[10px] text-gray-600">
+                      {formatBytes(part.size_bytes)} &middot; {part.fs_type}
+                    </div>
+                  </div>
+                  <button
+                    className="p-0.5 rounded hover:bg-gray-600/50 text-gray-500 hover:text-gray-200 flex-shrink-0 transition-colors"
+                    onClick={(e) => handleMount(part.device, e)}
+                    title={t('sidebar.mount')}
+                    disabled={isMounting}
+                  >
+                    {isMounting ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })}
