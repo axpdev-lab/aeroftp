@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -44,15 +44,6 @@ import { CostBudgetIndicator } from './CostBudgetIndicator';
 /** Maximum autonomous tool-call steps before stopping */
 const MAX_AUTO_STEPS = 10;
 
-/** Dynamic thinking messages shown during AI response loading */
-const THINKING_MESSAGES = [
-    'Thinking...', 'Analyzing...', 'Processing...', 'Reasoning...',
-    'Connecting the dots...', 'Almost there...', 'Crafting response...',
-    'Exploring options...', 'Percolating...', 'Synthesizing...',
-    'Evaluating...', 'Formulating...', 'Brainstorming...',
-    'Crunching data...', 'Pondering...', 'Cooking up ideas...',
-];
-
 /** 3×3 grid-dots animated spinner */
 const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
     <svg viewBox="0 0 105 105" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width={size} height={size} className={className}>
@@ -68,15 +59,37 @@ const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 1
     </svg>
 );
 
-/** Hook: cycle through thinking messages while loading */
-function useThinkingMessage(isActive: boolean, intervalMs = 3000): string {
+/** Hook: cycle through thinking messages while loading - now uses translation */
+function useThinkingMessage(isActive: boolean, t: (key: string) => string, intervalMs = 3000): string {
     const [index, setIndex] = useState(0);
+
+    // Build thinking messages array using translation function
+    const thinkingMessages = [
+        t('ai.thinking.thinking'),
+        t('ai.thinking.analyzing'),
+        t('ai.thinking.processing'),
+        t('ai.thinking.reasoning'),
+        t('ai.thinking.connectingDots'),
+        t('ai.thinking.almostThere'),
+        t('ai.thinking.craftingResponse'),
+        t('ai.thinking.exploringOptions'),
+        t('ai.thinking.percolating'),
+        t('ai.thinking.synthesizing'),
+        t('ai.thinking.evaluating'),
+        t('ai.thinking.formulating'),
+        t('ai.thinking.brainstorming'),
+        t('ai.thinking.crunchingData'),
+        t('ai.thinking.pondering'),
+        t('ai.thinking.cookingUpIdeas'),
+    ];
+
     useEffect(() => {
         if (!isActive) { setIndex(0); return; }
-        const id = setInterval(() => setIndex(i => (i + 1) % THINKING_MESSAGES.length), intervalMs);
+        const id = setInterval(() => setIndex(i => (i + 1) % thinkingMessages.length), intervalMs);
         return () => clearInterval(id);
-    }, [isActive, intervalMs]);
-    return THINKING_MESSAGES[index];
+    }, [isActive, intervalMs, thinkingMessages.length]);
+
+    return thinkingMessages[index];
 }
 
 // Get provider icon based on type
@@ -96,7 +109,7 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
     }
 };
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, isLightTheme = false, providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation, editorFileName, editorFilePath }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation, editorFileName, editorFilePath }) => {
     const t = useTranslation();
 
     // Conversation management (hook)
@@ -113,12 +126,100 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     // Image/vision handling (hook)
     const { attachedImages, handleImagePick, handlePaste, removeImage, clearImages } = useAIChatImages();
 
+    const isLightTheme = appTheme === 'light';
+
+    // Theme-aware classes (light/dark/tokyo/cyber)
+    const ct = useMemo(() => {
+        switch (appTheme) {
+            case 'light': return {
+                bg: 'bg-white', bgSecondary: 'bg-gray-100', bgSecondaryHalf: 'bg-gray-100/50',
+                bgSecondaryHover: 'hover:bg-gray-200', bgHalf: 'bg-gray-50/80',
+                border: 'border-gray-300', borderSolid: 'border-gray-300',
+                text: 'text-gray-900', textSecondary: 'text-gray-600', textMuted: 'text-gray-500',
+                textHover: 'hover:text-gray-900',
+                btn: 'text-gray-500 hover:text-gray-900 hover:bg-gray-200',
+                userMsg: 'bg-blue-100 text-blue-900 border border-blue-300',
+                userMsgMeta: 'text-blue-600/60',
+                assistantMsg: 'bg-gray-100 text-gray-900',
+                prose: 'prose prose-sm',
+                gradient: 'from-gray-100',
+                inputBg: 'bg-gray-100 border-gray-300', inputText: 'text-gray-900 placeholder-gray-400',
+                dropdown: 'bg-white border-gray-300 shadow-lg',
+                dropdownItem: 'hover:bg-gray-100', dropdownText: 'text-gray-900',
+                sidebarBg: 'border-gray-300 bg-gray-50',
+                sidebarActive: 'bg-purple-100 text-purple-700',
+                sidebarInactive: 'text-gray-600 hover:bg-gray-200 hover:text-gray-900',
+                modelSelected: 'bg-gray-200',
+            };
+            case 'tokyo': return {
+                bg: 'bg-[#1a1b26]', bgSecondary: 'bg-[#16161e]', bgSecondaryHalf: 'bg-[#16161e]/50',
+                bgSecondaryHover: 'hover:bg-[#292e42]', bgHalf: 'bg-[#1a1b26]/80',
+                border: 'border-[#292e42]', borderSolid: 'border-[#414868]',
+                text: 'text-[#c0caf5]', textSecondary: 'text-[#a9b1d6]', textMuted: 'text-[#565f89]',
+                textHover: 'hover:text-[#c0caf5]',
+                btn: 'text-[#565f89] hover:text-[#c0caf5] hover:bg-[#292e42]',
+                userMsg: 'bg-[#24283b] text-[#7aa2f7] border border-[#7aa2f7]/30',
+                userMsgMeta: 'text-[#7aa2f7]/50',
+                assistantMsg: 'bg-[#16161e]/80 text-[#c0caf5]',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-[#16161e]',
+                inputBg: 'bg-[#16161e] border-[#292e42]', inputText: 'text-[#c0caf5] placeholder-[#565f89]',
+                dropdown: 'bg-[#16161e] border-[#292e42] shadow-xl',
+                dropdownItem: 'hover:bg-[#292e42]', dropdownText: 'text-[#c0caf5]',
+                sidebarBg: 'border-[#292e42] bg-[#16161e]/30',
+                sidebarActive: 'bg-[#9d7cd8]/20 text-[#bb9af7]',
+                sidebarInactive: 'text-[#565f89] hover:bg-[#292e42]/50 hover:text-[#a9b1d6]',
+                modelSelected: 'bg-[#292e42]',
+            };
+            case 'cyber': return {
+                bg: 'bg-[#0a0e17]', bgSecondary: 'bg-[#0d1117]', bgSecondaryHalf: 'bg-[#0d1117]/50',
+                bgSecondaryHover: 'hover:bg-emerald-500/10', bgHalf: 'bg-[#0a0e17]/80',
+                border: 'border-emerald-900/40', borderSolid: 'border-emerald-800/50',
+                text: 'text-emerald-100', textSecondary: 'text-emerald-400/70', textMuted: 'text-emerald-600/60',
+                textHover: 'hover:text-emerald-200',
+                btn: 'text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10',
+                userMsg: 'bg-cyan-950/40 text-cyan-100 border border-cyan-500/30',
+                userMsgMeta: 'text-cyan-400/50',
+                assistantMsg: 'bg-[#0d1117]/80 text-emerald-100',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-[#0d1117]',
+                inputBg: 'bg-[#0d1117] border-emerald-800/50', inputText: 'text-emerald-100 placeholder-emerald-700',
+                dropdown: 'bg-[#0d1117] border-emerald-800/50 shadow-xl shadow-emerald-900/20',
+                dropdownItem: 'hover:bg-emerald-500/10', dropdownText: 'text-emerald-100',
+                sidebarBg: 'border-emerald-900/40 bg-[#0d1117]/30',
+                sidebarActive: 'bg-emerald-500/20 text-emerald-300',
+                sidebarInactive: 'text-gray-500 hover:bg-emerald-500/10 hover:text-emerald-300',
+                modelSelected: 'bg-emerald-900/30',
+            };
+            default: return { // dark
+                bg: 'bg-gray-900', bgSecondary: 'bg-gray-800', bgSecondaryHalf: 'bg-gray-800/50',
+                bgSecondaryHover: 'hover:bg-gray-700', bgHalf: 'bg-gray-800/80',
+                border: 'border-gray-700/50', borderSolid: 'border-gray-600',
+                text: 'text-gray-200', textSecondary: 'text-gray-400', textMuted: 'text-gray-500',
+                textHover: 'hover:text-white',
+                btn: 'text-gray-400 hover:text-white hover:bg-gray-700',
+                userMsg: 'bg-[#1e2a3a] text-blue-100 border border-blue-900/40',
+                userMsgMeta: 'text-blue-300/60',
+                assistantMsg: 'bg-gray-800/80 text-gray-200',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-gray-800',
+                inputBg: 'bg-gray-800 border-gray-600', inputText: 'text-white placeholder-gray-500',
+                dropdown: 'bg-gray-800 border-gray-600 shadow-xl',
+                dropdownItem: 'hover:bg-gray-700', dropdownText: 'text-gray-200',
+                sidebarBg: 'border-gray-700/50 bg-gray-800/30',
+                sidebarActive: 'bg-purple-600/20 text-purple-300',
+                sidebarInactive: 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200',
+                modelSelected: 'bg-gray-700/50',
+            };
+        }
+    }, [appTheme]);
+
     const [input, setInput] = useState('');
     const [showModelSelector, setShowModelSelector] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const thinkingMessage = useThinkingMessage(isLoading);
+    const thinkingMessage = useThinkingMessage(isLoading, t);
     const [isListening, setIsListening] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [availableModels, setAvailableModels] = useState<SelectedModel[]>([]);
@@ -586,7 +687,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (toolCall.toolName === 'agent_memory_write') {
                 const entry = (toolCall.args.entry as string) || '';
                 const category = (toolCall.args.category as string) || 'general';
-                if (!entry) throw new Error('No entry specified');
+                if (!entry) throw new Error(t('ai.error.noEntrySpecified'));
                 await appendAgentMemory(entry, category);
                 const resultMessage: Message = {
                     id: crypto.randomUUID(),
@@ -603,7 +704,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (toolCall.toolName === 'terminal_execute') {
                 const command = (toolCall.args.command as string) || '';
                 if (!command) {
-                    throw new Error('No command specified');
+                    throw new Error(t('ai.error.noCommandSpecified'));
                 }
                 // Dispatch event for terminal to pick up
                 window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command } }));
@@ -613,12 +714,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const resultMessage: Message = {
                     id: crypto.randomUUID(),
                     role: 'assistant',
-                    content: `Command sent to terminal: \`${command}\``,
+                    content: `${t('ai.commandSentToTerminal')}: \`${command}\``,
                     timestamp: new Date(),
                 };
                 setMessages(prev => [...prev, resultMessage]);
                 setPendingToolCalls([]);
-                return 'Command sent to terminal';
+                return t('ai.error.commandSentToTerminal');
             }
 
             const result = await executeToolByName(toolCall.toolName, toolCall.args);
@@ -626,7 +727,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             // Check for soft failures (tool returned success: false)
             if (result && typeof result === 'object' && 'success' in (result as Record<string, unknown>) && !(result as Record<string, unknown>).success) {
-                const softError = String((result as Record<string, unknown>).message || 'Operation failed');
+                const softError = String((result as Record<string, unknown>).message || t('ai.error.operationFailed'));
                 const strategy = analyzeToolError(toolCall.toolName, toolCall.args, softError);
 
                 const errorMessage: Message = {
@@ -884,7 +985,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         const userMessage: Message = {
             id: crypto.randomUUID(),
             role: 'user',
-            content: input || (messageImages ? 'Analyze this image' : ''),
+            content: input || (messageImages ? t('ai.analyzeThisImage') : ''),
             timestamp: new Date(),
             images: messageImages,
         };
@@ -1452,7 +1553,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [messages, activeConversationId]);
 
     return (
-        <div className={`flex flex-col h-full bg-gray-900 ${className}`}>
+        <div className={`flex flex-col h-full ${ct.bg} ${className}`}>
             <AIChatHeader
                 showHistory={showHistory}
                 onToggleHistory={() => setShowHistory(!showHistory)}
@@ -1462,6 +1563,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onExport={exportConversation}
                 onOpenSettings={() => setShowSettings(true)}
                 hasMessages={messages.length > 0}
+                appTheme={appTheme}
             />
 
             {/* Phase 3: Branch selector (#69) */}
@@ -1470,7 +1572,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const branches = activeConv?.branches || [];
                 if (branches.length === 0) return null;
                 return (
-                    <div className="px-3 py-1 border-b border-gray-700/50 bg-gray-800/20">
+                    <div className={`px-3 py-1 border-b ${ct.border} ${ct.bgSecondaryHalf}`}>
                         <BranchSelector
                             branches={branches.map(b => ({
                                 id: b.id,
@@ -1489,8 +1591,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             <div className="flex flex-1 overflow-hidden">
             {/* History Sidebar */}
             {showHistory && (
-                <div className="w-48 flex-shrink-0 border-r border-gray-700/50 bg-gray-800/30 flex flex-col overflow-hidden">
-                    <div className="p-2 text-[10px] text-gray-500 uppercase tracking-wider font-medium">
+                <div className={`w-48 flex-shrink-0 border-r ${ct.sidebarBg} flex flex-col overflow-hidden`}>
+                    <div className={`p-2 text-[10px] ${ct.textMuted} uppercase tracking-wider font-medium`}>
                         History ({conversations.length})
                     </div>
                     <div className="flex-1 overflow-y-auto">
@@ -1499,8 +1601,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 key={conv.id}
                                 className={`group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-xs transition-colors ${
                                     conv.id === activeConversationId
-                                        ? 'bg-purple-600/20 text-purple-300'
-                                        : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                                        ? ct.sidebarActive
+                                        : ct.sidebarInactive
                                 }`}
                                 onClick={() => switchConversation(conv)}
                             >
@@ -1508,14 +1610,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 <span className="truncate flex-1">{conv.title}</span>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleDeleteConversation(conv.id); }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 transition-all"
+                                    className={`opacity-0 group-hover:opacity-100 p-0.5 ${ct.textMuted} hover:text-red-400 transition-all`}
                                 >
                                     <Trash2 size={10} />
                                 </button>
                             </div>
                         ))}
                         {conversations.length === 0 && (
-                            <div className="px-2 py-4 text-center text-[10px] text-gray-600">No conversations yet</div>
+                            <div className={`px-2 py-4 text-center text-[10px] ${ct.textMuted}`}>No conversations yet</div>
                         )}
                     </div>
                 </div>
@@ -1538,8 +1640,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         <div className="w-12 h-12 rounded-full bg-purple-600/20 flex items-center justify-center mb-4">
                             <Sparkles size={24} className="text-purple-400" />
                         </div>
-                        <h3 className="text-lg font-medium text-gray-200 mb-2">{t('ai.aeroAgent')}</h3>
-                        <p className="text-sm text-gray-400 max-w-sm mb-6">
+                        <h3 className={`text-lg font-medium ${ct.text} mb-2`}>{t('ai.aeroAgent')}</h3>
+                        <p className={`text-sm ${ct.textSecondary} max-w-sm mb-6`}>
                             {t('ai.welcome')}
                         </p>
                         <div className="grid grid-cols-2 gap-2 text-xs max-w-md">
@@ -1551,7 +1653,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 { icon: '🔍', label: t('ai.compareDirectories') },
                                 { icon: '🔐', label: t('ai.modifyPermissions') },
                             ].map((item, i) => (
-                                <div key={i} className="flex items-center gap-2 px-3 py-2 bg-gray-800/50 rounded-lg text-gray-400">
+                                <div key={i} className={`flex items-center gap-2 px-3 py-2 ${ct.bgSecondaryHalf} rounded-lg ${ct.textSecondary}`}>
                                     <span>{item.icon}</span>
                                     <span>{item.label}</span>
                                 </div>
@@ -1569,8 +1671,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             >
                                 <div
                                     className={`max-w-[85%] rounded-lg px-4 py-2 text-sm select-text ${message.role === 'user'
-                                        ? 'bg-[#1e2a3a] text-blue-100 border border-blue-900/40'
-                                        : 'bg-gray-800/80 text-gray-200'
+                                        ? ct.userMsg
+                                        : ct.assistantMsg
                                         }`}
                                 >
                                     {/* Image thumbnails for vision messages */}
@@ -1598,7 +1700,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     )}
                                     <div className="relative">
                                         <div
-                                            className={`select-text prose prose-invert prose-sm max-w-none ${
+                                            className={`select-text ${ct.prose} max-w-none ${
                                                 message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id)
                                                     ? 'max-h-[200px] overflow-hidden' : ''
                                             }`}
@@ -1611,7 +1713,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             />
                                         </div>
                                         {message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id) && (
-                                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-800 to-transparent flex items-end justify-center">
+                                            <div className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${ct.gradient} to-transparent flex items-end justify-center`}>
                                                 <button
                                                     onClick={() => setExpandedMessages(prev => new Set(prev).add(message.id))}
                                                     className="text-xs text-purple-400 hover:text-purple-300 pb-0.5"
@@ -1629,7 +1731,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             </button>
                                         )}
                                     </div>
-                                    <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? 'text-blue-300/60' : 'text-gray-500'}`}>
+                                    <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? ct.userMsgMeta : ct.textMuted}`}>
                                         <span>{message.timestamp.toLocaleTimeString()}</span>
                                         {message.role === 'assistant' && (
                                             <button
@@ -1638,7 +1740,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                                     setCopiedId(message.id);
                                                     setTimeout(() => setCopiedId(null), 1500);
                                                 }}
-                                                className="text-gray-500 hover:text-gray-300 transition-colors"
+                                                className={`${ct.textMuted} ${ct.textHover} transition-colors`}
                                                 title={t('ai.copy') || 'Copy'}
                                             >
                                                 {copiedId === message.id ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
@@ -1647,14 +1749,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         {message.role === 'assistant' && (
                                             <button
                                                 onClick={() => forkConversation(message.id)}
-                                                className="p-0.5 text-gray-600 hover:text-purple-400 transition-colors"
+                                                className={`p-0.5 ${ct.textMuted} hover:text-purple-400 transition-colors`}
                                                 title={t('ai.branch.fork') || 'Fork here'}
                                             >
                                                 <GitBranch size={10} />
                                             </button>
                                         )}
                                         {message.role === 'assistant' && message.modelInfo && (
-                                            <span className="flex items-center gap-1 text-gray-400">
+                                            <span className={`flex items-center gap-1 ${ct.textSecondary}`}>
                                                 • {getProviderIcon(message.modelInfo.providerType, 10)}
                                                 <span>{message.modelInfo.modelName}</span>
                                             </span>
@@ -1680,7 +1782,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         ))}
                         {isLoading && !pendingToolCalls.some(tc => tc.status === 'pending') && (
                             <div className="flex gap-3">
-                                <div className="bg-gray-800/80 rounded-lg px-4 py-2 text-gray-400 text-sm flex items-center gap-2">
+                                <div className={`${ct.bgHalf} rounded-lg px-4 py-2 ${ct.textSecondary} text-sm flex items-center gap-2`}>
                                     <GridSpinner size={14} className="text-purple-400" />
                                     {isAutoExecuting ? (
                                         <>
@@ -1785,7 +1887,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             {/* Input Area - Antigravity Style - All inside one box */}
             <div className="p-3">
-                <div className="relative bg-gray-800 border border-gray-600 rounded-lg focus-within:border-purple-500 transition-colors" data-aichat-input>
+                <div className={`relative ${ct.inputBg} border rounded-lg focus-within:border-purple-500 transition-colors`} data-aichat-input>
                     {/* Phase 4: Prompt template selector (#75) */}
                     <PromptTemplateSelector
                         input={input}
@@ -1798,10 +1900,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     <TokenBudgetIndicator budget={tokenBudgetData} compact />
                     {/* Attached Images Preview Strip */}
                     {attachedImages.length > 0 && (
-                        <div className="flex gap-2 px-3 py-2 border-b border-gray-700/50 overflow-x-auto">
+                        <div className={`flex gap-2 px-3 py-2 border-b ${ct.border} overflow-x-auto`}>
                             {attachedImages.map((img, i) => (
                                 <div key={i} className="relative group shrink-0">
-                                    <img src={img.preview} alt="" className="h-12 w-12 object-cover rounded border border-gray-600" />
+                                    <img src={img.preview} alt="" className={`h-12 w-12 object-cover rounded border ${ct.borderSolid}`} />
                                     <button
                                         onClick={() => removeImage(i)}
                                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1835,7 +1937,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             }}
                             onPaste={handlePaste}
                             placeholder={t('ai.askPlaceholder')}
-                            className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none resize-none min-h-[24px] max-h-[120px]"
+                            className={`flex-1 bg-transparent text-sm ${ct.inputText} focus:outline-none resize-none min-h-[24px] max-h-[120px]`}
                             rows={1}
                         />
                         <button
@@ -1844,7 +1946,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             className={`p-1.5 rounded transition-colors ${
                                 attachedImages.length >= MAX_IMAGES
                                     ? 'text-gray-600 cursor-not-allowed'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                    : ct.btn
                             }`}
                             title={attachedImages.length >= MAX_IMAGES ? t('ai.imageLimitReached') : t('ai.attachImage')}
                         >
@@ -1854,7 +1956,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             onClick={toggleListening}
                             className={`p-1.5 rounded transition-colors ${isListening
                                 ? 'text-red-400 bg-red-500/20'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                                : ct.btn}`}
                             title={isListening ? t('ai.stopListening') : t('ai.voiceInput')}
                         >
                             {isListening ? <MicOff size={16} /> : <Mic size={16} />}
@@ -1869,19 +1971,19 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     </div>
 
                     {/* Bottom Row - Model Selector + Disclaimer (inside the box) */}
-                    <div className="flex items-center justify-between px-3 py-2 border-t border-gray-700/50 text-xs">
+                    <div className={`flex items-center justify-between px-3 py-2 border-t ${ct.border} text-xs`}>
                         <div className="flex items-center gap-3">
                             {/* Context Menu for adding paths */}
                             <div className="relative">
                                 <button
                                     onClick={() => setShowContextMenu(!showContextMenu)}
-                                    className="text-gray-500 hover:text-white transition-colors"
+                                    className={`${ct.textMuted} ${ct.textHover} transition-colors`}
                                     title={t('ai.addContext')}
                                 >+</button>
 
                                 {showContextMenu && (
-                                    <div className="absolute left-0 bottom-full mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-20 py-1 min-w-[200px]">
-                                        <div className="px-3 py-1.5 text-[10px] text-gray-500 border-b border-gray-700">{t('ai.insertPath')}</div>
+                                    <div className={`absolute left-0 bottom-full mb-1 ${ct.dropdown} border rounded-lg z-20 py-1 min-w-[200px]`}>
+                                        <div className={`px-3 py-1.5 text-[10px] ${ct.textMuted} border-b ${ct.border}`}>{t('ai.insertPath')}</div>
 
                                         {remotePath && (
                                             <button
@@ -1890,12 +1992,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                                     setShowContextMenu(false);
                                                     inputRef.current?.focus();
                                                 }}
-                                                className="w-full px-3 py-2 text-left hover:bg-gray-700 flex items-center gap-2"
+                                                className={`w-full px-3 py-2 text-left ${ct.dropdownItem} flex items-center gap-2`}
                                             >
                                                 <span className="text-green-400">🌐</span>
                                                 <div className="flex flex-col">
-                                                    <span className="text-gray-200">{t('ai.remotePath')}</span>
-                                                    <span className="text-gray-500 text-[10px] truncate max-w-[160px]">{remotePath}</span>
+                                                    <span className={ct.dropdownText}>{t('ai.remotePath')}</span>
+                                                    <span className={`${ct.textMuted} text-[10px] truncate max-w-[160px]`}>{remotePath}</span>
                                                 </div>
                                             </button>
                                         )}
@@ -1907,28 +2009,28 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                                     setShowContextMenu(false);
                                                     inputRef.current?.focus();
                                                 }}
-                                                className="w-full px-3 py-2 text-left hover:bg-gray-700 flex items-center gap-2"
+                                                className={`w-full px-3 py-2 text-left ${ct.dropdownItem} flex items-center gap-2`}
                                             >
                                                 <span className="text-blue-400">📁</span>
                                                 <div className="flex flex-col">
-                                                    <span className="text-gray-200">{t('ai.localPath')}</span>
-                                                    <span className="text-gray-500 text-[10px] truncate max-w-[160px]">{localPath}</span>
+                                                    <span className={ct.dropdownText}>{t('ai.localPath')}</span>
+                                                    <span className={`${ct.textMuted} text-[10px] truncate max-w-[160px]`}>{localPath}</span>
                                                 </div>
                                             </button>
                                         )}
 
                                         {(!remotePath && !localPath) && (
-                                            <div className="px-3 py-2 text-gray-500">{t('ai.noPathsAvailable')}</div>
+                                            <div className={`px-3 py-2 ${ct.textMuted}`}>{t('ai.noPathsAvailable')}</div>
                                         )}
 
-                                        <div className="border-t border-gray-700 mt-1 pt-1">
+                                        <div className={`border-t ${ct.border} mt-1 pt-1`}>
                                             <button
                                                 onClick={() => {
                                                     const text = `Remote: ${remotePath || 'N/A'}\nLocal: ${localPath || 'N/A'}`;
                                                     navigator.clipboard.writeText(text);
                                                     setShowContextMenu(false);
                                                 }}
-                                                className="w-full px-3 py-2 text-left hover:bg-gray-700 flex items-center gap-2 text-gray-400"
+                                                className={`w-full px-3 py-2 text-left ${ct.dropdownItem} flex items-center gap-2 ${ct.textSecondary}`}
                                             >
                                                 <span>📋</span>
                                                 <span>{t('ai.copyBothPaths')}</span>
@@ -1941,7 +2043,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <div className="relative">
                                 <button
                                     onClick={() => { loadModels(); setShowModelSelector(!showModelSelector); }}
-                                    className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors"
+                                    className={`flex items-center gap-1.5 ${ct.textSecondary} ${ct.textHover} transition-colors`}
                                 >
                                     {selectedModel ? (
                                         <>
@@ -1958,14 +2060,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 </button>
 
                                 {showModelSelector && (
-                                    <div className="absolute left-0 bottom-full mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-10 py-1 min-w-[260px] max-h-[300px] overflow-y-auto">
+                                    <div className={`absolute left-0 bottom-full mb-1 ${ct.dropdown} border rounded-lg z-10 py-1 min-w-[260px] max-h-[300px] overflow-y-auto`}>
                                         {/* Auto option when auto-routing is enabled */}
                                         {(() => {
                                             if (cachedAiSettings?.autoRouting?.enabled) {
                                                 return (
                                                     <button
                                                         onClick={() => { setSelectedModel(null); setShowModelSelector(false); }}
-                                                        className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2.5 border-b border-gray-700 ${!selectedModel ? 'bg-purple-600/20' : ''}`}
+                                                        className={`w-full px-3 py-2 text-left text-xs ${ct.dropdownItem} flex items-center gap-2.5 border-b ${ct.border} ${!selectedModel ? 'bg-purple-600/20' : ''}`}
                                                     >
                                                         <span className="w-4">🤖</span>
                                                         <div className="flex flex-col flex-1">
@@ -1980,18 +2082,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         })()}
 
                                         {availableModels.length === 0 ? (
-                                            <div className="px-3 py-2 text-xs text-gray-400">{t('ai.noModelsConfigured')}</div>
+                                            <div className={`px-3 py-2 text-xs ${ct.textSecondary}`}>{t('ai.noModelsConfigured')}</div>
                                         ) : (
                                             availableModels.map(model => (
                                                 <button
                                                     key={model.modelId}
                                                     onClick={() => { setSelectedModel(model); setShowModelSelector(false); }}
-                                                    className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-700 flex items-center gap-2.5 ${selectedModel?.modelId === model.modelId ? 'bg-gray-700/50' : ''}`}
+                                                    className={`w-full px-3 py-2 text-left text-xs ${ct.dropdownItem} flex items-center gap-2.5 ${selectedModel?.modelId === model.modelId ? ct.modelSelected : ''}`}
                                                 >
                                                     <span className="w-4">{getProviderIcon(model.providerType, 14)}</span>
                                                     <div className="flex flex-col flex-1">
-                                                        <span className="font-medium text-gray-200">{model.displayName}</span>
-                                                        <span className="text-gray-500 text-[10px]">{model.providerName}</span>
+                                                        <span className={`font-medium ${ct.dropdownText}`}>{model.displayName}</span>
+                                                        <span className={`${ct.textMuted} text-[10px]`}>{model.providerName}</span>
                                                     </div>
                                                     {selectedModel?.modelId === model.modelId && <span className="text-green-400">✓</span>}
                                                 </button>
@@ -2005,7 +2107,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         {/* Phase 4: Cost budget indicator (#77) */}
                         <CostBudgetIndicator conversationCost={conversationCost} budgetCheck={budgetCheck} compact />
                         {/* AI Disclaimer */}
-                        <span className="text-[10px] text-gray-500">{t('ai.disclaimer')}</span>
+                        <span className={`text-[10px] ${ct.textMuted}`}>{t('ai.disclaimer')}</span>
                     </div>
                 </div>
             </div>

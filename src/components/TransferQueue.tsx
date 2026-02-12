@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
+import { useTranslation } from '../i18n';
 
 export type TransferStatus = 'pending' | 'transferring' | 'completed' | 'error';
 export type TransferType = 'upload' | 'download';
@@ -64,6 +65,7 @@ interface QueueContextMenuProps {
 }
 
 const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry, onRemove, onClose }) => {
+    const t = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -105,17 +107,17 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
             className="fixed z-[200] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
             style={{ left: adjustedX, top: adjustedY }}
         >
-            {menuItem(<Copy size={12} />, 'Copy', copyItemDetails)}
+            {menuItem(<Copy size={12} />, t('transfer.copy'), copyItemDetails)}
             {item.status === 'error' && onRetry && (
-                menuItem(<RotateCcw size={12} />, 'Retry', () => onRetry(item.id))
+                menuItem(<RotateCcw size={12} />, t('transfer.retry'), () => onRetry(item.id))
             )}
             {item.status === 'error' && item.error && (
-                menuItem(<Copy size={12} />, 'Copy error', () => {
+                menuItem(<Copy size={12} />, t('transfer.copyError'), () => {
                     navigator.clipboard.writeText(item.error || '');
                 })
             )}
             {onRemove && item.status !== 'transferring' && (
-                menuItem(<Trash2 size={12} />, 'Remove', () => onRemove(item.id), 'text-gray-300 hover:bg-red-900/40 hover:text-red-300')
+                menuItem(<Trash2 size={12} />, t('transfer.remove'), () => onRemove(item.id), 'text-gray-300 hover:bg-red-900/40 hover:text-red-300')
             )}
         </div>
     );
@@ -132,6 +134,7 @@ interface HeaderDropdownProps {
 }
 
 const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearCompleted, onStopAll, hasCompleted, hasPending, hasItems }) => {
+    const t = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -179,9 +182,9 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
                 <div ref={dropdownRef} className="fixed bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[170px] z-[200]"
                     style={{ top: pos.top, right: pos.right }}
                 >
-                    {onClearCompleted && menuItem(<Check size={12} />, 'Clear completed', onClearCompleted, !hasCompleted)}
-                    {onStopAll && menuItem(<Square size={12} />, 'Stop all pending', onStopAll, !hasPending)}
-                    {onClear && menuItem(<Trash2 size={12} />, 'Clear all', onClear, !hasItems, 'hover:text-red-300')}
+                    {onClearCompleted && menuItem(<Check size={12} />, t('transfer.clearCompleted'), onClearCompleted, !hasCompleted)}
+                    {onStopAll && menuItem(<Square size={12} />, t('transfer.stopAllPending'), onStopAll, !hasPending)}
+                    {onClear && menuItem(<Trash2 size={12} />, t('transfer.clearAll'), onClear, !hasItems, 'hover:text-red-300')}
                 </div>
             )}
         </>
@@ -199,6 +202,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     isVisible,
     onToggle
 }) => {
+    const t = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [autoScroll, setAutoScroll] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: TransferItem } | null>(null);
@@ -249,7 +253,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             ? <Upload size={14} className="text-cyan-400" />
                             : <Download size={14} className="text-orange-400" />
                         }
-                        <span className="text-gray-300 font-medium">Transfer Queue</span>
+                        <span className="text-gray-300 font-medium">{t('transfer.queue')}</span>
                         <span className="text-gray-500">
                             [{completedCount}/{items.length}]
                         </span>
@@ -262,10 +266,10 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             </span>
                         )}
                         {pendingCount > 0 && (
-                            <span className="text-gray-400">{pendingCount} pending</span>
+                            <span className="text-gray-400">{pendingCount} {t('transfer.pending')}</span>
                         )}
                         {errorCount > 0 && (
-                            <span className="text-red-400">{errorCount} failed</span>
+                            <span className="text-red-400">{errorCount} {t('transfer.failed')}</span>
                         )}
 
                         {/* Quick action buttons */}
@@ -275,7 +279,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     onClick={(e) => { e.stopPropagation(); onClearCompleted(); }}
                                     disabled={completedCount === 0}
                                     className={`p-1 rounded transition-colors ${completedCount > 0 ? 'text-gray-400 hover:text-green-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
-                                    title="Clear completed"
+                                    title={t('transfer.clearCompleted')}
                                 >
                                     <Check size={13} />
                                 </button>
@@ -285,7 +289,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     onClick={(e) => { e.stopPropagation(); onStopAll(); }}
                                     disabled={transferringCount === 0 && pendingCount === 0}
                                     className={`p-1 rounded transition-colors ${(transferringCount > 0 || pendingCount > 0) ? 'text-red-400 hover:text-red-300 hover:bg-red-900/30 animate-pulse' : 'text-gray-700 cursor-not-allowed'}`}
-                                    title="Stop all"
+                                    title={t('transfer.stopAll')}
                                 >
                                     <Square size={13} />
                                 </button>
@@ -295,7 +299,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     onClick={(e) => { e.stopPropagation(); onClear(); }}
                                     disabled={items.length === 0}
                                     className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-400 hover:text-red-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
-                                    title="Clear all"
+                                    title={t('transfer.clearAll')}
                                 >
                                     <Trash2 size={13} />
                                 </button>
@@ -319,7 +323,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 }}
                                 disabled={items.length === 0}
                                 className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-400 hover:text-blue-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
-                                title="Copy queue to clipboard"
+                                title={t('transfer.copyQueueToClipboard')}
                             >
                                 <Copy size={13} />
                             </button>
@@ -408,7 +412,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     : item.status === 'completed' && item.startTime && item.endTime
                                         ? formatTime(item.endTime - item.startTime)
                                         : item.status === 'error'
-                                            ? 'FAIL'
+                                            ? t('transfer.fail')
                                             : '—'
                                 }
                             </span>
@@ -426,7 +430,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                         navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
                                     }}
                                     className="p-0.5 text-gray-600 hover:text-blue-400 transition-colors"
-                                    title="Copy"
+                                    title={t('transfer.copy')}
                                 >
                                     <Copy size={10} />
                                 </button>
@@ -434,7 +438,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
                                         className="p-0.5 text-gray-600 hover:text-cyan-400 transition-colors"
-                                        title="Retry"
+                                        title={t('transfer.retry')}
                                     >
                                         <RotateCcw size={10} />
                                     </button>
@@ -443,7 +447,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
                                         className="p-0.5 text-gray-600 hover:text-red-400 transition-colors"
-                                        title="Remove"
+                                        title={t('transfer.remove')}
                                     >
                                         <X size={10} />
                                     </button>

@@ -1240,3 +1240,120 @@ html.tokyo::-webkit-scrollbar-thumb {
 html.tokyo::-webkit-scrollbar-thumb:hover {
   background: var(--tokyo-comment);
 }
+
+/* ======================================
+   Cyberpunk Theme
+   Green + Blue neon on deep dark base
+   ====================================== */
+
+html.cyber {
+  --cyber-bg: #0a0e17;
+  --cyber-bg-dark: #060a12;
+  --cyber-bg-highlight: #111b27;
+  --cyber-fg: #e0ffe0;
+  --cyber-fg-secondary: #94a3b8;
+  --cyber-fg-muted: #475569;
+  --cyber-green: #00ff9f;
+  --cyber-green-dim: #10b981;
+  --cyber-cyan: #00d4ff;
+  --cyber-blue: #0ea5e9;
+  --cyber-teal: #2dd4bf;
+  --cyber-amber: #fbbf24;
+  --cyber-red: #ef4444;
+  --cyber-border: rgba(16, 185, 129, 0.25);
+}
+
+/* Cyberpunk - Override dark mode colors */
+html.cyber.dark {
+  --color-bg-primary: var(--cyber-bg);
+  --color-bg-secondary: var(--cyber-bg-dark);
+  --color-bg-tertiary: var(--cyber-bg-highlight);
+  --color-text-primary: var(--cyber-fg);
+  --color-text-secondary: var(--cyber-fg-secondary);
+  --color-text-muted: var(--cyber-fg-muted);
+  --color-accent: var(--cyber-green-dim);
+  --color-accent-hover: var(--cyber-green);
+  --color-border: var(--cyber-border);
+}
+
+/* Cyberpunk specific styling */
+html.cyber .dark\:bg-gray-900 {
+  background-color: var(--cyber-bg) !important;
+}
+
+html.cyber .dark\:bg-gray-800 {
+  background-color: var(--cyber-bg-dark) !important;
+}
+
+html.cyber .dark\:bg-gray-700 {
+  background-color: var(--cyber-bg-highlight) !important;
+}
+
+html.cyber .dark\:border-gray-700,
+html.cyber .dark\:border-gray-600 {
+  border-color: var(--cyber-border) !important;
+}
+
+html.cyber .dark\:text-gray-100,
+html.cyber .dark\:text-white {
+  color: var(--cyber-fg) !important;
+}
+
+html.cyber .dark\:text-gray-400,
+html.cyber .dark\:text-gray-300 {
+  color: var(--cyber-fg-secondary) !important;
+}
+
+/* Cyberpunk accents */
+html.cyber .text-blue-500,
+html.cyber .dark\:text-blue-400 {
+  color: var(--cyber-cyan) !important;
+}
+
+html.cyber .bg-blue-500,
+html.cyber .dark\:bg-blue-600 {
+  background-color: var(--cyber-green-dim) !important;
+}
+
+html.cyber .bg-blue-500:hover,
+html.cyber .hover\:bg-blue-600:hover {
+  background-color: var(--cyber-green) !important;
+}
+
+/* Cyberpunk folder icons */
+html.cyber .text-yellow-500 {
+  color: var(--cyber-amber) !important;
+}
+
+/* Cyberpunk success/error colors */
+html.cyber .text-green-500,
+html.cyber .text-green-600 {
+  color: var(--cyber-green-dim) !important;
+}
+
+html.cyber .text-red-500,
+html.cyber .text-red-600 {
+  color: var(--cyber-red) !important;
+}
+
+/* Cyberpunk gradient override for header */
+html.cyber .dark\:from-gray-900 {
+  --tw-gradient-from: var(--cyber-bg) !important;
+}
+
+html.cyber .dark\:to-gray-800 {
+  --tw-gradient-to: var(--cyber-bg-dark) !important;
+}
+
+/* Cyberpunk scrollbar */
+html.cyber::-webkit-scrollbar-track {
+  background: var(--cyber-bg-dark);
+}
+
+html.cyber::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+html.cyber::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.5);
+}

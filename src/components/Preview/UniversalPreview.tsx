@@ -21,6 +21,7 @@ import { AudioPlayer } from './viewers/AudioPlayer';
 import { VideoPlayer } from './viewers/VideoPlayer';
 import { PDFViewer } from './viewers/PDFViewer';
 import { TextViewer } from './viewers/TextViewer';
+import { useI18n } from '../../i18n';
 
 export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     isOpen,
@@ -32,6 +33,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     hasNext,
     hasPrevious,
 }) => {
+    const { t } = useI18n();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -118,9 +120,9 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                     <div className="flex items-center justify-center h-full text-gray-400">
                         <div className="text-center">
                             <div className="text-6xl mb-4">📁</div>
-                            <div className="text-lg">Preview not available</div>
+                            <div className="text-lg">{t('preview.common.notAvailable')}</div>
                             <div className="text-sm text-gray-500 mt-2">
-                                This file type is not supported for preview
+                                {t('preview.common.notSupported')}
                             </div>
                         </div>
                     </div>
@@ -152,7 +154,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                                 {file.isRemote && (
                                     <>
                                         <span>•</span>
-                                        <span className="text-blue-400">Remote</span>
+                                        <span className="text-blue-400">{t('preview.common.remote')}</span>
                                     </>
                                 )}
                             </div>
@@ -168,7 +170,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
                             >
                                 <Download size={16} />
-                                Download
+                                {t('preview.common.download')}
                             </button>
                         )}
 
@@ -176,7 +178,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <button
                             onClick={onClose}
                             className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                            title="Close (ESC)"
+                            title={t('preview.common.close')}
                         >
                             <X size={20} className="text-gray-400" />
                         </button>
@@ -190,7 +192,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
                             <div className="flex flex-col items-center gap-3">
                                 <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-gray-400">Loading...</span>
+                                <span className="text-gray-400">{t('preview.common.loading')}</span>
                             </div>
                         </div>
                     )}
@@ -213,7 +215,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <button
                             onClick={onPrevious}
                             className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors"
-                            title="Previous (←)"
+                            title={t('preview.common.previous')}
                         >
                             <ChevronLeft size={24} className="text-white" />
                         </button>
@@ -222,7 +224,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <button
                             onClick={onNext}
                             className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors"
-                            title="Next (→)"
+                            title={t('preview.common.next')}
                         >
                             <ChevronRight size={24} className="text-white" />
                         </button>
@@ -231,9 +233,9 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
                 {/* Footer with keyboard hints */}
                 <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 text-xs text-gray-500 flex justify-center gap-6">
-                    <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">ESC</kbd> Close</span>
+                    <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">ESC</kbd> {t('preview.common.close')}</span>
                     {(hasNext || hasPrevious) && (
-                        <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">←</kbd> <kbd className="px-1.5 py-0.5 bg-gray-700 rounded">→</kbd> Navigate</span>
+                        <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">←</kbd> <kbd className="px-1.5 py-0.5 bg-gray-700 rounded">→</kbd> {t('preview.common.navigate')}</span>
                     )}
                 </div>
             </div>

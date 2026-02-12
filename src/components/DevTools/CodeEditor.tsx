@@ -43,7 +43,42 @@ const tokyoNightTheme = {
     },
 };
 
-type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night';
+// Cyber theme — neon green on deep black, matrix-style
+const cyberTheme = {
+    base: 'vs-dark' as const,
+    inherit: true,
+    rules: [
+        { token: 'comment', foreground: '1a5a1a', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '00ff41' },
+        { token: 'string', foreground: '00ffcc' },
+        { token: 'number', foreground: 'ffb800' },
+        { token: 'type', foreground: '00d4ff' },
+        { token: 'function', foreground: '39ff14' },
+        { token: 'variable', foreground: 'e0ffe0' },
+        { token: 'constant', foreground: 'ffd000' },
+        { token: 'tag', foreground: 'ff0033' },
+        { token: 'attribute.name', foreground: '00ffcc' },
+        { token: 'attribute.value', foreground: '39ff14' },
+        { token: 'delimiter', foreground: '00e5ff' },
+        { token: 'operator', foreground: '00e5ff' },
+    ],
+    colors: {
+        'editor.background': '#0a0e17',
+        'editor.foreground': '#e0ffe0',
+        'editorLineNumber.foreground': '#1a3a1a',
+        'editorLineNumber.activeForeground': '#39ff14',
+        'editor.selectionBackground': '#1a3a1a',
+        'editor.lineHighlightBackground': '#0d1a0d',
+        'editorCursor.foreground': '#00ff41',
+        'editorWhitespace.foreground': '#1a2a1a',
+        'editorIndentGuide.background': '#1a2a1a',
+        'editor.selectionHighlightBackground': '#1a4a1a',
+        'editorBracketMatch.background': '#1a4a1a66',
+        'editorBracketMatch.border': '#00ff41',
+    },
+};
+
+type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber';
 
 interface CodeEditorProps {
     file: PreviewFile | null;
@@ -84,8 +119,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         editorRef.current = editor;
         monacoRef.current = monaco;
 
-        // Define Tokyo Night theme
+        // Define custom themes
         monaco.editor.defineTheme('tokyo-night', tokyoNightTheme);
+        monaco.editor.defineTheme('cyber', cyberTheme);
         monaco.editor.setTheme(theme);
 
         if (file) {

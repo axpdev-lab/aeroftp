@@ -10,6 +10,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Sliders, RotateCcw, ChevronDown, Volume2 } from 'lucide-react';
 import { EqualizerState, EQPreset } from '../types';
+import { useI18n } from '../../../i18n';
 
 // EQ frequency bands
 export const EQ_BANDS = [
@@ -58,6 +59,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
     onToggleExpand,
     className = '',
 }) => {
+    const { t } = useI18n();
     const [showPresetMenu, setShowPresetMenu] = useState(false);
     // Store band values for restore when toggling enabled
     const savedBandsRef = useRef<number[]>([...state.bands]);
@@ -147,7 +149,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                 className={`flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors ${className}`}
             >
                 <Sliders size={16} className="text-purple-400" />
-                <span className="text-sm text-gray-300">Mixer</span>
+                <span className="text-sm text-gray-300">{t('preview.mixer.mixer')}</span>
                 <ChevronDown size={14} className="text-gray-500" />
             </button>
         );
@@ -194,7 +196,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                     <button
                         onClick={resetEQ}
                         className="p-1.5 hover:bg-gray-700 rounded transition-colors"
-                        title="Reset to Flat"
+                        title={t('preview.mixer.reset')}
                     >
                         <RotateCcw size={14} className="text-gray-400" />
                     </button>
@@ -207,7 +209,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                                 : 'bg-gray-700 text-gray-400'
                             }`}
                     >
-                        {state.enabled ? 'ON' : 'OFF'}
+                        {state.enabled ? t('preview.mixer.on') : t('preview.mixer.off')}
                     </button>
                 </div>
             </div>
@@ -283,7 +285,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
                     onClick={onToggleExpand}
                     className="w-full mt-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
-                    Hide Mixer
+                    {t('preview.mixer.hide')}
                 </button>
             )}
         </div>

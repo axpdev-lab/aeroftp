@@ -131,6 +131,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.6" date="2026-02-11">
+      <description>
+        <p>Theme System, Security Toolkit, Complete i18n: Four built-in themes (Light, Dark, Tokyo Night, Cyberpunk) with CSS custom properties. Security Toolkit with Hash Forge (5 algorithms), CryptoLab (AES-256-GCM/ChaCha20 text encryption), and Password Forge (CSPRNG passwords + BIP39 passphrases). Terminal and Monaco editor auto-sync with app theme. 360 new i18n keys across 47 languages — zero untranslated strings. Monaco dev mode fix. About dialog updated.</p>
+      </description>
+    </release>
     <release version="2.0.5" date="2026-02-10">
       <description>
         <p>System Startup, Tray Icon, Windows Explorer Badge and Provider Cleanup: Autostart on system boot with toggle in Settings (cross-platform: LaunchAgent, .desktop, Registry). Standard white monochrome tray icon. Windows Explorer native sync badges via Cloud Filter API and Named Pipe IPC server. OwnCloud provider removed after Kiteworks acquisition. Protocol Selector UX fixes. Security audit: 7 findings fixed (bounded reader, reject remote pipe clients, idle timeout, UNC path blocking, RwLock poison recovery).</p>

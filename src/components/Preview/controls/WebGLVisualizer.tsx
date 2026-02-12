@@ -17,6 +17,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { VERTEX_SHADER, SHADERS, WebGLShaderName } from './shaders';
+import { useI18n } from '../../../i18n';
 
 interface WebGLVisualizerProps {
     analyser: AnalyserNode | null;
@@ -106,6 +107,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     className = '',
     onContextLost,
 }) => {
+    const { t } = useI18n();
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // WebGL object refs (survive across renders, cleaned up on unmount)
@@ -417,7 +419,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     if (!webgl2Supported) {
         return (
             <div className={`relative w-full h-full flex items-center justify-center bg-gray-900 rounded-lg ${className}`}>
-                <span className="text-gray-500 text-xs font-mono">WebGL 2 not supported</span>
+                <span className="text-gray-500 text-xs font-mono">{t('preview.webgl.notSupported')}</span>
             </div>
         );
     }

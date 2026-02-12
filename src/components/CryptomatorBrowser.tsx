@@ -35,7 +35,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
     const [showPassword, setShowPassword] = useState(false);
     const [vaultPath, setVaultPath] = useState('');
     const [entries, setEntries] = useState<CryptomatorEntry[]>([]);
-    const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: 'Root', dirId: '' }]);
+    const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: t('cryptomator.root'), dirId: '' }]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -121,7 +121,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                 filename: entry.name,
                 outputPath: savePath,
             });
-            setSuccess(`Decrypted ${entry.name}`);
+            setSuccess(t('cryptomator.decrypted', { name: entry.name }));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -145,7 +145,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
             // Refresh listing
             const list = await invoke<CryptomatorEntry[]>('cryptomator_list', { vaultId: vaultInfo.vaultId, dirId: currentDirId });
             setEntries(list);
-            setSuccess('File encrypted into vault');
+            setSuccess(t('cryptomator.encrypted'));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -161,14 +161,14 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                     <div className="flex items-center gap-2">
                         <Shield size={18} className="text-emerald-400" />
                         <span className="font-medium">
-                            {vaultInfo ? vaultInfo.name : (t('cryptomator.title') || 'Cryptomator Vault')}
+                            {vaultInfo ? vaultInfo.name : t('cryptomator.title')}
                         </span>
                         {vaultInfo && <span className="text-xs text-gray-400">Format {vaultInfo.format}</span>}
                     </div>
                     <div className="flex items-center gap-1">
                         {vaultInfo && (
                             <button onClick={handleLock} className="flex items-center gap-1 px-2 py-1 text-xs bg-red-700 hover:bg-red-600 rounded">
-                                <Lock size={12} /> {t('cryptomator.lock') || 'Lock'}
+                                <Lock size={12} /> {t('cryptomator.lock')}
                             </button>
                         )}
                         <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} /></button>
@@ -192,10 +192,10 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
 
                         <div className="text-center">
                             <p className="text-gray-300 text-sm max-w-md">
-                                {t('cryptomator.description') || 'Open a Cryptomator vault (format 8) to browse and decrypt files.'}
+                                {t('cryptomator.description')}
                             </p>
                             <p className="text-gray-500 text-xs mt-1">
-                                {t('cryptomator.readOnly') || 'Read-only mode — vault creation coming in v2.1'}
+                                {t('cryptomator.readOnly')}
                             </p>
                         </div>
 
@@ -224,13 +224,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                         </p>
 
                         <button onClick={handleSelectVault} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-                            {vaultPath || (t('cryptomator.selectFolder') || 'Select Vault Folder...')}
+                            {vaultPath || t('cryptomator.selectFolder')}
                         </button>
 
                         {vaultPath && (
                             <>
                                 <div className="w-full max-w-sm">
-                                    <label className="text-xs text-gray-400 block mb-1">{t('cryptomator.password') || 'Vault Password'}</label>
+                                    <label className="text-xs text-gray-400 block mb-1">{t('cryptomator.password')}</label>
                                     <div className="relative">
                                         <input
                                             type={showPassword ? 'text' : 'password'}
@@ -246,7 +246,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                                 </div>
                                 <button onClick={handleUnlock} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm disabled:opacity-50">
                                     {loading ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />}
-                                    {t('cryptomator.unlock') || 'Unlock Vault'}
+                                    {t('cryptomator.unlock')}
                                 </button>
                             </>
                         )}
@@ -277,7 +277,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                                 ))}
                             </div>
                             <button onClick={handleEncrypt} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 rounded">
-                                <Upload size={12} /> {t('cryptomator.encrypt') || 'Encrypt File'}
+                                <Upload size={12} /> {t('cryptomator.encrypt')}
                             </button>
                         </div>
 
@@ -290,15 +290,15 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                             )}
                             {!loading && entries.length === 0 && (
                                 <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
-                                    {t('cryptomator.empty') || 'Directory is empty'}
+                                    {t('cryptomator.empty')}
                                 </div>
                             )}
                             {!loading && entries.length > 0 && (
                                 <table className="w-full">
                                     <thead className="text-xs text-gray-400 border-b border-gray-700 sticky top-0 bg-gray-800">
                                         <tr>
-                                            <th className="py-2 px-3 text-left">{t('cryptomator.name') || 'Name'}</th>
-                                            <th className="py-2 px-3 text-right w-24">{t('cryptomator.size') || 'Size'}</th>
+                                            <th className="py-2 px-3 text-left">{t('cryptomator.name')}</th>
+                                            <th className="py-2 px-3 text-right w-24">{t('cryptomator.size')}</th>
                                             <th className="py-2 px-3 text-right w-20"></th>
                                         </tr>
                                     </thead>
@@ -318,7 +318,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
                                                 <td className="py-1.5 px-3 text-right text-gray-400">{entry.isDir ? '' : formatSize(entry.size)}</td>
                                                 <td className="py-1.5 px-3 text-right">
                                                     {!entry.isDir && (
-                                                        <button onClick={() => handleDecrypt(entry)} className="p-1 hover:bg-gray-600 rounded" title="Decrypt & Save">
+                                                        <button onClick={() => handleDecrypt(entry)} className="p-1 hover:bg-gray-600 rounded" title={t('cryptomator.decryptAndSave')}>
                                                             <Download size={14} />
                                                         </button>
                                                     )}
@@ -332,7 +332,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose 
 
                         {/* Footer */}
                         <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400">
-                            {entries.length} {t('cryptomator.items') || 'items'}
+                            {entries.length} {t('cryptomator.items')}
                         </div>
                     </>
                 )}

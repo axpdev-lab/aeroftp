@@ -12,6 +12,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette } from 'lucide-react';
 import { ViewerBaseProps, ImageMetadata } from '../types';
+import { useI18n } from '../../../i18n';
 
 interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
@@ -27,6 +28,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onError,
     className = '',
 }) => {
+    const { t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
     const imageRef = useRef<HTMLImageElement>(null);
 
@@ -81,8 +83,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     // Handle image error
     const handleImageError = useCallback(() => {
         setImageError(true);
-        onError?.('Failed to load image');
-    }, [onError]);
+        onError?.(t('preview.image.loadFailed'));
+    }, [onError, t]);
 
     // Zoom controls
     const zoomIn = useCallback(() => {
@@ -170,7 +172,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     if (!imageSrc) {
         return (
             <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
-                <div className="text-gray-500">No image data available</div>
+                <div className="text-gray-500">{t('preview.common.noData')}</div>
             </div>
         );
     }
@@ -184,7 +186,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <button
                         onClick={zoomOut}
                         className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                        title="Zoom Out"
+                        title={t('preview.image.zoomOut')}
                     >
                         <ZoomOut size={18} className="text-gray-400" />
                     </button>
@@ -194,7 +196,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <button
                         onClick={zoomIn}
                         className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                        title="Zoom In"
+                        title={t('preview.image.zoomIn')}
                     >
                         <ZoomIn size={18} className="text-gray-400" />
                     </button>
@@ -205,7 +207,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <button
                         onClick={rotate}
                         className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                        title="Rotate 90°"
+                        title={t('preview.image.rotate')}
                     >
                         <RotateCw size={18} className="text-gray-400" />
                     </button>
@@ -214,7 +216,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <button
                         onClick={toggleFit}
                         className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                        title={isFitToScreen ? 'Actual Size' : 'Fit to Screen'}
+                        title={isFitToScreen ? t('preview.image.actualSize') : t('preview.image.fit')}
                     >
                         {isFitToScreen ? (
                             <Maximize2 size={18} className="text-gray-400" />
@@ -229,7 +231,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <button
                         onClick={() => { setColorPickMode(p => !p); setPickedColor(null); }}
                         className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${colorPickMode ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-gray-700 text-gray-400'}`}
-                        title={colorPickMode ? 'Cancel Color Pick' : 'Pick Color from Image'}
+                        title={colorPickMode ? t('preview.image.cancelPick') : t('preview.image.pickColor')}
                     >
                         <Pipette size={18} />
                         {pickedColor && (
@@ -271,7 +273,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 {imageError && (
                     <div className="text-red-400 text-center">
                         <div className="text-4xl mb-2">⚠️</div>
-                        <div>Failed to load image</div>
+                        <div>{t('preview.image.loadFailed')}</div>
                     </div>
                 )}
 
@@ -298,7 +300,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {zoom > 1 && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-gray-800/90 rounded-full text-xs text-gray-400">
                     <Move size={14} />
-                    <span>Drag to pan</span>
+                    <span>{t('preview.image.dragToPan')}</span>
                 </div>
             )}
         </div>

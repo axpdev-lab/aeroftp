@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.0.5"
+version = "2.0.6"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "MIT"
@@ -106,6 +106,9 @@ jsonwebtoken = "10.3"                                                   # JWT pa
 chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 for cascade mode
 aes-gcm-siv = "0.11"                                                   # AES-GCM-SIV nonce-misuse resistant (RFC 8452)
 hkdf = "0.12"                                                          # HKDF key derivation (RFC 5869)
+
+# Security Toolkit - Cyber Tools (v2.1.0)
+blake3 = "1"                                                           # BLAKE3 hash (Hash Forge)
 
 # Windows Explorer badge integration (v2.0.5)
 [target.'cfg(windows)'.dependencies]

@@ -231,9 +231,44 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightWhite: '#a6adc8',
         },
     },
+    'cyber': {
+        name: 'Cyber',
+        colors: {
+            background: '#0a0e17',
+            foreground: '#e0ffe0',
+            cursor: '#00ff41',
+            cursorAccent: '#0a0e17',
+            selectionBackground: '#1a3a1a',
+            selectionForeground: '#e0ffe0',
+            black: '#0a0e17',
+            red: '#ff0033',
+            green: '#00ff41',
+            yellow: '#ffb800',
+            blue: '#00d4ff',
+            magenta: '#ff00ff',
+            cyan: '#00ffcc',
+            white: '#e0ffe0',
+            brightBlack: '#1a2a1a',
+            brightRed: '#ff3366',
+            brightGreen: '#39ff14',
+            brightYellow: '#ffd000',
+            brightBlue: '#00e5ff',
+            brightMagenta: '#ff66ff',
+            brightCyan: '#66ffcc',
+            brightWhite: '#f0fff0',
+        },
+    },
 };
 
-const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light'];
+const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber'];
+
+// Map app themes to matching terminal themes
+const APP_THEME_TO_TERMINAL: Record<string, string> = {
+    'light': 'solarized-light',
+    'dark': 'github-dark',
+    'tokyo': 'tokyo-night',
+    'cyber': 'cyber',
+};
 
 // ============ Tab State ============
 
@@ -325,15 +360,19 @@ interface SSHTerminalProps {
     className?: string;
     localPath?: string;
     sshConnection?: SshConnectionInfo | null;
+    appTheme?: string;
 }
 
 export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     className = '',
     localPath = '~',
     sshConnection,
+    appTheme,
 }) => {
     // Settings
     const [settings, setSettings] = useState<TerminalSettings>(loadSettings);
+    // Track whether user manually picked a terminal theme (overrides auto-sync)
+    const userOverrideRef = useRef(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const themeMenuRef = useRef<HTMLDivElement>(null);
 
@@ -382,6 +421,15 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         const styleEl = document.getElementById('aeroftp-terminal-cursor-css');
         if (styleEl) styleEl.remove();
     }, []);
+
+    // Auto-sync terminal theme with app theme (unless user manually picked one)
+    useEffect(() => {
+        if (!appTheme || userOverrideRef.current) return;
+        const mapped = APP_THEME_TO_TERMINAL[appTheme];
+        if (mapped && mapped !== settings.themeName && TERMINAL_THEMES[mapped]) {
+            updateSettings({ themeName: mapped });
+        }
+    }, [appTheme]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Apply theme & font to all xterm instances
     useEffect(() => {
@@ -882,7 +930,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                                     return (
                                         <button
                                             key={key}
-                                            onClick={() => { updateSettings({ themeName: key }); setShowThemeMenu(false); }}
+                                            onClick={() => { userOverrideRef.current = true; updateSettings({ themeName: key }); setShowThemeMenu(false); }}
                                             className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors flex items-center gap-2 ${
                                                 settings.themeName === key ? 'text-green-400' : 'text-gray-300'
                                             }`}

@@ -93,7 +93,7 @@ async function stats(): Promise<void> {
         .sort();
 
     console.log('='.repeat(70));
-    console.log('Language Statistics (51 languages)');
+    console.log('Language Statistics (47 languages)');
     console.log('='.repeat(70) + '\n');
 
     const allStats: LanguageStats[] = [];
@@ -175,9 +175,7 @@ async function stats(): Promise<void> {
     console.log(`🔴 Incomplete (<50%): ${incomplete}`);
     console.log(`📊 Average completion: ${avgCompletion.toFixed(1)}%`);
 
-    // RTL languages
-    const rtlLanguages = allStats.filter(s => s.direction === 'rtl');
-    console.log(`\n🔄 RTL languages: ${rtlLanguages.length} (${rtlLanguages.map(l => l.code).join(', ')})`);
+    // All languages are LTR (RTL languages removed)
 
     // Competitor comparison
     console.log('\n' + '='.repeat(70));

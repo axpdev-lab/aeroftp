@@ -35,7 +35,7 @@ interface VaultV2Info {
     files: { name: string; size: number; is_dir: boolean; modified: string }[];
 }
 
-// Security level configuration
+// Security level configuration — hardcoded labels (no i18n, technical terms)
 const securityLevels = {
     standard: {
         icon: Shield,
@@ -135,8 +135,8 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
     };
 
     const handleCreate = async () => {
-        if (password.length < 8) { setError(t('vault.passwordTooShort') || 'Password must be at least 8 characters'); return; }
-        if (password !== confirmPassword) { setError(t('vault.passwordMismatch') || 'Passwords do not match'); return; }
+        if (password.length < 8) { setError(t('vault.passwordTooShort')); return; }
+        if (password !== confirmPassword) { setError(t('vault.passwordMismatch')); return; }
 
         const savePath = await save({ defaultPath: 'vault.aerovault', filters: [{ name: 'AeroVault', extensions: ['aerovault'] }] });
         if (!savePath) return;
@@ -157,7 +157,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 });
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 2, cascadeMode: levelConfig.cascade, level: securityLevel });
-                setSuccess(t('vault.created') || 'Vault created successfully');
+                setSuccess(t('vault.created'));
                 setMode('browse');
                 setEntries([]);
                 setMeta({
@@ -172,7 +172,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 await invoke('vault_create', { vaultPath: savePath, password, description: description || null });
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 1, cascadeMode: false, level: 'standard' });
-                setSuccess(t('vault.created') || 'Vault created successfully');
+                setSuccess(t('vault.created'));
                 setMode('browse');
                 setEntries([]);
                 const m = await invoke<AeroVaultMeta>('vault_get_meta', { vaultPath: savePath, password });
@@ -289,11 +289,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         filePaths: paths
                     });
                 await refreshVaultEntries();
-                setSuccess(`${result.added} file(s) added`);
+                setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
             } else {
                 await invoke('vault_add_files', { vaultPath, password, filePaths: paths });
                 await refreshVaultEntries();
-                setSuccess(`${paths.length} file(s) added`);
+                setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
             }
         } catch (e) {
             setError(String(e));
@@ -316,7 +316,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 dirName: fullPath
             });
             await refreshVaultEntries();
-            setSuccess(`Directory "${trimmed}" created`);
+            setSuccess(t('vault.directoryCreated', { name: trimmed }));
             setShowNewDirDialog(false);
             setNewDirName('');
         } catch (e) {
@@ -340,7 +340,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         recursive: true
                     });
                     await refreshVaultEntries();
-                    setSuccess(`Deleted ${result.removed_count} item(s)`);
+                    setSuccess(t('vault.itemsDeleted', { count: result.removed_count.toString() }));
                 } else {
                     await invoke<{ deleted: string; remaining: number }>('vault_v2_delete_entry', {
                         vaultPath,
@@ -348,12 +348,12 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         entryName
                     });
                     await refreshVaultEntries();
-                    setSuccess(`Deleted ${entryName.split('/').pop()}`);
+                    setSuccess(t('vault.itemDeleted', { name: entryName.split('/').pop() || entryName }));
                 }
             } else {
                 await invoke('vault_remove_file', { vaultPath, password, entryName });
                 await refreshVaultEntries();
-                setSuccess(`Deleted ${entryName}`);
+                setSuccess(t('vault.itemDeleted', { name: entryName }));
             }
         } catch (e) {
             setError(String(e));
@@ -378,7 +378,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
             } else {
                 await invoke('vault_extract_entry', { vaultPath, password, entryName, outputPath: savePath });
             }
-            setSuccess(`Extracted ${entryName}`);
+            setSuccess(t('vault.extracted', { name: entryName }));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -387,8 +387,8 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
     };
 
     const handleChangePassword = async () => {
-        if (newPassword.length < 8) { setError(t('vault.passwordTooShort') || 'Password must be at least 8 characters'); return; }
-        if (newPassword !== confirmNewPassword) { setError(t('vault.passwordMismatch') || 'Passwords do not match'); return; }
+        if (newPassword.length < 8) { setError(t('vault.passwordTooShort')); return; }
+        if (newPassword !== confirmNewPassword) { setError(t('vault.passwordMismatch')); return; }
 
         setLoading(true);
         setError(null);
@@ -408,7 +408,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
             setChangingPassword(false);
             setNewPassword('');
             setConfirmNewPassword('');
-            setSuccess(t('vault.passwordChanged') || 'Password changed successfully');
+            setSuccess(t('vault.passwordChanged'));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -428,7 +428,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                     <div className="flex items-center gap-2">
                         <VaultIcon size={18} className="text-emerald-400" />
                         <span className="font-medium">
-                            {mode === 'browse' ? vaultName : (t('vault.title') || 'AeroVault')}
+                            {mode === 'browse' ? vaultName : t('vault.title')}
                         </span>
                         {/* Security badge in browse mode */}
                         {mode === 'browse' && currentLevelConfig && (
@@ -457,7 +457,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         </div>
 
                         <p className="text-gray-300 text-center text-sm max-w-md">
-                            {t('vault.descriptionV2') || 'AeroVault v2 provides military-grade encryption with nonce misuse-resistant AES-256-GCM-SIV and optional cascade encryption.'}
+                            {t('vault.descriptionV2')}
                         </p>
 
                         {/* Security levels preview */}
@@ -475,10 +475,10 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
 
                         <div className="flex gap-3 mt-1">
                             <button onClick={() => { resetState(); setMode('create'); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium">
-                                <FolderPlus size={16} /> {t('vault.createNew') || 'Create Vault'}
+                                <FolderPlus size={16} /> {t('vault.createNew')}
                             </button>
                             <button onClick={handleOpen} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium">
-                                <Lock size={16} /> {t('vault.openExisting') || 'Open Vault'}
+                                <Lock size={16} /> {t('vault.openExisting')}
                             </button>
                         </div>
                     </div>
@@ -488,7 +488,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                 {mode === 'create' && (
                     <div className="p-4 flex flex-col gap-3">
                         {/* Security Level Selector */}
-                        <label className="text-sm text-gray-400">{t('vault.securityLevel') || 'Security Level'}</label>
+                        <label className="text-sm text-gray-400">{t('vault.securityLevel')}</label>
                         <div className="relative">
                             <button
                                 onClick={() => setShowLevelDropdown(!showLevelDropdown)}
@@ -502,7 +502,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                     <div>
                                         <div className={`text-sm font-medium ${securityLevels[securityLevel].color}`}>
                                             {securityLevels[securityLevel].label}
-                                            {securityLevel === 'advanced' && <span className="ml-2 text-xs text-emerald-300">(Recommended)</span>}
+                                            {securityLevel === 'advanced' && <span className="ml-2 text-xs text-emerald-300">({t('vault.securityRecommended')})</span>}
                                         </div>
                                         <div className="text-xs text-gray-500">{securityLevels[securityLevel].description}</div>
                                     </div>
@@ -527,7 +527,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                                 <div className="flex-1">
                                                     <div className={`text-sm font-medium ${config.color}`}>
                                                         {config.label}
-                                                        {level === 'advanced' && <span className="ml-2 text-xs text-emerald-300">(Recommended)</span>}
+                                                        {level === 'advanced' && <span className="ml-2 text-xs text-emerald-300">({t('vault.securityRecommended')})</span>}
                                                     </div>
                                                     <div className="text-xs text-gray-500 mt-0.5">{config.description}</div>
                                                     <div className="flex flex-wrap gap-1 mt-1.5">
@@ -545,11 +545,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                             )}
                         </div>
 
-                        <label className="text-sm text-gray-400 mt-2">{t('vault.description_label') || 'Description (optional)'}</label>
+                        <label className="text-sm text-gray-400 mt-2">{t('vault.description_label')}</label>
                         <input value={description} onChange={e => setDescription(e.target.value)}
                             className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
 
-                        <label className="text-sm text-gray-400">{t('vault.password') || 'Password (min 8 chars)'}</label>
+                        <label className="text-sm text-gray-400">{t('vault.password')}</label>
                         <div className="relative">
                             <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
                                 className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
@@ -558,17 +558,17 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                             </button>
                         </div>
 
-                        <label className="text-sm text-gray-400">{t('vault.confirmPassword') || 'Confirm Password'}</label>
+                        <label className="text-sm text-gray-400">{t('vault.confirmPassword')}</label>
                         <input type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                             className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm" />
 
                         <div className="flex gap-2 justify-end mt-2">
                             <button onClick={() => setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-700 rounded">
-                                {t('vault.cancel') || 'Cancel'}
+                                {t('vault.cancel')}
                             </button>
                             <button onClick={handleCreate} disabled={loading} className={`flex items-center gap-2 px-4 py-1.5 ${securityLevels[securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50`}>
                                 {loading && <Loader2 size={14} className="animate-spin" />}
-                                {t('vault.create') || 'Create'}
+                                {t('vault.create')}
                             </button>
                         </div>
                     </div>
@@ -593,7 +593,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                             );
                         })()}
 
-                        <label className="text-sm text-gray-400">{t('vault.password') || 'Password'}</label>
+                        <label className="text-sm text-gray-400">{t('vault.password')}</label>
                         <div className="relative">
                             <input type={showPassword ? 'text' : 'password'} value={password}
                                 onChange={e => setPassword(e.target.value)}
@@ -605,11 +605,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         </div>
                         <div className="flex gap-2 justify-end mt-2">
                             <button onClick={() => { resetState(); setMode('home'); }} className="px-3 py-1.5 text-sm hover:bg-gray-700 rounded">
-                                {t('vault.cancel') || 'Cancel'}
+                                {t('vault.cancel')}
                             </button>
                             <button onClick={handleUnlock} disabled={loading} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm disabled:opacity-50">
                                 {loading && <Loader2 size={14} className="animate-spin" />}
-                                {t('vault.unlock') || 'Unlock'}
+                                {t('vault.unlock')}
                             </button>
                         </div>
                     </div>
@@ -648,15 +648,15 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         {/* Toolbar */}
                         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                             <button onClick={handleAddFiles} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 rounded">
-                                <Plus size={14} /> {t('vault.addFiles') || 'Add Files'}
+                                <Plus size={14} /> {t('vault.addFiles')}
                             </button>
                             {vaultSecurity?.version === 2 && (
                                 <button onClick={() => { setShowNewDirDialog(true); setNewDirName(''); }} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 rounded">
-                                    <FolderPlus size={14} /> {t('vault.newFolder') || 'New Folder'}
+                                    <FolderPlus size={14} /> {t('vault.newFolder')}
                                 </button>
                             )}
                             <button onClick={() => setChangingPassword(!changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded">
-                                <Key size={14} /> {t('vault.changePassword') || 'Change Password'}
+                                <Key size={14} /> {t('vault.changePassword')}
                             </button>
                             {currentLevelConfig && (
                                 <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-900/50`}>
@@ -664,7 +664,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                     <span>v{vaultSecurity?.version}</span>
                                     {vaultSecurity?.cascadeMode && (
                                         <span className="flex items-center gap-0.5">
-                                            <Zap size={10} /> Cascade
+                                            <Zap size={10} /> {t('vault.cascade')}
                                         </span>
                                     )}
                                 </div>
@@ -680,14 +680,14 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                     value={newDirName}
                                     onChange={e => setNewDirName(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') handleCreateDirectory(); if (e.key === 'Escape') setShowNewDirDialog(false); }}
-                                    placeholder={t('vault.folderName') || 'Folder name'}
+                                    placeholder={t('vault.folderName')}
                                     className="flex-1 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs"
                                 />
                                 <button onClick={handleCreateDirectory} disabled={loading || !newDirName.trim()} className="px-2 py-1 bg-yellow-700 hover:bg-yellow-600 rounded text-xs disabled:opacity-50">
-                                    {t('vault.create') || 'Create'}
+                                    {t('vault.create')}
                                 </button>
                                 <button onClick={() => setShowNewDirDialog(false)} className="px-2 py-1 hover:bg-gray-700 rounded text-xs">
-                                    {t('vault.cancel') || 'Cancel'}
+                                    {t('vault.cancel')}
                                 </button>
                             </div>
                         )}
@@ -725,7 +725,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                         {changingPassword && (
                             <div className="px-4 py-3 border-b border-gray-700 flex gap-2 items-end">
                                 <div className="flex-1">
-                                    <label className="text-xs text-gray-400 block mb-1">{t('vault.newPassword') || 'New Password'}</label>
+                                    <label className="text-xs text-gray-400 block mb-1">{t('vault.newPassword')}</label>
                                     <div className="relative">
                                         <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)}
                                             className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs pr-7" />
@@ -735,7 +735,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                     </div>
                                 </div>
                                 <div className="flex-1">
-                                    <label className="text-xs text-gray-400 block mb-1">{t('vault.confirmNew') || 'Confirm'}</label>
+                                    <label className="text-xs text-gray-400 block mb-1">{t('vault.confirmNew')}</label>
                                     <div className="relative">
                                         <input type={showPassword ? 'text' : 'password'} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}
                                             className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs pr-7" />
@@ -745,7 +745,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                     </div>
                                 </div>
                                 <button onClick={handleChangePassword} disabled={loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs">
-                                    {t('vault.apply') || 'Apply'}
+                                    {t('vault.apply')}
                                 </button>
                             </div>
                         )}
@@ -755,15 +755,15 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                             {sortedEntries.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                                     <VaultIcon size={32} className="mb-2 opacity-50" />
-                                    <p className="text-sm">{currentDir ? (t('vault.dirEmpty') || 'Directory is empty') : (t('vault.empty') || 'Vault is empty. Add files to get started.')}</p>
+                                    <p className="text-sm">{currentDir ? t('vault.dirEmpty') : t('vault.empty')}</p>
                                 </div>
                             ) : (
                                 <table className="w-full">
                                     <thead className="text-xs text-gray-400 border-b border-gray-700 sticky top-0 bg-gray-800">
                                         <tr>
-                                            <th className="py-2 px-3 text-left">{t('vault.fileName') || 'Name'}</th>
-                                            <th className="py-2 px-3 text-right w-24">{t('vault.fileSize') || 'Size'}</th>
-                                            <th className="py-2 px-3 text-right w-28">{t('vault.fileActions') || 'Actions'}</th>
+                                            <th className="py-2 px-3 text-left">{t('vault.fileName')}</th>
+                                            <th className="py-2 px-3 text-right w-24">{t('vault.fileSize')}</th>
+                                            <th className="py-2 px-3 text-right w-28">{t('vault.fileActions')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -782,11 +782,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                                 <td className="py-1.5 px-3 text-right">
                                                     <div className="flex gap-1 justify-end">
                                                         {!entry.isDir && (
-                                                            <button onClick={() => handleExtract(entry.name)} className="p-1 hover:bg-gray-600 rounded" title={t('vault.extract') || 'Extract'}>
+                                                            <button onClick={() => handleExtract(entry.name)} className="p-1 hover:bg-gray-600 rounded" title={t('vault.extract')}>
                                                                 <Download size={14} />
                                                             </button>
                                                         )}
-                                                        <button onClick={() => handleRemove(entry.name, entry.isDir)} className="p-1 hover:bg-gray-600 rounded text-red-400" title={t('vault.remove') || 'Remove'}>
+                                                        <button onClick={() => handleRemove(entry.name, entry.isDir)} className="p-1 hover:bg-gray-600 rounded text-red-400" title={t('vault.remove')}>
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
@@ -800,8 +800,8 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
 
                         {/* Footer */}
                         <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400 flex justify-between">
-                            <span>{sortedEntries.length} {t('vault.items') || 'items'}{currentDir ? ` in /${currentDir}` : ''}</span>
-                            {meta && <span>v{meta.version} | {entries.length} total</span>}
+                            <span>{sortedEntries.length} {t('vault.items')}{currentDir ? ` in /${currentDir}` : ''}</span>
+                            {meta && <span>v{meta.version} | {entries.length} {t('vault.totalItems')}</span>}
                         </div>
                     </>
                     );

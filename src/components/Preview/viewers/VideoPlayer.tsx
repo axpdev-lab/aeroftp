@@ -20,6 +20,7 @@ import {
 import { ViewerBaseProps, PlaybackState } from '../types';
 import { formatDuration } from '../utils/fileTypes';
 import { logger } from '../../../utils/logger';
+import { useI18n } from '../../../i18n';
 
 interface VideoPlayerProps extends ViewerBaseProps {
     className?: string;
@@ -30,6 +31,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onError,
     className = '',
 }) => {
+    const { t } = useI18n();
     // Refs
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -106,8 +108,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, []);
 
     const handleError = useCallback(() => {
-        onError?.('Failed to load video file');
-    }, [onError]);
+        onError?.(t('preview.common.noData'));
+    }, [onError, t]);
 
     // Playback controls
     const togglePlay = useCallback(async () => {
@@ -278,7 +280,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoSrc) {
         return (
             <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
-                <div className="text-gray-500">No video data available</div>
+                <div className="text-gray-500">{t('preview.common.noData')}</div>
             </div>
         );
     }
@@ -365,7 +367,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <button
                             onClick={skipBackward}
                             className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                            title="Skip -10s (←)"
+                            title={t('preview.video.skipBackward')}
                         >
                             <SkipBack size={20} className="text-white" />
                         </button>
@@ -374,7 +376,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <button
                             onClick={togglePlay}
                             className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                            title={playback.isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+                            title={playback.isPlaying ? t('preview.video.pause') : t('preview.video.play')}
                         >
                             {playback.isPlaying ? (
                                 <Pause size={24} className="text-white" />
@@ -387,7 +389,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <button
                             onClick={skipForward}
                             className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                            title="Skip +10s (→)"
+                            title={t('preview.video.skipForward')}
                         >
                             <SkipForward size={20} className="text-white" />
                         </button>
@@ -397,7 +399,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                                 onClick={toggleMute}
                                 className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                                title={playback.isMuted ? 'Unmute (M)' : 'Mute (M)'}
+                                title={playback.isMuted ? t('preview.video.unmute') : t('preview.video.mute')}
                             >
                                 {playback.isMuted || playback.volume === 0 ? (
                                     <VolumeX size={20} className="text-white" />
@@ -429,7 +431,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                                 onClick={() => setShowSpeedMenu(!showSpeedMenu)}
                                 className="flex items-center gap-1 px-2 py-1 hover:bg-white/20 rounded transition-colors"
-                                title="Playback Speed"
+                                title={t('preview.video.speed')}
                             >
                                 <Gauge size={18} className="text-white" />
                                 <span className="text-sm text-white font-mono">{playback.playbackRate}x</span>
@@ -456,7 +458,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                                 onClick={togglePiP}
                                 className={`p-2 hover:bg-white/20 rounded-full transition-colors ${isPiP ? 'text-cyan-400' : 'text-white'}`}
-                                title="Picture-in-Picture"
+                                title={t('preview.video.pictureInPicture')}
                             >
                                 <PictureInPicture2 size={20} />
                             </button>
@@ -466,7 +468,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <button
                             onClick={toggleFullscreen}
                             className="p-2 hover:bg-white/20 rounded-full transition-colors"
-                            title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
+                            title={isFullscreen ? t('preview.video.exitFullscreen') : t('preview.video.fullscreen')}
                         >
                             {isFullscreen ? (
                                 <Minimize size={20} className="text-white" />

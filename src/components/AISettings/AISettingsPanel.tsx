@@ -648,7 +648,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
             <div className="relative bg-gray-900 text-gray-100 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
@@ -672,7 +672,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         { id: 'providers', label: 'Providers', icon: <Server size={14} /> },
                         { id: 'models', label: 'Models', icon: <Cpu size={14} /> },
                         { id: 'advanced', label: 'Advanced', icon: <Sliders size={14} /> },
-                        { id: 'prompt', label: 'System Prompt', icon: <MessageSquare size={14} /> },
+                        { id: 'prompt', label: 'Prompt', icon: <MessageSquare size={14} /> },
                         { id: 'plugins', label: 'Plugins', icon: <Puzzle size={14} /> },
                         { id: 'macros', label: t('ai.settings.macros') || 'Macros', icon: <Layers size={14} /> },
                     ].map(tab => (

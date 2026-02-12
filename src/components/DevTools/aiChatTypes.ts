@@ -1,4 +1,5 @@
 import { AIProviderType } from '../../types/ai';
+import type { EffectiveTheme } from '../../hooks/useTheme';
 
 // Vision constants
 export const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -41,8 +42,8 @@ export interface AIChatProps {
     className?: string;
     remotePath?: string;
     localPath?: string;
-    /** Theme hint - AI Chat stays dark but may use for future enhancements */
-    isLightTheme?: boolean;
+    /** App-level theme for styling */
+    appTheme?: EffectiveTheme;
     /** Active protocol type (e.g. 'sftp', 'ftp', 'googledrive') */
     providerType?: string;
     /** Whether currently connected to remote */

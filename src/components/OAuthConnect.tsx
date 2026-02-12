@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
-import { useTranslation } from '../i18n';
+import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { logger } from '../utils/logger';
 
@@ -108,7 +108,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   connectionName = '',
   onConnectionNameChange,
 }) => {
-  const t = useTranslation();
+  const { t } = useI18n();
   const { isAuthenticating, error, startAuth, connect, hasTokens, logout } = useOAuth2();
   const [hasExistingTokens, setHasExistingTokens] = useState(false);
   const [showCredentialsForm, setShowCredentialsForm] = useState(false);
@@ -128,7 +128,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   // Browse for local folder
   const browseLocalFolder = async () => {
     try {
-      const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
+      const selected = await open({ directory: true, multiple: false, title: t('connection.oauth.selectLocalFolder') });
       if (selected && typeof selected === 'string') {
         setLocalPath(selected);
         onLocalPathChange?.(selected);
@@ -257,6 +257,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     return (
       <div className="flex items-center justify-center p-4">
         <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+        <span className="ml-2 text-sm text-gray-500">{t('common.loading')}</span>
       </div>
     );
   }
@@ -284,10 +285,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 <span className="font-medium">{providerNames[provider]}</span>
                 <span className="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 rounded-full flex items-center gap-1">
                   <CheckCircle size={12} />
-                  Active
+                  {t('connection.active')}
                 </span>
               </div>
-              <span className="text-sm text-gray-500">Previously authenticated</span>
+              <span className="text-sm text-gray-500">{t('connection.oauth.previouslyAuthenticated')}</span>
             </div>
           </div>
         </div>
@@ -306,12 +307,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           {isAuthenticating ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Connecting...
+              {t('connection.connecting')}
             </>
           ) : (
             <>
               <ProviderIcon provider={provider} className="w-5 h-5" white />
-              Connect to {providerNames[provider]}
+              {t('connection.oauth.connectTo', { provider: providerNames[provider] })}
             </>
           )}
         </button>
@@ -323,13 +324,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <RefreshCw size={14} />
-            Use Different Account
+            {t('connection.oauth.useDifferentAccount')}
           </button>
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
             className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-            title="Disconnect account"
+            title={t('connection.oauth.disconnectAccount')}
           >
             {isLoggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
           </button>
@@ -352,7 +353,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     <div className="space-y-4">
       {/* Local Path (optional) */}
       <div>
-        <label className="block text-sm font-medium mb-1.5">Local Folder (optional)</label>
+        <label className="block text-sm font-medium mb-1.5">{t('connection.oauth.localFolderOptional')}</label>
         <div className="flex gap-2">
           <input
             type="text"
@@ -368,7 +369,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             type="button"
             onClick={browseLocalFolder}
             className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl"
-            title="Browse..."
+            title={t('common.browse')}
           >
             <FolderOpen size={18} />
           </button>
@@ -388,8 +389,8 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
         />
         <label htmlFor={`save-oauth-${provider}`} className="flex-1">
-          <span className="text-sm font-medium">Save this connection</span>
-          <p className="text-xs text-gray-500">Quick connect next time</p>
+          <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
+          <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
         </label>
         <Save size={16} className="text-gray-400" />
       </div>
@@ -397,7 +398,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       {/* Connection Name (if saving) */}
       {wantToSave && (
         <div>
-          <label className="block text-sm font-medium mb-1.5">Connection Name</label>
+          <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
           <input
             type="text"
             value={saveName}
@@ -405,7 +406,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               setSaveName(e.target.value);
               onConnectionNameChange?.(e.target.value);
             }}
-            placeholder={`My ${providerNames[provider]}`}
+            placeholder={t('connection.oauth.myProvider', { provider: providerNames[provider] })}
             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
           />
         </div>
@@ -426,17 +427,17 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           {isAuthenticating ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Authenticating...
+              {t('connection.authenticating')}
             </>
           ) : hasExistingTokens ? (
             <>
               <ProviderIcon provider={provider} className="w-5 h-5" white />
-              Connect to {providerNames[provider]}
+              {t('connection.oauth.connectTo', { provider: providerNames[provider] })}
             </>
           ) : (
             <>
               <ProviderIcon provider={provider} className="w-5 h-5" white />
-              Sign in with {providerNames[provider]}
+              {t('connection.oauth.signInWith', { provider: providerNames[provider] })}
             </>
           )}
         </button>
@@ -456,38 +457,38 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       {showCredentialsForm && (
         <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="font-medium text-sm">OAuth2 Credentials</h4>
+            <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
             <button
               onClick={() => openUrl(oauthApp.help_url)}
               className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
             >
-              Get credentials <ExternalLink className="w-3 h-3" />
+              {t('settings.getCredentials')} <ExternalLink className="w-3 h-3" />
             </button>
           </div>
-          
+
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            You need to create an OAuth2 app with {providerNames[provider]} and enter the credentials below.
+            {t('connection.oauth.createAppInstructions', { provider: providerNames[provider] })}
           </p>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Client ID</label>
+            <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
             <input
               type="text"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter Client ID"
+              placeholder={t('connection.oauth.enterClientId')}
               className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Client Secret</label>
+            <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
             <div className="relative">
               <input
                 type={showSecret ? 'text' : 'password'}
                 value={clientSecret}
                 onChange={(e) => setClientSecret(e.target.value)}
-                placeholder="Enter Client Secret"
+                placeholder={t('connection.oauth.enterClientSecret')}
                 className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
               />
               <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -501,14 +502,14 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               onClick={() => setShowCredentialsForm(false)}
               className="flex-1 py-2 px-3 text-sm border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleSignIn}
               disabled={!clientId || !clientSecret}
               className={`flex-1 py-2 px-3 text-sm text-white rounded-lg ${providerColors[provider]} disabled:opacity-50`}
             >
-              Continue
+              {t('connection.oauth.continue')}
             </button>
           </div>
         </div>
@@ -521,7 +522,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1"
         >
           <Settings className="w-4 h-4" />
-          Configure OAuth2 credentials
+          {t('connection.oauth.configureCredentials')}
         </button>
       )}
 
@@ -531,7 +532,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           onClick={() => setWantsNewAccount(false)}
           className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 flex items-center justify-center gap-1"
         >
-          ← Back to existing account
+          ← {t('connection.oauth.backToExistingAccount')}
         </button>
       )}
     </div>

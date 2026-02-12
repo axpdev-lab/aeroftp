@@ -15,7 +15,7 @@
 import * as React from 'react';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import {
-    X, Trash2, ChevronDown, GripHorizontal, Terminal, Zap, Cloud,
+    X, Trash2, ChevronDown, Terminal, Zap, Cloud,
     Plug, Unplug, Upload, Download, FolderPlus, FolderOpen, Pencil,
     AlertCircle, Info, CheckCircle, Copy, Move,
     type LucideIcon
@@ -27,7 +27,7 @@ import { useTranslation } from '../i18n';
 // Theme Types
 // ============================================================================
 
-type LogTheme = 'light' | 'dark' | 'cyber';
+type LogTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
 
 // ============================================================================
 // Icon Mapping - Lucide icons for operations
@@ -70,8 +70,8 @@ const THEMES = {
         header: 'bg-white border-b border-gray-200',
         headerText: 'text-gray-700',
         headerIcon: 'text-blue-600',
-        resize: 'hover:bg-blue-100',
-        resizeActive: 'bg-blue-200',
+        resizeBase: 'bg-gray-300 hover:bg-blue-500',
+        resizeBar: 'bg-gray-400 group-hover:bg-white',
         scrollbar: 'scrollbar-thumb-gray-300 scrollbar-track-gray-100',
         emptyText: 'text-gray-400',
         emptyIcon: 'text-gray-300',
@@ -82,7 +82,6 @@ const THEMES = {
         badgeIcon: 'text-blue-600',
         count: 'text-gray-400',
         jumpButton: 'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200',
-        // Row colors
         row: {
             default: 'border-transparent hover:bg-gray-100 hover:border-gray-300',
             running: 'border-blue-400 bg-blue-50',
@@ -121,13 +120,68 @@ const THEMES = {
         cursor: 'bg-blue-500',
     },
     dark: {
-        // Tokio Night / Antigravity inspired (renamed from professional)
+        // Dark theme - standard gray palette
+        panel: 'bg-gray-900 border-t border-gray-700',
+        header: 'bg-gray-800 border-b border-gray-700',
+        headerText: 'text-gray-300',
+        headerIcon: 'text-blue-400',
+        resizeBase: 'bg-gray-700 hover:bg-blue-500',
+        resizeBar: 'bg-gray-500 group-hover:bg-blue-400',
+        scrollbar: 'scrollbar-thumb-gray-600 scrollbar-track-gray-900',
+        emptyText: 'text-gray-500',
+        emptyIcon: 'text-gray-600',
+        button: 'text-gray-500 hover:text-gray-200 hover:bg-gray-700',
+        buttonDanger: 'text-gray-500 hover:text-red-400 hover:bg-red-500/10',
+        select: 'bg-gray-800 text-gray-300 border-gray-600 focus:ring-blue-500 focus:border-blue-500',
+        badge: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+        badgeIcon: 'text-blue-400',
+        count: 'text-gray-500',
+        jumpButton: 'bg-blue-500/20 text-blue-400 border-blue-500/40 hover:bg-blue-500/30',
+        row: {
+            default: 'border-transparent hover:bg-gray-800 hover:border-gray-600/50',
+            running: 'border-blue-500/50 bg-blue-950/30',
+            success: 'border-green-500/30 hover:border-green-500/50',
+            error: 'border-red-500/50 bg-red-950/10',
+        },
+        timestamp: 'text-gray-500',
+        status: {
+            pending: 'text-gray-500',
+            running: 'text-blue-400',
+            success: 'text-green-400',
+            error: 'text-red-400',
+        },
+        operation: {
+            CONNECT: 'text-blue-400',
+            DISCONNECT: 'text-orange-400',
+            UPLOAD: 'text-green-400',
+            DOWNLOAD: 'text-sky-400',
+            DELETE: 'text-red-400',
+            RENAME: 'text-amber-400',
+            MOVE: 'text-teal-400',
+            MKDIR: 'text-purple-400',
+            NAVIGATE: 'text-sky-400',
+            UPDATE: 'text-indigo-400',
+            ERROR: 'text-red-400',
+            INFO: 'text-gray-400',
+            SUCCESS: 'text-green-400',
+        },
+        operationGlow: {
+            CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
+            DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '', UPDATE: '',
+            ERROR: '', INFO: '', SUCCESS: '',
+        },
+        liveIndicator: 'bg-blue-500',
+        liveText: 'text-blue-400',
+        cursor: 'bg-blue-400',
+    },
+    tokyo: {
+        // Tokyo Night - distinctive purple/blue palette
         panel: 'bg-[#1a1b26] border-t border-[#292e42]',
         header: 'bg-[#16161e] border-b border-[#292e42]',
         headerText: 'text-[#a9b1d6]',
         headerIcon: 'text-[#7aa2f7]',
-        resize: 'hover:bg-[#7aa2f7]/30',
-        resizeActive: 'bg-[#7aa2f7]/50',
+        resizeBase: 'bg-[#292e42] hover:bg-[#7aa2f7]',
+        resizeBar: 'bg-[#414868] group-hover:bg-[#7aa2f7]',
         scrollbar: 'scrollbar-thumb-[#414868] scrollbar-track-[#1a1b26]',
         emptyText: 'text-[#565f89]',
         emptyIcon: 'text-[#414868]',
@@ -138,7 +192,6 @@ const THEMES = {
         badgeIcon: 'text-[#7aa2f7]',
         count: 'text-[#565f89]',
         jumpButton: 'bg-[#7aa2f7]/20 text-[#7aa2f7] border-[#7aa2f7]/40 hover:bg-[#7aa2f7]/30',
-        // Row colors
         row: {
             default: 'border-transparent hover:bg-[#1f2335] hover:border-[#414868]/50',
             running: 'border-[#7aa2f7]/50 bg-[#1f2335]',
@@ -167,7 +220,6 @@ const THEMES = {
             INFO: 'text-[#a9b1d6]',
             SUCCESS: 'text-[#9ece6a]',
         },
-        // No glow effect for dark theme
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
             DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '', UPDATE: '',
@@ -178,70 +230,69 @@ const THEMES = {
         cursor: 'bg-[#7aa2f7]',
     },
     cyber: {
-        // Neon cyber theme
-        panel: 'bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 border-t border-cyan-900/50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]',
-        header: 'bg-gradient-to-r from-gray-900 via-gray-800/80 to-gray-900 border-b border-cyan-900/30',
-        headerText: 'text-cyan-300',
-        headerIcon: 'text-cyan-500',
-        resize: 'hover:bg-gradient-to-r hover:from-transparent hover:via-cyan-500/50 hover:to-transparent',
-        resizeActive: 'bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_10px_rgba(34,211,238,0.5)]',
-        scrollbar: 'scrollbar-thumb-cyan-800/50 scrollbar-track-gray-900/50 hover:scrollbar-thumb-cyan-700/70',
+        // Cyberpunk - green + blue neon, NO pink
+        panel: 'bg-gradient-to-b from-[#0a0e17] via-[#0d1117] to-[#0a0e17] border-t border-emerald-900/50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]',
+        header: 'bg-gradient-to-r from-[#0d1117] via-[#111b27] to-[#0d1117] border-b border-emerald-900/30',
+        headerText: 'text-emerald-300',
+        headerIcon: 'text-emerald-500',
+        resizeBase: 'bg-[#0d1117] hover:bg-emerald-500',
+        resizeBar: 'bg-emerald-800/60 group-hover:bg-emerald-400',
+        scrollbar: 'scrollbar-thumb-emerald-800/50 scrollbar-track-gray-900/50 hover:scrollbar-thumb-emerald-700/70',
         emptyText: 'text-gray-500',
         emptyIcon: 'text-gray-700',
-        button: 'text-gray-500 hover:text-cyan-300 hover:bg-cyan-500/10',
-        buttonDanger: 'text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 hover:drop-shadow-[0_0_4px_rgba(244,63,94,0.5)]',
-        select: 'bg-gray-900 text-cyan-300 border-cyan-800/50 focus:ring-cyan-500 focus:border-cyan-500 hover:border-cyan-600',
-        badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_8px_rgba(34,211,238,0.3)]',
-        badgeIcon: 'text-cyan-400',
+        button: 'text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10',
+        buttonDanger: 'text-gray-500 hover:text-red-400 hover:bg-red-500/10 hover:drop-shadow-[0_0_4px_rgba(239,68,68,0.5)]',
+        select: 'bg-[#0d1117] text-emerald-300 border-emerald-800/50 focus:ring-emerald-500 focus:border-emerald-500 hover:border-emerald-600',
+        badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.3)]',
+        badgeIcon: 'text-emerald-400',
         count: 'text-gray-500',
-        jumpButton: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_10px_rgba(34,211,238,0.3)] hover:bg-cyan-500/30 hover:shadow-[0_0_15px_rgba(34,211,238,0.4)]',
-        // Row colors
+        jumpButton: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)] hover:bg-emerald-500/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]',
         row: {
-            default: 'border-transparent hover:bg-cyan-950/30 hover:border-cyan-500/30',
+            default: 'border-transparent hover:bg-emerald-950/30 hover:border-emerald-500/30',
             running: 'border-cyan-400/50 bg-cyan-950/20',
             success: 'border-emerald-500/30 hover:border-emerald-400/50',
-            error: 'border-rose-500/50 bg-rose-950/10',
+            error: 'border-red-500/50 bg-red-950/10',
         },
-        timestamp: 'text-cyan-600/60',
+        timestamp: 'text-emerald-600/60',
         status: {
             pending: 'text-gray-400',
             running: 'text-cyan-400',
             success: 'text-emerald-400',
-            error: 'text-rose-500',
+            error: 'text-red-500',
         },
         operation: {
             CONNECT: 'text-cyan-400',
-            DISCONNECT: 'text-orange-400',
+            DISCONNECT: 'text-amber-400',
             UPLOAD: 'text-emerald-400',
-            DOWNLOAD: 'text-blue-400',
-            DELETE: 'text-rose-500',
+            DOWNLOAD: 'text-sky-400',
+            DELETE: 'text-red-500',
             RENAME: 'text-amber-400',
             MOVE: 'text-teal-400',
-            MKDIR: 'text-violet-400',
+            MKDIR: 'text-cyan-300',
             NAVIGATE: 'text-sky-400',
-            UPDATE: 'text-indigo-400',
-            ERROR: 'text-rose-500',
+            UPDATE: 'text-blue-400',
+            ERROR: 'text-red-500',
             INFO: 'text-gray-300',
             SUCCESS: 'text-emerald-400',
         },
         operationGlow: {
             CONNECT: 'drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]',
-            DISCONNECT: 'drop-shadow-[0_0_6px_rgba(251,146,60,0.8)]',
-            UPLOAD: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]',
-            DOWNLOAD: 'drop-shadow-[0_0_6px_rgba(96,165,250,0.8)]',
-            DELETE: 'drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]',
+            DISCONNECT: 'drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]',
+            UPLOAD: 'drop-shadow-[0_0_6px_rgba(16,185,129,0.8)]',
+            DOWNLOAD: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.8)]',
+            DELETE: 'drop-shadow-[0_0_6px_rgba(239,68,68,0.8)]',
             RENAME: 'drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]',
             MOVE: 'drop-shadow-[0_0_6px_rgba(45,212,191,0.8)]',
-            MKDIR: 'drop-shadow-[0_0_6px_rgba(167,139,250,0.8)]',
+            MKDIR: 'drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]',
             NAVIGATE: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.8)]',
-            UPDATE: 'drop-shadow-[0_0_6px_rgba(129,140,248,0.8)]',
-            ERROR: 'drop-shadow-[0_0_6px_rgba(244,63,94,1)]',
+            UPDATE: 'drop-shadow-[0_0_6px_rgba(96,165,250,0.8)]',
+            ERROR: 'drop-shadow-[0_0_6px_rgba(239,68,68,1)]',
             INFO: '',
-            SUCCESS: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]',
+            SUCCESS: 'drop-shadow-[0_0_6px_rgba(16,185,129,0.8)]',
         },
-        liveIndicator: 'bg-cyan-400',
-        liveText: 'text-cyan-400',
-        cursor: 'bg-cyan-400',
+        liveIndicator: 'bg-emerald-400',
+        liveText: 'text-emerald-400',
+        cursor: 'bg-emerald-400',
     },
 };
 
@@ -320,6 +371,7 @@ interface LogEntryRowProps {
 }
 
 const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig, isLatest }) => {
+    const t = useTranslation();
     const icon = getOperationIcon(entry.operation);
     const statusClass = themeConfig.status[entry.status] || themeConfig.status.pending;
     const opClass = themeConfig.operation[entry.operation] || themeConfig.operation.INFO;
@@ -370,7 +422,7 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
                 <button
                     onClick={copyEntry}
                     className={`inline-flex ml-2 opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all align-middle ${themeConfig.button}`}
-                    title="Copy"
+                    title={t('activityPanel.copy')}
                 >
                     <Copy size={10} />
                 </button>
@@ -380,14 +432,14 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
             {entry.status === 'running' && (
                 <span className="shrink-0 flex items-center gap-1 self-center">
                     <span className={`w-1.5 h-1.5 rounded-full animate-ping ${themeConfig.liveIndicator}`} />
-                    <span className={`text-[9px] uppercase tracking-widest ${themeConfig.liveText}`}>LIVE</span>
+                    <span className={`text-[9px] uppercase tracking-widest ${themeConfig.liveText}`}>{t('activityPanel.badges.live')}</span>
                 </span>
             )}
             {/* Show SYNCED for completed sync operations */}
             {entry.status === 'success' && entry.message.toLowerCase().includes('sync') && (
                 <span className="shrink-0 flex items-center gap-1 self-center">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#9ece6a]" />
-                    <span className="text-[9px] uppercase tracking-widest text-[#9ece6a]">SYNCED</span>
+                    <span className="text-[9px] uppercase tracking-widest text-[#9ece6a]">{t('activityPanel.badges.synced')}</span>
                 </span>
             )}
         </div>
@@ -416,7 +468,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     const [filterType, setFilterType] = useState<OperationType | 'ALL'>('ALL');
     const [showCloudSync, setShowCloudSync] = useState(true);  // Toggle to show/hide AeroCloud sync messages
     const [height, setHeight] = useState(initialHeight);
-    const [isResizing, setIsResizing] = useState(false);
+
 
     // Use theme from props (controlled by app-level theme)
     const themeConfig = THEMES[themeProp];
@@ -440,7 +492,6 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     // Resize handlers
     const handleResizeStart = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
-        setIsResizing(true);
 
         const startY = e.clientY;
         const startHeight = height;
@@ -452,7 +503,6 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
         };
 
         const handleMouseUp = () => {
-            setIsResizing(false);
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
@@ -519,17 +569,13 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
             {/* Resize handle at top */}
             <div
                 onMouseDown={handleResizeStart}
-                className={`absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize flex items-center justify-center z-10 group transition-all
-                    ${isResizing ? themeConfig.resizeActive : themeConfig.resize}`}
+                className={`absolute top-0 left-0 right-0 h-2 cursor-ns-resize transition-colors flex items-center justify-center z-10 group ${themeConfig.resizeBase}`}
             >
-                <GripHorizontal
-                    size={12}
-                    className={`text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity ${isResizing ? 'opacity-100' : ''}`}
-                />
+                <div className={`w-10 h-0.5 rounded-full ${themeConfig.resizeBar} transition-colors`} />
             </div>
 
             {/* Header */}
-            <div className={`flex items-center justify-between px-3 py-1.5 ${themeConfig.header} mt-1.5`}>
+            <div className={`flex items-center justify-between px-3 py-1.5 ${themeConfig.header} mt-2`}>
                 <div className="flex items-center gap-3">
                     {/* Title with terminal icon */}
                     <button
@@ -538,14 +584,14 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     >
                         <Terminal size={14} className={themeConfig.headerIcon} />
                         <ChevronDown size={14} className="opacity-60" />
-                        <span className="tracking-wide text-[11px]">{t('transfer.activityLog') || 'Activity Log'}</span>
+                        <span className="tracking-wide text-[11px]">{t('activityPanel.title')}</span>
                     </button>
 
                     {/* Running count badge */}
                     {runningCount > 0 && (
                         <span className={`px-2 py-0.5 text-[10px] font-bold rounded-sm border animate-pulse flex items-center gap-1.5 ${themeConfig.badge}`}>
                             <Zap size={10} className={themeConfig.badgeIcon} />
-                            {runningCount} ACTIVE
+                            {runningCount} {t('activityPanel.badges.active')}
                         </span>
                     )}
 
@@ -561,7 +607,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     <button
                         onClick={() => setShowCloudSync(!showCloudSync)}
                         className={`p-1.5 rounded transition-all ${showCloudSync ? themeConfig.button : 'opacity-40 ' + themeConfig.button}`}
-                        title={showCloudSync ? 'Hide AeroCloud sync messages' : 'Show AeroCloud sync messages'}
+                        title={showCloudSync ? t('activityPanel.hideCloudSync') : t('activityPanel.showCloudSync')}
                     >
                         <Cloud size={12} className={showCloudSync ? 'text-[#7dcfff]' : ''} />
                     </button>
@@ -572,14 +618,14 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         onChange={(e) => setFilterType(e.target.value as OperationType | 'ALL')}
                         className={`text-[10px] border rounded-sm px-2 py-0.5 focus:outline-none focus:ring-1 uppercase tracking-wider font-mono cursor-pointer transition-colors ${themeConfig.select}`}
                     >
-                        <option value="ALL">All</option>
-                        <option value="CONNECT">Connect</option>
-                        <option value="DISCONNECT">Disconnect</option>
-                        <option value="UPLOAD">Upload</option>
-                        <option value="DOWNLOAD">Download</option>
-                        <option value="DELETE">Delete</option>
-                        <option value="NAVIGATE">Navigate</option>
-                        <option value="ERROR">Errors</option>
+                        <option value="ALL">{t('activityPanel.filters.all')}</option>
+                        <option value="CONNECT">{t('activityPanel.filters.connect')}</option>
+                        <option value="DISCONNECT">{t('activityPanel.filters.disconnect')}</option>
+                        <option value="UPLOAD">{t('activityPanel.filters.upload')}</option>
+                        <option value="DOWNLOAD">{t('activityPanel.filters.download')}</option>
+                        <option value="DELETE">{t('activityPanel.filters.delete')}</option>
+                        <option value="NAVIGATE">{t('activityPanel.filters.navigate')}</option>
+                        <option value="ERROR">{t('activityPanel.filters.errors')}</option>
                     </select>
 
                     {/* Copy All button */}
@@ -591,7 +637,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                             navigator.clipboard.writeText(logText);
                         }}
                         className={`p-1.5 rounded transition-all ${themeConfig.button}`}
-                        title="Copy all logs"
+                        title={t('activityPanel.copyAllLogs')}
                     >
                         <Copy size={12} />
                     </button>
@@ -600,7 +646,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     <button
                         onClick={clear}
                         className={`p-1.5 rounded transition-all ${themeConfig.buttonDanger}`}
-                        title="Clear log"
+                        title={t('activityPanel.clearLog')}
                     >
                         <Trash2 size={12} />
                     </button>
@@ -609,7 +655,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     <button
                         onClick={onToggle}
                         className={`p-1.5 rounded transition-all ${themeConfig.button}`}
-                        title="Close"
+                        title={t('activityPanel.close')}
                     >
                         <X size={14} />
                     </button>
@@ -625,7 +671,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                 {filteredEntries.length === 0 ? (
                     <div className={`flex flex-col items-center justify-center h-full text-xs gap-2 ${themeConfig.emptyText}`}>
                         <Terminal size={24} className={themeConfig.emptyIcon} />
-                        <span className="uppercase tracking-widest text-[10px]">{t('transfer.noActivity') || 'Awaiting commands...'}</span>
+                        <span className="uppercase tracking-widest text-[10px]">{t('activityPanel.awaitingCommands')}</span>
                     </div>
                 ) : (
                     filteredEntries.map(entry => (
@@ -651,7 +697,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     className={`absolute bottom-3 right-4 px-3 py-1.5 text-[10px] rounded-sm border transition-all font-mono uppercase tracking-wider flex items-center gap-1.5 ${themeConfig.jumpButton}`}
                 >
                     <ChevronDown size={12} />
-                    LATEST
+                    {t('activityPanel.jumpToLatest')}
                 </button>
             )}
 

@@ -3,13 +3,18 @@
   "identifier": "default",
   "description": "AeroFTP default capabilities",
   "windows": [
-    "main"
+    "main",
+    "splashscreen"
   ],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:event:allow-emit",
     "core:event:allow-listen",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
     "notification:default",
     "dialog:default",
     "dialog:allow-open",

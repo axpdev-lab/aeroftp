@@ -125,15 +125,15 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     // Listen for tray menu events
     const unlistenMenu = listen<string>('menu-event', async (event) => {
       const action = event.payload;
-      const { activityLog: al, checkForUpdate: cfu } = callbacksRef.current;
+      const { activityLog: al, checkForUpdate: cfu, t: tr } = callbacksRef.current;
       logger.debug('Tray menu action:', action);
 
       if (action === 'cloud_sync_now') {
         try {
-          al.log('INFO', 'AeroCloud: sincronizzazione manuale avviata', 'running');
+          al.log('INFO', tr('cloud.manualSyncStarted'), 'running');
           await invoke('trigger_cloud_sync');
         } catch (e) {
-          al.log('INFO', `AeroCloud: sincronizzazione fallita: ${e}`, 'error');
+          al.log('INFO', tr('cloud.syncFailed', { error: String(e) }), 'error');
         }
       } else if (action === 'cloud_pause') {
         try {
@@ -160,12 +160,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     // instead of creating a duplicate. Clear cloudSyncLogId so the later 'active' status
     // event doesn't create yet another update.
     const unlistenSyncComplete = listen<{ uploaded: number; downloaded: number; errors: string[] }>('cloud_sync_complete', (event) => {
-      const { activityLog: al } = callbacksRef.current;
+      const { activityLog: al, t: tr } = callbacksRef.current;
       const result = event.payload;
       const hasErrors = result.errors.length > 0;
       const msg = hasErrors
-        ? `Errore sincronizzazione AeroCloud: ${result.errors.length} errori`
-        : `AeroCloud sincronizzato: \u2191${result.uploaded} \u2193${result.downloaded} file`;
+        ? tr('cloud.syncError', { count: result.errors.length.toString() })
+        : tr('cloud.syncComplete', { uploaded: result.uploaded.toString(), downloaded: result.downloaded.toString() });
 
       if (cloudSyncLogId) {
         al.updateEntry(cloudSyncLogId, { status: hasErrors ? 'error' : 'success', message: msg });

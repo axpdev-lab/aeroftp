@@ -3,7 +3,7 @@
 
 /**
  * Supported language codes (ISO 639-1)
- * 51 languages - More than FileZilla (47) and Cyberduck (31)!
+ * 47 languages - More than Cyberduck (31)!
  */
 export type Language =
     // Existing (5)
@@ -14,8 +14,6 @@ export type Language =
     | 'sv' | 'da' | 'no' | 'fi' | 'is'
     // Asian (10)
     | 'ja' | 'ko' | 'vi' | 'th' | 'id' | 'ms' | 'tl' | 'km' | 'hi' | 'bn'
-    // Middle Eastern - RTL (4)
-    | 'ar' | 'he' | 'fa' | 'ur'
     // Balkan & Caucasus (6)
     | 'hr' | 'sr' | 'sl' | 'mk' | 'ka' | 'hy'
     // Baltic (3)
@@ -412,11 +410,6 @@ export const AVAILABLE_LANGUAGES: LanguageInfo[] = [
     { code: 'km', name: 'Khmer', nativeName: 'ភាសាខ្មែរ', flag: '🇰🇭' },
     { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳' },
     { code: 'bn', name: 'Bengali', nativeName: 'বাংলা', flag: '🇧🇩' },
-    // Middle Eastern - RTL (4)
-    { code: 'ar', name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦' },
-    { code: 'he', name: 'Hebrew', nativeName: 'עברית', flag: '🇮🇱' },
-    { code: 'fa', name: 'Persian', nativeName: 'فارسی', flag: '🇮🇷' },
-    { code: 'ur', name: 'Urdu', nativeName: 'اردو', flag: '🇵🇰' },
     // Balkan & Caucasus (6)
     { code: 'hr', name: 'Croatian', nativeName: 'Hrvatski', flag: '🇭🇷' },
     { code: 'sr', name: 'Serbian', nativeName: 'Српски', flag: '🇷🇸' },

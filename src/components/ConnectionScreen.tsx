@@ -120,7 +120,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
 
     const browseLocalFolder = async () => {
         try {
-            const selected = await open({ directory: true, multiple: false, title: 'Select Local Folder' });
+            const selected = await open({ directory: true, multiple: false, title: t('connection.fourshared.selectLocalFolder') });
             if (selected && typeof selected === 'string') {
                 setLocalPath(selected);
                 onLocalPathChange?.(selected);
@@ -199,10 +199,10 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                                 <span className="font-medium">4shared</span>
                                 <span className="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 rounded-full flex items-center gap-1">
                                     <Check size={12} />
-                                    Active
+                                    {t('connection.active')}
                                 </span>
                             </div>
-                            <span className="text-sm text-gray-500">Previously authenticated</span>
+                            <span className="text-sm text-gray-500">{t('connection.fourshared.previouslyAuthenticated')}</span>
                         </div>
                     </div>
                 </div>
@@ -214,12 +214,12 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                     {isConnecting ? (
                         <>
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Connecting...
+                            {t('connection.connecting')}
                         </>
                     ) : (
                         <>
                             <Cloud size={18} />
-                            Connect to 4shared
+                            {t('connection.fourshared.connectTo4shared')}
                         </>
                     )}
                 </button>
@@ -228,12 +228,12 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                         onClick={() => setWantsNewAccount(true)}
                         className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
-                        Use Different Account
+                        {t('connection.fourshared.useDifferentAccount')}
                     </button>
                     <button
                         onClick={handleLogout}
                         className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title="Disconnect account"
+                        title={t('connection.fourshared.disconnectAccount')}
                     >
                         <X size={14} />
                     </button>
@@ -252,7 +252,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
         <div className="space-y-4">
             {/* Local Path */}
             <div>
-                <label className="block text-sm font-medium mb-1.5">Local Folder (optional)</label>
+                <label className="block text-sm font-medium mb-1.5">{t('connection.fourshared.localFolderOptional')}</label>
                 <div className="flex gap-2">
                     <input
                         type="text"
@@ -261,7 +261,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                         placeholder="~/Downloads"
                         className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
                     />
-                    <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl" title="Browse...">
+                    <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl" title={t('common.browse')}>
                         <FolderOpen size={18} />
                     </button>
                 </div>
@@ -277,20 +277,20 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                     className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="save-fourshared" className="flex-1">
-                    <span className="text-sm font-medium">Save this connection</span>
-                    <p className="text-xs text-gray-500">Quick connect next time</p>
+                    <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
+                    <p className="text-xs text-gray-500">{t('connection.fourshared.quickConnectNextTime')}</p>
                 </label>
                 <Save size={16} className="text-gray-400" />
             </div>
 
             {wantToSave && (
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">Connection Name</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
                     <input
                         type="text"
                         value={saveName}
                         onChange={(e) => { setSaveName(e.target.value); onConnectionNameChange?.(e.target.value); }}
-                        placeholder="My 4shared"
+                        placeholder={t('connection.fourshared.my4shared')}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
                     />
                 </div>
@@ -305,12 +305,12 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                 {isAuthenticating || isConnecting ? (
                     <>
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        {isAuthenticating ? 'Authenticating...' : 'Connecting...'}
+                        {isAuthenticating ? t('connection.authenticating') : t('connection.connecting')}
                     </>
                 ) : (
                     <>
                         <Cloud size={18} />
-                        Sign in with 4shared
+                        {t('connection.fourshared.signInWith4shared')}
                     </>
                 )}
             </button>
@@ -325,35 +325,35 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
             {showCredentialsForm && (
                 <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-sm">OAuth 1.0 Credentials</h4>
+                        <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
                         <button
                             onClick={() => { try { invoke('open_url', { url: 'https://www.4shared.com/developer/' }); } catch { /* ignore */ } }}
                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                         >
-                            Get credentials <ExternalLink size={12} />
+                            {t('settings.getCredentials')} <ExternalLink size={12} />
                         </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Create a developer app at 4shared.com/developer and enter the Consumer Key and Secret below.
+                        {t('connection.fourshared.createAppInstructions')}
                     </p>
                     <div>
-                        <label className="block text-xs font-medium mb-1">Consumer Key</label>
+                        <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
                         <input
                             type="text"
                             value={consumerKey}
                             onChange={(e) => setConsumerKey(e.target.value)}
-                            placeholder="Enter Consumer Key"
+                            placeholder={t('connection.fourshared.enterConsumerKey')}
                             className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium mb-1">Consumer Secret</label>
+                        <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
                         <div className="relative">
                             <input
                                 type={showSecret ? 'text' : 'password'}
                                 value={consumerSecret}
                                 onChange={(e) => setConsumerSecret(e.target.value)}
-                                placeholder="Enter Consumer Secret"
+                                placeholder={t('connection.fourshared.enterConsumerSecret')}
                                 className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                             />
                             <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -363,14 +363,14 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                     </div>
                     <div className="flex gap-2">
                         <button onClick={() => setShowCredentialsForm(false)} className="flex-1 py-2 px-3 text-sm border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                            Cancel
+                            {t('common.cancel')}
                         </button>
                         <button
                             onClick={handleSignIn}
                             disabled={!consumerKey || !consumerSecret}
                             className="flex-1 py-2 px-3 text-sm text-white rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
                         >
-                            Continue
+                            {t('connection.fourshared.continue')}
                         </button>
                     </div>
                 </div>
@@ -382,13 +382,13 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                     className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1"
                 >
                     <Settings size={16} />
-                    Configure OAuth 1.0 credentials
+                    {t('connection.fourshared.configureCredentials')}
                 </button>
             )}
 
             {wantsNewAccount && hasExistingTokens && (
                 <button onClick={() => setWantsNewAccount(false)} className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 flex items-center justify-center gap-1">
-                    &larr; Back to existing account
+                    &larr; {t('connection.fourshared.backToExistingAccount')}
                 </button>
             )}
         </div>
@@ -1481,18 +1481,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     />
                 </div>
 
-                {/* Skip to File Manager Button */}
-                <div className="md:col-span-2 text-center mt-4">
-                    <button
-                        onClick={onSkipToFileManager}
-                        className="group px-6 py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl text-gray-600 dark:text-gray-300 transition-all hover:scale-105 flex items-center gap-2 mx-auto"
-                    >
-                        <HardDrive size={18} className="group-hover:text-blue-500 transition-colors" />
-                        <span>{t('browser.local')} {t('browser.files')}</span>
-                        <ChevronRight size={16} className="opacity-50 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                    <p className="text-xs text-gray-500 mt-2">{t('statusBar.notConnected')}</p>
-                </div>
+                {/* Skip to File Manager — accessible via status bar AeroFile button */}
             </div> {/* Close grid */}
 
             {/* Export/Import Dialog */}

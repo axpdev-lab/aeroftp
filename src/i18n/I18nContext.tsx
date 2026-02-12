@@ -1,6 +1,6 @@
 // i18n Context Provider
 // Lightweight React Context-based internationalization system
-// Supports 51 languages including RTL (Arabic, Hebrew, Persian, Urdu)
+// Supports 47 languages
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
@@ -56,12 +56,6 @@ import kmTranslations from './locales/km.json';
 import hiTranslations from './locales/hi.json';
 import bnTranslations from './locales/bn.json';
 
-// Middle Eastern - RTL (4)
-import arTranslations from './locales/ar.json';
-import heTranslations from './locales/he.json';
-import faTranslations from './locales/fa.json';
-import urTranslations from './locales/ur.json';
-
 // Balkan & Caucasus (6)
 import hrTranslations from './locales/hr.json';
 import srTranslations from './locales/sr.json';
@@ -87,10 +81,7 @@ import swTranslations from './locales/sw.json';
 // Turkish (1)
 import trTranslations from './locales/tr.json';
 
-// RTL languages - used to set document direction
-const RTL_LANGUAGES: Language[] = ['ar', 'he', 'fa', 'ur'];
-
-// Translation map for O(1) lookup - 51 languages
+// Translation map for O(1) lookup - 47 languages
 const TRANSLATIONS: Record<Language, { translations: TranslationKeys }> = {
     // Original 5
     en: enTranslations as { translations: TranslationKeys },
@@ -128,11 +119,6 @@ const TRANSLATIONS: Record<Language, { translations: TranslationKeys }> = {
     km: kmTranslations as { translations: TranslationKeys },
     hi: hiTranslations as { translations: TranslationKeys },
     bn: bnTranslations as { translations: TranslationKeys },
-    // Middle Eastern - RTL (4)
-    ar: arTranslations as { translations: TranslationKeys },
-    he: heTranslations as { translations: TranslationKeys },
-    fa: faTranslations as { translations: TranslationKeys },
-    ur: urTranslations as { translations: TranslationKeys },
     // Balkan & Caucasus (6)
     hr: hrTranslations as { translations: TranslationKeys },
     sr: srTranslations as { translations: TranslationKeys },
@@ -226,13 +212,6 @@ function persistLanguage(language: Language): void {
 }
 
 /**
- * Check if a language is RTL (Right-to-Left)
- */
-function isRTLLanguage(language: Language): boolean {
-    return RTL_LANGUAGES.includes(language);
-}
-
-/**
  * I18n Provider Props
  */
 interface I18nProviderProps {
@@ -304,16 +283,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children, initialLan
         window.dispatchEvent(new CustomEvent('aeroftp-language-changed', { detail: newLanguage }));
     }, []);
 
-    // Update document lang attribute and direction for accessibility and RTL support
+    // Update document lang attribute for accessibility
     useEffect(() => {
         document.documentElement.lang = language;
-
-        // Set document direction for RTL languages
-        const direction = isRTLLanguage(language) ? 'rtl' : 'ltr';
-        document.documentElement.dir = direction;
-
-        // Also set a data attribute for CSS targeting
-        document.documentElement.setAttribute('data-direction', direction);
     }, [language]);
 
     // Memoize context value to prevent unnecessary re-renders
@@ -353,14 +325,6 @@ export function useI18n(): I18nContextValue {
 export function useTranslation(): TranslationFunction {
     const { t } = useI18n();
     return t;
-}
-
-/**
- * Hook to check if current language is RTL
- */
-export function useIsRTL(): boolean {
-    const { language } = useI18n();
-    return isRTLLanguage(language);
 }
 
 export default I18nProvider;

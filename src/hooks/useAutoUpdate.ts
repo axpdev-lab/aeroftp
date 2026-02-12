@@ -41,7 +41,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
       if (info.has_update) {
         sendNotification({
           title: 'AeroFTP Update Available!',
-          body: `Version ${info.latest_version} is ready. Download for your OS.`,
+          body: `Version ${info.latest_version} is ready.`,
         });
         const checkType = manual ? '[Manual]' : '[Auto]';
         activityLog.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');

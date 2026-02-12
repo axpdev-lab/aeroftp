@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
-import { useTranslation } from '../../i18n';
+import { useI18n } from '../../i18n';
+import { getToolLabel } from './aiChatToolLabels';
 
 interface BatchToolApprovalProps {
     toolCalls: AgentToolCall[];
@@ -14,23 +15,10 @@ interface BatchToolApprovalProps {
     allTools?: AITool[];
 }
 
-const dangerConfig: Record<DangerLevel, { accent: string; label: string; icon: typeof Shield }> = {
-    safe: { accent: 'border-l-blue-500', label: 'auto', icon: ShieldCheck },
-    medium: { accent: 'border-l-yellow-500', label: 'confirm', icon: Shield },
-    high: { accent: 'border-l-red-500', label: 'danger', icon: ShieldAlert },
-};
-
-const toolLabels: Record<string, string> = {
-    local_edit: 'Edit', local_write: 'Write', local_read: 'Read',
-    local_list: 'List', local_delete: 'Delete', local_mkdir: 'Mkdir',
-    local_rename: 'Rename', local_search: 'Search',
-    remote_edit: 'Remote Edit', remote_delete: 'Remote Delete',
-    remote_mkdir: 'Remote Mkdir', remote_rename: 'Remote Rename',
-    remote_download: 'Download', remote_upload: 'Upload',
-    upload_files: 'Upload', download_files: 'Download',
-    sync_preview: 'Sync Preview', terminal_execute: 'Terminal',
-    rag_index: 'Index',
-    agent_memory_write: 'Memory',
+const dangerConfig: Record<DangerLevel, { accent: string; icon: typeof Shield }> = {
+    safe: { accent: 'border-l-blue-500', icon: ShieldCheck },
+    medium: { accent: 'border-l-yellow-500', icon: Shield },
+    high: { accent: 'border-l-red-500', icon: ShieldAlert },
 };
 
 function getMainArg(toolName: string, args: Record<string, unknown>): string {
@@ -51,7 +39,7 @@ const BatchToolItem: React.FC<{
     onApproveSingle: (id: string) => void;
     expandedId: string | null;
     setExpandedId: (id: string | null) => void;
-    t: ReturnType<typeof useTranslation>;
+    t: (key: string, params?: Record<string, string | number>) => string;
 }> = ({ tc, allTools, onApproveSingle, expandedId, setExpandedId, t }) => {
     const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
     const [diffLoading, setDiffLoading] = useState(false);
@@ -62,7 +50,7 @@ const BatchToolItem: React.FC<{
     const dangerLevel = tool?.dangerLevel || 'medium';
     const config = dangerConfig[dangerLevel];
     const DangerIcon = config.icon;
-    const label = toolLabels[tc.toolName] || tc.toolName;
+    const label = getToolLabel(tc.toolName, t);
     const mainArg = getMainArg(tc.toolName, tc.args);
     const isExpanded = expandedId === tc.id;
     const isExecuting = tc.status === 'executing';
@@ -111,6 +99,7 @@ const BatchToolItem: React.FC<{
                         onClick={() => setExpandedId(isExpanded ? null : tc.id)}
                         className="text-gray-500 hover:text-gray-300 p-0.5"
                         aria-expanded={isExpanded}
+                        aria-label={t('ai.toolApproval.toggleDetails') || 'Toggle details'}
                     >
                         {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </button>
@@ -144,7 +133,7 @@ const BatchToolItem: React.FC<{
                                 : 'hover:bg-gray-700 text-green-400 hover:text-green-300'
                         }`}
                         title={tc.validation && !tc.validation.valid ? (t('ai.tool.validationBlocked') || 'Blocked: validation failed') : (t('ai.batch.allowThis') || 'Allow this tool')}
-                        aria-label="Approve this tool call"
+                        aria-label={t('ai.toolApproval.approveThis') || 'Approve this tool call'}
                     >
                         <Check size={11} />
                     </button>
@@ -230,7 +219,8 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
 }) => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [justApproved, setJustApproved] = useState(false);
-    const t = useTranslation();
+    const i18n = useI18n();
+    const { t } = i18n;
 
     const handleApproveAll = useCallback(() => {
         if (justApproved) return;
@@ -258,7 +248,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
                     {toolCalls.length} {toolCalls.length === 1
                         ? (t('ai.batch.toolCall') || 'tool call')
                         : (t('ai.batch.toolCalls') || 'tool calls')
-                    } {t('ai.batch.pending') || 'pending approval'}
+                    } {t('ai.toolApproval.pendingApproval') || 'pending approval'}
                 </span>
             </div>
 
@@ -290,7 +280,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
                                     ? 'bg-red-600/80 hover:bg-red-500 text-white'
                                     : 'bg-green-600/80 hover:bg-green-500 text-white'
                         }`}
-                        aria-label="Allow all tool calls"
+                        aria-label={t('ai.toolApproval.allowAllCalls') || 'Allow all tool calls'}
                     >
                         <Check size={10} />
                         {t('ai.batch.allowAll') || 'Allow All'}
@@ -298,7 +288,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
                     <button
                         onClick={onRejectAll}
                         className="flex items-center gap-1 px-3 py-1 rounded text-[11px] font-medium bg-gray-700/80 hover:bg-gray-600 text-gray-300 transition-colors"
-                        aria-label="Reject all tool calls"
+                        aria-label={t('ai.toolApproval.rejectAllCalls') || 'Reject all tool calls'}
                     >
                         <X size={10} />
                         {t('ai.batch.rejectAll') || 'Reject All'}

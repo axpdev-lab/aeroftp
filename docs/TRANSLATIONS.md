@@ -16,11 +16,11 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 - **Persistence** - Language preference saved to localStorage
 - **Fallback** - Falls back to English for missing translations
 - **Parameter interpolation** - Supports `{paramName}` syntax
-- **RTL support** - Arabic, Hebrew, Persian, Urdu
+- **All LTR** - All supported languages use left-to-right text direction
 
 ---
 
-## Supported Languages (51)
+## Supported Languages (47)
 
 ### Original (5)
 
@@ -73,15 +73,6 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 | `km` | Khmer | Phasa Khmer |
 | `hi` | Hindi | Hindi |
 | `bn` | Bengali | Bangla |
-
-### Middle Eastern - RTL (4)
-
-| Code | Language | Native Name | Direction |
-|------|----------|-------------|-----------|
-| `ar` | Arabic | Al-Arabiyya | RTL |
-| `he` | Hebrew | Ivrit | RTL |
-| `fa` | Persian | Farsi | RTL |
-| `ur` | Urdu | Urdu | RTL |
 
 ### Balkan & Caucasus (6)
 
@@ -171,12 +162,11 @@ Translations are organized by 30+ namespaces:
 src/i18n/
 ├── index.ts              # Public exports
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
-├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (51)
+├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (47)
 └── locales/
     ├── en.json           # English (base, 1278 keys)
     ├── it.json           # Italian (manually translated)
-    ├── ar.json           # Arabic (RTL)
-    ├── ...               # 48 more languages
+    ├── ...               # 44 more languages
     └── zh.json           # Chinese
 ```
 
@@ -188,7 +178,7 @@ src/i18n/
 # Validate all translations (100% coverage check)
 npm run i18n:validate
 
-# Sync new keys from en.json to all 51 languages
+# Sync new keys from en.json to all 47 languages
 # Adds [NEEDS TRANSLATION] placeholder for missing keys
 npm run i18n:sync
 
@@ -244,7 +234,7 @@ npm run build           # No TypeScript errors
 ## How to Add New Translation Keys
 
 1. Add the key to `src/i18n/locales/en.json` in the appropriate namespace
-2. Run `npm run i18n:sync` to propagate to all 51 languages
+2. Run `npm run i18n:sync` to propagate to all 47 languages
 3. Manually translate Italian (`it.json`) - other languages get `[NEEDS TRANSLATION]` placeholders
 4. Run `npm run i18n:validate` to confirm 100%
 
@@ -278,7 +268,7 @@ const { t, language, setLanguage } = useI18n();
 1. **English is the base** - Always add keys to `en.json` first
 2. **Use namespaces** - Group related keys together
 3. **Run sync after adding keys** - `npm run i18n:sync`
-4. **Test RTL** - Set `direction: "rtl"` for Arabic, Hebrew, Persian, Urdu
+4. **All languages are LTR** - No RTL languages currently supported
 5. **Technical terms stay English** - FTP, SFTP, OAuth, S3, WebDAV
 6. **UTF-8 encoding** - All files must be UTF-8
 

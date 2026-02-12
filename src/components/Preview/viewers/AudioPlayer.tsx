@@ -23,6 +23,7 @@ import { WebGLVisualizer } from '../controls/WebGLVisualizer';
 import type { WebGLShaderName } from '../controls/shaders';
 import { AudioMixer, EQ_BANDS } from '../controls/AudioMixer';
 import { logger } from '../../../utils/logger';
+import { useI18n } from '../../../i18n';
 
 interface AudioPlayerProps extends ViewerBaseProps {
     className?: string;
@@ -36,16 +37,16 @@ const defaultEQState: EqualizerState = {
     presetName: 'Flat',
 };
 
-// Visualizer mode options
-const VISUALIZER_MODES: { value: VisualizerMode; label: string; icon: React.ReactNode }[] = [
-    { value: 'bars', label: 'Bars', icon: <BarChart2 size={14} /> },
-    { value: 'waveform', label: 'Waveform', icon: <Activity size={14} /> },
-    { value: 'radial', label: 'Radial', icon: <Circle size={14} /> },
-    { value: 'spectrum', label: 'Spectrum', icon: <Waves size={14} /> },
-    { value: 'fractal', label: 'Fractal', icon: <Sparkles size={14} /> },
-    { value: 'vortex', label: 'Vortex', icon: <Zap size={14} /> },
-    { value: 'plasma', label: 'Plasma', icon: <Flame size={14} /> },
-    { value: 'kaleidoscope', label: 'Kaleidoscope', icon: <Eye size={14} /> },
+// Visualizer mode options - will be translated inline in component
+const getVisualizerModes = (t: (key: string) => string): { value: VisualizerMode; label: string; icon: React.ReactNode }[] => [
+    { value: 'bars', label: t('preview.audio.visualizer.bars'), icon: <BarChart2 size={14} /> },
+    { value: 'waveform', label: t('preview.audio.visualizer.waveform'), icon: <Activity size={14} /> },
+    { value: 'radial', label: t('preview.audio.visualizer.radial'), icon: <Circle size={14} /> },
+    { value: 'spectrum', label: t('preview.audio.visualizer.spectrum'), icon: <Waves size={14} /> },
+    { value: 'fractal', label: t('preview.audio.visualizer.fractal'), icon: <Sparkles size={14} /> },
+    { value: 'vortex', label: t('preview.audio.visualizer.vortex'), icon: <Zap size={14} /> },
+    { value: 'plasma', label: t('preview.audio.visualizer.plasma'), icon: <Flame size={14} /> },
+    { value: 'kaleidoscope', label: t('preview.audio.visualizer.kaleidoscope'), icon: <Eye size={14} /> },
 ];
 
 // WebGL shader visualizer modes
@@ -75,6 +76,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     onError,
     className = '',
 }) => {
+    const { t } = useI18n();
+
     // Refs
     const audioRef = useRef<HTMLAudioElement>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -84,6 +87,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const pannerRef = useRef<StereoPannerNode | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const graphBuiltRef = useRef(false);
+
+    // Get localized visualizer modes
+    const VISUALIZER_MODES = getVisualizerModes(t);
 
     // State
     const [playback, setPlayback] = useState<PlaybackState>({
@@ -268,7 +274,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             } catch (err: any) {
                 if (err.name !== 'AbortError') {
                     console.error('Play failed:', err);
-                    setLoadError('Playback failed. Try clicking play again.');
+                    setLoadError(t('preview.audio.playbackFailed'));
                 }
             }
         } else {
@@ -362,8 +368,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             return;
         }
         setIsBuffering(false);
-        setLoadError('Failed to load audio file. The file may be too large or the format is unsupported.');
-        onError?.('Failed to load audio file');
+        setLoadError(t('preview.audio.loadFailed'));
+        onError?.(t('preview.audio.loadFailed'));
     }, [retryCount, onError]);
 
     // Keyboard shortcuts
@@ -451,7 +457,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (!audioSrc) {
         return (
             <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
-                <div className="text-gray-500">No audio data available</div>
+                <div className="text-gray-500">{t('preview.common.noData')}</div>
             </div>
         );
     }
@@ -515,7 +521,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             <div className="flex flex-col items-center gap-2">
                                 <Loader2 size={32} className="text-cyan-400 animate-spin" />
                                 <span className="text-sm text-gray-300">
-                                    {retryCount > 0 ? `Retrying... (${retryCount}/${maxRetries})` : 'Loading audio...'}
+                                    {retryCount > 0 ? `${t('preview.audio.retrying')} (${retryCount}/${maxRetries})` : t('preview.audio.loading')}
                                 </span>
                             </div>
                         </div>
@@ -539,7 +545,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                     className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
                                 >
                                     <RefreshCw size={16} />
-                                    Try Again
+                                    {t('preview.audio.tryAgain')}
                                 </button>
                             </div>
                         </div>
@@ -561,7 +567,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                 }
                             }}
                             className="p-1.5 rounded bg-black/40 hover:bg-black/60 text-white/70 hover:text-white transition-colors"
-                            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen VJ Mode'}
+                            title={isFullscreen ? t('preview.audio.exitFullscreen') : t('preview.audio.fullscreenVJ')}
                         >
                             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                         </button>
@@ -572,7 +578,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                                 ? 'bg-cyan-500/30 text-cyan-400 shadow-lg shadow-cyan-500/20'
                                 : 'bg-gray-800/80 hover:bg-gray-700 text-gray-400'
                                 }`}
-                            title="Toggle Cyber Mode (C)"
+                            title={t('preview.audio.cyberMode')}
                         >
                             <Zap size={16} className={cyberMode ? 'animate-pulse' : ''} />
                         </button>
@@ -582,7 +588,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             <button
                                 onClick={() => setShowVisualizerMenu(prev => !prev)}
                                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-800/80 hover:bg-gray-700 rounded-lg transition-colors"
-                                title="Change visualizer mode (V)"
+                                title={t('preview.audio.changeVisualizer')}
                             >
                                 {glShader
                                     ? <span className="text-[10px] font-bold text-emerald-400 leading-none">GL</span>
@@ -701,7 +707,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 <button
                     onClick={skipBackward}
                     className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                    title="Skip -5s"
+                    title={t('preview.audio.skipBackward')}
                 >
                     <SkipBack size={20} className="text-gray-400" />
                 </button>
@@ -728,7 +734,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 <button
                     onClick={skipForward}
                     className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-                    title="Skip +5s"
+                    title={t('preview.audio.skipForward')}
                 >
                     <SkipForward size={20} className="text-gray-400" />
                 </button>
@@ -741,7 +747,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     <button
                         onClick={toggleMute}
                         className="p-1 hover:bg-gray-800 rounded transition-colors"
-                        title="Mute (M)"
+                        title={t('preview.audio.mute')}
                     >
                         {playback.isMuted || playback.volume === 0 ? (
                             <VolumeX size={18} className="text-gray-500" />
@@ -769,7 +775,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             ? (cyberMode ? 'bg-cyan-600 text-white' : 'bg-blue-600 text-white')
                             : 'text-gray-400 hover:bg-gray-800'
                             }`}
-                        title="Toggle Loop (L)"
+                        title={t('preview.audio.loop')}
                     >
                         <Repeat size={16} />
                     </button>
@@ -783,7 +789,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             setPlaybackRate(rates[nextIndex]);
                         }}
                         className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-                        title="Playback Speed"
+                        title={t('preview.audio.speed')}
                     >
                         <Gauge size={14} className="text-gray-400" />
                         <span className="text-xs text-gray-300 font-mono w-8">
@@ -823,7 +829,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
             {/* Keyboard shortcuts hint */}
             <div className="text-center text-xs text-gray-600 pb-2">
-                Space: Play/Pause • ←→: Skip • ↑↓: Volume • E: EQ • C: Cyber Mode • V: Visualizer
+                {t('preview.audio.shortcuts')}
             </div>
         </div>
     );

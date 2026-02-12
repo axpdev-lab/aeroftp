@@ -196,7 +196,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 - A red **"Insecure"** badge on the protocol selector
 - A warning banner recommending FTPS or SFTP
-- Fully localized (51 languages)
+- Fully localized (47 languages)
 
 ### AI Tool Security (v1.6.0+)
 
@@ -319,4 +319,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.5 - 10 February 2026*
+*AeroFTP v2.0.6 - 11 February 2026*

@@ -85,166 +85,187 @@ interface ProtocolInfo {
     disabled?: boolean;  // If true, show as coming soon
 }
 
-const PROTOCOLS: ProtocolInfo[] = [
+// Helper to get protocols with translations
+// We define this function outside the component to avoid re-creating the array on every render
+const getProtocols = (t: (key: string, params?: Record<string, string>) => string): ProtocolInfo[] => [
     // Traditional Server Protocols
     {
         type: 'ftp',
         name: 'FTP',
         icon: <Server size={16} />,
-        description: 'File Transfer Protocol',
+        description: t('protocol.ftpDesc'),
         defaultPort: 21,
         badge: 'TLS',
         color: 'text-blue-500',
-        tooltip: 'FTP with configurable TLS encryption. Supports Explicit, Implicit (FTPS), and opportunistic modes.',
+        tooltip: t('protocol.ftpTooltip'),
     },
     {
         type: 'sftp',
         name: 'SFTP',
         icon: <Lock size={16} />,
-        description: 'SSH File Transfer',
+        description: t('protocol.sftpDesc'),
         defaultPort: 22,
         badge: 'SSH',
         color: 'text-emerald-500',
-        tooltip: 'SFTP over SSH - secure shell file transfer, supports key authentication',
+        tooltip: t('protocol.sftpTooltip'),
     },
     {
         type: 'webdav',
         name: 'WebDAV',
         icon: <Cloud size={16} />,
-        description: 'Nextcloud, CloudMe, Koofr',
+        description: t('protocol.webdavDesc'),
         defaultPort: 443,
         badge: 'TLS',
         color: 'text-orange-500',
-        tooltip: 'WebDAV protocol - compatible with Nextcloud, CloudMe, Koofr, Synology NAS',
+        tooltip: t('protocol.webdavTooltip'),
     },
     {
         type: 's3',
         name: 'S3',
         icon: <AwsS3Logo size={18} />,
-        description: 'AWS S3, MinIO, R2, B2',
+        description: t('protocol.s3Desc'),
         defaultPort: 443,
         badge: 'HMAC',
         color: 'text-amber-600',
-        tooltip: 'S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2',
+        tooltip: t('protocol.s3Tooltip'),
     },
     // Cloud Storage Providers (AeroCloud FIRST!)
     {
         type: 'aerocloud',
         name: 'AeroCloud',
         icon: <Cloud size={18} className="text-sky-400" />,
-        description: 'Personal FTP-based cloud',
+        description: t('protocol.aerocloudDesc'),
         defaultPort: 21,
         badge: 'Sync',
         color: 'text-sky-500',
         isCloudStorage: true,
-        tooltip: 'Turn any FTP server into your personal cloud with automatic sync',
+        tooltip: t('protocol.aerocloudTooltip'),
     },
     {
         type: 'googledrive',
         name: 'Google Drive',
         icon: <GoogleDriveLogo size={18} />,
-        description: 'Connect with Google Account',
+        description: t('protocol.googledriveDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: 'Google Drive - 15GB free storage, OAuth2 authentication',
+        tooltip: t('protocol.googledriveTooltip'),
     },
     {
         type: 'dropbox',
         name: 'Dropbox',
         icon: <DropboxLogo size={18} />,
-        description: 'Connect with Dropbox Account',
+        description: t('protocol.dropboxDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: 'Dropbox - 2GB free storage, OAuth2 authentication',
+        tooltip: t('protocol.dropboxTooltip'),
     },
     {
         type: 'onedrive',
         name: 'OneDrive',
         icon: <OneDriveLogo size={18} />,
-        description: 'Connect with Microsoft Account',
+        description: t('protocol.onedriveDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: 'Microsoft OneDrive - 5GB free storage, OAuth2 authentication',
+        tooltip: t('protocol.onedriveTooltip'),
     },
     {
         type: 'mega',
         name: 'MEGA',
         icon: <MegaLogo size={18} />,
-        description: 'Secure Cloud Storage',
+        description: t('protocol.megaDesc'),
         defaultPort: 443,
         badge: 'E2E',
         color: 'text-red-600',
         isCloudStorage: true,
-        tooltip: 'MEGA.nz - Client-side encryption, 20GB free',
+        tooltip: t('protocol.megaTooltip'),
     },
     {
         type: 'box',
         name: 'Box',
         icon: <BoxLogo size={18} />,
-        description: 'Connect with Box Account',
+        description: t('protocol.boxDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: 'Box - 10GB free storage, OAuth2 authentication',
+        tooltip: t('protocol.boxTooltip'),
     },
     {
         type: 'filen',
         name: 'Filen',
         icon: <FilenLogo size={18} />,
-        description: 'E2E Encrypted Cloud',
+        description: t('protocol.filenDesc'),
         defaultPort: 443,
         badge: 'E2E',
         color: 'text-emerald-600',
         isCloudStorage: true,
-        tooltip: 'Filen - Zero-knowledge E2E encryption, 10GB free',
+        tooltip: t('protocol.filenTooltip'),
     },
     {
         type: 'pcloud',
         name: 'pCloud',
         icon: <PCloudLogo size={18} />,
-        description: 'Connect with pCloud Account',
+        description: t('protocol.pcloudDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: 'pCloud - 10GB free storage, US/EU regions',
+        tooltip: t('protocol.pcloudTooltip'),
         disabled: !import.meta.env.DEV,
     },
     {
         type: 'fourshared',
         name: '4shared',
         icon: <FourSharedLogo size={18} />,
-        description: '15 GB Free Cloud Storage',
+        description: t('protocol.foursharedDesc'),
         defaultPort: 443,
         badge: 'OAuth',
         isOAuth: true,
         isCloudStorage: true,
-        tooltip: '4shared - 15GB free storage, OAuth 1.0 authentication',
+        tooltip: t('protocol.foursharedTooltip'),
     },
     {
         type: 'azure',
         name: 'Azure Blob',
         icon: <AzureLogo size={18} />,
-        description: 'Microsoft Azure Storage',
+        description: t('protocol.azureDesc'),
         defaultPort: 443,
         badge: 'HMAC',
         color: 'text-blue-500',
         isCloudStorage: true,
-        tooltip: 'Azure Blob Storage - Shared Key or SAS token authentication',
+        tooltip: t('protocol.azureTooltip'),
         disabled: !import.meta.env.DEV,
     },
 ];
 
+// Temporary fallback for getProtocolInfo when called outside component (no t function available)
+// This returns a protocol info with English fallbacks for description/tooltip
+const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
+    { type: 'ftp', name: 'FTP', icon: <Server size={16} />, description: 'File Transfer Protocol', defaultPort: 21, badge: 'TLS', color: 'text-blue-500', tooltip: 'FTP with configurable TLS encryption' },
+    { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, description: 'SSH File Transfer', defaultPort: 22, badge: 'SSH', color: 'text-emerald-500', tooltip: 'SFTP over SSH' },
+    { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
+    { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
+    { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal FTP-based cloud', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any FTP server into your personal cloud' },
+    { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Connect with Google Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
+    { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Connect with Dropbox Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
+    { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'Connect with Microsoft Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
+    { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: 'E2E', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
+    { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Connect with Box Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
+    { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
+    { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'Connect with pCloud Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
+    { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '15 GB Free Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
+    { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
+];
+
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
     if (!type) return null;
-    return PROTOCOLS.find(p => p.type === type) || PROTOCOLS[0];
+    return PROTOCOLS_FALLBACK.find(p => p.type === type) || PROTOCOLS_FALLBACK[0];
 };
 
 export const getDefaultPort = (type: ProviderType): number => {
@@ -264,7 +285,8 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     onOpenChange,
 }) => {
     const t = useTranslation();
-    const selectedProtocol = value ? getProtocolInfo(value) : null;
+    const PROTOCOLS = React.useMemo(() => getProtocols(t), [t]);
+    const selectedProtocol = value ? PROTOCOLS.find(p => p.type === value) : null;
     const [isOpen, setIsOpen] = React.useState(false);
 
     // Close dropdown when value is set externally (e.g., Edit button)

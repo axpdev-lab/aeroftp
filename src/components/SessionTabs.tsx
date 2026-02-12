@@ -3,6 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { useTranslation } from '../i18n';
 
 interface CloudTabState {
     enabled: boolean;
@@ -24,12 +25,13 @@ interface SessionTabsProps {
     onReorder?: (sessions: FtpSession[]) => void;
 }
 
-const statusConfig: Record<SessionStatus, { icon: React.ReactNode; color: string; title: string }> = {
-    connected: { icon: <Wifi size={12} />, color: 'text-green-500', title: 'Connected' },
-    connecting: { icon: <Loader2 size={12} className="animate-spin" />, color: 'text-yellow-500', title: 'Connecting...' },
-    cached: { icon: <Server size={12} />, color: 'text-blue-500', title: 'Cached (reconnecting...)' },
-    disconnected: { icon: <Server size={12} />, color: 'text-gray-400', title: 'Disconnected' },
-};
+// Status config factory (requires t() call, so moved inside component)
+const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, { icon: React.ReactNode; color: string; title: string }> => ({
+    connected: { icon: <Wifi size={12} />, color: 'text-green-500', title: t('ui.session.connected') },
+    connecting: { icon: <Loader2 size={12} className="animate-spin" />, color: 'text-yellow-500', title: t('ui.session.connecting') },
+    cached: { icon: <Server size={12} />, color: 'text-blue-500', title: t('ui.session.cached') },
+    disconnected: { icon: <Server size={12} />, color: 'text-gray-400', title: t('ui.session.disconnected') },
+});
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
@@ -141,6 +143,8 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     onCloudTabClick,
     onReorder,
 }) => {
+    const t = useTranslation();
+    const statusConfig = createStatusConfig(t);
     const showTabs = sessions.length > 0 || (cloudTab?.enabled);
 
     // Drag-to-reorder state
@@ -193,7 +197,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
                         }`}
                     onClick={onCloudTabClick}
-                    title={cloudTab.syncing ? 'Syncing...' : cloudTab.active ? 'Background sync active' : 'AeroCloud (click to open)'}
+                    title={cloudTab.syncing ? t('ui.session.syncing') : cloudTab.active ? t('ui.session.backgroundSyncActive') : t('ui.session.aerocloudClickToOpen')}
                 >
                     {/* Cloud status indicator */}
                     <span className={`shrink-0 ${cloudTab.syncing
@@ -214,7 +218,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         ? 'font-medium text-cyan-700 dark:text-cyan-300'
                         : 'text-gray-500 dark:text-gray-400'
                         }`}>
-                        {cloudTab.serverName || 'AeroCloud'}
+                        {cloudTab.serverName || t('statusBar.aerofile')}
                     </span>
 
                     {/* Syncing indicator */}
@@ -279,7 +283,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                 onTabClose(session.id);
                             }}
                             className="shrink-0 p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Close tab"
+                            title={t('ui.session.closeTab')}
                         >
                             <X size={12} />
                         </button>
@@ -291,7 +295,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
             <button
                 onClick={onNewTab}
                 className="shrink-0 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                title="New connection"
+                title={t('ui.session.newConnection')}
             >
                 <Plus size={16} />
             </button>

@@ -61,11 +61,11 @@ AeroFTP supports multiple languages. See [TRANSLATIONS.md](./TRANSLATIONS.md) fo
 - Translation file structure
 - Contributing translations
 
-Currently supported: **51 languages** at 100% coverage
+Currently supported: **47 languages** at 100% coverage
 
 ---
 
-## Security (v2.0.5)
+## Security (v2.0.6)
 
 AeroFTP v2.0.5 adds **WebDAV HTTP Digest Authentication (RFC 2617)** with auto-detection — the password is never transmitted, only MD5 challenge-response hashes. CloudMe is the only cloud service requiring Digest auth, and AeroFTP is one of the few clients that support it correctly. The **Unified Encrypted Keystore** (v1.9.0) stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) and [SECURITY.md](../SECURITY.md) for full details.
 
@@ -79,7 +79,7 @@ AeroAgent now features **27 tools** (up from 25), including **RAG integration** 
 
 ---
 
-- **Documentation Version**: 2.0.5
+- **Documentation Version**: 2.0.6
 - **Last Update**: 2026-02-11
 
 ---

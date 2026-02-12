@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import type { EffectiveTheme } from '../hooks/useTheme';
 
 interface SystemInfo {
     app_version: string;
@@ -60,6 +61,7 @@ interface DebugPanelProps {
     isConnected: boolean;
     connectionParams: { server: string; username: string; protocol?: string };
     currentRemotePath: string;
+    appTheme?: EffectiveTheme;
 }
 
 const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -68,8 +70,17 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     isConnected,
     connectionParams,
     currentRemotePath,
+    appTheme = 'dark',
 }) => {
     const t = useTranslation();
+    const resizeTheme = useMemo(() => {
+        switch (appTheme) {
+            case 'light': return { base: 'bg-gray-300 hover:bg-blue-500', bar: 'bg-gray-400 group-hover:bg-white' };
+            case 'tokyo': return { base: 'bg-[#292e42] hover:bg-[#7aa2f7]', bar: 'bg-[#414868] group-hover:bg-[#7aa2f7]' };
+            case 'cyber': return { base: 'bg-[#0d1117] hover:bg-emerald-500', bar: 'bg-emerald-800/60 group-hover:bg-emerald-400' };
+            default: return { base: 'bg-gray-700 hover:bg-blue-500', bar: 'bg-gray-500 group-hover:bg-blue-400' };
+        }
+    }, [appTheme]);
     const [activeTab, setActiveTab] = useState<TabId>('connection');
     const [height, setHeight] = useState(320);
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -200,8 +211,10 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
             <div
                 ref={resizeRef}
                 onMouseDown={handleResize}
-                className="h-1 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-600 transition-colors"
-            />
+                className={`h-2 cursor-ns-resize ${resizeTheme.base} transition-colors flex-shrink-0 flex items-center justify-center group`}
+            >
+                <div className={`w-10 h-0.5 rounded-full ${resizeTheme.bar} transition-colors`} />
+            </div>
 
             {/* Header with tabs */}
             <div className="flex items-center justify-between px-3 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">

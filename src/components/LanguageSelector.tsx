@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Check, Globe } from 'lucide-react';
-import { Language, LanguageInfo } from '../i18n';
+import { Language, LanguageInfo, useTranslation } from '../i18n';
 import * as Flags from 'country-flag-icons/react/3x2';
 
 // Extract 2-letter country code from flag emoji (regional indicator symbols)
@@ -36,7 +36,7 @@ const LANGUAGE_REGIONS: Record<string, string[]> = {
     'Popular': ['en', 'es', 'fr', 'de', 'zh', 'ja', 'pt', 'ru', 'it', 'ko'],
     'European': ['nl', 'pl', 'uk', 'ro', 'cs', 'hu', 'el', 'bg', 'sk', 'sv', 'da', 'no', 'fi', 'is'],
     'Asian': ['vi', 'th', 'id', 'ms', 'tl', 'km', 'hi', 'bn'],
-    'Middle East': ['ar', 'he', 'fa', 'ur', 'tr'],
+    'Middle East': ['tr'],
     'Balkan & Caucasus': ['hr', 'sr', 'sl', 'mk', 'ka', 'hy'],
     'Baltic': ['lt', 'lv', 'et'],
     'Regional': ['cy', 'gl', 'ca', 'eu', 'sw'],
@@ -48,6 +48,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
     onSelect,
     label
 }) => {
+    const t = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,22 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             lang.code.toLowerCase().includes(query)
         );
     }, [availableLanguages, searchQuery]);
+
+    // Translation map for region names
+    const getRegionLabel = (regionKey: string): string => {
+        const regionMap: Record<string, string> = {
+            'Popular': t('ui.language.regionPopular'),
+            'European': t('ui.language.regionEuropean'),
+            'Asian': t('ui.language.regionAsian'),
+            'Middle East': t('ui.language.regionMiddleEast'),
+            'Balkan & Caucasus': t('ui.language.regionBalkan'),
+            'Baltic': t('ui.language.regionBaltic'),
+            'Regional': t('ui.language.regionRegional'),
+            'Other': t('ui.language.regionOther'),
+            'Search Results': t('ui.language.searchResults'),
+        };
+        return regionMap[regionKey] || regionKey;
+    };
 
     // Group filtered languages by region
     const groupedLanguages = useMemo(() => {
@@ -151,7 +168,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             >
                 {currentLangInfo ? <FlagIcon flag={currentLangInfo.flag} size="md" /> : <Globe size={24} className="text-gray-400" />}
                 <div className="flex-1 text-left">
-                    <p className="font-medium">{currentLangInfo?.nativeName || 'Select Language'}</p>
+                    <p className="font-medium">{currentLangInfo?.nativeName || t('ui.language.selectLanguage')}</p>
                     <p className="text-xs text-gray-500">{currentLangInfo?.name}</p>
                 </div>
                 <ChevronDown
@@ -172,12 +189,12 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search languages..."
+                                placeholder={t('ui.language.searchPlaceholder')}
                                 className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                             />
                         </div>
                         <p className="text-xs text-gray-400 mt-2 text-center">
-                            {availableLanguages.length} languages available
+                            {t('ui.language.languagesAvailable', { count: availableLanguages.length })}
                         </p>
                     </div>
 
@@ -188,7 +205,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                                 {/* Region Header */}
                                 {!searchQuery.trim() && (
                                     <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 text-xs font-semibold text-gray-500 uppercase tracking-wide sticky top-0">
-                                        {region}
+                                        {getRegionLabel(region)}
                                     </div>
                                 )}
 
@@ -225,8 +242,8 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                         {filteredLanguages.length === 0 && (
                             <div className="p-8 text-center text-gray-500">
                                 <Globe size={32} className="mx-auto mb-2 opacity-30" />
-                                <p>No languages found</p>
-                                <p className="text-sm">Try a different search term</p>
+                                <p>{t('ui.language.noLanguages')}</p>
+                                <p className="text-sm">{t('ui.language.tryDifferentSearch')}</p>
                             </div>
                         )}
                     </div>

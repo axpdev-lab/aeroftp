@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ViewerBaseProps } from '../types';
 import { MarkdownRenderer } from '../../DevTools/MarkdownRenderer';
 import Prism from 'prismjs';
+import { useI18n } from '../../../i18n';
 
 interface TextViewerProps extends ViewerBaseProps {
     className?: string;
@@ -89,6 +90,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     onError,
     className = '',
 }) => {
+    const { t } = useI18n();
     const [content, setContent] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
     const [copied, setCopied] = useState(false);
@@ -122,12 +124,12 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     const text = await response.text();
                     setContent(text);
                 } else {
-                    setContent('No content available');
+                    setContent(t('preview.text.noContent'));
                 }
             } catch (err) {
                 console.error('Failed to load text content:', err);
-                onError?.('Failed to load text content');
-                setContent('Error loading content');
+                onError?.(t('preview.text.loadFailed'));
+                setContent(t('preview.text.errorLoading'));
             } finally {
                 setIsLoading(false);
             }
@@ -252,7 +254,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     if (isLoading) {
         return (
             <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
-                <div className="text-gray-400 animate-pulse">Loading...</div>
+                <div className="text-gray-400 animate-pulse">{t('preview.common.loading')}</div>
             </div>
         );
     }
@@ -265,7 +267,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <FileText size={16} className="text-blue-400" />
                     <span className="text-sm font-medium text-gray-300 truncate max-w-xs">{file.name}</span>
                     <span className="text-xs text-gray-500">
-                        {lineCount} lines • {charCount.toLocaleString()} chars
+                        {lineCount} {t('preview.text.lines')} • {charCount.toLocaleString()} {t('preview.text.chars')}
                     </span>
                 </div>
 
@@ -275,10 +277,10 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <button
                             onClick={toggleRender}
                             className={`p-1.5 rounded transition-colors flex items-center gap-1 text-xs ${renderMode ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-gray-700 text-gray-400'}`}
-                            title={renderMode ? 'Show Source Code' : 'Render Preview'}
+                            title={renderMode ? t('preview.text.showSource') : t('preview.text.renderPreview')}
                         >
                             {renderMode ? <Code2 size={16} /> : <Eye size={16} />}
-                            <span className="hidden sm:inline">{renderMode ? 'Source' : 'Preview'}</span>
+                            <span className="hidden sm:inline">{renderMode ? t('preview.text.source') : t('preview.text.preview')}</span>
                         </button>
                     )}
 
@@ -287,7 +289,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <button
                             onClick={() => setWordWrap(!wordWrap)}
                             className={`p-1.5 rounded transition-colors ${wordWrap ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-gray-700 text-gray-400'}`}
-                            title={wordWrap ? 'Disable Word Wrap' : 'Enable Word Wrap'}
+                            title={wordWrap ? t('preview.text.disableWrap') : t('preview.text.enableWrap')}
                         >
                             <WrapText size={16} />
                         </button>
@@ -297,7 +299,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <button
                         onClick={copyToClipboard}
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-                        title="Copy to Clipboard"
+                        title={t('preview.text.copy')}
                     >
                         {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
                     </button>
@@ -306,7 +308,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <button
                         onClick={downloadFile}
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-                        title="Download File"
+                        title={t('preview.common.download')}
                     >
                         <Download size={16} />
                     </button>
@@ -321,21 +323,21 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <button
                             onClick={() => setViewport('mobile')}
                             className={`p-1 rounded transition-colors ${viewport === 'mobile' ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
-                            title="Mobile (375px)"
+                            title={t('preview.text.viewportMobile')}
                         >
                             <Smartphone size={14} />
                         </button>
                         <button
                             onClick={() => setViewport('tablet')}
                             className={`p-1 rounded transition-colors ${viewport === 'tablet' ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
-                            title="Tablet (768px)"
+                            title={t('preview.text.viewportTablet')}
                         >
                             <Tablet size={14} />
                         </button>
                         <button
                             onClick={() => setViewport('desktop')}
                             className={`p-1 rounded transition-colors ${viewport === 'desktop' ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
-                            title="Desktop (100%)"
+                            title={t('preview.text.viewportDesktop')}
                         >
                             <Monitor size={14} />
                         </button>
@@ -351,7 +353,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <button
                             onClick={() => setZoom(z => Math.max(50, z - 25))}
                             className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
-                            title="Zoom Out"
+                            title={t('preview.text.zoomOut')}
                         >
                             <ZoomOut size={14} />
                         </button>
@@ -367,7 +369,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <button
                             onClick={() => setZoom(z => Math.min(150, z + 25))}
                             className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
-                            title="Zoom In"
+                            title={t('preview.text.zoomIn')}
                         >
                             <ZoomIn size={14} />
                         </button>
@@ -380,7 +382,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                             <button
                                 onClick={pickColor}
                                 className={`p-1 rounded transition-colors flex items-center gap-1 ${pickedColor ? 'text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
-                                title="Pick Color (copies to clipboard)"
+                                title={t('preview.text.pickColor')}
                             >
                                 <Pipette size={14} />
                                 {pickedColor && (
@@ -399,7 +401,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <button
                         onClick={manualRefresh}
                         className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
-                        title="Refresh Preview"
+                        title={t('preview.text.refresh')}
                     >
                         <RefreshCw size={14} />
                     </button>
@@ -408,9 +410,9 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <button
                         onClick={() => setAutoRefresh(a => !a)}
                         className={`p-1 rounded transition-colors text-[10px] px-1.5 ${autoRefresh ? 'bg-green-500/20 text-green-400' : 'text-gray-500 hover:text-gray-300'}`}
-                        title={autoRefresh ? 'Stop Auto-Refresh' : 'Auto-Refresh (3s)'}
+                        title={autoRefresh ? t('preview.text.stopAutoRefresh') : t('preview.text.autoRefresh')}
                     >
-                        {autoRefresh ? 'Auto ●' : 'Auto'}
+                        {autoRefresh ? `${t('preview.text.auto')} ●` : t('preview.text.auto')}
                     </button>
 
                     <div className="flex-1" />
@@ -419,10 +421,10 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     <button
                         onClick={openInBrowser}
                         className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors flex items-center gap-1 text-[10px]"
-                        title="Open in System Browser"
+                        title={t('preview.text.openBrowser')}
                     >
                         <ExternalLink size={14} />
-                        <span className="hidden sm:inline">Browser</span>
+                        <span className="hidden sm:inline">{t('preview.text.browser')}</span>
                     </button>
                 </div>
             )}

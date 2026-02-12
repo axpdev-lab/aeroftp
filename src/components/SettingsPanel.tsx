@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image } from 'lucide-react';
+import type { Theme } from '../hooks/useTheme';
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider, ProviderType } from '../types';
 import { LanguageSelector } from './LanguageSelector';
@@ -91,6 +92,8 @@ interface SettingsPanelProps {
     onActivityLog?: ActivityLogCallback;
     initialTab?: TabId;
     onServersChanged?: () => void;
+    theme?: Theme;
+    setTheme?: (t: Theme) => void;
 }
 
 // Settings storage key
@@ -218,7 +221,11 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
                         body: `AeroFTP v${info.latest_version} is ready (.${info.install_format})`
                     });
                 } catch {
-                    alert(`Update Available!\n\nAeroFTP v${info.latest_version} (.${info.install_format})\n\nDownload: ${info.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}`);
+                    alert(t('settings.updateAvailableAlert', {
+                        version: info.latest_version || '',
+                        format: info.install_format || '',
+                        url: info.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'
+                    }));
                 }
             } else {
                 // Log no update available to Activity Log
@@ -232,14 +239,14 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
                         body: t('settings.runningLatest', { version: info.current_version })
                     });
                 } catch {
-                    alert(`Up to date!\n\nRunning AeroFTP v${info.current_version}`);
+                    alert(t('settings.upToDateAlert', { version: info.current_version }));
                 }
             }
         } catch (err) {
             console.error('[CheckUpdateButton] Update check failed:', err);
             // Log error to Activity Log
             onActivityLog?.logRaw('activity.update_error', 'UPDATE', { error: String(err) }, 'error');
-            alert(`Update check failed\n\n${String(err)}`);
+            alert(t('settings.updateCheckFailedAlert', { error: String(err) }));
         } finally {
             setIsChecking(false);
         }
@@ -260,8 +267,9 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
     const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
+    const [appearanceSubTab, setAppearanceSubTab] = useState<'theme' | 'interface' | 'backgrounds'>('theme');
 
     // Reset to initialTab when panel opens with a specific tab
     useEffect(() => {
@@ -471,7 +479,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     return (
         <>
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
@@ -480,7 +488,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                        <div className={`p-2 rounded-lg bg-gradient-to-br ${
+                            appThemeProp === 'tokyo' ? 'from-purple-600 to-violet-500' :
+                            appThemeProp === 'cyber' ? 'from-emerald-600 to-cyan-500' :
+                            'from-blue-500 to-cyan-500'
+                        }`}>
                             <Settings size={20} className="text-white" />
                         </div>
                         <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
@@ -523,7 +535,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 type="text"
                                                 value={settings.defaultLocalPath}
                                                 onChange={e => updateSetting('defaultLocalPath', e.target.value)}
-                                                placeholder="e.g., /home/user/Downloads"
+                                                placeholder={t('settings.defaultLocalPathPlaceholder')}
                                                 className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                                             />
                                             <button
@@ -550,7 +562,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             onChange={e => updateSetting('showHiddenFiles', e.target.checked)}
                                             className="w-4 h-4 rounded"
                                         />
-                                        <span className="text-sm">Show hidden files (dotfiles)</span>
+                                        <span className="text-sm">{t('settings.showHiddenFiles')}</span>
                                     </label>
 
                                     <label className="flex items-center gap-3 cursor-pointer">
@@ -597,13 +609,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="text-sm">Remember last folder</p>
-                                            <p className="text-xs text-gray-500">Open the last visited local folder on startup</p>
+                                            <p className="text-sm">{t('settings.rememberLastFolder')}</p>
+                                            <p className="text-xs text-gray-500">{t('settings.rememberLastFolderDesc')}</p>
                                         </div>
                                     </label>
 
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <label className="block text-sm font-medium mb-2">Double-click action</label>
+                                        <label className="block text-sm font-medium mb-2">{t('settings.doubleClickAction')}</label>
                                         <div className="flex gap-4">
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
@@ -613,7 +625,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     onChange={() => updateSetting('doubleClickAction', 'preview')}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm">Preview file</span>
+                                                <span className="text-sm">{t('settings.doubleClickPreview')}</span>
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
@@ -623,10 +635,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     onChange={() => updateSetting('doubleClickAction', 'download')}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm">Download/Upload</span>
+                                                <span className="text-sm">{t('settings.doubleClickDownload')}</span>
                                             </label>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">What happens when you double-click a file</p>
+                                        <p className="text-xs text-gray-500 mt-1">{t('settings.doubleClickDesc')}</p>
                                     </div>
 
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -651,7 +663,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     </div>
 
                                     <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <h4 className="text-sm font-medium mb-2">Software Updates</h4>
+                                        <h4 className="text-sm font-medium mb-2">{t('settings.softwareUpdates')}</h4>
                                         <CheckUpdateButton onActivityLog={onActivityLog} />
                                     </div>
                                 </div>
@@ -660,11 +672,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                         {activeTab === 'connection' && (
                             <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Connection Settings</h3>
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.connectionSettings')}</h3>
 
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Connection Timeout</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.connectionTimeout')}</label>
                                         <div className="flex items-center gap-3">
                                             <input
                                                 type="range"
@@ -676,51 +688,51 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             />
                                             <span className="text-sm w-16 text-right">{settings.timeoutSeconds}s</span>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">Time before connection attempt times out</p>
+                                        <p className="text-xs text-gray-500 mt-1">{t('settings.connectionTimeoutDesc')}</p>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">TLS Version</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.tlsVersion')}</label>
                                         <select
                                             value={settings.tlsVersion}
                                             onChange={e => updateSetting('tlsVersion', e.target.value as 'auto' | '1.2' | '1.3')}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="1.2">TLS 1.2 Minimum</option>
-                                            <option value="1.3">TLS 1.3 Only</option>
+                                            <option value="auto">{t('settings.tlsAuto')}</option>
+                                            <option value="1.2">{t('settings.tls12')}</option>
+                                            <option value="1.3">{t('settings.tls13')}</option>
                                         </select>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Reconnect Attempts</label>
+                                            <label className="block text-sm font-medium mb-1">{t('settings.reconnectAttempts')}</label>
                                             <select
                                                 value={settings.reconnectAttempts}
                                                 onChange={e => updateSetting('reconnectAttempts', parseInt(e.target.value))}
                                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                             >
                                                 {[0, 1, 2, 3, 5, 10].map(n => (
-                                                    <option key={n} value={n}>{n === 0 ? 'Disabled' : `${n} attempts`}</option>
+                                                    <option key={n} value={n}>{n === 0 ? t('settings.disabled') : t('settings.attemptsCount', { n })}</option>
                                                 ))}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Reconnect Delay</label>
+                                            <label className="block text-sm font-medium mb-1">{t('settings.reconnectDelay')}</label>
                                             <select
                                                 value={settings.reconnectDelay}
                                                 onChange={e => updateSetting('reconnectDelay', parseInt(e.target.value))}
                                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                             >
                                                 {[1, 3, 5, 10, 30].map(n => (
-                                                    <option key={n} value={n}>{n} seconds</option>
+                                                    <option key={n} value={n}>{t('settings.nSeconds', { n })}</option>
                                                 ))}
                                             </select>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-2">FTP Mode</label>
+                                        <label className="block text-sm font-medium mb-2">{t('settings.ftpMode')}</label>
                                         <div className="flex gap-4">
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
@@ -730,7 +742,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     onChange={() => updateSetting('ftpMode', 'passive')}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm">Passive (Recommended)</span>
+                                                <span className="text-sm">{t('settings.ftpPassive')}</span>
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
@@ -740,10 +752,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     onChange={() => updateSetting('ftpMode', 'active')}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm">Active</span>
+                                                <span className="text-sm">{t('settings.ftpActive')}</span>
                                             </label>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-1">Passive mode works better behind NAT/firewalls</p>
+                                        <p className="text-xs text-gray-500 mt-1">{t('settings.ftpModeDesc')}</p>
                                     </div>
                                 </div>
                             </div>
@@ -752,7 +764,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         {activeTab === 'servers' && (
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Saved Servers</h3>
+                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.savedServers')}</h3>
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={() => setShowExportImport(true)}
@@ -765,7 +777,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             onClick={() => setEditingServer({ id: crypto.randomUUID(), name: '', host: '', port: 21, username: '', password: '' })}
                                             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5"
                                         >
-                                            <Plus size={14} /> Add Server
+                                            <Plus size={14} /> {t('settings.addServer')}
                                         </button>
                                     </div>
                                 </div>
@@ -773,8 +785,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 {servers.length === 0 ? (
                                     <div className="text-center py-8 text-gray-500">
                                         <Server size={48} className="mx-auto mb-3 opacity-30" />
-                                        <p>No saved servers</p>
-                                        <p className="text-sm">Add servers from the connection screen</p>
+                                        <p>{t('settings.noSavedServers')}</p>
+                                        <p className="text-sm">{t('settings.noSavedServersDesc')}</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
@@ -934,10 +946,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                     {/* Server Name */}
                                                     <div>
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Display Name</label>
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.displayName')}</label>
                                                         <input
                                                             type="text"
-                                                            placeholder="My Server"
+                                                            placeholder={t('settings.serverNamePlaceholder')}
                                                             value={editingServer.name}
                                                             onChange={e => setEditingServer({ ...editingServer, name: e.target.value })}
                                                             className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -948,10 +960,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {isOAuth && (
                                                         <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
                                                             <p className="text-sm text-blue-700 dark:text-blue-300">
-                                                                <strong>OAuth2 Connection</strong>
+                                                                <strong>{t('settings.oauthConnection')}</strong>
                                                             </p>
                                                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                                Authentication is managed via browser. Configure credentials in Settings → Cloud Providers.
+                                                                {t('settings.oauthConnectionDesc')}
                                                             </p>
                                                         </div>
                                                     )}
@@ -960,10 +972,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {isMega && (
                                                         <>
                                                             <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">MEGA Email</label>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.megaEmail')}</label>
                                                                 <input
                                                                     type="email"
-                                                                    placeholder="email@example.com"
+                                                                    placeholder={t('settings.megaEmailPlaceholder')}
                                                                     value={editingServer.username}
                                                                     onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
                                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -975,7 +987,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-300 border border-green-200 dark:border-green-700'
                                                                     }`}>
                                                                     <Clock size={12} className="inline mr-1" />
-                                                                    Session {Date.now() > editingServer.options.session_expires_at ? 'expired' : 'expires'}: {new Date(editingServer.options.session_expires_at).toLocaleString()}
+                                                                    {t('settings.session')} {Date.now() > editingServer.options.session_expires_at ? t('settings.sessionExpired') : t('settings.sessionExpires')}: {new Date(editingServer.options.session_expires_at).toLocaleString()}
                                                                 </div>
                                                             )}
                                                         </>
@@ -984,10 +996,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {/* Filen - email + password, no host */}
                                                     {isFilen && (
                                                         <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Filen Email</label>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.filenEmail')}</label>
                                                             <input
                                                                 type="email"
-                                                                placeholder="email@example.com"
+                                                                placeholder={t('settings.filenEmailPlaceholder')}
                                                                 value={editingServer.username}
                                                                 onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'filen.io', port: 443 })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1014,7 +1026,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.port')}</label>
                                                                 <input
                                                                     type="number"
-                                                                    placeholder="21"
+                                                                    placeholder={t('settings.portPlaceholder')}
                                                                     value={editingServer.port}
                                                                     onChange={e => setEditingServer({ ...editingServer, port: parseInt(e.target.value) || 21 })}
                                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1048,7 +1060,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             <div className="relative">
                                                                 <input
                                                                     type={showEditPassword ? 'text' : 'password'}
-                                                                    placeholder="••••••••"
+                                                                    placeholder={t('settings.passwordPlaceholder')}
                                                                     value={editingServer.password || ''}
                                                                     onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
                                                                     className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1072,7 +1084,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
                                                                 <input
                                                                     type="text"
-                                                                    placeholder="my-bucket"
+                                                                    placeholder={t('settings.s3BucketPlaceholder')}
                                                                     value={editingServer.options?.bucket || ''}
                                                                     onChange={e => setEditingServer({
                                                                         ...editingServer,
@@ -1085,7 +1097,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
                                                                 <input
                                                                     type="text"
-                                                                    placeholder="us-east-1"
+                                                                    placeholder={t('settings.s3RegionPlaceholder')}
                                                                     value={editingServer.options?.region || ''}
                                                                     onChange={e => setEditingServer({
                                                                         ...editingServer,
@@ -1102,7 +1114,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.remotePath')}</label>
                                                         <input
                                                             type="text"
-                                                            placeholder="/home/user or /my-folder"
+                                                            placeholder={t('settings.remotePathPlaceholder')}
                                                             value={editingServer.initialPath || ''}
                                                             onChange={e => setEditingServer({ ...editingServer, initialPath: e.target.value })}
                                                             className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1113,7 +1125,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.localPath')}</label>
                                                             <input
                                                                 type="text"
-                                                                placeholder="/home/user/downloads"
+                                                                placeholder={t('settings.localPathPlaceholder')}
                                                                 value={editingServer.localInitialPath || ''}
                                                                 onChange={e => setEditingServer({ ...editingServer, localInitialPath: e.target.value })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1196,40 +1208,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         )}
                         {activeTab === 'filehandling' && (
                             <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">File Handling</h3>
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.fileHandlingTitle')}</h3>
 
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">When file exists on destination</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.whenFileExists')}</label>
                                         <select
                                             value={settings.fileExistsAction}
                                             onChange={e => updateSetting('fileExistsAction', e.target.value as AppSettings['fileExistsAction'])}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
-                                            <option value="ask">Ask each time</option>
-                                            <option value="overwrite">Overwrite</option>
-                                            <option value="skip">Skip</option>
-                                            <option value="rename">Rename (add number)</option>
-                                            <option value="resume">Resume if possible</option>
-                                            <option disabled>── Smart Sync ──</option>
-                                            <option value="overwrite_if_newer">Overwrite if source is newer</option>
-                                            <option value="overwrite_if_different">Overwrite if date or size differs</option>
-                                            <option value="skip_if_identical">Skip if identical (date &amp; size)</option>
+                                            <option value="ask">{t('settings.fileExistsAsk')}</option>
+                                            <option value="overwrite">{t('settings.fileExistsOverwrite')}</option>
+                                            <option value="skip">{t('settings.fileExistsSkip')}</option>
+                                            <option value="rename">{t('settings.fileExistsRename')}</option>
+                                            <option value="resume">{t('settings.fileExistsResume')}</option>
+                                            <option disabled>── {t('settings.smartSync')} ──</option>
+                                            <option value="overwrite_if_newer">{t('settings.overwriteIfNewer')}</option>
+                                            <option value="overwrite_if_different">{t('settings.overwriteIfDifferent')}</option>
+                                            <option value="skip_if_identical">{t('settings.skipIfIdentical')}</option>
                                         </select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Transfer Mode</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.transferModeLabel')}</label>
                                         <select
                                             value={settings.transferMode}
                                             onChange={e => updateSetting('transferMode', e.target.value as 'auto' | 'ascii' | 'binary')}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="binary">Binary (images, archives)</option>
-                                            <option value="ascii">ASCII (text files)</option>
+                                            <option value="auto">{t('settings.transferModeAuto')}</option>
+                                            <option value="binary">{t('settings.transferModeBinary')}</option>
+                                            <option value="ascii">{t('settings.transferModeAscii')}</option>
                                         </select>
-                                        <p className="text-xs text-gray-500 mt-1">Auto mode detects file type and chooses appropriately</p>
+                                        <p className="text-xs text-gray-500 mt-1">{t('settings.transferModeDesc')}</p>
                                     </div>
 
                                     <label className="flex items-center gap-3 cursor-pointer">
@@ -1240,8 +1252,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             className="w-4 h-4 rounded"
                                         />
                                         <div>
-                                            <p className="font-medium">Preserve file timestamps</p>
-                                            <p className="text-sm text-gray-500">Keep original modification dates when transferring</p>
+                                            <p className="font-medium">{t('settings.preserveTimestampsLabel')}</p>
+                                            <p className="text-sm text-gray-500">{t('settings.preserveTimestampsDesc')}</p>
                                         </div>
                                     </label>
                                 </div>
@@ -1250,44 +1262,44 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                         {activeTab === 'transfers' && (
                             <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Transfer Settings</h3>
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.transferSettings')}</h3>
 
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Concurrent Transfers</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.concurrentTransfers')}</label>
                                         <select
                                             value={settings.maxConcurrentTransfers}
                                             onChange={e => updateSetting('maxConcurrentTransfers', parseInt(e.target.value))}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
                                             {[1, 2, 3, 4, 5].map(n => (
-                                                <option key={n} value={n}>{n} {n === 1 ? 'file' : 'files'} at a time</option>
+                                                <option key={n} value={n}>{n === 1 ? t('settings.oneFileAtATime') : t('settings.nFilesAtATime', { n })}</option>
                                             ))}
                                         </select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Retry Count on Error</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.retryCountOnError')}</label>
                                         <select
                                             value={settings.retryCount}
                                             onChange={e => updateSetting('retryCount', parseInt(e.target.value))}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
                                             {[0, 1, 2, 3, 5].map(n => (
-                                                <option key={n} value={n}>{n === 0 ? 'No retries' : `${n} retries`}</option>
+                                                <option key={n} value={n}>{n === 0 ? t('settings.noRetries') : t('settings.retriesCount', { n })}</option>
                                             ))}
                                         </select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">Connection Timeout</label>
+                                        <label className="block text-sm font-medium mb-1">{t('settings.connectionTimeout')}</label>
                                         <select
                                             value={settings.timeoutSeconds}
                                             onChange={e => updateSetting('timeoutSeconds', parseInt(e.target.value))}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
                                             {[10, 30, 60, 120].map(n => (
-                                                <option key={n} value={n}>{n} seconds</option>
+                                                <option key={n} value={n}>{t('settings.nSeconds', { n })}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -1297,16 +1309,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                         {activeTab === 'cloudproviders' && (
                             <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Cloud Provider Settings</h3>
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.cloudProviderSettings')}</h3>
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm text-gray-500">Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials.</p>
+                                    <p className="text-sm text-gray-500">{t('settings.cloudProviderDesc')}</p>
                                     <button
                                         type="button"
                                         onClick={() => setShowOAuthSecrets(!showOAuthSecrets)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
                                     >
                                         {showOAuthSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
-                                        {showOAuthSecrets ? 'Hide' : 'Show'} secrets
+                                        {showOAuthSecrets ? t('settings.hideSecrets') : t('settings.showSecrets')}
                                     </button>
                                 </div>
 
@@ -1318,16 +1330,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <Cloud size={16} className="text-white" />
                                             </div>
                                             <div>
-                                                <h4 className="font-medium">AeroCloud</h4>
-                                                <p className="text-xs text-gray-500">Personal FTP-based cloud sync</p>
+                                                <h4 className="font-medium">{t('settings.aerocloudName')}</h4>
+                                                <p className="text-xs text-gray-500">{t('settings.aerocloudDesc')}</p>
                                             </div>
                                         </div>
                                         <span className="text-xs bg-sky-100 dark:bg-sky-800 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded-full">
-                                            No API keys needed
+                                            {t('settings.noApiKeysNeeded')}
                                         </span>
                                     </div>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Turn any FTP/FTPS server into your personal cloud. Configure sync folders, intervals, and conflict resolution.
+                                        {t('settings.aerocloudInfo')}
                                     </p>
                                     <button
                                         onClick={() => {
@@ -1336,23 +1348,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         }}
                                         className="w-full py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-sky-600 hover:to-blue-700 transition-all"
                                     >
-                                        Configure in AeroCloud Panel →
+                                        {t('settings.configureAerocloud')} →
                                     </button>
 
                                     {/* File Manager Badge Integration */}
                                     <div className="pt-3 border-t border-sky-200 dark:border-sky-700 space-y-2">
                                         <div className="flex items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
                                             <MonitorCheck size={14} />
-                                            File Manager Integration
+                                            {t('settings.fileManagerIntegration')}
                                         </div>
                                         {navigator.platform.startsWith('Win') ? (
                                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                Sync badges are managed automatically via Windows Cloud Filter API. Explorer shows native sync status icons when AeroCloud is active.
+                                                {t('settings.windowsBadgeDesc')}
                                             </p>
                                         ) : (
                                         <>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                                            Show sync status badges on files in Nautilus, Nemo, and other file managers.
+                                            {t('settings.linuxBadgeDesc')}
                                         </p>
                                         <div className="flex gap-2">
                                             <button
@@ -1369,7 +1381,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
                                             >
                                                 <CheckCircle2 size={12} />
-                                                Install Badges
+                                                {t('settings.installBadges')}
                                             </button>
                                             <button
                                                 onClick={async () => {
@@ -1384,7 +1396,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 }}
                                                 className="py-1.5 px-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded text-xs font-medium transition-colors"
                                             >
-                                                Uninstall
+                                                {t('settings.uninstallBadges')}
                                             </button>
                                         </div>
                                         {badgeFeedback && (
@@ -1420,7 +1432,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         className="w-full py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
                                                     >
                                                         <MonitorCheck size={12} />
-                                                        Restart File Manager
+                                                        {t('settings.restartFileManager')}
                                                     </button>
                                                 )}
                                             </div>
@@ -1439,34 +1451,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">Google Drive</h4>
-                                                <p className="text-xs text-gray-500">Connect with Google Account</p>
+                                                <p className="text-xs text-gray-500">{t('settings.connectWithGoogle')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://console.cloud.google.com/apis/credentials')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client ID</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.googledrive.clientId}
                                                 onChange={e => updateOAuthSetting('googledrive', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxx.apps.googleusercontent.com"
+                                                placeholder={t('settings.googleClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
                                             <input
                                                 type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.googledrive.clientSecret}
                                                 onChange={e => updateOAuthSetting('googledrive', 'clientSecret', e.target.value)}
-                                                placeholder="GOCSPX-..."
+                                                placeholder={t('settings.googleClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1482,34 +1494,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">Dropbox</h4>
-                                                <p className="text-xs text-gray-500">Connect with Dropbox Account</p>
+                                                <p className="text-xs text-gray-500">{t('settings.connectWithDropbox')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://www.dropbox.com/developers/apps')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">App Key</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.appKey')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.dropbox.clientId}
                                                 onChange={e => updateOAuthSetting('dropbox', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.dropboxClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">App Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.appSecret')}</label>
                                             <input
                                                 type="password"
                                                 value={oauthSettings.dropbox.clientSecret}
                                                 onChange={e => updateOAuthSetting('dropbox', 'clientSecret', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.dropboxClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1525,34 +1537,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">OneDrive</h4>
-                                                <p className="text-xs text-gray-500">Connect with Microsoft Account</p>
+                                                <p className="text-xs text-gray-500">{t('settings.connectWithMicrosoft')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Application (client) ID</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.applicationId')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.onedrive.clientId}
                                                 onChange={e => updateOAuthSetting('onedrive', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                                placeholder={t('settings.onedriveClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
                                             <input
                                                 type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.onedrive.clientSecret}
                                                 onChange={e => updateOAuthSetting('onedrive', 'clientSecret', e.target.value)}
-                                                placeholder="xxxxxxxx~..."
+                                                placeholder={t('settings.onedriveClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1568,34 +1580,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">Box</h4>
-                                                <p className="text-xs text-gray-500">Connect with Box Account</p>
+                                                <p className="text-xs text-gray-500">{t('settings.connectWithBox')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://app.box.com/developers/console')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client ID</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.box.clientId}
                                                 onChange={e => updateOAuthSetting('box', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.boxClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
                                             <input
                                                 type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.box.clientSecret}
                                                 onChange={e => updateOAuthSetting('box', 'clientSecret', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.boxClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1611,34 +1623,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">pCloud</h4>
-                                                <p className="text-xs text-gray-500">Connect with pCloud Account</p>
+                                                <p className="text-xs text-gray-500">{t('settings.connectWithPcloud')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://docs.pcloud.com/methods/oauth_2.0/authorize.html')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client ID</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.pcloud.clientId}
                                                 onChange={e => updateOAuthSetting('pcloud', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.pcloudClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Client Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
                                             <input
                                                 type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.pcloud.clientSecret}
                                                 onChange={e => updateOAuthSetting('pcloud', 'clientSecret', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.pcloudClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1654,34 +1666,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium">4shared</h4>
-                                                <p className="text-xs text-gray-500">OAuth 1.0 — 15 GB free storage</p>
+                                                <p className="text-xs text-gray-500">{t('settings.foursharedDesc')}</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => openUrl('https://www.4shared.com/developer/')}
                                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                                         >
-                                            Get credentials <ExternalLink size={12} />
+                                            {t('settings.getCredentials')} <ExternalLink size={12} />
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Consumer Key</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
                                             <input
                                                 type="text"
                                                 value={oauthSettings.fourshared.clientId}
                                                 onChange={e => updateOAuthSetting('fourshared', 'clientId', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.foursharedClientIdPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium mb-1">Consumer Secret</label>
+                                            <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
                                             <input
                                                 type={showOAuthSecrets ? 'text' : 'password'}
                                                 value={oauthSettings.fourshared.clientSecret}
                                                 onChange={e => updateOAuthSetting('fourshared', 'clientSecret', e.target.value)}
-                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                placeholder={t('settings.foursharedClientSecretPlaceholder')}
                                                 className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                             />
                                         </div>
@@ -1698,238 +1710,313 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         )}
 
                         {activeTab === 'ui' && (
-                            <div className="space-y-6">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.appearance')}</h3>
-
-                                <div className="space-y-4">
-                                    {/* Language Selector */}
-                                    <LanguageSelector
-                                        currentLanguage={language}
-                                        availableLanguages={availableLanguages}
-                                        onSelect={(lang) => {
-                                            setLanguage(lang);
-                                            setHasChanges(true);
-                                        }}
-                                        label={t('settings.interfaceLanguage')}
-                                    />
-
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">{t('settings.fontSize')}</label>
-                                        <div className="flex gap-2">
-                                            {(['small', 'medium', 'large'] as const).map(size => (
-                                                <button
-                                                    key={size}
-                                                    onClick={() => updateSetting('fontSize', size)}
-                                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${settings.fontSize === size
-                                                        ? 'bg-blue-500 text-white'
-                                                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                                        }`}
-                                                >
-                                                    {size === 'small' ? t('settings.fontSizeSmall') : size === 'medium' ? t('settings.fontSizeMedium') : t('settings.fontSizeLarge')}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-1">{t('settings.fontSizeDesc')}</p>
-                                    </div>
-
-                                    <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
-
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={settings.showStatusBar}
-                                            onChange={e => updateSetting('showStatusBar', e.target.checked)}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <div>
-                                            <p className="font-medium">{t('settings.showStatusBar')}</p>
-                                            <p className="text-sm text-gray-500">{t('settings.showStatusBarDesc')}</p>
-                                        </div>
-                                    </label>
-
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={settings.showSystemMenu}
-                                            onChange={e => updateSetting('showSystemMenu', e.target.checked)}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <div>
-                                            <p className="font-medium">{t('settings.showSystemMenuBar')}</p>
-                                            <p className="text-sm text-gray-500">{t('settings.showSystemMenuBarDesc')}</p>
-                                        </div>
-                                    </label>
-
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={settings.compactMode}
-                                            onChange={e => updateSetting('compactMode', e.target.checked)}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <div>
-                                            <p className="font-medium">{t('settings.compactMode')}</p>
-                                            <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
-                                        </div>
-                                    </label>
-
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={settings.showToastNotifications}
-                                            onChange={e => updateSetting('showToastNotifications', e.target.checked)}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <div>
-                                            <p className="font-medium">{t('settings.toastNotifications')}</p>
-                                            <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
-                                        </div>
-                                    </label>
+                            <div className="space-y-4">
+                                {/* Appearance Sub-tabs */}
+                                <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+                                    {([
+                                        { id: 'theme' as const, label: t('settings.themeTab'), icon: <Palette size={13} /> },
+                                        { id: 'interface' as const, label: t('settings.interfaceTab'), icon: <Monitor size={13} /> },
+                                        { id: 'backgrounds' as const, label: t('settings.backgroundsTab'), icon: <Image size={13} /> },
+                                    ]).map(sub => (
+                                        <button
+                                            key={sub.id}
+                                            onClick={() => setAppearanceSubTab(sub.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${
+                                                appearanceSubTab === sub.id
+                                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+                                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                                            }`}
+                                        >
+                                            {sub.icon}
+                                            {sub.label}
+                                        </button>
+                                    ))}
                                 </div>
 
-                                {/* Visible Columns */}
-                                <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">{t('settings.visibleColumns')}</label>
-                                    <p className="text-xs text-gray-500 mb-3">{t('settings.visibleColumnsDesc')}</p>
-                                    <div className="space-y-2">
-                                        {[
-                                            { key: 'name', label: t('settings.columnName'), disabled: true },
-                                            { key: 'size', label: t('settings.columnSize'), disabled: false },
-                                            { key: 'type', label: t('settings.columnType'), disabled: false },
-                                            { key: 'permissions', label: t('settings.columnPermissions'), disabled: false },
-                                            { key: 'modified', label: t('settings.columnModified'), disabled: false },
-                                        ].map(col => (
-                                            <label key={col.key} className={`flex items-center gap-3 ${col.disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+                                {/* Sub-tab: Theme */}
+                                {appearanceSubTab === 'theme' && (
+                                    <div className="space-y-4">
+                                        <p className="text-xs text-gray-500">{t('settings.themeDesc')}</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {([
+                                                { id: 'light' as Theme, label: 'Light', icon: <Sun size={20} />, colors: ['#ffffff', '#f3f4f6', '#3b82f6'], selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5', selectedIcon: 'text-blue-500', checkBg: 'bg-blue-500', desc: t('settings.themeLightDesc') },
+                                                { id: 'dark' as Theme, label: 'Dark', icon: <Moon size={20} />, colors: ['#111827', '#1f2937', '#3b82f6'], selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5', selectedIcon: 'text-blue-500', checkBg: 'bg-blue-500', desc: t('settings.themeDarkDesc') },
+                                                { id: 'tokyo' as Theme, label: 'Tokyo Night', icon: <svg viewBox="0 0 32 32" width={20} height={20} fill="currentColor"><path d="M30.43,12.124c-0.441-1.356-1.289-2.518-2.454-3.358c-1.157-0.835-2.514-1.276-3.924-1.276c-0.44,0.001-0.898,0.055-1.368,0.158c-0.048-0.492-0.145-0.96-0.288-1.395c-0.442-1.345-1.287-2.498-2.442-3.335c-1.111-0.805-2.44-1.212-3.776-1.242C16.054,1.64,16,1.64,16,1.64s-0.105,0.014-0.151,0.036c-1.336,0.029-2.664,0.437-3.776,1.241c-1.155,0.837-2,1.991-2.442,3.335C9.488,6.686,9.392,7.154,9.343,7.648C8.859,7.542,8.415,7.462,7.926,7.491C6.511,7.496,5.153,7.942,4,8.783c-1.151,0.839-1.99,1.994-2.428,3.34s-0.437,2.774,0.001,4.129c0.439,1.358,1.275,2.518,2.417,3.353c0.369,0.271,0.785,0.507,1.239,0.706c-0.251,0.428-0.448,0.863-0.588,1.298c-0.432,1.349-0.427,2.778,0.016,4.135c0.443,1.354,1.282,2.51,2.427,3.341c1.145,0.832,2.503,1.272,3.927,1.275c1.422,0,2.78-0.437,3.926-1.263c0.371-0.268,0.724-0.589,1.053-0.96c0.319,0.36,0.659,0.673,1.013,0.932c1.145,0.839,2.509,1.285,3.946,1.291c1.428,0,2.789-0.441,3.938-1.275c1.153-0.838,1.995-2.004,2.435-3.37c0.439-1.368,0.438-2.804-0.007-4.152c-0.137-0.417-0.329-0.837-0.573-1.251c0.44-0.192,0.842-0.418,1.199-0.675c1.151-0.831,1.998-1.991,2.446-3.355C30.865,14.918,30.869,13.48,30.43,12.124z"/></svg>, colors: ['#1a1b26', '#16161e', '#9d7cd8'], selectedBorder: 'border-purple-500 ring-1 ring-purple-500/30 bg-purple-500/5', selectedIcon: 'text-purple-500', checkBg: 'bg-purple-500', desc: t('settings.themeTokyoDesc') },
+                                                { id: 'cyber' as Theme, label: 'Cyberpunk', icon: <svg viewBox="0 0 512 512" width={20} height={20} fill="currentColor"><path fillRule="evenodd" d="M37.728,49.312v186.48C37.728,413.104,256,512,256,512s218.272-98.896,218.272-276.208V49.312C474.272,49.312,396.128,0,256,0S37.728,49.312,37.728,49.312z M364.6,286.992c0,0-29.104,74.104-108.6,74.104s-108.6-74.104-108.6-74.104S256,361.096,364.6,286.992z M224.8,153.424c-16.072-37.664-59.632-55.168-97.296-39.096c-17.584,7.504-31.592,21.512-39.096,39.096H224.8z M423.592,153.424c-16.072-37.664-59.632-55.168-97.296-39.096c-17.584,7.504-31.592,21.512-39.096,39.096H423.592z"/></svg>, colors: ['#0a0e17', '#0d1117', '#10b981'], selectedBorder: 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-500/5', selectedIcon: 'text-emerald-500', checkBg: 'bg-emerald-500', desc: t('settings.themeCyberDesc') },
+                                            ]).map(themeOption => {
+                                                const isSelected = appThemeProp === themeOption.id;
+                                                return (
+                                                    <button
+                                                        key={themeOption.id}
+                                                        onClick={() => setAppTheme?.(themeOption.id)}
+                                                        className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                                            isSelected
+                                                                ? themeOption.selectedBorder
+                                                                : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                        }`}
+                                                    >
+                                                        {/* Color preview strip */}
+                                                        <div className="flex w-full h-8 rounded-lg overflow-hidden shadow-inner">
+                                                            {themeOption.colors.map((color, i) => (
+                                                                <div key={i} className="flex-1" style={{ backgroundColor: color }} />
+                                                            ))}
+                                                        </div>
+                                                        {/* Icon + Label */}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={isSelected ? themeOption.selectedIcon : 'text-gray-500'}>{themeOption.icon}</span>
+                                                            <span className="text-sm font-medium">{themeOption.label}</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-gray-500 text-center leading-tight">{themeOption.desc}</span>
+                                                        {/* Selected check */}
+                                                        {isSelected && (
+                                                            <div className={`absolute top-2 right-2 w-5 h-5 ${themeOption.checkBg} rounded-full flex items-center justify-center`}>
+                                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Auto mode toggle */}
+                                        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                                            <label className="flex items-center gap-3 cursor-pointer">
                                                 <input
                                                     type="checkbox"
-                                                    checked={col.disabled || (settings.visibleColumns || []).includes(col.key)}
-                                                    disabled={col.disabled}
-                                                    onChange={() => {
-                                                        const current = settings.visibleColumns || ['name', 'size', 'type', 'permissions', 'modified'];
-                                                        const updated = current.includes(col.key)
-                                                            ? current.filter((c: string) => c !== col.key)
-                                                            : [...current, col.key];
-                                                        updateSetting('visibleColumns', updated);
+                                                    checked={appThemeProp === 'auto'}
+                                                    onChange={e => {
+                                                        if (e.target.checked) {
+                                                            setAppTheme?.('auto');
+                                                        } else {
+                                                            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                                                            setAppTheme?.(prefersDark ? 'dark' : 'light');
+                                                        }
                                                     }}
                                                     className="w-4 h-4 rounded"
                                                 />
-                                                <span className="text-sm">{col.label}</span>
+                                                <div>
+                                                    <p className="font-medium flex items-center gap-2">
+                                                        <Monitor size={14} />
+                                                        {t('settings.autoTheme')}
+                                                    </p>
+                                                    <p className="text-sm text-gray-500">{t('settings.autoThemeDesc')}</p>
+                                                </div>
                                             </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* App Background Pattern */}
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mt-6">
-                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                                        <h4 className="font-medium flex items-center gap-2 text-sm">
-                                            <Palette size={14} className="text-gray-500" />
-                                            {t('settings.appBackgroundPattern')}
-                                        </h4>
-                                    </div>
-                                    <div className="p-4">
-                                        <p className="text-xs text-gray-500 mb-3">{t('settings.appBackgroundPatternDesc')}</p>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {APP_BACKGROUND_PATTERNS.map(pattern => {
-                                                const currentId = localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND;
-                                                const isSelected = currentId === pattern.id;
-                                                return (
-                                                    <button
-                                                        key={pattern.id}
-                                                        onClick={() => {
-                                                            localStorage.setItem(APP_BACKGROUND_KEY, pattern.id);
-                                                            flashSaved();
-                                                            // Dispatch event to notify App.tsx
-                                                            window.dispatchEvent(new CustomEvent('app-background-changed', { detail: pattern.id }));
-                                                        }}
-                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
-                                                            isSelected
-                                                                ? 'border-blue-500 ring-1 ring-blue-500/30'
-                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                        }`}
-                                                        title={t(pattern.nameKey)}
-                                                    >
-                                                        {/* Pattern preview - use Lock Screen patterns (full opacity) with opacity-10 for consistent visibility */}
-                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
-                                                            {pattern.svg && (() => {
-                                                                // Find matching Lock Screen pattern for preview (full opacity SVGs)
-                                                                const lockPattern = LOCK_SCREEN_PATTERNS.find(p => p.id === pattern.id);
-                                                                return lockPattern?.svg ? (
-                                                                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: lockPattern.svg }} />
-                                                                ) : null;
-                                                            })()}
-                                                        </div>
-                                                        {/* Label */}
-                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
-                                                        </div>
-                                                        {/* Selected check */}
-                                                        {isSelected && (
-                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
-                                {/* Lock Screen Pattern */}
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mt-6">
-                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                                        <h4 className="font-medium flex items-center gap-2 text-sm">
-                                            <Palette size={14} className="text-gray-500" />
-                                            {t('settings.lockScreenPattern')}
-                                        </h4>
-                                    </div>
-                                    <div className="p-4">
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {LOCK_SCREEN_PATTERNS.map(pattern => {
-                                                const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
-                                                const isSelected = currentId === pattern.id;
-                                                return (
+                                {/* Sub-tab: Interface */}
+                                {appearanceSubTab === 'interface' && (
+                                    <div className="space-y-4">
+                                        {/* Language Selector */}
+                                        <LanguageSelector
+                                            currentLanguage={language}
+                                            availableLanguages={availableLanguages}
+                                            onSelect={(lang) => {
+                                                setLanguage(lang);
+                                                flashSaved();
+                                            }}
+                                            label={t('settings.interfaceLanguage')}
+                                        />
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">{t('settings.fontSize')}</label>
+                                            <div className="flex gap-2">
+                                                {(['small', 'medium', 'large'] as const).map(size => (
                                                     <button
-                                                        key={pattern.id}
-                                                        onClick={() => {
-                                                            localStorage.setItem('aeroftp_lock_pattern', pattern.id);
-                                                            flashSaved();
-                                                        }}
-                                                        className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
-                                                            isSelected
-                                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30'
-                                                                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                        }`}
-                                                        title={t(pattern.nameKey)}
+                                                        key={size}
+                                                        onClick={() => updateSetting('fontSize', size)}
+                                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${settings.fontSize === size
+                                                            ? 'bg-blue-500 text-white'
+                                                            : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                            }`}
                                                     >
-                                                        {/* Pattern preview */}
-                                                        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
-                                                            {pattern.svg && (
-                                                                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
-                                                            )}
-                                                        </div>
-                                                        {/* Label */}
-                                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                                            <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
-                                                        </div>
-                                                        {/* Selected check */}
-                                                        {isSelected && (
-                                                            <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                                                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            </div>
-                                                        )}
+                                                        {size === 'small' ? t('settings.fontSizeSmall') : size === 'medium' ? t('settings.fontSizeMedium') : t('settings.fontSizeLarge')}
                                                     </button>
-                                                );
-                                            })}
+                                                ))}
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">{t('settings.fontSizeDesc')}</p>
+                                        </div>
+
+                                        <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
+
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={settings.showStatusBar} onChange={e => updateSetting('showStatusBar', e.target.checked)} className="w-4 h-4 rounded" />
+                                            <div>
+                                                <p className="font-medium">{t('settings.showStatusBar')}</p>
+                                                <p className="text-sm text-gray-500">{t('settings.showStatusBarDesc')}</p>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={settings.showSystemMenu} onChange={e => updateSetting('showSystemMenu', e.target.checked)} className="w-4 h-4 rounded" />
+                                            <div>
+                                                <p className="font-medium">{t('settings.showSystemMenuBar')}</p>
+                                                <p className="text-sm text-gray-500">{t('settings.showSystemMenuBarDesc')}</p>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={settings.compactMode} onChange={e => updateSetting('compactMode', e.target.checked)} className="w-4 h-4 rounded" />
+                                            <div>
+                                                <p className="font-medium">{t('settings.compactMode')}</p>
+                                                <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={settings.showToastNotifications} onChange={e => updateSetting('showToastNotifications', e.target.checked)} className="w-4 h-4 rounded" />
+                                            <div>
+                                                <p className="font-medium">{t('settings.toastNotifications')}</p>
+                                                <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
+                                            </div>
+                                        </label>
+
+                                        {/* Visible Columns */}
+                                        <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">{t('settings.visibleColumns')}</label>
+                                            <p className="text-xs text-gray-500 mb-3">{t('settings.visibleColumnsDesc')}</p>
+                                            <div className="space-y-2">
+                                                {[
+                                                    { key: 'name', label: t('settings.columnName'), disabled: true },
+                                                    { key: 'size', label: t('settings.columnSize'), disabled: false },
+                                                    { key: 'type', label: t('settings.columnType'), disabled: false },
+                                                    { key: 'permissions', label: t('settings.columnPermissions'), disabled: false },
+                                                    { key: 'modified', label: t('settings.columnModified'), disabled: false },
+                                                ].map(col => (
+                                                    <label key={col.key} className={`flex items-center gap-3 ${col.disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={col.disabled || (settings.visibleColumns || []).includes(col.key)}
+                                                            disabled={col.disabled}
+                                                            onChange={() => {
+                                                                const current = settings.visibleColumns || ['name', 'size', 'type', 'permissions', 'modified'];
+                                                                const updated = current.includes(col.key)
+                                                                    ? current.filter((c: string) => c !== col.key)
+                                                                    : [...current, col.key];
+                                                                updateSetting('visibleColumns', updated);
+                                                            }}
+                                                            className="w-4 h-4 rounded"
+                                                        />
+                                                        <span className="text-sm">{col.label}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
+
+                                {/* Sub-tab: Backgrounds */}
+                                {appearanceSubTab === 'backgrounds' && (
+                                    <div className="space-y-6">
+                                        {/* App Background Pattern */}
+                                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                            <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                                <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                    <Palette size={14} className="text-gray-500" />
+                                                    {t('settings.appBackgroundPattern')}
+                                                </h4>
+                                            </div>
+                                            <div className="p-4">
+                                                <p className="text-xs text-gray-500 mb-3">{t('settings.appBackgroundPatternDesc')}</p>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {APP_BACKGROUND_PATTERNS.map(pattern => {
+                                                        const currentId = localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND;
+                                                        const isSelected = currentId === pattern.id;
+                                                        return (
+                                                            <button
+                                                                key={pattern.id}
+                                                                onClick={() => {
+                                                                    localStorage.setItem(APP_BACKGROUND_KEY, pattern.id);
+                                                                    flashSaved();
+                                                                    window.dispatchEvent(new CustomEvent('app-background-changed', { detail: pattern.id }));
+                                                                }}
+                                                                className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                                                                    isSelected
+                                                                        ? 'border-blue-500 ring-1 ring-blue-500/30'
+                                                                        : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                                }`}
+                                                                title={t(pattern.nameKey)}
+                                                            >
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                                    {pattern.svg && (() => {
+                                                                        const lockPattern = LOCK_SCREEN_PATTERNS.find(p => p.id === pattern.id);
+                                                                        return lockPattern?.svg ? (
+                                                                            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: lockPattern.svg }} />
+                                                                        ) : null;
+                                                                    })()}
+                                                                </div>
+                                                                <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                                                    <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                        </svg>
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Lock Screen Pattern */}
+                                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                            <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                                <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                    <Palette size={14} className="text-gray-500" />
+                                                    {t('settings.lockScreenPattern')}
+                                                </h4>
+                                            </div>
+                                            <div className="p-4">
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {LOCK_SCREEN_PATTERNS.map(pattern => {
+                                                        const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
+                                                        const isSelected = currentId === pattern.id;
+                                                        return (
+                                                            <button
+                                                                key={pattern.id}
+                                                                onClick={() => {
+                                                                    localStorage.setItem('aeroftp_lock_pattern', pattern.id);
+                                                                    flashSaved();
+                                                                }}
+                                                                className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                                                                    isSelected
+                                                                        ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+                                                                        : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                                                                }`}
+                                                                title={t(pattern.nameKey)}
+                                                            >
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                                    {pattern.svg && (
+                                                                        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
+                                                                    )}
+                                                                </div>
+                                                                <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                                                    <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                                                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                        </svg>
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -2001,7 +2088,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         value={currentMasterPassword}
                                                         onChange={e => setCurrentMasterPassword(e.target.value)}
                                                         className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder="••••••••"
+                                                        placeholder={t('settings.passwordPlaceholder')}
                                                     />
                                                     <button
                                                         type="button"
@@ -2451,25 +2538,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm space-y-1.5">
                                                         <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium">
                                                             <Shield size={14} />
-                                                            {keystoreMetadata.entriesCount} entries
+                                                            {t('settings.keystoreEntries', { count: keystoreMetadata.entriesCount })}
                                                         </div>
                                                         <div className="text-xs text-blue-600/70 dark:text-blue-400/70 space-y-0.5">
                                                             <div>AeroFTP {keystoreMetadata.aeroftpVersion}</div>
                                                             <div>{new Date(keystoreMetadata.exportDate).toLocaleString()}</div>
                                                             {keystoreMetadata.categories.serverCredentials > 0 && (
-                                                                <div>{keystoreMetadata.categories.serverCredentials} server credentials</div>
+                                                                <div>{keystoreMetadata.categories.serverCredentials} {t('settings.serverCredentials')}</div>
                                                             )}
                                                             {keystoreMetadata.categories.serverProfiles > 0 && (
-                                                                <div>{keystoreMetadata.categories.serverProfiles} server profiles</div>
+                                                                <div>{keystoreMetadata.categories.serverProfiles} {t('settings.serverProfilesLabel')}</div>
                                                             )}
                                                             {keystoreMetadata.categories.aiKeys > 0 && (
-                                                                <div>{keystoreMetadata.categories.aiKeys} AI keys</div>
+                                                                <div>{keystoreMetadata.categories.aiKeys} {t('settings.aiKeysLabel')}</div>
                                                             )}
                                                             {keystoreMetadata.categories.oauthTokens > 0 && (
-                                                                <div>{keystoreMetadata.categories.oauthTokens} OAuth tokens</div>
+                                                                <div>{keystoreMetadata.categories.oauthTokens} {t('settings.oauthTokensLabel')}</div>
                                                             )}
                                                             {keystoreMetadata.categories.configEntries > 0 && (
-                                                                <div>{keystoreMetadata.categories.configEntries} config entries</div>
+                                                                <div>{keystoreMetadata.categories.configEntries} {t('settings.configEntriesLabel')}</div>
                                                             )}
                                                         </div>
                                                     </div>
@@ -2614,7 +2701,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div>
                                                 <h4 className="font-medium text-base">{t('settings.privacyDesc')}</h4>
-                                                <p className="text-sm text-gray-500 mt-1">AeroFTP respects your privacy. We collect minimal data to improve the application.</p>
+                                                <p className="text-sm text-gray-500 mt-1">{t('settings.privacyRespect')}</p>
                                             </div>
                                         </div>
 

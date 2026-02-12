@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { Download, FileText, ExternalLink } from 'lucide-react';
 import { ViewerBaseProps } from '../types';
+import { useI18n } from '../../../i18n';
 
 interface PDFViewerProps extends ViewerBaseProps {
     className?: string;
@@ -17,6 +18,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     file,
     className = '',
 }) => {
+    const { t } = useI18n();
     const [downloading, setDownloading] = useState(false);
 
     // PDF source URL
@@ -72,7 +74,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                     <FileText size={80} className="mx-auto mb-4 text-red-400/50" />
                     <h3 className="text-xl font-medium text-gray-200 mb-2">PDF Document</h3>
                     <p className="text-gray-400 text-sm max-w-md">
-                        Download the PDF to view it in your preferred reader.
+                        {t('preview.pdf.downloadMessage')}
                     </p>
                 </div>
 
@@ -84,7 +86,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                         className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
                     >
                         <ExternalLink size={20} />
-                        Open PDF
+                        {t('preview.pdf.open')}
                     </button>
 
                     {/* Download button */}
@@ -94,7 +96,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                         className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <Download size={20} />
-                        Download PDF
+                        {t('preview.pdf.download')}
                     </button>
                 </div>
             </div>

@@ -298,7 +298,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
             if (!credentials) {
                 const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
-                setOauthError(`Please configure ${providerNames[server.protocol] || server.protocol} credentials in Settings > Cloud Providers.`);
+                setOauthError(t('savedServers.oauthConfigError', { provider: providerNames[server.protocol] || server.protocol }));
                 return;
             }
 
@@ -376,7 +376,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 // ignore
             }
             if (!consumerKey || !consumerSecret) {
-                setOauthError('Please configure 4shared credentials in Settings > Cloud Providers.');
+                setOauthError(t('savedServers.foursharedConfigError'));
                 return;
             }
 
@@ -517,7 +517,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder={t('connection.searchServers')}
-                                className="w-full pl-9 pr-8 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 dark:bg-gray-700/80 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none"
                             />
                             {searchQuery && (
                                 <button
@@ -545,7 +545,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     >
                         {/* Drag handle (hidden during search) */}
                         <div className={`cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0 -ml-1 ${isDraggable ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 pointer-events-none w-0 -ml-0'}`}
-                             title="Drag to reorder">
+                             title={t('savedServers.dragToReorder')}>
                             <GripVertical size={16} />
                         </div>
                             {/* Server icon — click to connect */}

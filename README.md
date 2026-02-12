@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 14 protocols, 4 integrated tools, 51 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 14 protocols, 4 integrated tools, 47 languages, one app.
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202%20%2B%20React%2018-purple?style=for-the-badge" alt="Built with">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/Languages-51-blue?style=for-the-badge" alt="Languages">
+  <img src="https://img.shields.io/badge/Languages-47-blue?style=for-the-badge" alt="Languages">
   <img src="https://img.shields.io/badge/Protocols-14-teal?style=for-the-badge" alt="Protocols">
 </p>
 
@@ -186,8 +186,8 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 - **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)
 - **FTP insecure warning**: Visual banner on unencrypted FTP connections
 
-### 51 Languages
-More languages than any other FTP client. RTL support for Arabic, Hebrew, Persian, and Urdu. Automatic browser language detection.
+### 47 Languages
+More languages than any other FTP client. Automatic browser language detection.
 
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA

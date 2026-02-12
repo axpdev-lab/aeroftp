@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-02-11
+
+### Theme System, Security Toolkit, Complete i18n Coverage
+
+Four built-in themes (Light, Dark, Tokyo Night, Cyberpunk), Security Toolkit with Hash Forge / CryptoLab / Password Forge, terminal and Monaco editor theme synchronization, and comprehensive i18n pass with 360 new keys across 47 languages.
+
+#### Added
+
+- **4-Theme System**: Light, Dark, Tokyo Night, and Cyberpunk themes with CSS custom properties and `data-theme` attribute. Theme toggle cycles through all four. Auto mode follows OS preference (light/dark). Themed PNG icons for connection screen logo
+- **Security Toolkit** (Cyberpunk theme): 3-tab modal with Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3 — text and file hashing with timing-safe compare), CryptoLab (AES-256-GCM and ChaCha20-Poly1305 text encryption with Argon2id key derivation), and Password Forge (CSPRNG random passwords + BIP39 passphrases with entropy calculation). 8 new Rust backend commands
+- **Terminal theme auto-sync**: Terminal theme now follows the app theme automatically (Light→Solarized Light, Dark→GitHub Dark, Tokyo Night→Tokyo Night, Cyberpunk→Cyber). New `cyber` terminal theme with neon green palette. Manual theme override preserved via `userOverrideRef` pattern
+- **Monaco Cyber theme**: Neon green syntax highlighting on deep black background, matching the Cyberpunk app theme. Registered alongside existing light/dark/tokyo-night themes
+- **360 new i18n keys** across 16 sections: `preview.*` (104 keys — audio player, video player, image viewer, PDF viewer, text viewer, mixer, WebGL), `activityPanel.*` (20 keys — log filters, badges, controls), `transfer.*` (9 keys — queue actions, status labels), `ai.toolLabels.*` (31 keys — all 31 AI tool display names), `ai.toolApproval.*` (10 keys — approval dialog actions), `ai.thinking.*` (16 keys — animated thinking status variants), `ai.error.*` (4 keys), `protocol.*Tooltip` (14 keys — protocol selector tooltips for all 14 protocols), `connection.oauth.*` (16 keys — OAuth connect flow), `connection.fourshared.*` (16 keys — 4shared connect flow), `ui.language.*` (14 keys — language selector), `ui.session.*` (8 keys — session tab labels), `permissions.*` (8 keys — chmod dialog), `error.*` (4 keys — error boundary), `devtools.*` (7 keys — DevTools panel), `savedServers.*` (8 keys — server display templates), `vault.*` (7 keys — vault panel), `cryptomator.*` (4 keys), `cloud.*` (5 keys — cloud panel), `settings.*` (22 keys — placeholders and alerts), `toast.*` (15 keys — notification messages)
+- **Full translations for all 47 languages**: Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, Spanish, Estonian, Basque, Finnish, French, Galician, Hindi, Croatian, Hungarian, Armenian, Indonesian, Icelandic, Italian (manual), Japanese, Georgian, Khmer, Korean, Lithuanian, Latvian, Macedonian, Malay, Dutch, Norwegian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Serbian, Swedish, Swahili, Thai, Filipino, Turkish, Ukrainian, Vietnamese, Chinese Simplified
+- **`ai.thinking` converted from string to object**: 16 animated thinking status variants — each translated into all 47 languages
+- **BLAKE3 hashing**: New `blake3 = "1"` Cargo dependency for Security Toolkit file hashing
+
+#### Changed
+
+- **About dialog credits**: Replaced AI model attribution with technology stack display ("Rust + React 18 + TypeScript")
+- **Preview components i18n** (8 files): `AudioPlayer.tsx`, `VideoPlayer.tsx`, `ImageViewer.tsx`, `PDFViewer.tsx`, `TextViewer.tsx`, `AudioMixer.tsx`, `WebGLVisualizer.tsx`, `UniversalPreview.tsx` — all hardcoded labels replaced with `t()` calls
+- **App.tsx i18n**: ~40 hardcoded toast notifications, SortableHeader labels, and `|| 'Fallback'` patterns replaced with proper `t()` calls
+- **DevToolsV2 + AIChat i18n**: Panel tooltips, empty states, thinking status, tool errors, image analysis text
+- **ToolApproval + BatchToolApproval i18n**: All approval dialog buttons, status labels, and tooltips
+- **TransferQueue + ActivityLogPanel i18n**: Queue actions, status labels, filter buttons, badge labels
+- **OAuthConnect + FourSharedConnect i18n**: Connection flow text, credential forms, buttons
+- **ProtocolSelector + SettingsPanel i18n**: Protocol tooltips for all 14 protocols, form placeholders, alerts
+- **SavedServers i18n**: Display templates for OAuth, E2E, S3, WebDAV entries, drag tooltip, errors
+- **VaultPanel + CryptomatorBrowser i18n**: Security badges, file operation toasts, breadcrumb, decrypt button
+- **CloudPanel + UI components i18n**: LanguageSelector, CustomTitlebar, SessionTabs, PermissionsDialog, ErrorBoundary
+
+#### Fixed
+
+- **Monaco Editor 404 in dev mode**: Vite plugin `copyMonacoAssets()` now serves Monaco AMD assets from `node_modules` via dev server middleware, fixing `loader.js` 404 errors during development
+- **ActivityLogPanel `LogEntryRow` missing `t()`**: Added `useTranslation()` hook call inside memoized component
+- **VaultPanel/CryptomatorBrowser destructuring**: `const { t } = useTranslation()` corrected to `const t = useTranslation()`
+- **useCloudSync undefined `tr`**: Fixed by destructuring `t: tr` from `callbacksRef.current`
+- **SettingsPanel type error**: Optional fields now use `|| ''` fallback for TypeScript compatibility
+
+#### Removed
+
+- **RTL locale files**: Removed `ar.json` (Arabic), `fa.json` (Persian), `he.json` (Hebrew), `ur.json` (Urdu) — RTL layout support not yet implemented. Will be re-added with proper RTL CSS support
+- **`|| 'Fallback'` patterns**: ~40 instances removed from `App.tsx` — all keys now exist in `en.json`
+
+---
+
 ## [2.0.5] - 2026-02-10
 
 ### 4shared Native API, System Startup, Places Sidebar Pro, Windows Explorer Badge

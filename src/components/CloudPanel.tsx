@@ -259,7 +259,7 @@ const SetupWizard: React.FC<{
                         </div>
 
                         <div className="summary-box">
-                            <h4>Summary</h4>
+                            <h4>{t('cloud.summary')}</h4>
                             <p><Folder size={14} /> {t('cloud.localFolder')}: <code>{localFolder}</code></p>
                             <p><Server size={14} /> {t('cloud.remoteFolder')}: <code>{remoteFolder}</code></p>
                             <p><Shield size={14} /> {t('cloud.serverProfile')}: <code>{serverProfile || t('cloud.never')}</code></p>
@@ -352,8 +352,8 @@ const CloudDashboard: React.FC<{
         const diffMins = Math.floor(diffMs / 60000);
 
         if (diffMins < 1) return t('cloud.justNow');
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+        if (diffMins < 60) return t('cloud.minutesAgo', { count: diffMins });
+        if (diffMins < 1440) return t('cloud.hoursAgo', { count: Math.floor(diffMins / 60) });
         return date.toLocaleDateString();
     };
 
@@ -764,21 +764,21 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                         {/* Public URL for sharing */}
                         <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                             <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                                🔗 Public URL Base
-                                <span className="text-xs text-gray-400 font-normal">(for sharing)</span>
+                                🔗 {t('cloud.publicUrlBase')}
+                                <span className="text-xs text-gray-400 font-normal">({t('cloud.forSharing')})</span>
                             </label>
                             <input
                                 type="text"
                                 value={config?.public_url_base || ''}
-                                onChange={e => setConfig(prev => prev ? { 
-                                    ...prev, 
-                                    public_url_base: e.target.value || null 
+                                onChange={e => setConfig(prev => prev ? {
+                                    ...prev,
+                                    public_url_base: e.target.value || null
                                 } : null)}
                                 className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                 placeholder="https://cloud.yourdomain.com/"
                             />
                             <p className="text-xs text-gray-400 mt-1">
-                                Set this to enable "Share Link" for files. Your web server must serve files from the same path as your FTP remote folder.
+                                {t('cloud.publicUrlDesc')}
                             </p>
                         </div>
 

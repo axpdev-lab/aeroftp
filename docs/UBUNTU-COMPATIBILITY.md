@@ -74,7 +74,7 @@ AeroFTP demonstrates **production-grade Ubuntu compatibility** with comprehensiv
 > 2. **Static analysis** of all 41 Rust source files and 50+ TypeScript/React components across 4 audit domains
 > 3. **Dependency audit** of all 68 Cargo crates and npm packages for Linux compatibility
 > 4. **System dependency verification** of all native libraries (WebKitGTK, GTK3, OpenSSL, AppIndicator)
-> 5. **i18n validation** of all 51 languages (1025 keys, 0 missing)
+> 5. **i18n validation** of all 47 languages (1025 keys, 0 missing)
 > 6. **Cross-platform regression analysis** confirming zero regressions from Windows compatibility fixes
 >
 > **All 14 protocols**, **4 archive formats**, **AeroVault v2 encryption**, **Cryptomator interop**, **AI agent tools**, **Smart Sync**, and **terminal emulation** operate correctly on Ubuntu.
@@ -656,7 +656,7 @@ Ensures native look-and-feel with system GTK themes.
 
 ## 14. Internationalization (i18n)
 
-**Status: PASS** — 51 languages at 100% coverage.
+**Status: PASS** — 47 languages at 100% coverage.
 
 | Metric | Value |
 |--------|-------|
@@ -714,7 +714,7 @@ These keys are harmless (unused by code) and should be cleaned up in the next sy
 | 15 | CI/CD | 4 Linux formats + disk space management | **Excellent** |
 | 16 | Snap | Strict confinement + XDG portal + themes | **Excellent** |
 | 17 | Build | All 68 deps Linux-compatible | **Pass** |
-| 18 | i18n | 1025 keys, 51 languages, 0 missing | **Pass** |
+| 18 | i18n | 1025 keys, 47 languages, 0 missing | **Pass** |
 | 19 | Memory | SecretString/SecretBox + zeroize on all keys | **Excellent** |
 | 20 | OAuth | Localhost loopback (no firewall needed) | **Correct** |
 

@@ -31,6 +31,8 @@ import 'prismjs/components/prism-docker';
 
 import { CodeBlockActions } from './CodeBlockActions';
 import { getToolByName } from '../../types/tools';
+import { useI18n } from '../../i18n';
+import { getToolLabel } from './aiChatToolLabels';
 
 /** Escape HTML special characters to prevent XSS in unrecognized code blocks */
 function escapeHtml(text: string): string {
@@ -49,44 +51,14 @@ function stripBidiChars(s: string): string {
 
 // ── Tool Chip (React component, no dangerouslySetInnerHTML) ──────────
 
-/** Friendly labels for tool call display */
-export const toolLabels: Record<string, string> = {
-    remote_list: 'Listing remote files',
-    remote_read: 'Reading remote file',
-    remote_rename: 'Renaming remote file',
-    remote_delete: 'Deleting remote file',
-    remote_mkdir: 'Creating remote folder',
-    remote_upload: 'Uploading file',
-    remote_download: 'Downloading file',
-    remote_search: 'Searching remote files',
-    remote_info: 'File info',
-    local_list: 'Listing local files',
-    local_read: 'Reading local file',
-    local_write: 'Writing local file',
-    local_search: 'Searching local files',
-    local_mkdir: 'Creating local folder',
-    local_delete: 'Deleting local item',
-    local_rename: 'Renaming local item',
-    upload_files: 'Uploading files',
-    download_files: 'Downloading files',
-    local_edit: 'Editing local file',
-    remote_edit: 'Editing remote file',
-    preview_edit: 'Previewing edit',
-    sync_preview: 'Comparing directories',
-    archive_create: 'Creating archive',
-    archive_extract: 'Extracting archive',
-    terminal_execute: 'Running command in terminal',
-    rag_index: 'Indexing files',
-    rag_search: 'Searching indexed files',
-};
-
 interface ToolChipProps {
     toolName: string;
     argsJson: string;
 }
 
 const ToolChip: React.FC<ToolChipProps> = ({ toolName, argsJson }) => {
-    const label = toolLabels[toolName] || toolName;
+    const { t } = useI18n();
+    const label = getToolLabel(toolName, t);
     const isPlugin = !getToolByName(toolName);
     const borderColor = isPlugin ? 'border-cyan-500' : 'border-purple-500';
     const iconColor = isPlugin ? 'text-cyan-400' : 'text-purple-400';
@@ -594,6 +566,5 @@ export const MarkdownRenderer = React.memo(MarkdownRendererInner, (prev, next) =
     );
 });
 
-// Re-export toolLabels for backward compat (used in ToolApproval, BatchToolApproval)
 export { ToolChip };
 export type { ContentSegment };

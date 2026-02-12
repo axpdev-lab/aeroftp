@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
-import { useTranslation } from '../../i18n';
+import { useI18n } from '../../i18n';
+import { getToolLabel } from './aiChatToolLabels';
 
 interface ToolApprovalProps {
     toolCall: AgentToolCall;
@@ -13,34 +14,10 @@ interface ToolApprovalProps {
     allTools?: AITool[];
 }
 
-const dangerConfig: Record<DangerLevel, { accent: string; label: string; icon: typeof Shield }> = {
-    safe: { accent: 'border-l-blue-500', label: 'auto', icon: ShieldCheck },
-    medium: { accent: 'border-l-yellow-500', label: 'confirm', icon: Shield },
-    high: { accent: 'border-l-red-500', label: 'danger', icon: ShieldAlert },
-};
-
-/** Compact tool label map for common tool names */
-const toolLabels: Record<string, string> = {
-    local_edit: 'Edit',
-    local_write: 'Write',
-    local_read: 'Read',
-    local_list: 'List',
-    local_delete: 'Delete',
-    local_mkdir: 'Mkdir',
-    local_rename: 'Rename',
-    local_search: 'Search',
-    remote_edit: 'Remote Edit',
-    remote_delete: 'Remote Delete',
-    remote_mkdir: 'Remote Mkdir',
-    remote_rename: 'Remote Rename',
-    remote_download: 'Download',
-    remote_upload: 'Upload',
-    upload_files: 'Upload',
-    download_files: 'Download',
-    sync_preview: 'Sync Preview',
-    terminal_execute: 'Terminal',
-    rag_index: 'Index',
-    agent_memory_write: 'Memory',
+const dangerConfig: Record<DangerLevel, { accent: string; icon: typeof Shield }> = {
+    safe: { accent: 'border-l-blue-500', icon: ShieldCheck },
+    medium: { accent: 'border-l-yellow-500', icon: Shield },
+    high: { accent: 'border-l-red-500', icon: ShieldAlert },
 };
 
 /** Extract the main argument to show inline (usually path or command) */
@@ -61,7 +38,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
     const [diffLoading, setDiffLoading] = useState(false);
     const [diffError, setDiffError] = useState<string | null>(null);
-    const t = useTranslation();
+    const { t } = useI18n();
 
     const tool = allTools ? getToolByNameFromAll(toolCall.toolName, allTools) : getToolByName(toolCall.toolName);
     const dangerLevel = tool?.dangerLevel || 'medium';
@@ -101,7 +78,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
         .finally(() => setDiffLoading(false));
     }, [toolCall.id]);
 
-    const label = toolLabels[toolCall.toolName] || toolCall.toolName;
+    const label = getToolLabel(toolCall.toolName, t);
     const mainArg = getMainArg(toolCall.toolName, toolCall.args);
 
     return (
@@ -128,7 +105,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                         onClick={() => setExpanded(!expanded)}
                         className="ml-auto text-gray-500 hover:text-gray-300 p-0.5"
                         aria-expanded={expanded}
-                        aria-label="Toggle details"
+                        aria-label={t('ai.toolApproval.toggleDetails') || 'Toggle details'}
                     >
                         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </button>
@@ -164,15 +141,15 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                         ? 'bg-red-600/80 hover:bg-red-500 text-white'
                                         : 'bg-green-600/80 hover:bg-green-500 text-white'
                             }`}
-                            aria-label={dangerLevel === 'high' ? 'Confirm dangerous action' : 'Allow tool execution'}
+                            aria-label={dangerLevel === 'high' ? t('ai.toolApproval.confirmDangerous') || 'Confirm dangerous action' : t('ai.toolApproval.allowExecution') || 'Allow tool execution'}
                         >
                             <Check size={10} />
-                            {dangerLevel === 'high' ? (t('ai.tool.confirm') || 'Confirm') : (t('ai.tool.allow') || 'Allow')}
+                            {dangerLevel === 'high' ? (t('ai.toolApproval.confirm') || 'Confirm') : (t('ai.toolApproval.allow') || 'Allow')}
                         </button>
                         <button
                             onClick={onReject}
                             className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-700/80 hover:bg-gray-600 text-gray-300 transition-colors"
-                            aria-label="Reject tool execution"
+                            aria-label={t('ai.toolApproval.rejectExecution') || 'Reject tool execution'}
                         >
                             <X size={10} />
                         </button>

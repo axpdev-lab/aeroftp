@@ -24,7 +24,6 @@ interface UploadFolderParams {
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { ToastContainer, useToast } from './components/Toast';
-import { Logo } from './components/Logo';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
@@ -46,6 +45,7 @@ import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
+import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
@@ -86,7 +86,7 @@ import DependenciesPanel from './components/DependenciesPanel';
 import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
-import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme } from './hooks/useTheme';
+import { useTheme, ThemeToggle, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
@@ -142,6 +142,23 @@ const App: React.FC = () => {
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
+
+  // === Splash Screen Readiness Tracking ===
+  const vaultInitDone = useRef(false);
+  const localFilesInitDone = useRef(false);
+  const localFilesInitStarted = useRef(false);  // Guard against re-running init effect
+  const appReadySignaled = useRef(false);
+
+  const signalAppReady = useCallback(async () => {
+    if (appReadySignaled.current) return;
+    if (!vaultInitDone.current || !localFilesInitDone.current) return;
+    appReadySignaled.current = true;
+    try {
+      await invoke('app_ready');
+    } catch (err) {
+      console.error('Failed to signal app_ready:', err);
+    }
+  }, []);
 
   // === App Background Pattern ===
   const [appBackgroundId, setAppBackgroundId] = useState(() =>
@@ -203,6 +220,7 @@ const App: React.FC = () => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+  const [showCyberTools, setShowCyberTools] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
   // Folder overwrite dialog state
@@ -386,10 +404,19 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
+      } finally {
+        // Pre-warm vault: fetch server profiles so data is ready for SavedServers
+        try {
+          await secureGetWithFallback<unknown[]>('server_profiles', 'aeroftp-saved-servers');
+        } catch { /* non-critical */ }
+        // Force SavedServers to re-fetch from vault (now initialized)
+        setServersRefreshKey(k => k + 1);
+        vaultInitDone.current = true;
+        signalAppReady();
       }
     };
     initVault();
-  }, []);
+  }, [signalAppReady]);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -708,13 +735,14 @@ const App: React.FC = () => {
     'Escape': () => {
       if (quickLookOpen) setQuickLookOpen(false);
       else if (universalPreviewOpen) closeUniversalPreview();
+      else if (showCyberTools) setShowCyberTools(false);
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
       else if (inputDialog) setInputDialog(null);
       else if (confirmDialog) setConfirmDialog(null);
     }
-  }, [showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
+  }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
@@ -880,9 +908,9 @@ const App: React.FC = () => {
       const items = await invoke<TrashItem[]>('list_trash_items');
       setTrashItems(items);
     } catch (err) {
-      notify.error('Failed to load trash', String(err));
+      notify.error(t('toast.loadTrashFailed'), String(err));
     }
-  }, [notify]);
+  }, [notify, t]);
 
   const handleNavigateTrash = useCallback(() => {
     setIsTrashView(true);
@@ -895,7 +923,7 @@ const App: React.FC = () => {
       notify.success(t('trash.restore'), item.name);
       loadTrashItems();
     } catch (err) {
-      notify.error('Restore failed', String(err));
+      notify.error(t('toast.restoreFailed'), String(err));
     }
   }, [loadTrashItems, notify, t]);
 
@@ -905,7 +933,7 @@ const App: React.FC = () => {
       notify.success(t('trash.empty'), `${count} items deleted`);
       setTrashItems([]);
     } catch (err) {
-      notify.error('Empty trash failed', String(err));
+      notify.error(t('toast.emptyTrashFailed'), String(err));
     }
   }, [notify, t]);
 
@@ -922,12 +950,12 @@ const App: React.FC = () => {
         return next;
       });
     } catch (err) {
-      notify.error('Size calculation failed', String(err));
+      notify.error(t('toast.sizeFailed'), String(err));
     } finally {
       folderSizeCalculatingRef.current.delete(path);
       setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
     }
-  }, [notify]);
+  }, [notify, t]);
 
   // Timeout to auto-hide transfer popup if stuck (30 seconds of no updates)
   const lastProgressUpdate = React.useRef<number>(Date.now());
@@ -994,7 +1022,8 @@ const App: React.FC = () => {
           loadLocalFiles(currentLocalPath);
           break;
         case 'toggle_theme':
-          setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light');
+          const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
+          setTheme(order[(order.indexOf(theme) + 1) % order.length]);
           break;
         case 'new_folder':
           if (isConnected) createFolder(true);
@@ -1067,10 +1096,10 @@ const App: React.FC = () => {
       return true;
     } catch (error) {
       if (callId !== loadLocalCallIdRef.current) return false;
-      notify.error('Error', `Failed to list local files: ${error}`);
+      notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
-  }, [showHiddenFiles]);
+  }, [showHiddenFiles, notify, t]);
 
   const loadRemoteFiles = async (overrideProtocol?: string) => {
     try {
@@ -1108,7 +1137,7 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('[loadRemoteFiles] Error:', error);
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
-      notify.error('Error', `Failed to list files: ${error}`);
+      notify.error(t('common.error'), `Failed to list files: ${error}`);
     }
   };
 
@@ -1159,6 +1188,11 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Guard: only run once — loadLocalFiles deps (notify, t) may change after
+    // initial render (e.g. translations loading), which would re-trigger this
+    // effect and overwrite currentLocalPath after the user has already navigated.
+    if (localFilesInitStarted.current) return;
+    localFilesInitStarted.current = true;
     (async () => {
       // Check for saved settings with defaultLocalPath or last visited folder
       try {
@@ -1187,8 +1221,11 @@ const App: React.FC = () => {
       // Default: try home directory, then downloads
       try { await loadLocalFiles(await homeDir()); }
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
-    })();
-  }, [loadLocalFiles]);
+    })().finally(() => {
+      localFilesInitDone.current = true;
+      signalAppReady();
+    });
+  }, [loadLocalFiles, signalAppReady]);
 
   // Reload local files when showHiddenFiles setting changes
   const isFirstRender = React.useRef(true);
@@ -2222,7 +2259,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      notify.error('Download Failed', String(error));
+      notify.error(t('toast.downloadFailed'), String(error));
     }
   };
 
@@ -2311,7 +2348,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       humanLog.logError('UPLOAD', { filename: fileName }, logId);
-      notify.error('Upload Failed', String(error));
+      notify.error(t('toast.uploadFailed'), String(error));
     }
   };
 
@@ -2349,7 +2386,7 @@ const App: React.FC = () => {
           try {
             await downloadFile(file.path, file.name, currentLocalPath, file.is_dir);
           } catch (e) {
-            notify.error(`Failed to download ${file.name}`, String(e));
+            notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
           }
         }
         loadLocalFiles(currentLocalPath);
@@ -2359,7 +2396,7 @@ const App: React.FC = () => {
           try {
             await uploadFile(file.path, file.name, file.is_dir);
           } catch (e) {
-            notify.error(`Failed to upload ${file.name}`, String(e));
+            notify.error(t('toast.uploadFailed'), `${file.name}: ${String(e)}`);
           }
         }
         loadRemoteFiles();
@@ -2409,7 +2446,7 @@ const App: React.FC = () => {
               await invoke('rename_local_file', { from: file.path, to: destPath });
             }
           } catch (e) {
-            notify.error(`Failed to move ${file.name}`, String(e));
+            notify.error(t('toast.renameFailed'), `${file.name}: ${String(e)}`);
           }
         }
         if (targetIsRemote) loadRemoteFiles();
@@ -2430,19 +2467,19 @@ const App: React.FC = () => {
               try {
                 await invoke('copy_local_file', { from: file.path, to: copyDest });
               } catch (e) {
-                notify.error(`Failed to copy ${file.name}`, String(e));
+                notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               }
             } else {
               try {
                 await invoke('copy_local_file', { from: file.path, to: destPath });
               } catch (e) {
-                notify.error(`Failed to copy ${file.name}`, String(e));
+                notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               }
             }
           }
           loadLocalFiles(currentLocalPath);
         } else {
-          notify.error('Copy', 'Server-side copy not supported');
+          notify.error(t('toast.copyFailed'), t('toast.copyNotSupported'));
         }
       }
     }
@@ -2556,7 +2593,7 @@ const App: React.FC = () => {
 
         // Queue shows completion - no toast needed
         if (skippedCount > 0) {
-          notify.info(`${skippedCount} file(s) skipped`);
+          notify.info(t('toast.fileSkipped', { count: skippedCount }));
         }
         setSelectedLocalFiles(new Set());
         loadRemoteFiles();
@@ -2608,7 +2645,7 @@ const App: React.FC = () => {
 
       resetOverwriteSettings();
       if (skippedCount > 0) {
-        notify.info(`${skippedCount} file(s) skipped`);
+        notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
     }
   };
@@ -2702,7 +2739,7 @@ const App: React.FC = () => {
 
       // Queue shows completion - no toast needed
       if (skippedCount > 0) {
-        notify.info(`${skippedCount} file(s) skipped`);
+        notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
       setSelectedRemoteFiles(new Set());
       await loadLocalFiles(currentLocalPath);  // Refresh local panel
@@ -3166,10 +3203,10 @@ const App: React.FC = () => {
             await loadLocalFiles(currentLocalPath);
           }
           humanLog.logSuccess('MKDIR', { foldername: name, isRemote }, logId);
-          notify.success('Created', name);
+          notify.success(t('toast.folderCreated'), name);
         } catch (error) {
           humanLog.logError('MKDIR', { foldername: name, isRemote }, logId);
-          notify.error('Create Failed', String(error));
+          notify.error(t('toast.folderCreateFailed'), String(error));
         }
       }
     });
@@ -3359,9 +3396,9 @@ const App: React.FC = () => {
             try {
               await invoke('provider_unlock_file', { path: file.path, lockToken });
               setLockedFiles(prev => { const next = new Map(prev); next.delete(file.path); return next; });
-              notify.success('File unlocked');
+              notify.success(t('toast.fileUnlocked'));
             } catch (err) {
-              notify.error('Failed to unlock', String(err));
+              notify.error(t('toast.unlockFailed'), String(err));
             }
           },
         });
@@ -3373,9 +3410,9 @@ const App: React.FC = () => {
             try {
               const info = await invoke<{ token: string; owner: string | null; timeout: number; exclusive: boolean }>('provider_lock_file', { path: file.path, timeout: 3600 });
               setLockedFiles(prev => new Map(prev).set(file.path, info.token));
-              notify.success('File locked', `Token: ${info.token.slice(0, 20)}...`);
+              notify.success(t('toast.fileLocked'), `Token: ${info.token.slice(0, 20)}...`);
             } catch (err) {
-              notify.error('Failed to lock', String(err));
+              notify.error(t('toast.lockFailed'), String(err));
             }
           },
         });
@@ -3556,7 +3593,7 @@ const App: React.FC = () => {
                     await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password });
                   }
                   activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
-                  notify.success('Extracted!', `Files extracted to ${dest}`);
+                  notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
                   activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
@@ -3579,7 +3616,7 @@ const App: React.FC = () => {
             await invoke<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
           }
           activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
-          notify.success('Extracted!', `Files extracted to ${dest}`);
+          notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
           activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
@@ -3637,9 +3674,9 @@ const App: React.FC = () => {
           try {
             const shareUrl = await invoke<string>('generate_share_link', { localPath: file.path });
             await invoke('copy_to_clipboard', { text: shareUrl });
-            notify.success('Share link copied!', shareUrl);
+            notify.success(t('toast.shareUrlCopied'), shareUrl);
           } catch (err) {
-            notify.error('Failed to generate share link', String(err));
+            notify.error(t('toast.shareLinkFailed'), String(err));
           }
         }
       });
@@ -4026,6 +4063,7 @@ const App: React.FC = () => {
           onClose={() => setSharePermissionsDialog(null)}
         />
       )}
+      {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
       <OverwriteDialog
@@ -4072,6 +4110,8 @@ const App: React.FC = () => {
         onActivityLog={{ logRaw: humanLog.logRaw }}
         initialTab={settingsInitialTab}
         onServersChanged={() => setServersRefreshKey(k => k + 1)}
+        theme={theme}
+        setTheme={setTheme}
       />
 
       {/* Universal Preview Modal for Media Files */}
@@ -4143,7 +4183,22 @@ const App: React.FC = () => {
       {showMenuBar && (
         <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between px-6 py-3">
-            <Logo size="sm" isConnected={isConnected} hasActivity={hasActivity || hasQueueActivity} isReconnecting={isReconnecting} />
+            {(() => {
+              const et = getEffectiveTheme(theme, isDark);
+              const activityCls = (hasActivity || hasQueueActivity) ? 'animate-pulse' : '';
+              const iconSrc = et === 'light' ? '/icons/AeroFTP_simbol_color_light_120x120.png'
+                : et === 'tokyo' ? '/icons/AeroFTP_simbol_color_tokio_120x120.png'
+                : et === 'cyber' ? '/icons/AeroFTP_simbol_color_cyber_120x120.png'
+                : '/icons/AeroFTP_simbol_color_dark_120x120.png';
+              return (
+                <div className="flex items-center gap-2">
+                  <img src={iconSrc} alt="AeroFTP" width={22} height={22} className={`shrink-0 object-contain ${activityCls}`} />
+                  <span className={`text-sm font-bold tracking-tight select-none ${et === 'light' ? 'text-[#2b7a9b]' : 'dark:text-gray-100'}`}>
+                    AeroFTP
+                  </span>
+                </div>
+              );
+            })()}
             <div className="flex items-center gap-3">
               {/* Support button - subtle heart icon */}
               <button
@@ -4153,6 +4208,20 @@ const App: React.FC = () => {
               >
                 <Heart size={18} className="fill-current" />
               </button>
+              {/* Security Toolkit — cyber theme only */}
+              {getEffectiveTheme(theme, isDark) === 'cyber' && (
+                <button
+                  onClick={() => setShowCyberTools(true)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  title={t('cyberTools.title')}
+                >
+                  <svg viewBox="0 0 32 32" width={18} height={18} fill="currentColor" className="text-emerald-400">
+                    <path d="M16,17c-0.6,0-1,0.4-1,1v2c0,0.6,0.4,1,1,1s1-0.4,1-1v-2C17,17.4,16.6,17,16,17z"/>
+                    <path d="M16,10c-1.7,0-3,1.3-3,3v1h6v-1C19,11.3,17.7,10,16,10z"/>
+                    <path d="M31.5,12.3c-0.1-0.5-0.6-0.8-1.1-0.8c-1.5,0.2-2.9-0.5-3.6-1.8c-0.7-1.3-0.6-2.8,0.3-4c0.3-0.4,0.3-1-0.1-1.3c-1.8-1.7-4.1-3-6.5-3.7c-0.5-0.1-1,0.1-1.2,0.6c-0.6,1.4-1.9,2.2-3.3,2.2s-2.8-0.9-3.3-2.2c-0.2-0.5-0.7-0.7-1.2-0.6C9.1,1.4,6.8,2.7,5,4.4C4.6,4.8,4.6,5.3,4.9,5.7c0.9,1.2,1,2.7,0.3,4c-0.7,1.3-2.1,2-3.6,1.8c-0.5-0.1-1,0.3-1.1,0.8C0.2,13.5,0,14.8,0,16s0.2,2.5,0.5,3.7c0.1,0.5,0.6,0.8,1.1,0.8C3,20.3,4.4,21,5.1,22.3c0.7,1.3,0.6,2.8-0.3,4c-0.3,0.4-0.3,1,0.1,1.3c1.8,1.7,4.1,3,6.5,3.7c0.5,0.1,1-0.1,1.2-0.6c0.6-1.4,1.9-2.2,3.3-2.2s2.8,0.9,3.3,2.2c0.2,0.4,0.5,0.6,0.9,0.6c0.1,0,0.2,0,0.3,0c2.4-0.7,4.6-2,6.5-3.7c0.4-0.4,0.4-0.9,0.1-1.3c-0.9-1.2-1-2.7-0.3-4c0.7-1.3,2.1-2,3.6-1.8c0.5,0.1,1-0.3,1.1-0.8c0.3-1.3,0.5-2.5,0.5-3.7S31.8,13.5,31.5,12.3z M22,21c0,1.7-1.3,3-3,3h-6c-1.7,0-3-1.3-3-3v-4c0-0.9,0.4-1.7,1-2.2V13c0-2.8,2.2-5,5-5s5,2.2,5,5v1.8c0.6,0.5,1,1.3,1,2.2V21z"/>
+                  </svg>
+                </button>
+              )}
               {/* Theme toggle */}
               <ThemeToggle theme={theme} setTheme={setTheme} />
               {/* Separator */}
@@ -4161,7 +4230,7 @@ const App: React.FC = () => {
               <button
                 onClick={() => setShowVaultPanel(true)}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="AeroVault - Military-Grade Encryption"
+                title={t('vault.titleFull')}
               >
                 <VaultIcon size={18} className="text-emerald-500 dark:text-emerald-400" />
               </button>
@@ -4223,7 +4292,7 @@ const App: React.FC = () => {
         </header>
       )}
 
-      <main className={`flex-1 min-h-0 p-6 overflow-auto ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+      <main className={`flex-1 min-h-0 p-6 ${!isConnected && showConnectionScreen ? 'overflow-hidden' : 'overflow-auto'} ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
         {!isConnected && showConnectionScreen ? (
           <ConnectionScreen
             connectionParams={connectionParams}
@@ -4753,11 +4822,11 @@ const App: React.FC = () => {
                     <table className="w-full">
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                         <tr>
-                          <SortableHeader label="Name" field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
-                          {visibleColumns.includes('size') && <SortableHeader label="Size" field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
-                          {visibleColumns.includes('type') && <SortableHeader label="Type" field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
+                          <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
+                          {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
+                          {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
                           {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Perms</th>}
-                          {visibleColumns.includes('modified') && <SortableHeader label="Modified" field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
+                          {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -4768,7 +4837,7 @@ const App: React.FC = () => {
                         >
                           <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                             <FolderUp size={16} />
-                            <span className="italic">Go up</span>
+                            <span className="italic">{t('browser.parentFolder')}</span>
                           </td>
                           {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
                           {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
@@ -4871,7 +4940,7 @@ const App: React.FC = () => {
                         <div className="file-grid-icon">
                           <FolderUp size={32} className="text-gray-400" />
                         </div>
-                        <span className="file-grid-name italic text-gray-500">Go up</span>
+                        <span className="file-grid-name italic text-gray-500">{t('browser.parentFolder')}</span>
                       </div>
                       {sortedRemoteFiles.map((file, i) => (
                         <div
@@ -5190,10 +5259,10 @@ const App: React.FC = () => {
                     <table className="w-full">
                       <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                         <tr>
-                          <SortableHeader label="Name" field="name" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
-                          {visibleColumns.includes('size') && <SortableHeader label="Size" field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
-                          {visibleColumns.includes('type') && <SortableHeader label="Type" field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />}
-                          {visibleColumns.includes('modified') && <SortableHeader label="Modified" field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
+                          <SortableHeader label={t('browser.name')} field="name" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
+                          {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
+                          {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />}
+                          {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -5204,7 +5273,7 @@ const App: React.FC = () => {
                         >
                           <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                             <FolderUp size={16} />
-                            <span className="italic">Go up</span>
+                            <span className="italic">{t('browser.parentFolder')}</span>
                           </td>
                           {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
                           {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>}
@@ -5721,6 +5790,7 @@ const App: React.FC = () => {
         onClose={() => setDevToolsOpen(false)}
         onClearFile={() => setDevToolsPreviewFile(null)}
         editorTheme={getMonacoTheme(theme, isDark)}
+        appTheme={getEffectiveTheme(theme, isDark)}
         providerType={connectionParams.protocol}
         isConnected={isConnected}
         selectedFiles={Array.from(selectedRemoteFiles)}
@@ -5865,6 +5935,7 @@ const App: React.FC = () => {
             protocol: connectionParams?.protocol || 'sftp',
           }}
           currentRemotePath={currentRemotePath}
+          appTheme={getEffectiveTheme(theme, isDark)}
         />
       )}
 

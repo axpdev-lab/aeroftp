@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -22,6 +22,7 @@
                 "decorations": true,
                 "transparent": false,
                 "center": true,
+                "visible": false,
                 "dragDropEnabled": false
             }
         ],
