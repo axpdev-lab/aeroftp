@@ -4910,7 +4910,6 @@ pub fn run() {
                 .inner_size(420.0, 340.0)
                 .resizable(false)
                 .decorations(false)
-                .transparent(false)
                 .center()
                 .always_on_top(true)
                 .skip_taskbar(true)
