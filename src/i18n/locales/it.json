@@ -55,7 +55,8 @@
             "calculating": "Calcolo in corso...",
             "actions": "Azioni",
             "copied": "Copiato",
-            "folder": "Cartella"
+            "folder": "Cartella",
+            "failed": "Non riuscito"
         },
         "lockScreen": {
             "locked": "App Bloccata",
@@ -114,8 +115,8 @@
             "selectSshKey": "Seleziona Chiave Privata SSH",
             "allFiles": "Tutti i File",
             "sshKeys": "Chiavi SSH",
-            "accessKeyId": "Access Key ID",
-            "secretAccessKey": "Secret Access Key",
+            "accessKeyId": "ID chiave di accesso",
+            "secretAccessKey": "Chiave di accesso segreta",
             "selectProtocolPrompt": "Seleziona un protocollo sopra per configurare la connessione",
             "securityTitle": "Credenziali crittografate",
             "securityKeyring": "Vault AES-256-GCM crittografato — salvato localmente sul tuo dispositivo",
@@ -315,7 +316,16 @@
             "descending": "Decrescente",
             "selected": "selezionati",
             "selectAll": "Seleziona Tutto",
-            "deselectAll": "Deseleziona Tutto"
+            "deselectAll": "Deseleziona Tutto",
+            "clickConnectPrompt": "Clicca \"Connetti\" per accedere ai file remoti",
+            "connectToServer": "Connetti al Server",
+            "editPathHint": "Clicca per modificare il percorso, Invio per navigare",
+            "folderType": "Cartella",
+            "goUp": "Su",
+            "localPathMismatch": "Il percorso locale non corrisponde al server connesso",
+            "locked": "Bloccato",
+            "notConnected": "Non Connesso",
+            "permsHeader": "Perm."
         },
         "contextMenu": {
             "open": "Apri",
@@ -698,9 +708,9 @@
             "oauthTokensLabel": "token OAuth",
             "configEntriesLabel": "voci di configurazione",
             "session": "Sessione",
-            "updateAvailableAlert": "Aggiornamento Disponibile!\n\nAeroFTP v{{version}} (.{{format}})\n\nDownload: {{url}}",
-            "upToDateAlert": "Aggiornato!\n\nVersione corrente AeroFTP v{{version}}",
-            "updateCheckFailedAlert": "Controllo aggiornamenti fallito\n\n{{error}}",
+            "updateAvailableAlert": "Aggiornamento Disponibile!\n\nAeroFTP v{version} (.{format})\n\nDownload: {url}",
+            "upToDateAlert": "Aggiornato!\n\nVersione corrente AeroFTP v{version}",
+            "updateCheckFailedAlert": "Controllo aggiornamenti fallito\n\n{error}",
             "defaultLocalPathPlaceholder": "es. /home/utente/Download",
             "serverNamePlaceholder": "Il Mio Server",
             "megaEmailPlaceholder": "email@esempio.com",
@@ -722,7 +732,13 @@
             "pcloudClientSecretPlaceholder": "xxxxxxxxxxxxxxx",
             "foursharedClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
             "foursharedClientSecretPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            "aeroftpBackupFiles": "File di Backup AeroFTP"
+            "aeroftpBackupFiles": "File di Backup AeroFTP",
+            "themeCyberLabel": "Cyberpunk",
+            "themeDarkLabel": "Scuro",
+            "themeLightLabel": "Chiaro",
+            "themeTokyoLabel": "Tokyo Night",
+            "themeLabel": "Tema",
+            "themeAutoLabel": "Auto"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -762,7 +778,29 @@
             "maximize": "Massimizza",
             "closeDevTools": "Chiudi DevTools",
             "noFileOpen": "Nessun file aperto",
-            "noPanelsActive": "Nessun pannello attivo. Clicca i pulsanti sopra per mostrare Editor, Terminale o Chat AI."
+            "noPanelsActive": "Nessun pannello attivo. Clicca i pulsanti sopra per mostrare Editor, Terminale o Chat AI.",
+            "terminalPanel": {
+                "connectPrompt": "Clicca \"Avvia\" per connetterti a {host}.",
+                "launchPrompt": "Clicca \"Avvia\" per avviare la shell.",
+                "newShellPrompt": "Clicca \"Avvia\" per avviare una nuova shell.",
+                "remoteServer": "server remoto",
+                "restart": "Riavvia shell",
+                "start": "Avvia",
+                "starting": "Avvio...",
+                "stop": "Ferma",
+                "stopShell": "Ferma shell",
+                "closed": "Terminale chiuso."
+            },
+            "editorPanel": {
+                "emptyState": "Clicca col destro su un file e scegli \"Modifica\"",
+                "reset": "Ripristina",
+                "save": "Salva",
+                "saving": "Salvataggio...",
+                "noFileSelected": "Nessun file selezionato per la modifica"
+            },
+            "previewPanel": {
+                "emptyState": "Clicca col destro su un file e scegli \"Anteprima\""
+            }
         },
         "cloud": {
             "title": "AeroCloud",
@@ -944,7 +982,20 @@
             "shareUrlCopied": "Link di condivisione copiato!",
             "shareLinkFailed": "Generazione link di condivisione fallita",
             "extracted": "Estratto!",
-            "extractedTo": "File estratti in {dest}"
+            "extractedTo": "File estratti in {dest}",
+            "checksumFailed": "Checksum fallito",
+            "compressed": "Compresso!",
+            "fileSaved": "File Salvato",
+            "fileSavedLocal": "{name} salvato localmente",
+            "fileSavedRemote": "{name} salvato sul server",
+            "itemsDeleted": "{count} elementi eliminati",
+            "pathCopied": "Percorso copiato negli appunti",
+            "permissionsUpdated": "Permessi Aggiornati",
+            "saveFailed": "Salvataggio Fallito",
+            "cloudConnectionFailed": "Impossibile connettersi al server cloud: {error}",
+            "compressedDesc": "Creato {name}",
+            "connectionFailedTitle": "Connessione fallita",
+            "permissionsUpdatedDesc": "{name} → {mode}"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -1105,7 +1156,8 @@
             "results": "risultati",
             "local_placeholder": "Filtra file locali...",
             "search_files": "Cerca file",
-            "clear": "Cancella ricerca"
+            "clear": "Cancella ricerca",
+            "resultsCount": "{count} risultati"
         },
         "versions": {
             "title": "Versioni File",
@@ -1297,24 +1349,24 @@
             "operationCancelled": "Operazione annullata.",
             "noModelSelected": "Nessun modello selezionato. Clicca ⚙️ per configurare un provider.",
             "noProvidersConfigured": "Nessun provider AI configurato. Clicca ⚙️ per aggiungerne uno.",
-            "providerNotConfigured": "Provider non configurato per {{provider}}",
-            "apiKeyNotConfigured": "Chiave API non configurata per {{provider}}. Apri Impostazioni AI per aggiungerne una.",
-            "rateLimitReached": "Limite di richieste raggiunto per {{provider}}. Riprova tra {{seconds}}s.",
+            "providerNotConfigured": "Provider non configurato per {provider}",
+            "apiKeyNotConfigured": "Chiave API non configurata per {provider}. Apri Impostazioni AI per aggiungerne una.",
+            "rateLimitReached": "Limite di richieste raggiunto per {provider}. Riprova tra {seconds}s.",
             "errorAuth": "Autenticazione fallita. Controlla la chiave API nelle Impostazioni AI.",
             "errorRateLimit": "Limite di richieste raggiunto dal provider. Attendi un momento e riprova.",
             "errorModelNotFound": "Modello non trovato. Controlla il nome del modello nelle Impostazioni AI.",
             "errorNetwork": "Errore di rete. Controlla la connessione internet e l'URL del provider.",
             "errorDefault": "Assicurati di aver configurato un provider AI nelle impostazioni.",
-            "executeApproval": "Vuoi eseguire **{{tool}}**? Approva o annulla:",
-            "toolFailed": "Operazione fallita: {{error}}",
+            "executeApproval": "Vuoi eseguire **{tool}**? Approva o annulla:",
+            "toolFailed": "Operazione fallita: {error}",
             "toolApproval": {
                 "highRisk": "Operazione ad Alto Rischio",
                 "requiresConfirmation": "Richiede Conferma",
                 "toolExecution": "Esecuzione Operazione",
-                "preview": "Anteprima: {{preview}}",
+                "preview": "Anteprima: {preview}",
                 "executing": "Esecuzione...",
                 "completed": "Completato",
-                "errorPrefix": "Errore: {{error}}",
+                "errorPrefix": "Errore: {error}",
                 "confirmDelete": "Conferma Eliminazione",
                 "approve": "Approva",
                 "toggleDetails": "Mostra/nascondi dettagli",
@@ -1343,7 +1395,7 @@
                 "test": "Test",
                 "testSuccess": "Connessione riuscita",
                 "testFailed": "Connessione fallita",
-                "modelsCount": "Modelli ({{count}})",
+                "modelsCount": "Modelli ({count})",
                 "deleteProvider": "Elimina provider",
                 "active": "Attivo",
                 "missingApiKey": "Chiave API Mancante",
@@ -1364,7 +1416,7 @@
                 "addCustomModel": "Aggiungi Modello Personalizzato",
                 "noProvidersForModels": "Nessun provider configurato",
                 "addProviderFirst": "Aggiungi prima un provider per gestire i modelli",
-                "modelsCountLabel": "{{count}} modelli",
+                "modelsCountLabel": "{count} modelli",
                 "functionCalling": "Function Calling",
                 "setDefault": "Imposta Predefinito",
                 "defaultBadge": "Predefinito",
@@ -1398,20 +1450,20 @@
                 "maxResponseLength": "Lunghezza Massima Risposta",
                 "tokens": "token",
                 "maxResponseHelp": "Valori più alti permettono risposte più lunghe ma usano più crediti API.",
-                "providersEnabled": "{{count}} provider abilitati",
+                "providersEnabled": "{count} provider abilitati",
                 "done": "Fatto",
                 "detectModels": "Rileva",
                 "detectingModels": "Rilevamento...",
-                "modelsDetected": "{{count}} modello/i rilevati",
+                "modelsDetected": "{count} modello/i rilevati",
                 "noModelsFound": "Nessun modello trovato. Ollama è in esecuzione?",
-                "modelsAvailable": "{{count}} modello/i disponibili",
+                "modelsAvailable": "{count} modello/i disponibili",
                 "systemPrompt": "Prompt di Sistema",
                 "useCustomPrompt": "Usa prompt di sistema personalizzato",
                 "resetToDefault": "Ripristina Predefinito",
                 "promptReset": "Prompt di sistema ripristinato",
                 "promptPlaceholder": "Inserisci istruzioni personalizzate per AeroAgent...",
                 "promptHint": "Variabili: {remotePath}, {localPath}, {serverHost}, {serverPort}, {serverUser}, {providerType}",
-                "estimatedTokens": "~{{count}} token",
+                "estimatedTokens": "~{count} token",
                 "plugins": "Plugin",
                 "pluginsDesc": "Estendi AeroAgent con strumenti personalizzati",
                 "noPlugins": "Nessun plugin installato",
@@ -1420,8 +1472,8 @@
                 "removePlugin": "Rimuovi",
                 "pluginEnabled": "Abilitato",
                 "pluginDisabled": "Disabilitato",
-                "pluginBy": "di {{author}}",
-                "pluginTools": "{{count}} strumenti",
+                "pluginBy": "di {author}",
+                "pluginTools": "{count} strumenti",
                 "fetchModels": "Modelli",
                 "fetchingModels": "Caricamento...",
                 "fetchModelsTitle": "Modelli Disponibili",
@@ -1433,7 +1485,38 @@
                 "macroName": "Nome Macro",
                 "macroSteps": "Passaggi",
                 "macroParams": "Parametri",
-                "noMacros": "Nessuna macro configurata"
+                "noMacros": "Nessuna macro configurata",
+                "baseUrl": "URL Base",
+                "baseUrlPlaceholder": "https://api.example.com/v1",
+                "browseModels": "Sfoglia modelli disponibili",
+                "cancel": "Annulla",
+                "contextCaching": "Cache del Contesto",
+                "contextCachingDesc": "I prompt di sistema grandi e i contesti (32K+ token) vengono automaticamente memorizzati nella cache per 5 minuti, riducendo la latenza e i costi fino al 75% nelle richieste successive.",
+                "contextWindow": "Finestra di Contesto (token)",
+                "contextWindowPlaceholder": "es. 128000",
+                "customSystemPrompt": "Prompt di Sistema Personalizzato",
+                "downloadModel": "Scarica Modello",
+                "fetchModelsFilter": "Filtra modelli...",
+                "hideKey": "Nascondi",
+                "knownModelHint": "Modello riconosciuto — specifiche auto-compilate",
+                "macroParameters": "Parametri",
+                "macrosCustomNote": "La creazione di macro personalizzate sarà disponibile in un futuro aggiornamento. Attualmente vengono mostrate le macro integrate.",
+                "macrosDescription": "Le macro sono sequenze di strumenti multi-step riutilizzabili. Appaiono come strumenti nelle azioni disponibili di AeroAgent.",
+                "overrideSystemPrompt": "Sostituisci il prompt di sistema predefinito di AeroAgent",
+                "pluginsDescShort": "Estendi AeroAgent con strumenti personalizzati",
+                "prompt": "Prompt",
+                "promptContent": "Contenuto del Prompt",
+                "promptDesc": "Personalizza il prompt di sistema che definisce il comportamento e la personalità di AeroAgent.",
+                "pullModel": "Scarica",
+                "pullModelPlaceholder": "es. llama3, deepseek-coder:6.7b",
+                "showKey": "Mostra",
+                "thinking": "Ragionamento",
+                "thinkingBudget": "Budget di Ragionamento",
+                "thinkingBudgetDesc": "Budget di token per il ragionamento esteso (Claude, o3, Gemini). Valori più alti permettono un ragionamento più approfondito.",
+                "thinkingDeep": "Profondo",
+                "thinkingLight": "Leggero",
+                "thinkingMaximum": "Massimo",
+                "thinkingOff": "Disattivato"
             },
             "copy": "Copia",
             "attachImage": "Allega immagine",
@@ -1443,20 +1526,20 @@
             "exportMarkdown": "Esporta come Markdown",
             "exportJSON": "Esporta come JSON",
             "askAgent": "Chiedi ad AeroAgent",
-            "codeContext": "Riguardo questo codice da `{{file}}`:",
+            "codeContext": "Riguardo questo codice da `{file}`:",
             "terminalExecute": "Esegui nel Terminale",
             "commandSentToTerminal": "Comando inviato al terminale",
             "noTerminalAvailable": "Nessuna sessione terminale attiva",
             "multiStep": "Esecuzione multi-step",
-            "step": "Passo {{current}}/{{max}}",
+            "step": "Passo {current}/{max}",
             "stopExecution": "Stop",
-            "executionComplete": "Completati {{count}} passi",
-            "maxStepsReached": "Massimo raggiunto ({{max}} passi)",
+            "executionComplete": "Completati {count} passi",
+            "maxStepsReached": "Massimo raggiunto ({max} passi)",
             "showMore": "Mostra tutto",
             "showLess": "Comprimi",
             "rag": {
                 "indexing": "Indicizzazione file...",
-                "indexed": "{{count}} file indicizzati",
+                "indexed": "{count} file indicizzati",
                 "searching": "Ricerca in corso...",
                 "noResults": "Nessun risultato trovato"
             },
@@ -1471,7 +1554,7 @@
             },
             "thinkingBlock": {
                 "thinking": "Ragionamento...",
-                "thoughtFor": "Ragionato per {{seconds}}s"
+                "thoughtFor": "Ragionato per {seconds}s"
             },
             "batch": {
                 "allowAll": "Approva Tutti",
@@ -1559,11 +1642,11 @@
                 "focusInput": "Focus input (Ctrl+/)"
             },
             "multiDiff": {
-                "filesChanged": "{{count}} file modificati",
+                "filesChanged": "{count} file modificati",
                 "selectAll": "Seleziona tutti",
                 "deselectAll": "Deseleziona tutti",
-                "applyFiles": "Applica {{count}} file",
-                "selected": "{{selected}} di {{total}} selezionati"
+                "applyFiles": "Applica {count} file",
+                "selected": "{selected} di {total} selezionati"
             },
             "cache": {
                 "savings": "Risparmio cache",
@@ -1627,7 +1710,13 @@
                 "noEntrySpecified": "Nessuna voce specificata",
                 "noCommandSpecified": "Nessun comando specificato",
                 "operationFailed": "Operazione fallita",
-                "commandSentToTerminal": "Comando inviato al terminale"
+                "commandSentToTerminal": "Comando inviato al terminale",
+                "authFailed": "Autenticazione fallita. Controlla la tua chiave API nelle Impostazioni AI.",
+                "modelNotFound": "Modello non trovato. Controlla il nome del modello nelle Impostazioni AI.",
+                "networkError": "Errore di rete. Controlla la connessione internet e l'URL del provider.",
+                "noProvider": "Assicurati di aver configurato un provider AI nelle impostazioni.",
+                "rateLimited": "Limite di richieste raggiunto dal provider. Attendi un momento e riprova.",
+                "toolsNotSupported": "Questo modello non supporta l'uso degli strumenti. Disabilita \"Strumenti\" per questo modello in Impostazioni AI → Modelli."
             },
             "analyzeThisImage": "Analizza questa immagine",
             "toolLabels": {
@@ -2069,7 +2158,10 @@
                 "light": "Chiaro",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Chiavi LocalStorage"
-            }
+            },
+            "copyFileListToClipboard": "Copia elenco file negli appunti",
+            "filesCopied": "{count} voci file copiate negli appunti",
+            "title": "Debug"
         },
         "menu": {
             "file": "File",
@@ -2259,18 +2351,53 @@
             },
             "webgl": {
                 "notSupported": "WebGL 2 non supportato"
-            }
+            },
+            "clickToViewDetails": "Clicca su un file per visualizzarne i dettagli",
+            "copyPath": "Copia Percorso",
+            "extensionLabel": "Estensione",
+            "fileInfo": "Info File",
+            "modifiedLabel": "Modificato",
+            "noFileSelected": "Nessun file selezionato",
+            "openPreview": "Apri Anteprima",
+            "pathLabel": "Percorso",
+            "resolutionLabel": "Risoluzione",
+            "sizeLabel": "Dimensione",
+            "typeArchive": "Archivio",
+            "typeAudio": "Audio",
+            "typeCode": "Codice",
+            "typeDirectory": "Cartella",
+            "typeFile": "File",
+            "typeImage": "Immagine",
+            "typeLabel": "Tipo",
+            "typePdf": "PDF",
+            "typeText": "Testo",
+            "typeVideo": "Video",
+            "viewSource": "Vedi Sorgente"
         },
         "savedServers": {
             "dragToReorder": "Trascina per riordinare",
-            "oauthError": "OAuth — {{username}}",
-            "e2eAes256": "E2E AES-256 — {{username}}",
-            "e2eAes128": "E2E AES-128 — {{username}}",
-            "s3Provider": "{{bucket}} — {{provider}}",
-            "webdavDisplay": "{{username}}@{{host}}",
-            "standardDisplay": "{{username}}@{{host}}:{{port}}",
-            "oauthConfigError": "Configura le credenziali {{provider}} in Impostazioni > Provider Cloud.",
-            "foursharedConfigError": "Configura le credenziali 4shared in Impostazioni > Provider Cloud."
+            "oauthError": "OAuth — {username}",
+            "e2eAes256": "E2E AES-256 — {username}",
+            "e2eAes128": "E2E AES-128 — {username}",
+            "s3Provider": "{bucket} — {provider}",
+            "webdavDisplay": "{username}@{host}",
+            "standardDisplay": "{username}@{host}:{port}",
+            "oauthConfigError": "Configura le credenziali {provider} in Impostazioni > Provider Cloud.",
+            "foursharedConfigError": "Configura le credenziali 4shared in Impostazioni > Provider Cloud.",
+            "expBadge": "EXP",
+            "sessionExpired": "Sessione scaduta (24h)"
+        },
+        "dialog": {
+            "deleteFile": "Eliminare \"{name}\"?",
+            "deleteSelectedItems": "Eliminare {count} elementi selezionati?",
+            "newFolder": "Nuova Cartella",
+            "selectFilesToUpload": "Seleziona File da Caricare"
+        },
+        "toolbar": {
+            "hideSystemMenu": "Nascondi barra menu di sistema",
+            "localOnly": "Solo locale",
+            "showRemote": "Mostra remoto",
+            "showSystemMenu": "Mostra barra menu di sistema"
         }
     }
 }

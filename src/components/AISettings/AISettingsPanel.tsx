@@ -54,6 +54,7 @@ interface ModelEditModalProps {
 }
 
 const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNew, onSave, onClose }) => {
+    const t = useTranslation();
     const [formData, setFormData] = useState({
         name: model?.name || '',
         displayName: model?.displayName || '',
@@ -112,41 +113,41 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
             <div className="relative bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Cpu size={20} className="text-purple-400" />
-                    {isNew ? 'Add Model' : 'Edit Model'}
+                    {isNew ? t('ai.settings.addModel') : t('ai.settings.editModel')}
                 </h3>
 
                 <div className="space-y-4">
                     {/* Model Name */}
                     <div>
-                        <label className="block text-sm text-gray-400 mb-1">Model Name (API)</label>
+                        <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.modelName')}</label>
                         <input
                             type="text"
                             value={formData.name}
                             onChange={e => handleNameChange(e.target.value)}
-                            placeholder="e.g., gpt-4-turbo, gemini-2.0-flash"
+                            placeholder={t('ai.settings.modelNamePlaceholder')}
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                             autoFocus
                         />
                         {isNew && lookupModelSpec(formData.name) && (
-                            <span className="text-xs text-green-400 mt-1 block">Known model — specs auto-filled</span>
+                            <span className="text-xs text-green-400 mt-1 block">{t('ai.settings.knownModelHint')}</span>
                         )}
                     </div>
 
                     {/* Display Name */}
                     <div>
-                        <label className="block text-sm text-gray-400 mb-1">Display Name</label>
+                        <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.displayName')}</label>
                         <input
                             type="text"
                             value={formData.displayName}
                             onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                            placeholder="e.g., GPT-4 Turbo"
+                            placeholder={t('ai.settings.displayNamePlaceholder')}
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
                     {/* Max Tokens */}
                     <div>
-                        <label className="block text-sm text-gray-400 mb-1">Max Tokens</label>
+                        <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.maxTokens')}</label>
                         <input
                             type="number"
                             value={formData.maxTokens}
@@ -157,7 +158,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
 
                     {/* Capabilities */}
                     <div>
-                        <label className="block text-sm text-gray-400 mb-2">Capabilities</label>
+                        <label className="block text-sm text-gray-400 mb-2">{t('ai.settings.capabilities')}</label>
                         <div className="flex flex-wrap gap-3">
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input
@@ -166,7 +167,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                                     onChange={e => setFormData({ ...formData, supportsStreaming: e.target.checked })}
                                     className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
                                 />
-                                <span>⚡ Streaming</span>
+                                <span>⚡ {t('ai.settings.streaming')}</span>
                             </label>
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input
@@ -175,7 +176,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                                     onChange={e => setFormData({ ...formData, supportsTools: e.target.checked })}
                                     className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
                                 />
-                                <span>🔧 Tools</span>
+                                <span>🔧 {t('ai.settings.tools')}</span>
                             </label>
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input
@@ -184,7 +185,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                                     onChange={e => setFormData({ ...formData, supportsVision: e.target.checked })}
                                     className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
                                 />
-                                <span>👁 Vision</span>
+                                <span>👁 {t('ai.settings.vision')}</span>
                             </label>
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input
@@ -193,19 +194,19 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                                     onChange={e => setFormData({ ...formData, supportsThinking: e.target.checked })}
                                     className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
                                 />
-                                <span>💭 Thinking</span>
+                                <span>💭 {t('ai.settings.thinking')}</span>
                             </label>
                         </div>
                     </div>
 
                     {/* Context Window */}
                     <div>
-                        <label className="block text-sm text-gray-400 mb-1">Context Window (tokens)</label>
+                        <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.contextWindow')}</label>
                         <input
                             type="number"
                             value={formData.maxContextTokens || ''}
                             onChange={e => setFormData({ ...formData, maxContextTokens: parseInt(e.target.value) || 0 })}
-                            placeholder="e.g., 128000"
+                            placeholder={t('ai.settings.contextWindowPlaceholder')}
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
@@ -218,7 +219,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                             onChange={e => setFormData({ ...formData, isEnabled: e.target.checked })}
                             className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
                         />
-                        <span>Enabled</span>
+                        <span>{t('ai.settings.enabled')}</span>
                     </label>
                 </div>
 
@@ -228,7 +229,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                         onClick={onClose}
                         className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
                     >
-                        Cancel
+                        {t('ai.settings.cancel')}
                     </button>
                     <button
                         onClick={handleSave}
@@ -236,7 +237,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                         className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors flex items-center gap-2"
                     >
                         <Check size={14} />
-                        {isNew ? 'Add Model' : 'Save Changes'}
+                        {isNew ? t('ai.settings.addModel') : t('ai.settings.saveChanges')}
                     </button>
                 </div>
             </div>
@@ -656,7 +657,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
                     <div className="flex items-center gap-3">
                         <Cpu className="text-purple-400" size={24} />
-                        <h2 className="text-xl font-semibold">AI Settings</h2>
+                        <h2 className="text-xl font-semibold">{t('ai.settings.title')}</h2>
                     </div>
                     <button
                         onClick={onClose}
@@ -669,12 +670,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 {/* Tabs */}
                 <div className="flex border-b border-gray-700">
                     {[
-                        { id: 'providers', label: 'Providers', icon: <Server size={14} /> },
-                        { id: 'models', label: 'Models', icon: <Cpu size={14} /> },
-                        { id: 'advanced', label: 'Advanced', icon: <Sliders size={14} /> },
-                        { id: 'prompt', label: 'Prompt', icon: <MessageSquare size={14} /> },
-                        { id: 'plugins', label: 'Plugins', icon: <Puzzle size={14} /> },
-                        { id: 'macros', label: t('ai.settings.macros') || 'Macros', icon: <Layers size={14} /> },
+                        { id: 'providers', label: t('ai.settings.providers'), icon: <Server size={14} /> },
+                        { id: 'models', label: t('ai.settings.models'), icon: <Cpu size={14} /> },
+                        { id: 'advanced', label: t('ai.settings.advanced'), icon: <Sliders size={14} /> },
+                        { id: 'prompt', label: t('ai.settings.prompt'), icon: <MessageSquare size={14} /> },
+                        { id: 'plugins', label: t('ai.settings.plugins'), icon: <Puzzle size={14} /> },
+                        { id: 'macros', label: t('ai.settings.macros'), icon: <Layers size={14} /> },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -716,8 +717,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             {settings.providers.length === 0 ? (
                                 <div className="text-center py-12 text-gray-500">
                                     <Server size={48} className="mx-auto mb-4 opacity-50" />
-                                    <p>No providers configured</p>
-                                    <p className="text-sm mt-2">Add a provider above to get started</p>
+                                    <p>{t('ai.settings.noProvidersConfigured')}</p>
+                                    <p className="text-sm mt-2">{t('ai.settings.addProviderHint')}</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
@@ -761,10 +762,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         : 'bg-gray-500'
                                                     }`} title={
                                                         provider.isEnabled && provider.apiKey
-                                                            ? 'Active'
+                                                            ? t('ai.settings.active')
                                                             : provider.isEnabled
-                                                                ? 'Missing API Key'
-                                                                : 'Disabled'
+                                                                ? t('ai.settings.missingApiKey')
+                                                                : t('ai.settings.disabled')
                                                     } />
 
                                                 {/* Toggle */}
@@ -775,14 +776,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         : 'bg-gray-700 text-gray-400'
                                                         }`}
                                                 >
-                                                    {provider.isEnabled ? 'Enabled' : 'Disabled'}
+                                                    {provider.isEnabled ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                                 </button>
 
                                                 {/* Delete */}
                                                 <button
                                                     onClick={() => deleteProvider(provider.id)}
                                                     className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                    title="Delete provider"
+                                                    title={t('ai.settings.deleteProvider')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -795,7 +796,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <label className="block text-sm text-gray-400 mb-1">
                                                             <Key size={12} className="inline mr-1" />
-                                                            API Key
+                                                            {t('ai.settings.apiKey')}
                                                         </label>
                                                         <div className="flex gap-2">
                                                             <div className="flex-1 relative">
@@ -806,14 +807,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                         ...provider,
                                                                         apiKey: e.target.value
                                                                     })}
-                                                                    placeholder={provider.type === 'ollama' ? 'Not required for Ollama' : 'Enter API key...'}
+                                                                    placeholder={provider.type === 'ollama' ? t('ai.settings.notRequiredOllama') : t('ai.settings.enterApiKey')}
                                                                     className="w-full px-3 py-2 pr-9 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                                                                 />
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setShowApiKey(prev => ({ ...prev, [provider.id]: !prev[provider.id] }))}
                                                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                                                                    title={showApiKey[provider.id] ? 'Hide' : 'Show'}
+                                                                    title={showApiKey[provider.id] ? t('ai.settings.hideKey') : t('ai.settings.showKey')}
                                                                 >
                                                                     {showApiKey[provider.id] ? <EyeOff size={14} /> : <Eye size={14} />}
                                                                 </button>
@@ -828,20 +829,20 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 ) : (
                                                                     <Zap size={14} />
                                                                 )}
-                                                                Test
+                                                                {t('ai.settings.test')}
                                                             </button>
                                                             <button
                                                                 onClick={() => fetchProviderModels(provider)}
                                                                 disabled={fetchingModels === provider.id || (!provider.apiKey && provider.type !== 'ollama')}
                                                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
-                                                                title="Browse available models"
+                                                                title={t('ai.settings.browseModels')}
                                                             >
                                                                 {fetchingModels === provider.id ? (
                                                                     <span className="animate-spin">⏳</span>
                                                                 ) : (
                                                                     <List size={14} />
                                                                 )}
-                                                                Models
+                                                                {t('ai.settings.fetchModels')}
                                                             </button>
                                                             {provider.type === 'ollama' && (
                                                                 <button
@@ -855,7 +856,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     ) : (
                                                                         <span>🔍</span>
                                                                     )}
-                                                                    Detect
+                                                                    {t('ai.settings.detectModels')}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -865,27 +866,27 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 : 'text-red-400'
                                                                 }`}>
                                                                 {testResults[provider.id]?.status === 'success'
-                                                                    ? <><Check size={12} /> Connection successful</>
-                                                                    : <><AlertCircle size={12} /> Connection failed{testResults[provider.id]?.message ? `: ${testResults[provider.id]!.message}` : ''}</>
+                                                                    ? <><Check size={12} /> {t('ai.settings.testSuccess')}</>
+                                                                    : <><AlertCircle size={12} /> {t('ai.settings.testFailed')}{testResults[provider.id]?.message ? `: ${testResults[provider.id]!.message}` : ''}</>
                                                                 }
                                                             </div>
                                                         )}
                                                         {provider.type === 'ollama' && testResults[provider.id]?.status === 'success' && (
                                                             <div className="mt-1 text-xs text-cyan-400">
-                                                                {getProviderModels(provider.id).length} model(s) available
+                                                                {t('ai.settings.modelsAvailable', { count: getProviderModels(provider.id).length })}
                                                             </div>
                                                         )}
 
                                                         {/* Pull model section (Ollama only) */}
                                                         {provider.type === 'ollama' && (
                                                             <div className="mt-3 border-t border-gray-700/50 pt-3">
-                                                                <div className="text-[10px] text-gray-500 mb-1.5">Download Model</div>
+                                                                <div className="text-[10px] text-gray-500 mb-1.5">{t('ai.settings.downloadModel')}</div>
                                                                 <div className="flex items-center gap-2">
                                                                     <input
                                                                         type="text"
                                                                         value={pullModelName}
                                                                         onChange={(e) => setPullModelName(e.target.value)}
-                                                                        placeholder="e.g., llama3, deepseek-coder:6.7b"
+                                                                        placeholder={t('ai.settings.pullModelPlaceholder')}
                                                                         className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
                                                                         disabled={isPulling}
                                                                         onKeyDown={(e) => { if (e.key === 'Enter') handlePullModel(provider); }}
@@ -895,7 +896,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                         disabled={isPulling || !pullModelName.trim()}
                                                                         className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded text-xs font-medium transition-colors flex items-center gap-1"
                                                                     >
-                                                                        {isPulling ? '...' : 'Pull'}
+                                                                        {isPulling ? '...' : t('ai.settings.pullModel')}
                                                                     </button>
                                                                 </div>
                                                                 {pullProgress && (
@@ -930,10 +931,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             <div className="mt-3 p-2 rounded bg-gray-800/30 border border-gray-700/50">
                                                                 <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                                                                     <span className="text-cyan-400">{'\u26A1'}</span>
-                                                                    <span className="font-medium text-gray-300">Context Caching</span>
+                                                                    <span className="font-medium text-gray-300">{t('ai.settings.contextCaching')}</span>
                                                                 </div>
                                                                 <p className="text-[11px] text-gray-500">
-                                                                    Large system prompts and contexts (32K+ tokens) are automatically cached for 5 minutes, reducing latency and cost by up to 75% on subsequent requests.
+                                                                    {t('ai.settings.contextCachingDesc')}
                                                                 </p>
                                                             </div>
                                                         )}
@@ -943,7 +944,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <label className="block text-sm text-gray-400 mb-1">
                                                             <Globe size={12} className="inline mr-1" />
-                                                            Base URL
+                                                            {t('ai.settings.baseUrl')}
                                                         </label>
                                                         <input
                                                             type="text"
@@ -952,7 +953,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 ...provider,
                                                                 baseUrl: e.target.value
                                                             })}
-                                                            placeholder="https://api.example.com/v1"
+                                                            placeholder={t('ai.settings.baseUrlPlaceholder')}
                                                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                                                         />
                                                     </div>
@@ -961,7 +962,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <label className="block text-sm text-gray-400 mb-2">
                                                             <Cpu size={12} className="inline mr-1" />
-                                                            Models ({getProviderModels(provider.id).length})
+                                                            {t('ai.settings.modelsCount', { count: getProviderModels(provider.id).length })}
                                                         </label>
                                                         <div className="flex flex-wrap gap-2">
                                                             {getProviderModels(provider.id).map(model => (
@@ -994,8 +995,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             {settings.providers.length === 0 ? (
                                 <div className="text-center py-12 text-gray-500">
                                     <Cpu size={48} className="mx-auto mb-4 opacity-50" />
-                                    <p>No providers configured</p>
-                                    <p className="text-sm mt-2">Add a provider first to manage models</p>
+                                    <p>{t('ai.settings.noProvidersForModels')}</p>
+                                    <p className="text-sm mt-2">{t('ai.settings.addProviderFirst')}</p>
                                 </div>
                             ) : (
                                 <>
@@ -1006,7 +1007,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                 <div className="px-4 py-3 bg-gray-800/50 flex items-center gap-2 border-b border-gray-700">
                                                     {getProviderIcon(provider.type)}
                                                     <span className="font-medium">{provider.name}</span>
-                                                    <span className="text-xs text-gray-500">({providerModels.length} models)</span>
+                                                    <span className="text-xs text-gray-500">({t('ai.settings.modelsCountLabel', { count: providerModels.length })})</span>
                                                 </div>
 
                                                 <div className="p-3 space-y-2">
@@ -1089,9 +1090,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     ? 'bg-yellow-500/20 text-yellow-400'
                                                                     : 'bg-gray-700 text-gray-500 hover:text-white'
                                                                     }`}
-                                                                title="Set as default for this provider"
+                                                                title={t('ai.settings.setDefault')}
                                                             >
-                                                                {model.isDefault ? '★ Default' : 'Set Default'}
+                                                                {model.isDefault ? '★ ' + t('ai.settings.defaultBadge') : t('ai.settings.setDefault')}
                                                             </button>
 
                                                             {/* Edit */}
@@ -1102,7 +1103,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     isNew: false
                                                                 })}
                                                                 className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
-                                                                title="Edit model"
+                                                                title={t('ai.settings.editModelTooltip')}
                                                             >
                                                                 <Edit2 size={14} />
                                                             </button>
@@ -1116,7 +1117,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     });
                                                                 }}
                                                                 className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                                                title="Remove model"
+                                                                title={t('ai.settings.removeModel')}
                                                             >
                                                                 <Trash2 size={14} />
                                                             </button>
@@ -1133,7 +1134,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         className="w-full py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg flex items-center justify-center gap-2 transition-colors"
                                                     >
                                                         <Plus size={14} />
-                                                        Add Custom Model
+                                                        {t('ai.settings.addCustomModel')}
                                                     </button>
                                                 </div>
                                             </div>
@@ -1146,8 +1147,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             <div className="mt-6 pt-4 border-t border-gray-700/50">
                                 <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
                                     <div>
-                                        <h3 className="font-medium flex items-center gap-2"><Zap size={14} className="text-purple-400" /> Auto-Routing</h3>
-                                        <p className="text-sm text-gray-400">Automatically select the best model for each task type</p>
+                                        <h3 className="font-medium flex items-center gap-2"><Zap size={14} className="text-purple-400" /> {t('ai.settings.autoRouting')}</h3>
+                                        <p className="text-sm text-gray-400">{t('ai.settings.autoRoutingDescription')}</p>
                                     </div>
                                     <button
                                         onClick={() => saveSettings({
@@ -1159,23 +1160,23 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             : 'bg-gray-700 text-gray-400'
                                             }`}
                                     >
-                                        {settings.autoRouting.enabled ? 'Enabled' : 'Disabled'}
+                                        {settings.autoRouting.enabled ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                     </button>
                                 </div>
 
                                 {settings.autoRouting.enabled && (
                                     <div className="space-y-3 mt-3">
                                         <p className="text-sm text-gray-400 mb-4">
-                                            Configure which model to use for each task type.
+                                            {t('ai.settings.autoRoutingInstruction')}
                                         </p>
 
                                         {[
-                                            { type: 'code_generation' as const, label: 'Code Generation', desc: 'Writing new code, functions, components' },
-                                            { type: 'code_review' as const, label: 'Code Review', desc: 'Reviewing, refactoring, suggesting improvements' },
-                                            { type: 'quick_answer' as const, label: 'Quick Answer', desc: 'Simple questions, short responses' },
-                                            { type: 'file_analysis' as const, label: 'File Analysis', desc: 'Analyzing file contents, understanding code' },
-                                            { type: 'terminal_command' as const, label: 'Terminal', desc: 'Shell commands, scripts, automation' },
-                                            { type: 'general' as const, label: 'General', desc: 'Default for unclassified tasks' },
+                                            { type: 'code_generation' as const, label: t('ai.settings.codeGeneration'), desc: t('ai.settings.codeGenerationDesc') },
+                                            { type: 'code_review' as const, label: t('ai.settings.codeReview'), desc: t('ai.settings.codeReviewDesc') },
+                                            { type: 'quick_answer' as const, label: t('ai.settings.quickAnswer'), desc: t('ai.settings.quickAnswerDesc') },
+                                            { type: 'file_analysis' as const, label: t('ai.settings.fileAnalysis'), desc: t('ai.settings.fileAnalysisDesc') },
+                                            { type: 'terminal_command' as const, label: t('ai.settings.terminalCommands'), desc: t('ai.settings.terminalCommandsDesc') },
+                                            { type: 'general' as const, label: t('ai.settings.general'), desc: t('ai.settings.generalDesc') },
                                         ].map(task => {
                                             const rule = settings.autoRouting.rules.find(r => r.taskType === task.type);
                                             const allModels = settings.providers
@@ -1209,7 +1210,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         }}
                                                         className="px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
                                                     >
-                                                        <option value="">Auto (Default)</option>
+                                                        <option value="">{t('ai.settings.autoDefault')}</option>
                                                         {allModels.map(model => (
                                                             <option key={model.id} value={model.id}>
                                                                 {model.displayName} ({model.providerName})
@@ -1221,7 +1222,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         })}
 
                                         <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg text-xs text-blue-300">
-                                            Leave as "Auto (Default)" to use the model selected in the chat header.
+                                            {t('ai.settings.autoRoutingTip')}
                                         </div>
                                     </div>
                                 )}
@@ -1233,12 +1234,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     {activeTab === 'advanced' && (
                         <div className="space-y-6">
                             <div className="text-sm text-gray-400 mb-4">
-                                Configure advanced AI parameters for response generation.
+                                {t('ai.settings.advancedDescription')}
                             </div>
 
                             {/* Conversation Style */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
-                                <h4 className="text-sm font-medium text-white mb-3">Conversation Style</h4>
+                                <h4 className="text-sm font-medium text-white mb-3">{t('ai.settings.conversationStyle')}</h4>
                                 <div className="flex gap-2">
                                     {(['precise', 'balanced', 'creative'] as const).map(style => (
                                         <button
@@ -1260,21 +1261,21 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                                 }`}
                                         >
-                                            {style === 'precise' && '🎯 Precise'}
-                                            {style === 'balanced' && '⚖️ Balanced'}
-                                            {style === 'creative' && '🎨 Creative'}
+                                            {style === 'precise' && ('🎯 ' + t('ai.settings.precise'))}
+                                            {style === 'balanced' && ('⚖️ ' + t('ai.settings.balanced'))}
+                                            {style === 'creative' && ('🎨 ' + t('ai.settings.creative'))}
                                         </button>
                                     ))}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-2">
-                                    Precise = factual responses. Creative = more imaginative. Balanced = default.
+                                    {t('ai.settings.styleHelp')}
                                 </p>
                             </div>
 
                             {/* Temperature */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-2">
-                                    <h4 className="text-sm font-medium text-white">Temperature</h4>
+                                    <h4 className="text-sm font-medium text-white">{t('ai.settings.temperature')}</h4>
                                     <span className="text-sm text-purple-400 font-mono">
                                         {(settings.advancedSettings?.temperature ?? 0.7).toFixed(1)}
                                     </span>
@@ -1299,14 +1300,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                                 />
                                 <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                    <span>0.0 (Very focused)</span>
-                                    <span>2.0 (Very random)</span>
+                                    <span>{t('ai.settings.tempLow')}</span>
+                                    <span>{t('ai.settings.tempHigh')}</span>
                                 </div>
                             </div>
 
                             {/* Max Tokens */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
-                                <h4 className="text-sm font-medium text-white mb-2">Max Response Length</h4>
+                                <h4 className="text-sm font-medium text-white mb-2">{t('ai.settings.maxResponseLength')}</h4>
                                 <div className="flex items-center gap-4">
                                     <input
                                         type="number"
@@ -1327,26 +1328,26 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         }}
                                         className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500"
                                     />
-                                    <span className="text-xs text-gray-500">tokens</span>
+                                    <span className="text-xs text-gray-500">{t('ai.settings.tokens')}</span>
                                 </div>
                                 <p className="text-xs text-gray-500 mt-2">
-                                    Higher values allow longer responses but use more API credits.
+                                    {t('ai.settings.maxResponseHelp')}
                                 </p>
                             </div>
 
                             {/* Thinking Budget */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
-                                <h4 className="text-sm font-medium text-white mb-1">Thinking Budget</h4>
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.settings.thinkingBudget')}</h4>
                                 <p className="text-[10px] text-gray-500 mb-3">
-                                    Token budget for extended thinking (Claude, o3, Gemini). Higher values allow deeper reasoning.
+                                    {t('ai.settings.thinkingBudgetDesc')}
                                 </p>
                                 <div className="flex items-center gap-2 flex-wrap mb-3">
                                     {[
-                                        { label: 'Off', value: 0 },
-                                        { label: 'Light', value: 5000 },
-                                        { label: 'Balanced', value: 10000 },
-                                        { label: 'Deep', value: 25000 },
-                                        { label: 'Maximum', value: 100000 },
+                                        { label: t('ai.settings.thinkingOff'), value: 0 },
+                                        { label: t('ai.settings.thinkingLight'), value: 5000 },
+                                        { label: t('ai.settings.balanced'), value: 10000 },
+                                        { label: t('ai.settings.thinkingDeep'), value: 25000 },
+                                        { label: t('ai.settings.thinkingMaximum'), value: 100000 },
                                     ].map(preset => (
                                         <button
                                             key={preset.value}
@@ -1391,7 +1392,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     className="w-full accent-purple-500"
                                 />
                                 <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
-                                    <span>0 (Off)</span>
+                                    <span>0 ({t('ai.settings.thinkingOff')})</span>
                                     <span className="text-purple-400 font-mono">
                                         {((settings.advancedSettings?.thinkingBudget || 0) / 1000).toFixed(0)}K tokens
                                     </span>
@@ -1468,15 +1469,15 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     {activeTab === 'plugins' && (
                         <div className="space-y-4">
                             <div className="text-sm text-gray-400 mb-4">
-                                Extend AeroAgent with custom tools. Place plugin folders in the app plugins directory.
+                                {t('ai.settings.pluginsDesc')}
                             </div>
 
                             {plugins.length === 0 ? (
                                 <div className="text-center py-12 text-gray-500">
                                     <Puzzle size={48} className="mx-auto mb-4 opacity-30" />
-                                    <p className="text-lg font-medium">No plugins installed</p>
+                                    <p className="text-lg font-medium">{t('ai.settings.noPlugins')}</p>
                                     <p className="text-sm mt-2">
-                                        Create a folder with a <code className="bg-gray-800 px-1.5 py-0.5 rounded text-xs text-cyan-400">plugin.json</code> manifest in the plugins directory.
+                                        {t('ai.settings.pluginCreateHint')}
                                     </p>
                                 </div>
                             ) : (
@@ -1489,13 +1490,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <h3 className="font-medium text-white">{plugin.name}</h3>
                                                         <p className="text-xs text-gray-400">
-                                                            v{plugin.version} by {plugin.author} — {plugin.tools.length} tool{plugin.tools.length !== 1 ? 's' : ''}
+                                                            {'v' + plugin.version} {t('ai.settings.pluginBy', { author: plugin.author })} — {t('ai.settings.pluginTools', { count: plugin.tools.length })}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <span className={`text-xs px-2 py-1 rounded ${plugin.enabled !== false ? 'bg-green-900/50 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
-                                                        {plugin.enabled !== false ? 'Enabled' : 'Disabled'}
+                                                        {plugin.enabled !== false ? t('ai.settings.pluginEnabled') : t('ai.settings.pluginDisabled')}
                                                     </span>
                                                     <button
                                                         onClick={async () => {
@@ -1507,7 +1508,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             }
                                                         }}
                                                         className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
-                                                        title="Remove plugin"
+                                                        title={t('ai.settings.removePlugin')}
                                                     >
                                                         <Trash2 size={14} />
                                                     </button>
@@ -1537,14 +1538,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     {activeTab === 'prompt' && (
                         <div className="space-y-6">
                             <div className="text-sm text-gray-400 mb-4">
-                                Customize the system prompt that defines AeroAgent's behavior and personality.
+                                {t('ai.settings.promptDesc')}
                             </div>
 
                             {/* Toggle */}
                             <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
                                 <div>
-                                    <h3 className="font-medium">Custom System Prompt</h3>
-                                    <p className="text-sm text-gray-400">Override the default AeroAgent system prompt</p>
+                                    <h3 className="font-medium">{t('ai.settings.customSystemPrompt')}</h3>
+                                    <p className="text-sm text-gray-400">{t('ai.settings.overrideSystemPrompt')}</p>
                                 </div>
                                 <button
                                     onClick={() => {
@@ -1562,14 +1563,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         : 'bg-gray-700 text-gray-400'
                                         }`}
                                 >
-                                    {settings.advancedSettings?.useCustomPrompt ? 'Enabled' : 'Disabled'}
+                                    {settings.advancedSettings?.useCustomPrompt ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                 </button>
                             </div>
 
                             {/* Editor */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-sm font-medium text-white">Prompt Content</h4>
+                                    <h4 className="text-sm font-medium text-white">{t('ai.settings.promptContent')}</h4>
                                     <div className="flex items-center gap-3">
                                         <span className="text-xs text-gray-500">
                                             ~{Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4)} tokens
@@ -1587,7 +1588,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             }}
                                             className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
                                         >
-                                            Reset to Default
+                                            {t('ai.settings.resetToDefault')}
                                         </button>
                                     </div>
                                 </div>
@@ -1603,12 +1604,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         };
                                         saveSettings(newSettings);
                                     }}
-                                    placeholder={`Enter custom instructions for AeroAgent...\n\nThe default prompt includes: identity, tone, tool definitions, protocol expertise, and behavior rules. Your custom prompt will replace all of this (tool definitions and context are always appended automatically).`}
+                                    placeholder={t('ai.settings.promptPlaceholder')}
                                     className="w-full h-64 px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y"
                                     disabled={!settings.advancedSettings?.useCustomPrompt}
                                 />
                                 <p className="text-xs text-gray-500 mt-2">
-                                    Variables like {'{remotePath}'}, {'{localPath}'}, {'{serverHost}'} in the context block are appended automatically. Tool definitions are always included regardless of custom prompt.
+                                    {t('ai.settings.promptHint')}
                                 </p>
                             </div>
                         </div>
@@ -1617,7 +1618,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     {activeTab === 'macros' && (
                         <div className="space-y-4">
                             <div className="text-sm text-gray-400 mb-4">
-                                {t('ai.settings.macrosDescription') || 'Macros are reusable multi-step tool sequences. They appear as tools in AeroAgent\'s available actions.'}
+                                {t('ai.settings.macrosDescription')}
                             </div>
 
                             {DEFAULT_MACROS.map(macro => (
@@ -1634,7 +1635,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     <p className="text-sm text-gray-400 mb-3">{macro.description}</p>
 
                                     <div className="space-y-1.5">
-                                        <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroSteps') || 'Steps'}:</span>
+                                        <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroSteps')}:</span>
                                         {macro.steps.map((step, idx) => (
                                             <div key={idx} className="flex items-center gap-2 text-xs">
                                                 <span className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 shrink-0">
@@ -1650,7 +1651,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                                     {macro.parameters.length > 0 && (
                                         <div className="mt-3 pt-3 border-t border-gray-700">
-                                            <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroParameters') || 'Parameters'}:</span>
+                                            <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroParameters')}:</span>
                                             <div className="flex flex-wrap gap-1.5 mt-1">
                                                 {macro.parameters.map(param => (
                                                     <span key={param.name} className="text-xs bg-gray-700/60 text-gray-300 px-2 py-0.5 rounded">
@@ -1664,7 +1665,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             ))}
 
                             <div className="text-xs text-gray-600 mt-4 p-3 bg-gray-800/50 rounded-lg">
-                                {t('ai.settings.macrosCustomNote') || 'Custom macro creation will be available in a future update. Currently showing built-in macros.'}
+                                {t('ai.settings.macrosCustomNote')}
                             </div>
                         </div>
                     )}
@@ -1673,13 +1674,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 {/* Footer */}
                 <div className="px-6 py-4 border-t border-gray-700 flex justify-between items-center">
                     <div className="text-sm text-gray-500">
-                        {settings.providers.filter(p => p.isEnabled).length} provider(s) enabled
+                        {t('ai.settings.providersEnabled', { count: settings.providers.filter(p => p.isEnabled).length })}
                     </div>
                     <button
                         onClick={onClose}
                         className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors"
                     >
-                        Done
+                        {t('ai.settings.done')}
                     </button>
                 </div>
             </div>
@@ -1707,7 +1708,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                                 <div className="flex items-center gap-2">
                                     <List size={16} className="text-indigo-400" />
-                                    <span className="font-medium text-sm">Available Models</span>
+                                    <span className="font-medium text-sm">{t('ai.settings.fetchModelsTitle')}</span>
                                     {provider && <span className="text-xs text-gray-500">({provider.type})</span>}
                                 </div>
                                 <button onClick={() => { setAvailableModels(null); setModelFilter(''); }} className="p-1 hover:bg-gray-700 rounded transition-colors">
@@ -1719,14 +1720,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     type="text"
                                     value={modelFilter}
                                     onChange={e => setModelFilter(e.target.value)}
-                                    placeholder="Filter models..."
+                                    placeholder={t('ai.settings.fetchModelsFilter')}
                                     className="w-full px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     autoFocus
                                 />
                             </div>
                             <div className="flex-1 overflow-auto px-2 py-1">
                                 {filtered.length === 0 ? (
-                                    <div className="text-center py-8 text-gray-500 text-sm">No models found</div>
+                                    <div className="text-center py-8 text-gray-500 text-sm">{t('ai.settings.fetchModelsEmpty')}</div>
                                 ) : (
                                     filtered.map(modelName => {
                                         const alreadyAdded = existingNames.has(modelName) || addedModels.has(modelName);
@@ -1735,14 +1736,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                 <span className="text-sm font-mono text-gray-200 truncate mr-2">{modelName}</span>
                                                 {alreadyAdded ? (
                                                     <span className="text-xs text-green-400 flex items-center gap-1 shrink-0">
-                                                        <Check size={12} /> Added
+                                                        <Check size={12} /> {t('ai.settings.fetchModelsAdded')}
                                                     </span>
                                                 ) : (
                                                     <button
                                                         onClick={() => provider && addModelFromList(provider, modelName)}
                                                         className="text-xs px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 rounded text-white transition-colors opacity-0 group-hover:opacity-100 shrink-0"
                                                     >
-                                                        Add
+                                                        {t('ai.settings.fetchModelsAdd')}
                                                     </button>
                                                 )}
                                             </div>
@@ -1751,7 +1752,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 )}
                             </div>
                             <div className="px-4 py-2 border-t border-gray-700/50 text-xs text-gray-500">
-                                {availableModels.models.length} model(s) available
+                                {t('ai.settings.modelsAvailable', { count: availableModels.models.length })}
                             </div>
                         </div>
                     </div>

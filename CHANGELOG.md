@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2026-02-12
+
+### Translation Quality Audit and Linguistic Integrity
+
+Comprehensive quality audit across all 47 languages, eliminating 605 silent intruder keys (untranslated values left in English without markers), fixing placeholder format inconsistencies, restoring Armenian script from Latin romanizations, and applying native speaker corrections for Chinese.
+
+#### Fixed
+
+- **605 silent intruder keys eliminated**: Systematic audit discovered 605 translation keys across 46 non-English locales that contained English text without `[NEEDS TRANSLATION]` markers. All replaced with proper native translations across 30+ namespaces (common, connection, migration, masterPassword, overwrite, settings, toast, transfer, ai, statusbar, and more)
+- **Armenian (hy) script restoration**: 63 keys contained Latin romanizations instead of Armenian Unicode script (e.g., "Chegharkel" instead of the proper Armenian form). Reverse-transliterated using phonetic mapping with manual overrides for aspirated consonants and loanwords. Additional 53 English-identical keys translated to proper Armenian
+- **Chinese (zh) native review corrections**: 16 corrections applied from native speaker review — 12 previously untranslated keys translated, 3 placeholder format fixes, 1 improved translation
+- **Placeholder format standardized**: 173 instances of `{{param}}` (double-brace) corrected to `{param}` (single-brace) across all 46 locale files in 4 keys. The custom i18n system uses single-brace interpolation
+- **5 connection keys translated in 45 languages**: `accessKeyId`, `secretAccessKey`, `selectSshKey`, `sshKeys`, and `megaPasswordPlaceholder` were systematically left in English across nearly all locales — now properly translated
+- **11 orphaned keys removed**: Extra keys in ja/ko/zh (masterPassword and migration duplicates) that had no corresponding entries in en.json cleaned up
+
+#### Changed
+
+- **metainfo.xml languages list**: Updated to reflect actual 47 supported languages (removed phantom entries for languages never shipped, added missing ones)
+- **metainfo.xml description**: Corrected language count from "51 languages with RTL" to "47 languages (all LTR)" — RTL locales were removed in v2.0.6
+- **TRANSLATIONS.md**: Added comprehensive batch translation workflow documentation with language group splitting strategy, non-Latin script handling guidelines, and scripts reference table documenting ~6,350 translations applied
+
+---
+
 ## [2.0.6] - 2026-02-11
 
 ### Theme System, Security Toolkit, Complete i18n Coverage

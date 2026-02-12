@@ -57,7 +57,7 @@ import {
   Download, Upload, Pencil, Trash2, X,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
-  Copy, Clipboard, ClipboardPaste, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
+  Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3
 } from 'lucide-react';
 import { VaultIcon } from './components/icons/VaultIcon';
@@ -206,6 +206,8 @@ const App: React.FC = () => {
   const [lastSelectedRemoteIndex, setLastSelectedRemoteIndex] = useState<number | null>(null);
   const [lastSelectedLocalIndex, setLastSelectedLocalIndex] = useState<number | null>(null);
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
+  // Navigation counter to discard stale async responses from previous navigations
+  const remoteNavCounter = useRef(0);
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
@@ -812,6 +814,7 @@ const App: React.FC = () => {
           const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
+          setSelectedRemoteFiles(new Set());
         } catch (reconnectError) {
           console.error('Auto-reconnect failed:', reconnectError);
           humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
@@ -1033,7 +1036,6 @@ const App: React.FC = () => {
           break;
         case 'toggle_debug_mode':
           setDebugMode(!debugMode);
-          setShowDebugPanel(!debugMode);
           break;
         case 'show_dependencies':
           setShowDependenciesPanel(true);
@@ -1054,6 +1056,12 @@ const App: React.FC = () => {
     });
     return () => { unlisten.then(fn => fn()); };
   }, [isConnected, currentLocalPath, theme, debugMode]);
+
+  // Auto-enable debug mode when Cyberpunk theme is active, disable when switching away
+  useEffect(() => {
+    const isCyber = getEffectiveTheme(theme, isDark) === 'cyber';
+    setDebugMode(isCyber);
+  }, [theme, isDark]);
 
   // Rebuild native menu with translated labels when language changes
   useEffect(() => {
@@ -1101,7 +1109,7 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles, notify, t]);
 
-  const loadRemoteFiles = async (overrideProtocol?: string) => {
+  const loadRemoteFiles = async (overrideProtocol?: string): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -1134,10 +1142,12 @@ const App: React.FC = () => {
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
       setSelectedRemoteFiles(new Set());
+      return response;
     } catch (error) {
       console.error('[loadRemoteFiles] Error:', error);
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error(t('common.error'), `Failed to list files: ${error}`);
+      return null;
     }
   };
 
@@ -1282,17 +1292,18 @@ const App: React.FC = () => {
       const providerName = providerNames[protocol] || protocol;
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
       // Load remote files for OAuth provider - pass protocol explicitly
-      await loadRemoteFiles(protocol);
+      const oauthResponse = await loadRemoteFiles(protocol);
       // Navigate to initial local directory if specified
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
-      // Create session with provider name
+      // Create session with provider name — pass fresh files to avoid stale closure
       createSession(
         providerName,
         connectionParams,
-        '/',
-        quickConnectDirs.localDir || currentLocalPath
+        oauthResponse?.current_path || '/',
+        quickConnectDirs.localDir || currentLocalPath,
+        oauthResponse?.files
       );
       fetchStorageQuota(protocol);
       return;
@@ -1415,7 +1426,8 @@ const App: React.FC = () => {
           providerName,
           sessionParams,
           response.current_path,
-          quickConnectDirs.localDir || currentLocalPath
+          quickConnectDirs.localDir || currentLocalPath,
+          files
         );
         fetchStorageQuota(protocol);
       } catch (error) {
@@ -1447,22 +1459,24 @@ const App: React.FC = () => {
       humanLog.logSuccess('CONNECT', { server: connectionParams.server, protocol }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: connectionParams.server }));
       // Navigate to initial remote directory if specified
+      let ftpResponse: FileListResponse | null = null;
       if (quickConnectDirs.remoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(quickConnectDirs.remoteDir, connectionParams.protocol || 'ftp');
       } else {
-        await loadRemoteFiles();
+        ftpResponse = await loadRemoteFiles();
       }
       // Navigate to initial local directory if specified
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
-      // Create session tab for FTP/FTPS/SFTP connections
+      // Create session tab for FTP/FTPS/SFTP connections — pass fresh files to avoid stale closure
       createSession(
         connectionParams.displayName || connectionParams.server,
         connectionParams,
-        quickConnectDirs.remoteDir || currentRemotePath,
-        quickConnectDirs.localDir || currentLocalPath
+        ftpResponse?.current_path || quickConnectDirs.remoteDir || currentRemotePath,
+        quickConnectDirs.localDir || currentLocalPath,
+        ftpResponse?.files
       );
     } catch (error) {
       humanLog.logError('CONNECT', { server: connectionParams.server }, logId);
@@ -1494,7 +1508,9 @@ const App: React.FC = () => {
   };
 
   // Session Management for Multi-Tab
-  const createSession = (serverName: string, params: ConnectionParams, remotePath: string, localPath: string) => {
+  // Accept optional file lists to avoid stale closure captures — callers that
+  // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
+  const createSession = (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
 
@@ -1505,8 +1521,8 @@ const App: React.FC = () => {
       status: 'connected',
       remotePath,
       localPath,
-      remoteFiles: [...remoteFiles],
-      localFiles: [...localFiles],
+      remoteFiles: freshRemoteFiles ? [...freshRemoteFiles] : [...remoteFiles],
+      localFiles: freshLocalFiles ? [...freshLocalFiles] : [...localFiles],
       lastActivity: new Date(),
       connectionParams: paramsCopy,
       providerId: paramsCopy.providerId,
@@ -1562,6 +1578,9 @@ const App: React.FC = () => {
     setCurrentRemotePath(targetSession.remotePath);
     setCurrentLocalPath(targetSession.localPath);
     setConnectionParams(targetSession.connectionParams);
+    setSelectedRemoteFiles(new Set());
+    setSelectedLocalFiles(new Set());
+    setRemoteSearchResults(null);
 
     // Restore per-session navigation sync state
     setIsSyncNavigation(targetSession.isSyncNavigation ?? false);
@@ -1744,6 +1763,14 @@ const App: React.FC = () => {
       // Refresh remote files with real data
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
+      setSelectedRemoteFiles(new Set());
+
+      // Update session cache with fresh data
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId
+          ? { ...s, remoteFiles: response.files, remotePath: response.current_path }
+          : s
+      ));
 
       // Fetch storage quota after successful reconnection
       fetchStorageQuota(protocol);
@@ -1924,7 +1951,7 @@ const App: React.FC = () => {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: params.protocol?.toUpperCase() || 'FTP' }, 'success');
           } catch (connError) {
             logger.error('Failed to connect to cloud server:', connError);
-            notify.error('Connection Failed', `Failed to connect to cloud server: ${connError}`);
+            notify.error(t('toast.connectionFailedTitle'), t('toast.cloudConnectionFailed', { error: String(connError) }));
             // Restore previous session
             if (capturedSessionId) {
               setActiveSessionId(capturedSessionId);
@@ -2015,6 +2042,8 @@ const App: React.FC = () => {
     }
   };
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string) => {
+    // Increment navigation counter — used to discard stale async responses
+    const navId = ++remoteNavCounter.current;
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -2030,8 +2059,12 @@ const App: React.FC = () => {
         // Use FTP API
         response = await invoke('change_directory', { path });
       }
+      // Discard response if a newer navigation was initiated while we awaited
+      if (navId !== remoteNavCounter.current) return;
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
+      setSelectedRemoteFiles(new Set());
+      setRemoteSearchResults(null);
       humanLog.logNavigate(response.current_path, true);
 
       // Navigation Sync: mirror to local panel if enabled
@@ -2045,15 +2078,22 @@ const App: React.FC = () => {
         const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
         // Check if local path exists
         try {
+          if (navId !== remoteNavCounter.current) return;
           const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
+          if (navId !== remoteNavCounter.current) return;
           setLocalFiles(files);
           setCurrentLocalPath(newLocalPath);
+          setSelectedLocalFiles(new Set());
         } catch {
           // Local directory doesn't exist - show dialog
+          if (navId !== remoteNavCounter.current) return;
           setSyncNavDialog({ missingPath: newLocalPath, isRemote: false, targetPath: newLocalPath });
         }
       }
-    } catch (error) { notify.error('Error', `Failed to change directory: ${error}`); }
+    } catch (error) {
+      if (navId !== remoteNavCounter.current) return;
+      notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
+    }
   };
 
   const changeLocalDirectory = async (path: string) => {
@@ -2091,14 +2131,19 @@ const App: React.FC = () => {
       const newRemotePath = (relativePath ? basePath + relPath : basePath) || '/';
 
       // Check if remote path exists
+      const navId = ++remoteNavCounter.current;
       try {
         const response: FileListResponse = isProvider
           ? await invoke('provider_change_dir', { path: newRemotePath })
           : await invoke('change_directory', { path: newRemotePath });
+        if (navId !== remoteNavCounter.current) return;
         setRemoteFiles(response.files);
         setCurrentRemotePath(response.current_path);
+        setSelectedRemoteFiles(new Set());
+        setRemoteSearchResults(null);
       } catch {
         // Remote directory doesn't exist - show dialog
+        if (navId !== remoteNavCounter.current) return;
         setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
       }
     }
@@ -2117,11 +2162,13 @@ const App: React.FC = () => {
           const response: FileListResponse = await invoke('provider_change_dir', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
+          setSelectedRemoteFiles(new Set());
         } else {
           await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
+          setSelectedRemoteFiles(new Set());
         }
         notify.success(t('toast.folderCreated'), syncNavDialog.missingPath);
       } else {
@@ -3963,7 +4010,7 @@ const App: React.FC = () => {
                 };
               });
             } catch (err) {
-              notify.error(`Checksum failed`, String(err));
+              notify.error(t('toast.checksumFailed'), String(err));
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
             }
           }}
@@ -4039,10 +4086,10 @@ const App: React.FC = () => {
           if (permissionsDialog?.file) {
             try {
               await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
-              notify.success('Permissions Updated', `${permissionsDialog.file.name} -> ${mode}`);
+              notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
               await loadRemoteFiles();
               setPermissionsDialog(null);
-            } catch (e) { notify.error('Failed', String(e)); }
+            } catch (e) { notify.error(t('common.failed'), String(e)); }
           }
         }}
         fileName={permissionsDialog?.file.name || ''}
@@ -4168,7 +4215,7 @@ const App: React.FC = () => {
               }
               const suffix = opts.password ? ' (AES-256)' : '';
               activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
-              notify.success('Compressed!', `Created ${opts.archiveName}${ext}${suffix}`);
+              notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
               setCompressDialogState(null);
               await loadLocalFiles(currentLocalPath);
             } catch (err) {
@@ -4263,7 +4310,7 @@ const App: React.FC = () => {
                   await invoke('toggle_menu_bar', { visible: newState });
                 }}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title={systemMenuVisible ? 'Hide system menu bar' : 'Show system menu bar'}
+                title={systemMenuVisible ? t('toolbar.hideSystemMenu') : t('toolbar.showSystemMenu')}
               >
                 <PanelTop size={18} className={systemMenuVisible ? 'text-blue-500' : 'text-gray-400'} />
               </button>
@@ -4322,17 +4369,18 @@ const App: React.FC = () => {
                 const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
                 notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                 // Load remote files for OAuth provider - pass protocol explicitly
-                await loadRemoteFiles(params.protocol);
+                const savedOauthResp = await loadRemoteFiles(params.protocol);
                 // Navigate to initial local directory if specified
                 if (localInitialPath) {
                   await changeLocalDirectory(localInitialPath);
                 }
-                // Create session with provider name
+                // Create session with provider name — pass fresh files to avoid stale closure
                 createSession(
                   providerName,
                   params,
-                  initialPath || '/',
-                  localInitialPath || currentLocalPath
+                  savedOauthResp?.current_path || initialPath || '/',
+                  localInitialPath || currentLocalPath,
+                  savedOauthResp?.files
                 );
                 fetchStorageQuota(params.protocol);
                 // Reset form for next "Add New Server"
@@ -4419,7 +4467,8 @@ const App: React.FC = () => {
                     providerName,
                     params,
                     response.current_path,
-                    localInitialPath || currentLocalPath
+                    localInitialPath || currentLocalPath,
+                    files
                   );
                   fetchStorageQuota(params.protocol);
                   // Reset form for next "Add New Server"
@@ -4448,19 +4497,15 @@ const App: React.FC = () => {
                 await invoke('connect_ftp', { params });
                 setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
-                notify.success('Connected', `Connected to ${params.server}`);
+                notify.success(t('toast.connected'), t('toast.connectedTo', { server: params.server }));
 
                 // Get the actual remote path after connection
-                let actualRemotePath = '/';
+                let savedFtpResponse: FileListResponse | null = null;
                 if (initialPath) {
                   // Pass the protocol explicitly to avoid using stale state from previous session
                   await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
-                  actualRemotePath = initialPath;
                 } else {
-                  await loadRemoteFiles();
-                  // After loadRemoteFiles, currentRemotePath will be updated
-                  actualRemotePath = currentRemotePath.startsWith('/') && !currentRemotePath.includes('wwwhome')
-                    ? currentRemotePath : '/';
+                  savedFtpResponse = await loadRemoteFiles();
                 }
 
                 if (localInitialPath) {
@@ -4471,8 +4516,9 @@ const App: React.FC = () => {
                 createSession(
                   sessionName,
                   params,
-                  initialPath || '/',  // Use '/' as default, not currentRemotePath from previous session
-                  localInitialPath || currentLocalPath
+                  savedFtpResponse?.current_path || initialPath || '/',
+                  localInitialPath || currentLocalPath,
+                  savedFtpResponse?.files
                 );
                 // Reset form for next "Add New Server"
                 setConnectionParams({ server: '', username: '', password: '' });
@@ -4729,12 +4775,12 @@ const App: React.FC = () => {
                     </div>
                     <input
                       type="text"
-                      value={isConnected ? currentRemotePath : 'Not Connected'}
+                      value={isConnected ? currentRemotePath : t('browser.notConnected')}
                       onChange={(e) => setCurrentRemotePath(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
                       disabled={!isConnected}
                       className="flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900"
-                      title={isConnected ? "Click to edit path, Enter to navigate" : "Not connected to server"}
+                      title={isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
                       placeholder="/path/to/directory"
                     />
                     <button
@@ -4765,6 +4811,22 @@ const App: React.FC = () => {
                         {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
                       </button>
                     )}
+                    {debugMode && isConnected && (
+                      <button
+                        onClick={() => {
+                          const lines = sortedRemoteFiles.map(f =>
+                            `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
+                          );
+                          const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
+                          navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
+                          notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
+                        }}
+                        className="flex-shrink-0 px-2 flex items-center text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+                        title={t('debug.copyFileListToClipboard')}
+                      >
+                        <ClipboardList size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {/* Remote Search Bar */}
@@ -4790,7 +4852,7 @@ const App: React.FC = () => {
                     />
                     {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
                     {remoteSearchResults !== null && (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{remoteSearchResults.length} results</span>
+                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: remoteSearchResults.length })}</span>
                     )}
                     <button
                       onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
@@ -4809,13 +4871,13 @@ const App: React.FC = () => {
                   {!isConnected ? (
                     <div className="flex flex-col items-center justify-center h-full text-gray-400">
                       <Cloud size={64} className="mb-4 opacity-30" />
-                      <p className="text-lg font-medium">Not Connected</p>
-                      <p className="text-sm mt-1">Click "Connect" to access remote files</p>
+                      <p className="text-lg font-medium">{t('browser.notConnected')}</p>
+                      <p className="text-sm mt-1">{t('browser.clickConnectPrompt')}</p>
                       <button
                         onClick={() => setShowConnectionScreen(true)}
                         className="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
                       >
-                        <Cloud size={16} /> Connect to Server
+                        <Cloud size={16} /> {t('browser.connectToServer')}
                       </button>
                     </div>
                   ) : viewMode === 'list' ? (
@@ -4825,7 +4887,7 @@ const App: React.FC = () => {
                           <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                           {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                           {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
-                          {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Perms</th>}
+                          {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">{t('browser.permsHeader')}</th>}
                           {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                         </tr>
                       </thead>
@@ -4846,7 +4908,7 @@ const App: React.FC = () => {
                         </tr>
                         {sortedRemoteFiles.map((file, i) => (
                           <tr
-                            key={file.name}
+                            key={`${file.name}-${i}`}
                             data-file-row
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
@@ -4918,11 +4980,11 @@ const App: React.FC = () => {
                                   {displayName(file.name, file.is_dir)}
                                 </span>
                               )}
-                              {lockedFiles.has(file.path) && <span title="Locked"><Lock size={12} className="text-orange-500" /></span>}
+                              {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
                               {getSyncBadge(file.path, file.modified || undefined, false)}
                             </td>
                             {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
-                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
+                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
                             {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>}
                             {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                           </tr>
@@ -4944,7 +5006,7 @@ const App: React.FC = () => {
                       </div>
                       {sortedRemoteFiles.map((file, i) => (
                         <div
-                          key={file.name}
+                          key={`${file.name}-${i}`}
                           data-file-card
                           draggable={file.name !== '..'}
                           onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
@@ -5109,7 +5171,7 @@ const App: React.FC = () => {
                         onChange={(e) => setCurrentLocalPath(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
                         className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                        title={isLocalPathCoherent ? "Click to edit path, Enter to navigate" : "\u26a0\ufe0f Local path doesn't match the connected server"}
+                        title={isLocalPathCoherent ? t('browser.editPathHint') : `\u26a0\ufe0f ${t('browser.localPathMismatch')}`}
                         placeholder="/path/to/local/directory"
                       />
                       <button
@@ -5138,6 +5200,22 @@ const App: React.FC = () => {
                       >
                         <Search size={13} />
                       </button>
+                      {debugMode && (
+                        <button
+                          onClick={() => {
+                            const lines = sortedLocalFiles.map(f =>
+                              `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
+                            );
+                            const header = `# Local files: ${currentLocalPath} (${sortedLocalFiles.length} entries)\n# type\tsize\tmodified\tname`;
+                            navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
+                            notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedLocalFiles.length }));
+                          }}
+                          className="flex-shrink-0 px-2 flex items-center text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+                          title={t('debug.copyFileListToClipboard')}
+                        >
+                          <ClipboardList size={13} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5161,7 +5239,7 @@ const App: React.FC = () => {
                     />
                     {localSearchFilter && (
                       <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                        {localFiles.filter(f => f.name.toLowerCase().includes(localSearchFilter.toLowerCase())).length} results
+                        {t('search.resultsCount', { count: localFiles.filter(f => f.name.toLowerCase().includes(localSearchFilter.toLowerCase())).length })}
                       </span>
                     )}
                     <button
@@ -5281,7 +5359,7 @@ const App: React.FC = () => {
                         </tr>
                         {sortedLocalFiles.map((file, i) => (
                           <tr
-                            key={file.name}
+                            key={`${file.name}-${i}`}
                             data-file-row
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
@@ -5375,7 +5453,7 @@ const App: React.FC = () => {
                               {getSyncBadge(file.path, file.modified || undefined, true)}
                             </td>
                             {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>}
-                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? 'Folder' : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
+                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
                             {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                           </tr>
                         ))}
@@ -5392,11 +5470,11 @@ const App: React.FC = () => {
                         <div className="file-grid-icon">
                           <FolderUp size={32} className="text-gray-400" />
                         </div>
-                        <span className="file-grid-name italic text-gray-500">Go up</span>
+                        <span className="file-grid-name italic text-gray-500">{t('browser.goUp')}</span>
                       </div>
                       {sortedLocalFiles.map((file, i) => (
                         <div
-                          key={file.name}
+                          key={`${file.name}-${i}`}
                           data-file-card
                           draggable={file.name !== '..'}
                           onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
@@ -5607,7 +5685,7 @@ const App: React.FC = () => {
                     }}
                   />
                   <div className="px-3 h-[43px] bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                    <Eye size={14} className="text-blue-500" /> File Info
+                    <Eye size={14} className="text-blue-500" /> {t('preview.fileInfo')}
                   </div>
                   <div className="flex-1 overflow-auto p-3">
                     {previewFile ? (
@@ -5623,7 +5701,7 @@ const App: React.FC = () => {
                           ) : /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name) ? (
                             <div className="text-gray-400 animate-pulse flex flex-col items-center">
                               <Image size={32} className="text-blue-400 mb-1" />
-                              <span className="text-xs">Loading...</span>
+                              <span className="text-xs">{t('common.loading')}</span>
                             </div>
                           ) : /\.(mp4|webm|mov|avi|mkv)$/i.test(previewFile.name) ? (
                             <Video size={48} className="text-purple-500" />
@@ -5646,7 +5724,7 @@ const App: React.FC = () => {
                         <div className="text-center">
                           <p className="font-medium text-sm truncate" title={previewFile.name}>{previewFile.name}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                            {previewFile.is_dir ? 'Folder' : previewFile.name.split('.').pop() || 'File'}
+                            {previewFile.is_dir ? t('preview.typeDirectory') : previewFile.name.split('.').pop() || t('preview.typeFile')}
                           </p>
                         </div>
 
@@ -5656,7 +5734,7 @@ const App: React.FC = () => {
                           {!previewFile.is_dir && (
                             <div className="flex items-center justify-between">
                               <span className="text-gray-500 flex items-center gap-1.5">
-                                <HardDrive size={12} /> Size
+                                <HardDrive size={12} /> {t('preview.sizeLabel')}
                               </span>
                               <span className="font-medium">{formatBytes(previewFile.size || 0)}</span>
                             </div>
@@ -5665,19 +5743,19 @@ const App: React.FC = () => {
                           {/* Type */}
                           <div className="flex items-center justify-between">
                             <span className="text-gray-500 flex items-center gap-1.5">
-                              <FileType size={12} /> Type
+                              <FileType size={12} /> {t('preview.typeLabel')}
                             </span>
                             <span className="font-medium">
-                              {previewFile.is_dir ? 'Directory' : (() => {
+                              {previewFile.is_dir ? t('preview.typeDirectory') : (() => {
                                 const ext = previewFile.name.split('.').pop()?.toLowerCase();
-                                if (/^(jpg|jpeg|png|gif|svg|webp|bmp)$/.test(ext || '')) return 'Image';
-                                if (/^(mp4|webm|mov|avi|mkv)$/.test(ext || '')) return 'Video';
-                                if (/^(mp3|wav|ogg|flac|m4a|aac)$/.test(ext || '')) return 'Audio';
-                                if (ext === 'pdf') return 'PDF';
-                                if (/^(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash)$/.test(ext || '')) return 'Code';
-                                if (/^(zip|tar|gz|rar|7z)$/.test(ext || '')) return 'Archive';
-                                if (/^(txt|md|log|csv)$/.test(ext || '')) return 'Text';
-                                return ext?.toUpperCase() || 'File';
+                                if (/^(jpg|jpeg|png|gif|svg|webp|bmp)$/.test(ext || '')) return t('preview.typeImage');
+                                if (/^(mp4|webm|mov|avi|mkv)$/.test(ext || '')) return t('preview.typeVideo');
+                                if (/^(mp3|wav|ogg|flac|m4a|aac)$/.test(ext || '')) return t('preview.typeAudio');
+                                if (ext === 'pdf') return t('preview.typePdf');
+                                if (/^(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash)$/.test(ext || '')) return t('preview.typeCode');
+                                if (/^(zip|tar|gz|rar|7z)$/.test(ext || '')) return t('preview.typeArchive');
+                                if (/^(txt|md|log|csv)$/.test(ext || '')) return t('preview.typeText');
+                                return ext?.toUpperCase() || t('preview.typeFile');
                               })()}
                             </span>
                           </div>
@@ -5686,7 +5764,7 @@ const App: React.FC = () => {
                           {previewImageDimensions && (
                             <div className="flex items-center justify-between">
                               <span className="text-gray-500 flex items-center gap-1.5">
-                                <Image size={12} /> Resolution
+                                <Image size={12} /> {t('preview.resolutionLabel')}
                               </span>
                               <span className="font-medium">{previewImageDimensions.width} × {previewImageDimensions.height}</span>
                             </div>
@@ -5695,7 +5773,7 @@ const App: React.FC = () => {
                           {/* Modified */}
                           <div className="flex items-center justify-between">
                             <span className="text-gray-500 flex items-center gap-1.5">
-                              <Clock size={12} /> Modified
+                              <Clock size={12} /> {t('preview.modifiedLabel')}
                             </span>
                             <span className="font-medium text-right">{previewFile.modified || '—'}</span>
                           </div>
@@ -5704,7 +5782,7 @@ const App: React.FC = () => {
                           {!previewFile.is_dir && (
                             <div className="flex items-center justify-between">
                               <span className="text-gray-500 flex items-center gap-1.5">
-                                <Database size={12} /> Extension
+                                <Database size={12} /> {t('preview.extensionLabel')}
                               </span>
                               <span className="font-mono text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 rounded">
                                 .{previewFile.name.split('.').pop()?.toLowerCase() || '—'}
@@ -5715,7 +5793,7 @@ const App: React.FC = () => {
                           {/* Path */}
                           <div className="flex items-start justify-between gap-2">
                             <span className="text-gray-500 flex items-center gap-1.5 shrink-0">
-                              <FolderOpen size={12} /> Path
+                              <FolderOpen size={12} /> {t('preview.pathLabel')}
                             </span>
                             <span className="font-medium text-right truncate" title={previewFile.path}>{previewFile.path}</span>
                           </div>
@@ -5729,7 +5807,7 @@ const App: React.FC = () => {
                               onClick={() => openUniversalPreview(previewFile, false)}
                               className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
-                              <Eye size={14} /> Open Preview
+                              <Eye size={14} /> {t('preview.openPreview')}
                             </button>
                           )}
 
@@ -5739,7 +5817,7 @@ const App: React.FC = () => {
                               onClick={() => openUniversalPreview(previewFile, false)}
                               className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >
-                              <Code size={14} /> View Source
+                              <Code size={14} /> {t('preview.viewSource')}
                             </button>
                           )}
 
@@ -5747,19 +5825,19 @@ const App: React.FC = () => {
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(previewFile.path);
-                              notify.success('Copied', 'Path copied to clipboard');
+                              notify.success(t('toast.clipboardCopied'), t('toast.pathCopied'));
                             }}
                             className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                           >
-                            <Copy size={14} /> Copy Path
+                            <Copy size={14} /> {t('preview.copyPath')}
                           </button>
                         </div>
                       </div>
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-gray-400 text-sm">
                         <Eye size={32} className="mb-3 opacity-30" />
-                        <p className="font-medium">No file selected</p>
-                        <p className="text-xs mt-1 text-center">Click on a file to view its details</p>
+                        <p className="font-medium">{t('preview.noFileSelected')}</p>
+                        <p className="text-xs mt-1 text-center">{t('preview.clickToViewDetails')}</p>
                       </div>
                     )}
                   </div>
@@ -5821,17 +5899,17 @@ const App: React.FC = () => {
             if (file.isRemote) {
               await invoke('save_remote_file', { path: file.path, content });
               humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
-              notify.success('File Saved', `${file.name} saved to server`);
+              notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
               await loadRemoteFiles();
             } else {
               await invoke('save_local_file', { path: file.path, content });
               humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
-              notify.success('File Saved', `${file.name} saved locally`);
+              notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
               await loadLocalFiles(currentLocalPath);
             }
           } catch (error) {
             humanLog.logError('UPLOAD', { filename: file.name }, logId);
-            notify.error('Save Failed', String(error));
+            notify.error(t('toast.saveFailed'), String(error));
           }
         }}
       />

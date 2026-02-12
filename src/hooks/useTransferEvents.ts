@@ -10,7 +10,7 @@ interface UseTransferEventsOptions {
   transferQueue: any;
   notify: any;
   setActiveTransfer: (transfer: TransferProgress | null) => void;
-  loadRemoteFiles: () => void;
+  loadRemoteFiles: (overrideProtocol?: string) => unknown;
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
 }

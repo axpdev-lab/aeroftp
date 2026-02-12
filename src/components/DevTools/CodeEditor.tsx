@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
 import { Save, X, RotateCcw, FileCode } from 'lucide-react';
 import { PreviewFile, getFileLanguage } from './types';
@@ -99,6 +100,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     theme: themeProp = 'tokyo-night',
     onAskAgent,
 }) => {
+    const t = useTranslation();
     const editorRef = useRef<any>(null);
     const monacoRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -300,8 +302,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         return (
             <div className={`flex flex-col items-center justify-center h-full text-gray-400 ${className}`}>
                 <FileCode size={48} className="mb-3 opacity-30" />
-                <p>No file selected for editing</p>
-                <p className="text-sm mt-1">Right-click on a file and choose "Edit"</p>
+                <p>{t('devtools.editorPanel.noFileSelected')}</p>
+                <p className="text-sm mt-1">{t('devtools.editorPanel.emptyState')}</p>
             </div>
         );
     }
@@ -333,16 +335,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                         title="Reset changes"
                     >
                         <RotateCcw size={12} />
-                        Reset
+                        {t('devtools.editorPanel.reset')}
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={!hasChanges || isSaving}
                         className="flex items-center gap-1 px-3 py-1 text-xs bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
-                        title="Save file (Ctrl+S)"
+                        title={`${t('devtools.editorPanel.save')} (Ctrl+S)`}
                     >
                         <Save size={12} />
-                        {isSaving ? 'Saving...' : 'Save'}
+                        {isSaving ? t('devtools.editorPanel.saving') : t('devtools.editorPanel.save')}
                     </button>
                     <button
                         onClick={onClose}

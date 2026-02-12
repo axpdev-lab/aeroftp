@@ -186,8 +186,22 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 - **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)
 - **FTP insecure warning**: Visual banner on unencrypted FTP connections
 
-### 47 Languages
-More languages than any other FTP client. Automatic browser language detection.
+### 47 Languages at 100% Coverage
+
+Quality-audited translations with native script integrity. Automatic browser language detection.
+
+| | | | | |
+|---|---|---|---|---|
+| :gb: English | :it: Italian | :de: German | :es: Spanish | :fr: French |
+| :portugal: Portuguese | :ru: Russian | :jp: Japanese | :kr: Korean | :cn: Chinese |
+| :india: Hindi | :bangladesh: Bengali | :tr: Turkey | :poland: Polish | :netherlands: Dutch |
+| :sweden: Swedish | :denmark: Danish | :norway: Norwegian | :finland: Finnish | :iceland: Icelandic |
+| :czech_republic: Czech | :hungary: Hungarian | :romania: Romanian | :ukraine: Ukrainian | :greece: Greek |
+| :thailand: Thai | :vietnam: Vietnamese | :indonesia: Indonesian | :malaysia: Malay | :philippines: Filipino |
+| :cambodia: Khmer | :georgia: Georgian | :armenia: Armenian | :bulgaria: Bulgarian | :croatia: Croatian |
+| :serbia: Serbian | :slovakia: Slovak | :slovenia: Slovenian | :macedonia: Macedonian | :estonia: Estonian |
+| :lithuania: Lithuanian | :latvia: Latvian | :wales: Welsh | Catalan | Galician |
+| Basque | :kenya: Swahili | | | |
 
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA

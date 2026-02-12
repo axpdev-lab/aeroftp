@@ -258,9 +258,9 @@ export function LargeIconsGrid({
       </div>
 
       {/* File cards */}
-      {files.map((file) => (
+      {files.map((file, i) => (
         <LargeIconCard
-          key={file.name}
+          key={`${file.name}-${i}`}
           file={file}
           isSelected={selectedFiles.has(file.name)}
           isDragOver={dragOverTarget === file.path}

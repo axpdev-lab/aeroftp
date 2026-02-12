@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from '../../i18n';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -369,6 +370,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     sshConnection,
     appTheme,
 }) => {
+    const t = useTranslation();
     // Settings
     const [settings, setSettings] = useState<TerminalSettings>(loadSettings);
     // Track whether user manually picked a terminal theme (overrides auto-sync)
@@ -512,13 +514,13 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 xterm.writeln('\x1b[1;36m║\x1b[0m   \x1b[1;33mSSH Remote Shell\x1b[0m                     \x1b[1;36m║\x1b[0m');
                 xterm.writeln('\x1b[1;36m╚════════════════════════════════════════╝\x1b[0m');
                 xterm.writeln('');
-                xterm.writeln(`\x1b[90mClick "Start" to connect to ${sshConnection?.host || 'remote server'}.\x1b[0m`);
+                xterm.writeln(`\x1b[90m${t('devtools.terminalPanel.connectPrompt', { host: sshConnection?.host || t('devtools.terminalPanel.remoteServer') })}\x1b[0m`);
             } else {
                 xterm.writeln('\x1b[1;35m╔════════════════════════════════════════╗\x1b[0m');
                 xterm.writeln('\x1b[1;35m║\x1b[0m   \x1b[1;36mAeroFTP Terminal\x1b[0m                     \x1b[1;35m║\x1b[0m');
                 xterm.writeln('\x1b[1;35m╚════════════════════════════════════════╝\x1b[0m');
                 xterm.writeln('');
-                xterm.writeln('\x1b[90mClick "Start" to launch your shell.\x1b[0m');
+                xterm.writeln(`\x1b[90m${t('devtools.terminalPanel.launchPrompt')}\x1b[0m`);
             }
             xterm.writeln('');
         };
@@ -747,8 +749,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         const xterm = xtermInstances.current.get(tabId);
         if (xterm) {
             xterm.writeln('');
-            xterm.writeln('\x1b[33mTerminal closed.\x1b[0m');
-            xterm.writeln('\x1b[90mClick "Start" to launch a new shell.\x1b[0m');
+            xterm.writeln(`\x1b[33m${t('devtools.terminalPanel.closed')}\x1b[0m`);
+            xterm.writeln(`\x1b[90m${t('devtools.terminalPanel.newShellPrompt')}\x1b[0m`);
         }
     }, [activeTabId, tabs]);
 
@@ -973,27 +975,27 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                             onClick={startShell}
                             disabled={activeTab.isConnecting}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white rounded transition-colors"
-                            title="Start shell"
+                            title={t('devtools.terminalPanel.start')}
                         >
                             <Play size={12} />
-                            {activeTab.isConnecting ? 'Starting...' : 'Start'}
+                            {activeTab.isConnecting ? t('devtools.terminalPanel.starting') : t('devtools.terminalPanel.start')}
                         </button>
                     ) : activeTab?.isConnected ? (
                         <>
                             <button
                                 onClick={restartShell}
                                 className="flex items-center gap-1 px-1.5 py-1 text-xs bg-yellow-600 hover:bg-yellow-500 text-white rounded transition-colors"
-                                title="Restart shell"
+                                title={t('devtools.terminalPanel.restart')}
                             >
                                 <RotateCcw size={12} />
                             </button>
                             <button
                                 onClick={stopShell}
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
-                                title="Stop shell"
+                                title={t('devtools.terminalPanel.stopShell')}
                             >
                                 <Square size={12} />
-                                Stop
+                                {t('devtools.terminalPanel.stop')}
                             </button>
                         </>
                     ) : null}

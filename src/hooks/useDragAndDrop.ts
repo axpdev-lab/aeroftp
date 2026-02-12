@@ -40,7 +40,7 @@ interface UseDragAndDropParams {
     };
     currentRemotePath: string;
     currentLocalPath: string;
-    loadRemoteFiles: () => Promise<void>;
+    loadRemoteFiles: (overrideProtocol?: string) => Promise<unknown>;
     loadLocalFiles: (path: string) => Promise<boolean | void>;
     // Provider detection
     activeSessionId?: string | null;

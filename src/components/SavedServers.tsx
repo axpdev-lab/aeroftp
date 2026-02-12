@@ -569,8 +569,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 <div className="font-medium flex items-center gap-2">
                                     {server.name || server.host}
                                     {server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title="Session expired (24h)">
-                                            <Clock size={10} /> EXP
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title={t('savedServers.sessionExpired')}>
+                                            <Clock size={10} /> {t('savedServers.expBadge')}
                                         </span>
                                     )}
                                     {oauthConnecting === server.id && (
@@ -582,11 +582,11 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
-                                        ? `OAuth — ${server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' } as Record<string, string>)[server.protocol || ''] || server.protocol}`
+                                        ? t('savedServers.oauthError', { username: server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' } as Record<string, string>)[server.protocol || ''] || server.protocol || '' })
                                         : server.protocol === 'filen'
-                                            ? `E2E AES-256 — ${server.username}`
+                                            ? t('savedServers.e2eAes256', { username: server.username || '' })
                                             : server.protocol === 'mega'
-                                                ? `E2E AES-128 — ${server.username}`
+                                                ? t('savedServers.e2eAes128', { username: server.username || '' })
                                                 : server.protocol === 's3'
                                                     ? (() => {
                                                         const bucket = server.options?.bucket || 'S3';

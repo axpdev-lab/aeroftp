@@ -38,7 +38,7 @@
       <li>Batch Rename with 4 modes and live preview</li>
       <li>Monaco code editor (VS Code engine) with syntax highlighting</li>
       <li>Integrated terminal with SSH remote shell and 8 themes</li>
-      <li>51 languages with RTL support (Arabic, Hebrew, Persian, Urdu)</li>
+      <li>47 languages at 100% coverage — quality-audited translations with native script integrity</li>
       <li>AeroPlayer: Built-in media player with 14 visualizer modes, WebGL GPU shaders, 10-band EQ, and beat detection</li>
     </ul>
     <p>
@@ -87,9 +87,8 @@
     <lang percentage="100">ja</lang>
     <lang percentage="100">ko</lang>
     <lang percentage="100">zh</lang>
-    <lang percentage="100">ar</lang>
-    <lang percentage="100">he</lang>
     <lang percentage="100">hi</lang>
+    <lang percentage="100">bn</lang>
     <lang percentage="100">tr</lang>
     <lang percentage="100">pl</lang>
     <lang percentage="100">nl</lang>
@@ -97,6 +96,7 @@
     <lang percentage="100">da</lang>
     <lang percentage="100">fi</lang>
     <lang percentage="100">no</lang>
+    <lang percentage="100">is</lang>
     <lang percentage="100">cs</lang>
     <lang percentage="100">hu</lang>
     <lang percentage="100">ro</lang>
@@ -106,31 +106,32 @@
     <lang percentage="100">vi</lang>
     <lang percentage="100">id</lang>
     <lang percentage="100">ms</lang>
-    <lang percentage="100">fa</lang>
-    <lang percentage="100">ur</lang>
-    <lang percentage="100">bn</lang>
-    <lang percentage="100">ta</lang>
-    <lang percentage="100">te</lang>
-    <lang percentage="100">ml</lang>
-    <lang percentage="100">kn</lang>
-    <lang percentage="100">mr</lang>
-    <lang percentage="100">gu</lang>
-    <lang percentage="100">pa</lang>
-    <lang percentage="100">si</lang>
+    <lang percentage="100">tl</lang>
     <lang percentage="100">km</lang>
-    <lang percentage="100">my</lang>
-    <lang percentage="100">lo</lang>
     <lang percentage="100">ka</lang>
-    <lang percentage="100">am</lang>
-    <lang percentage="100">ne</lang>
+    <lang percentage="100">hy</lang>
     <lang percentage="100">bg</lang>
     <lang percentage="100">hr</lang>
+    <lang percentage="100">sr</lang>
     <lang percentage="100">sk</lang>
     <lang percentage="100">sl</lang>
+    <lang percentage="100">mk</lang>
     <lang percentage="100">et</lang>
+    <lang percentage="100">lt</lang>
+    <lang percentage="100">lv</lang>
+    <lang percentage="100">cy</lang>
+    <lang percentage="100">ca</lang>
+    <lang percentage="100">gl</lang>
+    <lang percentage="100">eu</lang>
+    <lang percentage="100">sw</lang>
   </languages>
 
   <releases>
+    <release version="2.0.7" date="2026-02-12">
+      <description>
+        <p>Translation Quality Audit: Comprehensive quality pass across all 47 languages. Eliminated 605 silent intruder keys (English values without markers), restored Armenian Unicode script from 63 Latin romanizations, applied 16 native Chinese corrections, standardized 173 placeholder formats, and translated 5 connection keys missing in 45 languages. Over 6,350 translations verified or corrected.</p>
+      </description>
+    </release>
     <release version="2.0.6" date="2026-02-11">
       <description>
         <p>Theme System, Security Toolkit, Complete i18n: Four built-in themes (Light, Dark, Tokyo Night, Cyberpunk) with CSS custom properties. Security Toolkit with Hash Forge (5 algorithms), CryptoLab (AES-256-GCM/ChaCha20 text encryption), and Password Forge (CSPRNG passwords + BIP39 passphrases). Terminal and Monaco editor auto-sync with app theme. 360 new i18n keys across 47 languages — zero untranslated strings. Monaco dev mode fix. About dialog updated.</p>

@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from '../i18n';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 /** Tokyo Cherry Blossom icon (neon purple) */
@@ -109,6 +110,8 @@ interface ThemeToggleProps {
 }
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => {
+    const t = useTranslation();
+
     const nextTheme = (): Theme => {
         const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
         return order[(order.indexOf(theme) + 1) % 5];
@@ -126,11 +129,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
 
     const getLabel = () => {
         switch (theme) {
-            case 'light': return 'Light';
-            case 'dark': return 'Dark';
-            case 'tokyo': return 'Tokyo Night';
-            case 'cyber': return 'Cyberpunk';
-            case 'auto': return 'Auto';
+            case 'light': return t('settings.themeLightLabel');
+            case 'dark': return t('settings.themeDarkLabel');
+            case 'tokyo': return t('settings.themeTokyoLabel');
+            case 'cyber': return t('settings.themeCyberLabel');
+            case 'auto': return t('settings.themeAutoLabel');
         }
     };
 
@@ -146,7 +149,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
         <button
             onClick={() => setTheme(nextTheme())}
             className={`p-2 rounded-lg transition-colors ${getButtonStyle()}`}
-            title={`Theme: ${getLabel()}`}
+            title={`${t('settings.themeLabel')}: ${getLabel()}`}
         >
             {getIcon()}
         </button>

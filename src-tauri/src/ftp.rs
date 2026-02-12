@@ -138,22 +138,44 @@ impl FtpManager {
     pub async fn list_files(&mut self) -> Result<Vec<RemoteFile>> {
         let stream = self.stream.as_mut()
             .ok_or(FtpManagerError::NotConnected)?;
-        
+
         debug!("Listing files in: {}", self.current_path);
-        
-        // List files with timeout
+
+        // Send NOOP before LIST to drain any pending control-connection responses
+        // from a previous large transfer/listing. This prevents stale data from
+        // leaking into the next LIST response (phantom files bug).
+        if let Err(e) = stream.noop().await {
+            debug!("Pre-LIST NOOP failed (non-fatal): {}", e);
+        }
+
+        // Use LIST without explicit path argument — relies on CWD already being set.
+        // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
+        // to misinterpret paths containing #, spaces, or other special characters.
         let files = tokio::time::timeout(
             Duration::from_secs(30),
-            stream.list(Some(&self.current_path))
+            stream.list(None)
         )
         .await
         .context("List operation timeout")?
         .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
         let mut remote_files = Vec::new();
-        
-        for file_str in files {
-            if let Ok(file) = self.parse_ftp_listing(&file_str) {
+
+        for file_str in &files {
+            let trimmed = file_str.trim();
+            // Skip non-listing lines that FTP servers may include
+            if trimmed.is_empty()
+                || trimmed.starts_with("total ")
+                || trimmed.starts_with("Total ")
+            {
+                continue;
+            }
+            // Skip directory header lines (e.g. "/path/to/dir:" from recursive LIST)
+            if trimmed.ends_with(':') && !trimmed.contains(' ') {
+                debug!("Skipping directory header line: {}", trimmed);
+                continue;
+            }
+            if let Ok(file) = self.parse_ftp_listing(trimmed) {
                 // Skip . and .. for cleaner UX - use "Up" button for navigation
                 if file.name == "." || file.name == ".." {
                     continue;

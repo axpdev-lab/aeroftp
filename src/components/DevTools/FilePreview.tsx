@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import { useTranslation } from '../../i18n';
 import Prism from 'prismjs';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -35,6 +36,7 @@ interface FilePreviewProps {
 }
 
 export const FilePreview: React.FC<FilePreviewProps> = ({ file, className = '' }) => {
+    const t = useTranslation();
     // Trigger Prism highlighting when content changes
     useEffect(() => {
         if (file && !isImageFile(file.name) && !isMarkdownFile(file.name)) {
@@ -48,8 +50,8 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ file, className = '' }
         return (
             <div className={`flex flex-col items-center justify-center h-full text-gray-400 ${className}`}>
                 <FileText size={48} className="mb-3 opacity-30" />
-                <p>Select a file to preview</p>
-                <p className="text-sm mt-1">Right-click on a file and choose "Preview"</p>
+                <p>{t('preview.noFileSelected')}</p>
+                <p className="text-sm mt-1">{t('devtools.previewPanel.emptyState')}</p>
             </div>
         );
     }
