@@ -510,7 +510,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeTab === tab.id
+                                className={`w-full flex items-start gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${activeTab === tab.id
                                     ? 'bg-blue-500 text-white'
                                     : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}

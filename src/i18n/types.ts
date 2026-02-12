@@ -416,7 +416,7 @@ export const AVAILABLE_LANGUAGES: LanguageInfo[] = [
     { code: 'sl', name: 'Slovenian', nativeName: 'Slovenščina', flag: '🇸🇮' },
     { code: 'mk', name: 'Macedonian', nativeName: 'Македонски', flag: '🇲🇰' },
     { code: 'ka', name: 'Georgian', nativeName: 'ქართული', flag: '🇬🇪' },
-    { code: 'hy', name: 'Armenian', nativeName: 'Հdelays', flag: '🇦🇲' },
+    { code: 'hy', name: 'Armenian', nativeName: 'Հայերեն', flag: '🇦🇲' },
     // Baltic (3)
     { code: 'lt', name: 'Lithuanian', nativeName: 'Lietuvių', flag: '🇱🇹' },
     { code: 'lv', name: 'Latvian', nativeName: 'Latviešu', flag: '🇱🇻' },
