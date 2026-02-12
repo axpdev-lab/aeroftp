@@ -13,6 +13,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (14 protocols) |
 | **[COMPETITOR-ANALYSIS.md](./dev/COMPETITOR-ANALYSIS.md)** | Market and competitor analysis (internal) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
+| **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 | **[UBUNTU-COMPATIBILITY.md](./UBUNTU-COMPATIBILITY.md)** | Ubuntu 22.04/24.04 LTS compatibility audit |
 | **[WINDOWS-COMPATIBILITY.md](./WINDOWS-COMPATIBILITY.md)** | Windows 10/11 compatibility audit |
 
@@ -38,6 +39,9 @@ git push origin main --tags
 | Linux | `.deb`, `.rpm`, `.AppImage`, `.snap` | GitHub Releases + **Snap Store** |
 | Windows | `.msi`, `.exe` | GitHub Releases |
 | macOS | `.dmg` | GitHub Releases |
+
+### Security Evidence
+See **[security-evidence/README.md](./security-evidence/README.md)** for the public release-by-release security evidence index and template.
 
 ---
 
@@ -67,7 +71,7 @@ Currently supported: **47 languages** at 100% coverage
 
 ## Security (v2.0.6)
 
-AeroFTP v2.0.5 adds **WebDAV HTTP Digest Authentication (RFC 2617)** with auto-detection — the password is never transmitted, only MD5 challenge-response hashes. CloudMe is the only cloud service requiring Digest auth, and AeroFTP is one of the few clients that support it correctly. The **Unified Encrypted Keystore** (v1.9.0) stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) and [SECURITY.md](../SECURITY.md) for full details.
+AeroFTP v2.0.5 adds **WebDAV HTTP Digest Authentication (RFC 2617)** with auto-detection — the password is never transmitted, only MD5 challenge-response hashes. CloudMe is the only cloud service requiring Digest auth, and AeroFTP is one of the few clients that support it correctly. The **Unified Encrypted Keystore** (v1.9.0) stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md), [SECURITY.md](../SECURITY.md), and [security-evidence/README.md](./security-evidence/README.md) for full details.
 
 ## AeroVault Directory Support (v1.9.0)
 

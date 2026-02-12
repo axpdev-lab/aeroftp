@@ -14,17 +14,14 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/v/release/axpnet/aeroftp?style=for-the-badge" alt="Latest Release">
+  <img src="https://img.shields.io/github/stars/axpnet/aeroftp?style=for-the-badge" alt="GitHub Stars">
+  <img src="https://img.shields.io/github/forks/axpnet/aeroftp?style=for-the-badge" alt="GitHub Forks">
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Built%20with-Tauri%202%20%2B%20React%2018-purple?style=for-the-badge" alt="Built with">
+  <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
   <img src="https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Languages-47-blue?style=for-the-badge" alt="Languages">
   <img src="https://img.shields.io/badge/Protocols-14-teal?style=for-the-badge" alt="Protocols">
-</p>
-
-<p align="center">
-  <a href="https://snapcraft.io/aeroftp">
-    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="Get it from the Snap Store">
-  </a>
 </p>
 
 ---
@@ -157,7 +154,7 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 | **Clearable History** | One-click clear for recent locations. No persistent browsing traces |
 | **Portable Deployment** | AppImage runs without installation. Remove it and the config directory — no traces remain |
 
-See [SECURITY.md](SECURITY.md) for the complete security architecture and privacy comparison.
+See [SECURITY.md](SECURITY.md) for the complete security architecture and privacy comparison, and [docs/security-evidence/README.md](docs/security-evidence/README.md) for release-by-release security evidence.
 
 ---
 
@@ -216,6 +213,13 @@ Quality-audited translations with native script integrity. Automatic browser lan
 ```bash
 sudo snap install aeroftp
 ```
+
+<p align="center">
+  <a href="https://snapcraft.io/aeroftp">
+    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="Get it from the Snap Store">
+  </a>
+</p>
+
 > **Note:** Snap version has limited filesystem access due to strict confinement. For full filesystem access, use .deb or .AppImage.
 
 ### Other Formats
