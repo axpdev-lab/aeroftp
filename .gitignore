@@ -72,6 +72,9 @@ run-clean.sh
 # One-time translation scripts
 scripts/i18n/
 
+# Development scripts
+scripts/
+
 # Temporary output files
 check_output*.txt
 src-tauri/check_output*.txt
