@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.11" date="2026-02-13">
+      <description>
+        <p>Complete i18n for Connection Intelligence: All 14 new connection logging and security badge keys translated across 45 languages with native quality. 360 placeholder corrections applied automatically.</p>
+      </description>
+    </release>
     <release version="2.0.10" date="2026-02-13">
       <description>
         <p>Connection Intelligence, Security Badges and Windows Build Fix: DNS resolution with resolved IP in Activity Log, protocol step logging (TLS/SSH/HTTPS establishment, authentication, directory listing), secure connection badge (ShieldCheck with protocol abbreviation), 3-tier security model (insecure/warning/secure) in StatusBar, and suppaftp pinned to 8.0.1 to fix Windows build regression.</p>

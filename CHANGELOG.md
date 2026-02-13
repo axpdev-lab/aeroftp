@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.11] - 2026-02-13
+
+### Complete i18n for Connection Intelligence
+
+Translated all 14 new connection logging and security badge keys across 45 languages with native quality. Placeholder corrections applied automatically via merge script.
+
+#### Added
+
+- **Full i18n coverage for connection step logging**: DNS resolution, TLS/SSH/HTTPS establishment, authentication, and directory listing messages translated in all 47 languages
+- **Full i18n coverage for security badges**: Secure connection, insecure connection, and update badge labels translated in all 47 languages
+
+#### Fixed
+
+- **Placeholder alignment**: Corrected 360 placeholder mismatches ({host}→{hostname}, {cipher}→{mode}, {user}→{username}, etc.) from external translation tool output
+
+---
+
 ## [2.0.10] - 2026-02-13
 
 ### Connection Intelligence, Security Badges & Windows Build Fix
