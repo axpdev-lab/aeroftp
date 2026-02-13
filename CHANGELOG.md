@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.9] - 2026-02-13
+
+### Smart Auto-Update with Platform-Native Installation
+
+Enhanced the in-app update system with platform-aware install capabilities, smarter asset availability detection, and complete i18n coverage for update UI strings.
+
+#### Added
+
+- **Platform-native update installation**: One-click Install & Restart for `.deb` (via `pkexec dpkg -i`), `.rpm` (via `pkexec rpm -U`), and `.msi`/`.exe` (Windows launcher) — no more manual file manager step
+- **Asset availability detection**: When a new GitHub release exists but the CI-built artifact for the installed format is not yet available, the update check silently retries every hour instead of showing a premature notification
+- **StatusBar update re-trigger**: Clicking the purple "Update Available" badge in the status bar re-opens the download toast if previously dismissed
+- **Skip for now button**: Explicit "Later, not now" dismiss option in both pre-download and post-download states
+- **2 new i18n keys**: `update.openInstaller` and `update.skipForNow` translated in all 47 languages with native quality (Armenian manually verified)
+
+#### Changed
+
+- **Update toast UX redesigned**: Clearer state progression (Ready → Downloading → Complete → Error), wider layout, secondary dismiss actions, and error state now shows both Retry and Open Folder options
+- **Version detection from runtime**: `check_update` now reads version from `app.package_info()` instead of compile-time `env!("CARGO_PKG_VERSION")`, ensuring correct detection after in-place updates
+
+#### Fixed
+
+- **Greek `openInstaller`**: Was "Άνοιγμα Installer" (English leak), now "Άνοιγμα εγκαταστάτη"
+- **Danish `openInstaller`**: Was "Åbn installer" (English leak), now "Åbn installationsprogram"
+- **22 languages `skipForNow`**: Abbreviated translations (e.g. "Später", "Později", "後で") expanded to full casual form matching English "Later, not now"
+
+---
+
 ## [2.0.8] - 2026-02-13
 
 ### Security Hardening Completion, Full i18n Coverage, and Media Startup Stabilization

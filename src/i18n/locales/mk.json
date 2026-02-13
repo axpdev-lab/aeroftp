@@ -1258,7 +1258,9 @@
             "downloadComplete": "Преземањето е завршено!",
             "openFolder": "Отвори во менаџер на датотеки",
             "retry": "Обиди се повторно",
-            "installRestart": "Инсталирај и рестартирај"
+            "installRestart": "Инсталирај и рестартирај",
+            "openInstaller": "Отвори инсталатор",
+            "skipForNow": "Подоцна, не сега"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

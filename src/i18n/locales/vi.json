@@ -1258,7 +1258,9 @@
             "downloadComplete": "Tải xuống hoàn tất!",
             "openFolder": "Mở trong Trình quản lý tệp",
             "retry": "Thử tải lại",
-            "installRestart": "Cài đặt & Khởi động lại"
+            "installRestart": "Cài đặt & Khởi động lại",
+            "openInstaller": "Mở trình cài đặt",
+            "skipForNow": "Để sau, không phải bây giờ"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

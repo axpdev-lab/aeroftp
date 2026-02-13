@@ -1258,7 +1258,9 @@
             "downloadComplete": "Изтеглянето завършено!",
             "openFolder": "Отваряне във файлов мениджър",
             "retry": "Повторен опит за изтегляне",
-            "installRestart": "Инсталиране и рестартиране"
+            "installRestart": "Инсталиране и рестартиране",
+            "openInstaller": "Отвори инсталатора",
+            "skipForNow": "По-късно, не сега"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -1258,7 +1258,9 @@
             "downloadComplete": "ডাউনলোড সম্পন্ন!",
             "openFolder": "ফোল্ডারে খুলুন",
             "retry": "পুনরায় ডাউনলোড চেষ্টা করুন",
-            "installRestart": "ইনস্টল এবং রিস্টার্ট করুন"
+            "installRestart": "ইনস্টল এবং রিস্টার্ট করুন",
+            "openInstaller": "ইনস্টলার খুলুন",
+            "skipForNow": "পরে, এখন নয়"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

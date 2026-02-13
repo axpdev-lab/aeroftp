@@ -1258,7 +1258,9 @@
             "downloadComplete": "Descarga completada!",
             "openFolder": "Abrir en xestor de ficheiros",
             "retry": "Reintentar descarga",
-            "installRestart": "Instalar e reiniciar"
+            "installRestart": "Instalar e reiniciar",
+            "openInstaller": "Abrir instalador",
+            "skipForNow": "Máis tarde, agora non"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

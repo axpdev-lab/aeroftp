@@ -1258,7 +1258,9 @@
             "downloadComplete": "Pengunduhan Selesai",
             "openFolder": "Buka di Manajer File",
             "retry": "Coba Lagi Unduh",
-            "installRestart": "Instal & Mulai Ulang"
+            "installRestart": "Instal & Mulai Ulang",
+            "openInstaller": "Buka Installer",
+            "skipForNow": "Nanti saja, tidak sekarang"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

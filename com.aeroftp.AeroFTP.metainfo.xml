@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.9" date="2026-02-13">
+      <description>
+        <p>Smart Auto-Update with Platform-Native Installation: One-click Install and Restart for .deb, .rpm, .msi and .exe packages via platform-native tools (pkexec/msiexec). Smart asset availability detection retries hourly when CI artifacts are still building. Update toast UX redesigned with clear state progression. StatusBar badge re-triggers dismissed toast. 2 new i18n keys (openInstaller, skipForNow) translated in all 47 languages. Runtime version detection replaces compile-time macro.</p>
+      </description>
+    </release>
     <release version="2.0.8" date="2026-02-13">
       <description>
         <p>Security Hardening, i18n Completion, Media Startup: Plugin shell injection eliminated (direct argv execution), TOFU host-key error branch hardened (fail-closed), localStorage OAuth fallback removed (vault-only credentials), terminal destructive command denylist, AeroCloud sync counters fixed with per-file activity details, security regression suite (5 automated checks with CI gate), settings migrated to vault-first storage, full locale key completion including Armenian, and Linux media first-play stabilized via buffered autoplay queue.</p>

@@ -1258,7 +1258,9 @@
             "downloadComplete": "Stahovanie dokoncene!",
             "openFolder": "Otvorit v spravci suborov",
             "retry": "Opakovat stahovanie",
-            "installRestart": "Nainstalovat a restartovat"
+            "installRestart": "Nainstalovat a restartovat",
+            "openInstaller": "Otvoriť inštalátor",
+            "skipForNow": "Neskôr, nie teraz"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

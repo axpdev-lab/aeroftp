@@ -294,8 +294,8 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_update() -> Result<UpdateInfo, String> {
-    let current_version = env!("CARGO_PKG_VERSION");
+async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+    let current_version = app.package_info().version.to_string();
     let install_format = detect_install_format();
     
     info!("Checking for updates... Current: v{}, Format: {}", current_version, install_format);
@@ -320,7 +320,7 @@ async fn check_update() -> Result<UpdateInfo, String> {
     
     // Parse versions (remove 'v' prefix if present)
     let latest_tag = release.tag_name.trim_start_matches('v');
-    let current = Version::parse(current_version)
+    let current = Version::parse(&current_version)
         .map_err(|e| format!("Failed to parse current version: {}", e))?;
     let latest = Version::parse(latest_tag)
         .map_err(|e| format!("Failed to parse latest version: {}", e))?;
@@ -346,15 +346,30 @@ async fn check_update() -> Result<UpdateInfo, String> {
         } else {
             None
         };
-        
-        info!("Update available: v{} -> v{} (format: {}, url: {:?})", 
+
+        // Only notify when the asset for the installed format is actually available.
+        // GitHub releases are published before CI finishes building all artifacts,
+        // so the .deb/.rpm/etc. may not exist yet.
+        if download_url.is_none() && !extension.is_empty() {
+            info!("Update v{} exists but {} asset not yet available, skipping notification",
+                  latest_tag, extension);
+            return Ok(UpdateInfo {
+                has_update: false,
+                latest_version: Some(latest_tag.to_string()),
+                download_url: None,
+                current_version,
+                install_format,
+            });
+        }
+
+        info!("Update available: v{} -> v{} (format: {}, url: {:?})",
               current_version, latest_tag, install_format, download_url);
-        
+
         return Ok(UpdateInfo {
             has_update: true,
             latest_version: Some(latest_tag.to_string()),
             download_url,
-            current_version: current_version.to_string(),
+            current_version: current_version.clone(),
             install_format,
         });
     }
@@ -365,7 +380,7 @@ async fn check_update() -> Result<UpdateInfo, String> {
         has_update: false,
         latest_version: Some(latest_tag.to_string()),
         download_url: None,
-        current_version: current_version.to_string(),
+        current_version,
         install_format,
     })
 }
@@ -498,6 +513,107 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 
     // Restart: spawn new process then exit
     let _ = std::process::Command::new(&current_exe).spawn();
+    app.exit(0);
+
+    Ok(())
+}
+
+/// Install a .deb package via pkexec (graphical sudo) and restart the app
+#[tauri::command]
+async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    let downloaded = std::path::Path::new(&downloaded_path);
+    if !downloaded.exists() {
+        return Err("Downloaded file not found".to_string());
+    }
+
+    info!("Installing .deb update via pkexec: {}", downloaded_path);
+
+    let status = std::process::Command::new("pkexec")
+        .args(["dpkg", "-i", &downloaded_path])
+        .status()
+        .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+
+    if !status.success() {
+        return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo dpkg -i {}",
+            status.code(), downloaded_path));
+    }
+
+    info!(".deb installed successfully, restarting...");
+    let _ = std::fs::remove_file(downloaded);
+
+    // Restart via current exe
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Cannot find current exe: {}", e))?;
+    let _ = std::process::Command::new(&current_exe).spawn();
+    app.exit(0);
+
+    Ok(())
+}
+
+/// Install an .rpm package via pkexec and restart the app
+#[tauri::command]
+async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    let downloaded = std::path::Path::new(&downloaded_path);
+    if !downloaded.exists() {
+        return Err("Downloaded file not found".to_string());
+    }
+
+    info!("Installing .rpm update via pkexec: {}", downloaded_path);
+
+    let status = std::process::Command::new("pkexec")
+        .args(["rpm", "-U", &downloaded_path])
+        .status()
+        .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+
+    if !status.success() {
+        return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo rpm -U {}",
+            status.code(), downloaded_path));
+    }
+
+    info!(".rpm installed successfully, restarting...");
+    let _ = std::fs::remove_file(downloaded);
+
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Cannot find current exe: {}", e))?;
+    let _ = std::process::Command::new(&current_exe).spawn();
+    app.exit(0);
+
+    Ok(())
+}
+
+/// Launch Windows installer (.msi or .exe) and exit the app
+#[cfg(windows)]
+#[tauri::command]
+async fn install_windows_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    let downloaded = std::path::Path::new(&downloaded_path);
+    if !downloaded.exists() {
+        return Err("Downloaded file not found".to_string());
+    }
+
+    let ext = downloaded.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    info!("Launching Windows installer: {} ({})", downloaded_path, ext);
+
+    match ext.as_str() {
+        "msi" => {
+            std::process::Command::new("msiexec")
+                .args(["/i", &downloaded_path])
+                .spawn()
+                .map_err(|e| format!("Failed to launch msiexec: {}", e))?;
+        }
+        "exe" => {
+            std::process::Command::new(&downloaded_path)
+                .spawn()
+                .map_err(|e| format!("Failed to launch installer: {}", e))?;
+        }
+        _ => return Err(format!("Unknown installer format: .{}", ext)),
+    }
+
+    // Give installer a moment to start, then exit
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     app.exit(0);
 
     Ok(())
@@ -5269,6 +5385,8 @@ pub fn run() {
             log_update_detection,
             download_update,
             install_appimage_update,
+            install_deb_update,
+            install_rpm_update,
             // AI commands
             ai_chat,
             ai_test_provider,

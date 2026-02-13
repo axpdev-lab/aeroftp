@@ -1258,7 +1258,9 @@
             "downloadComplete": "İndirme tamamlandı!",
             "openFolder": "Dosya Yöneticisinde Aç",
             "retry": "İndirmeyi Yeniden Dene",
-            "installRestart": "Kur ve Yeniden Başlat"
+            "installRestart": "Kur ve Yeniden Başlat",
+            "openInstaller": "Yükleyiciyi Aç",
+            "skipForNow": "Sonra, şimdi değil"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

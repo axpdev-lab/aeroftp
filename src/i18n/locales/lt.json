@@ -1258,7 +1258,9 @@
             "downloadComplete": "Atsisiuntimas baigtas!",
             "openFolder": "Atidaryti failų tvarkytuvyje",
             "retry": "Bandyti atsisiųsti iš naujo",
-            "installRestart": "Įdiegti ir paleisti iš naujo"
+            "installRestart": "Įdiegti ir paleisti iš naujo",
+            "openInstaller": "Atidaryti diegimo programą",
+            "skipForNow": "Vėliau, ne dabar"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

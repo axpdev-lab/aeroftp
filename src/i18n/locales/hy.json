@@ -1258,7 +1258,9 @@
             "downloadComplete": "Ներբեռնումը ավարտվեց:",
             "openFolder": "Բացել պանակում",
             "retry": "Կրկնել",
-            "installRestart": "Տեղադրել և վերագործարկել"
+            "installRestart": "Տեղադրել և վերագործարկել",
+            "openInstaller": "Բացել տեղադրիչը",
+            "skipForNow": "Հետո, ոչ հիմա"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

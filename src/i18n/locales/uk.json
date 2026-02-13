@@ -1258,7 +1258,9 @@
             "downloadComplete": "Завантаження завершено!",
             "openFolder": "Відкрити у файловому менеджері",
             "retry": "Повторити завантаження",
-            "installRestart": "Встановити та перезапустити"
+            "installRestart": "Встановити та перезапустити",
+            "openInstaller": "Відкрити встановлювач",
+            "skipForNow": "Пізніше, не зараз"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

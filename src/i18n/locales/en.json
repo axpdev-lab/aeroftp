@@ -2273,7 +2273,9 @@
             "downloadNow": "Download Now",
             "installRestart": "Install & Restart",
             "openFolder": "Open in File Manager",
+            "openInstaller": "Open Installer",
             "retry": "Retry Download",
+            "skipForNow": "Later, not now",
             "starting": "Starting..."
         },
         "cyberTools": {

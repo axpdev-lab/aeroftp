@@ -1258,7 +1258,9 @@
             "downloadComplete": "Lawrlwytho wedi'i gwblhau!",
             "openFolder": "Agor yn y Rheolwr Ffeiliau",
             "retry": "Ailgeisio Lawrlwytho",
-            "installRestart": "Gosod ac Ailgychwyn"
+            "installRestart": "Gosod ac Ailgychwyn",
+            "openInstaller": "Agor y Gosodwr",
+            "skipForNow": "Yn nes ymlaen, dim nawr"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

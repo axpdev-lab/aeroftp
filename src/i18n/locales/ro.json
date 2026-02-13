@@ -1258,7 +1258,9 @@
             "downloadComplete": "Descărcare completă!",
             "openFolder": "Deschide în Manager de fișiere",
             "retry": "Reîncearcă descărcarea",
-            "installRestart": "Instalare și repornire"
+            "installRestart": "Instalare și repornire",
+            "openInstaller": "Deschide instalatorul",
+            "skipForNow": "Mai târziu, nu acum"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

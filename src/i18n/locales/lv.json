@@ -1258,7 +1258,9 @@
             "downloadComplete": "Lejupielāde pabeigta!",
             "openFolder": "Atvērt failu pārvaldniekā",
             "retry": "Mēģināt lejupielādēt vēlreiz",
-            "installRestart": "Instalēt un pārstartēt"
+            "installRestart": "Instalēt un pārstartēt",
+            "openInstaller": "Atvērt instalētāju",
+            "skipForNow": "Vēlāk, ne tagad"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -39,6 +39,7 @@ interface StatusBarProps {
     onToggleCloud?: () => void;
     onToggleTransferQueue?: () => void;
     onToggleActivityLog?: () => void;
+    onShowUpdateToast?: () => void;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
@@ -69,6 +70,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleCloud,
     onToggleTransferQueue,
     onToggleActivityLog,
+    onShowUpdateToast,
     insecureConnection = false,
 }) => {
     const t = useTranslation();
@@ -106,16 +108,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
                 {/* Update Available Button */}
                 {updateAvailable?.has_update && (
-                    <a
-                        href={updateAvailable.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                    <button
+                        onClick={onShowUpdateToast}
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md cursor-pointer"
                         title={`Download AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />
                         <span>{t('statusbar.updateAvailable')}</span>
-                    </a>
+                    </button>
                 )}
 
                 {/* Separator */}

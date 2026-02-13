@@ -1258,7 +1258,9 @@
             "downloadComplete": "Lataus valmis!",
             "openFolder": "Avaa tiedostonhallinnassa",
             "retry": "Yritä latausta uudelleen",
-            "installRestart": "Asenna ja käynnistä uudelleen"
+            "installRestart": "Asenna ja käynnistä uudelleen",
+            "openInstaller": "Avaa asennusohjelma",
+            "skipForNow": "Myöhemmin, ei nyt"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

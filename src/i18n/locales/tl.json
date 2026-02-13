@@ -1258,7 +1258,9 @@
             "downloadComplete": "Kumpleto na ang download!",
             "openFolder": "Buksan sa File Manager",
             "retry": "Subukan Ulit ang Download",
-            "installRestart": "I-install at I-restart"
+            "installRestart": "I-install at I-restart",
+            "openInstaller": "Buksan ang Installer",
+            "skipForNow": "Mamaya na lang"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -3886,9 +3886,9 @@ const App: React.FC = () => {
 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
 
-      {/* Update Available Badge with inline download */}
+      {/* Update Available Toast with inline download */}
       {updateAvailable?.has_update && !updateToastDismissed && (
-        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[300px] ${!updateDownload ? 'animate-pulse' : ''}`}>
+        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[320px] max-w-[380px] ${!updateDownload ? 'animate-pulse' : ''}`}>
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <span className="font-semibold flex items-center gap-1.5">
@@ -3902,22 +3902,31 @@ const App: React.FC = () => {
             <button
               onClick={() => { setUpdateToastDismissed(true); setUpdateDownload(null); }}
               className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
-              title={t('connection.dismiss')}
+              title={t('update.skipForNow')}
             >
               <X size={16} />
             </button>
           </div>
 
-          {/* Download states */}
+          {/* State: Ready to download */}
           {!updateDownload && (
-            <button
-              onClick={startUpdateDownload}
-              className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
-            >
-              {t('update.downloadNow')} (.{updateAvailable.install_format || 'deb'})
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={startUpdateDownload}
+                className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
+              >
+                {t('update.downloadNow')} (.{updateAvailable.install_format || 'deb'})
+              </button>
+              <button
+                onClick={() => { setUpdateToastDismissed(true); }}
+                className="text-white/60 hover:text-white text-xs py-1 transition-colors flex items-center justify-center gap-1"
+              >
+                <Clock size={10} /> {t('update.skipForNow')}
+              </button>
+            </div>
           )}
 
+          {/* State: Downloading */}
           {updateDownload?.downloading && (
             <div className="flex flex-col gap-1.5">
               <div className="w-full bg-blue-800 rounded-full h-2 overflow-hidden">
@@ -3939,43 +3948,75 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {/* State: Download complete — Install & Restart */}
           {updateDownload?.completedPath && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <span className="text-xs text-green-200 flex items-center gap-1">
                 <CheckCircle2 size={12} /> {t('update.downloadComplete')}
               </span>
-              <span className="text-xs opacity-70 truncate" title={updateDownload.completedPath}>
+              <span className="text-xs opacity-60 truncate" title={updateDownload.completedPath}>
                 {updateDownload.completedPath}
               </span>
-              {updateAvailable.install_format === 'appimage' ? (
+
+              {/* Install & Restart — platform-aware */}
+              {(['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format)) ? (
                 <button
-                  onClick={() => invoke('install_appimage_update', { downloadedPath: updateDownload.completedPath })}
-                  className="bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                  onClick={async () => {
+                    const cmd = updateAvailable.install_format === 'appimage'
+                      ? 'install_appimage_update'
+                      : updateAvailable.install_format === 'rpm'
+                        ? 'install_rpm_update'
+                        : 'install_deb_update';
+                    try {
+                      await invoke(cmd, { downloadedPath: updateDownload.completedPath });
+                    } catch (e) {
+                      setUpdateDownload(prev => prev ? { ...prev, error: String(e) } : null);
+                    }
+                  }}
+                  className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
                 >
-                  <RefreshCw size={12} /> {t('update.installRestart')}
+                  <RefreshCw size={13} /> {t('update.installRestart')}
                 </button>
               ) : (
                 <button
                   onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
-                  className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                  className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
                 >
-                  <ExternalLink size={12} /> {t('update.openFolder')}
+                  <ExternalLink size={13} /> {t('update.openInstaller')}
                 </button>
               )}
+
+              {/* Secondary: skip for now */}
+              <button
+                onClick={() => { setUpdateToastDismissed(true); }}
+                className="text-white/60 hover:text-white text-xs py-0.5 transition-colors flex items-center justify-center gap-1"
+              >
+                <Clock size={10} /> {t('update.skipForNow')}
+              </button>
             </div>
           )}
 
+          {/* State: Error */}
           {updateDownload?.error && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs text-red-200 flex items-center gap-1">
                 <AlertTriangle size={12} /> {updateDownload.error}
               </span>
-              <button
-                onClick={startUpdateDownload}
-                className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
-              >
-                {t('update.retry')}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={startUpdateDownload}
+                  className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm flex-1"
+                >
+                  {t('update.retry')}
+                </button>
+                <button
+                  onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath || updateDownload.filename })}
+                  className="bg-white/20 text-white px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-white/30 transition-colors shadow-sm"
+                  title={t('update.openFolder')}
+                >
+                  <ExternalLink size={13} />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -6019,6 +6060,7 @@ const App: React.FC = () => {
           activityLogCount={activityLog.entries.length}
           onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
           updateAvailable={updateAvailable}
+          onShowUpdateToast={() => setUpdateToastDismissed(false)}
           debugMode={debugMode}
           onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
           storageQuota={storageQuota}

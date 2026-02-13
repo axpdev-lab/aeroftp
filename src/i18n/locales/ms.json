@@ -1258,7 +1258,9 @@
             "downloadComplete": "Muat turun selesai!",
             "openFolder": "Buka dalam Pengurus Fail",
             "retry": "Cuba Semula Muat Turun",
-            "installRestart": "Pasang & Mulakan Semula"
+            "installRestart": "Pasang & Mulakan Semula",
+            "openInstaller": "Buka Pemasang",
+            "skipForNow": "Nanti, bukan sekarang"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

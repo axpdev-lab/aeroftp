@@ -1258,7 +1258,9 @@
             "downloadComplete": "Download concluído!",
             "openFolder": "Abrir no Gerenciador de Arquivos",
             "retry": "Tentar Novamente",
-            "installRestart": "Instalar e Reiniciar"
+            "installRestart": "Instalar e Reiniciar",
+            "openInstaller": "Abrir instalador",
+            "skipForNow": "Mais tarde, agora não"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

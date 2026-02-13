@@ -3,8 +3,11 @@
  * Extracted from App.tsx during modularization (v1.3.1)
  *
  * Checks for app updates on startup (5s delay) and provides manual check.
- * Uses invoke('check_for_updates') backend command and sends OS notifications.
+ * Uses invoke('check_update') backend command and sends OS notifications.
  * Prevents duplicate checks via updateCheckedRef.
+ *
+ * When a newer version exists but the asset for the installed format (e.g. .deb)
+ * is not yet available (CI still building), retries every hour instead of 24h.
  *
  * Props: activityLog (for logging update check results)
  * Returns: updateAvailable (UpdateInfo | null), setUpdateAvailable, checkForUpdate
@@ -29,9 +32,13 @@ interface UseAutoUpdateProps {
   };
 }
 
+const ONE_HOUR = 60 * 60 * 1000;
+const TWENTY_FOUR_HOURS = 24 * ONE_HOUR;
+
 export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
   const updateCheckedRef = useRef(false);
+  const pendingRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkForUpdate = useCallback(async (manual = false) => {
     try {
@@ -46,9 +53,26 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
         const checkType = manual ? '[Manual]' : '[Auto]';
         activityLog.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         await invoke('log_update_detection', { version: info.latest_version || '' });
-      } else if (manual) {
-        sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
-        activityLog.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+
+        // Asset found — clear any pending retry
+        if (pendingRetryRef.current) {
+          clearTimeout(pendingRetryRef.current);
+          pendingRetryRef.current = null;
+        }
+      } else {
+        // Newer version exists but asset not yet available — retry in 1 hour
+        const assetPending = info.latest_version && info.latest_version !== info.current_version;
+        if (assetPending) {
+          activityLog.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 1h`, 'pending');
+          if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
+          pendingRetryRef.current = setTimeout(() => {
+            pendingRetryRef.current = null;
+            checkForUpdate(false);
+          }, ONE_HOUR);
+        } else if (manual) {
+          sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
+          activityLog.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+        }
       }
     } catch (error) {
       console.error('Update check failed:', error);
@@ -66,14 +90,14 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
         checkForUpdate(false);
       }, 5000);
 
-      // Periodic check every 24 hours
       const interval = setInterval(() => {
         checkForUpdate(false);
-      }, 24 * 60 * 60 * 1000);
+      }, TWENTY_FOUR_HOURS);
 
       return () => {
         clearTimeout(timer);
         clearInterval(interval);
+        if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
       };
     }
   }, []);

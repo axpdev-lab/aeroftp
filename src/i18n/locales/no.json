@@ -1258,7 +1258,9 @@
             "downloadComplete": "Nedlasting fullført!",
             "openFolder": "Åpne i filbehandler",
             "retry": "Prøv nedlasting på nytt",
-            "installRestart": "Installer og start på nytt"
+            "installRestart": "Installer og start på nytt",
+            "openInstaller": "Åpne installasjonsprogram",
+            "skipForNow": "Senere, ikke nå"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -1304,7 +1304,9 @@
             "starting": "Avvio...",
             "downloadComplete": "Download completato!",
             "openFolder": "Apri in Gestione File",
+            "openInstaller": "Apri Installer",
             "retry": "Riprova Download",
+            "skipForNow": "Dopo, non adesso",
             "installRestart": "Installa e Riavvia"
         },
         "ai": {

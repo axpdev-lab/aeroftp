@@ -1258,7 +1258,9 @@
             "downloadComplete": "Download voltooid!",
             "openFolder": "Openen in bestandsbeheer",
             "retry": "Opnieuw downloaden",
-            "installRestart": "Installeren en herstarten"
+            "installRestart": "Installeren en herstarten",
+            "openInstaller": "Installatieprogramma openen",
+            "skipForNow": "Later, niet nu"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

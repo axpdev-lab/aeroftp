@@ -1258,7 +1258,9 @@
             "downloadComplete": "Η λήψη ολοκληρώθηκε!",
             "openFolder": "Άνοιγμα στη Διαχείριση Αρχείων",
             "retry": "Επανάληψη Λήψης",
-            "installRestart": "Εγκατάσταση & Επανεκκίνηση"
+            "installRestart": "Εγκατάσταση & Επανεκκίνηση",
+            "openInstaller": "Άνοιγμα εγκαταστάτη",
+            "skipForNow": "Αργότερα, όχι τώρα"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

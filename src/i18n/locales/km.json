@@ -1258,7 +1258,9 @@
             "downloadComplete": "ការទាញយកបានបញ្ចប់!",
             "openFolder": "បើកក្នុងថត",
             "retry": "ព្យាយាមទាញយកម្តងទៀត",
-            "installRestart": "ដំឡើងនិងចាប់ផ្តើមឡើងវិញ"
+            "installRestart": "ដំឡើងនិងចាប់ផ្តើមឡើងវិញ",
+            "openInstaller": "បើកកម្មវិធីដំឡើង",
+            "skipForNow": "ពេលក្រោយ មិនមែនឥឡូវទេ"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

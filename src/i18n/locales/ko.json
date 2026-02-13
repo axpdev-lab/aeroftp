@@ -1258,7 +1258,9 @@
             "downloadComplete": "다운로드 완료!",
             "openFolder": "파일 관리자에서 열기",
             "retry": "다운로드 재시도",
-            "installRestart": "설치 및 재시작"
+            "installRestart": "설치 및 재시작",
+            "openInstaller": "설치 프로그램 열기",
+            "skipForNow": "나중에, 지금은 안 할래요"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -1258,7 +1258,9 @@
             "downloadComplete": "Nedladdning klar!",
             "openFolder": "Öppna i filhanteraren",
             "retry": "Försök igen",
-            "installRestart": "Installera och starta om"
+            "installRestart": "Installera och starta om",
+            "openInstaller": "Öppna installeraren",
+            "skipForNow": "Senare, inte nu"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

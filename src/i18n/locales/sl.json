@@ -1258,7 +1258,9 @@
             "downloadComplete": "Prenos končan!",
             "openFolder": "Odpri v upravljalniku datotek",
             "retry": "Ponovi prenos",
-            "installRestart": "Namesti in znova zaženi"
+            "installRestart": "Namesti in znova zaženi",
+            "openInstaller": "Odpri namestitveni program",
+            "skipForNow": "Pozneje, ne zdaj"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

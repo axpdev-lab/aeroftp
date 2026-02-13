@@ -1223,7 +1223,9 @@
             "downloadComplete": "ダウンロード完了！",
             "openFolder": "ファイルマネージャーで開く",
             "retry": "ダウンロードを再試行",
-            "installRestart": "インストールして再起動"
+            "installRestart": "インストールして再起動",
+            "openInstaller": "インストーラーを開く",
+            "skipForNow": "後で、今はしない"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

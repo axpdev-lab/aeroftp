@@ -1258,7 +1258,9 @@
             "downloadComplete": "Allalaadimine lõpetatud!",
             "openFolder": "Ava failihalduris",
             "retry": "Proovi uuesti alla laadida",
-            "installRestart": "Installi ja taaskäivita"
+            "installRestart": "Installi ja taaskäivita",
+            "openInstaller": "Ava paigaldaja",
+            "skipForNow": "Hiljem, mitte praegu"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -1258,7 +1258,9 @@
             "downloadComplete": "Deskarga osatuta!",
             "openFolder": "Ireki fitxategi kudeatzailean",
             "retry": "Saiatu berriro",
-            "installRestart": "Instalatu eta berrabiarazi"
+            "installRestart": "Instalatu eta berrabiarazi",
+            "openInstaller": "Ireki instalatzailea",
+            "skipForNow": "Geroago, orain ez"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

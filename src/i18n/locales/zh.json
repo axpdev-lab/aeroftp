@@ -1258,7 +1258,9 @@
             "downloadComplete": "下载完成！",
             "openFolder": "在文件管理器中打开",
             "retry": "重试下载",
-            "installRestart": "安装并重启"
+            "installRestart": "安装并重启",
+            "openInstaller": "打开安装程序",
+            "skipForNow": "稍后再说"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

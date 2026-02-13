@@ -1258,7 +1258,9 @@
             "downloadComplete": "Descàrrega completada!",
             "openFolder": "Obrir al gestor de fitxers",
             "retry": "Reintentar descàrrega",
-            "installRestart": "Instal·lar i reiniciar"
+            "installRestart": "Instal·lar i reiniciar",
+            "openInstaller": "Obre l'instal·lador",
+            "skipForNow": "Més tard, ara no"
         },
         "ai": {
             "aeroAgent": "AeroAgent",

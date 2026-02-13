@@ -1258,7 +1258,9 @@
             "downloadComplete": "Upakuaji umekamilika!",
             "openFolder": "Fungua kwenye Meneja wa Faili",
             "retry": "Jaribu Kupakua Tena",
-            "installRestart": "Sakinisha na Anzisha Upya"
+            "installRestart": "Sakinisha na Anzisha Upya",
+            "openInstaller": "Fungua Kisakinishi",
+            "skipForNow": "Baadaye, si sasa"
         },
         "ai": {
             "aeroAgent": "AeroAgent",
