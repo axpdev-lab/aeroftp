@@ -1872,6 +1872,9 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "chrono".into(), version: env!("DEP_VERSION_CHRONO").into(), category: "Core".into() },
         DependencyInfo { name: "log".into(), version: env!("DEP_VERSION_LOG").into(), category: "Core".into() },
         DependencyInfo { name: "tracing".into(), version: env!("DEP_VERSION_TRACING").into(), category: "Core".into() },
+        DependencyInfo { name: "portable-pty".into(), version: env!("DEP_VERSION_PORTABLE_PTY").into(), category: "Core".into() },
+        DependencyInfo { name: "notify".into(), version: env!("DEP_VERSION_NOTIFY").into(), category: "Core".into() },
+        DependencyInfo { name: "image".into(), version: env!("DEP_VERSION_IMAGE").into(), category: "Core".into() },
         // Protocols
         DependencyInfo { name: "suppaftp".into(), version: env!("DEP_VERSION_SUPPAFTP").into(), category: "Protocols".into() },
         DependencyInfo { name: "russh".into(), version: env!("DEP_VERSION_RUSSH").into(), category: "Protocols".into() },
@@ -1879,21 +1882,22 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "reqwest".into(), version: env!("DEP_VERSION_REQWEST").into(), category: "Protocols".into() },
         DependencyInfo { name: "quick-xml".into(), version: env!("DEP_VERSION_QUICK_XML").into(), category: "Protocols".into() },
         DependencyInfo { name: "oauth2".into(), version: env!("DEP_VERSION_OAUTH2").into(), category: "Protocols".into() },
+        DependencyInfo { name: "native-tls".into(), version: env!("DEP_VERSION_NATIVE_TLS").into(), category: "Protocols".into() },
         // Security
-        DependencyInfo { name: "keyring".into(), version: env!("DEP_VERSION_KEYRING").into(), category: "Security".into() },
         DependencyInfo { name: "argon2".into(), version: env!("DEP_VERSION_ARGON2").into(), category: "Security".into() },
         DependencyInfo { name: "aes-gcm".into(), version: env!("DEP_VERSION_AES_GCM").into(), category: "Security".into() },
-        DependencyInfo { name: "ring".into(), version: env!("DEP_VERSION_RING").into(), category: "Security".into() },
-        DependencyInfo { name: "zeroize".into(), version: env!("DEP_VERSION_ZEROIZE").into(), category: "Security".into() },
-        DependencyInfo { name: "secrecy".into(), version: env!("DEP_VERSION_SECRECY").into(), category: "Security".into() },
-        DependencyInfo { name: "sha2".into(), version: env!("DEP_VERSION_SHA2").into(), category: "Security".into() },
-        DependencyInfo { name: "hmac".into(), version: env!("DEP_VERSION_HMAC").into(), category: "Security".into() },
         DependencyInfo { name: "aes-gcm-siv".into(), version: env!("DEP_VERSION_AES_GCM_SIV").into(), category: "Security".into() },
         DependencyInfo { name: "chacha20poly1305".into(), version: env!("DEP_VERSION_CHACHA20POLY1305").into(), category: "Security".into() },
         DependencyInfo { name: "hkdf".into(), version: env!("DEP_VERSION_HKDF").into(), category: "Security".into() },
         DependencyInfo { name: "aes-kw".into(), version: env!("DEP_VERSION_AES_KW").into(), category: "Security".into() },
         DependencyInfo { name: "aes-siv".into(), version: env!("DEP_VERSION_AES_SIV").into(), category: "Security".into() },
         DependencyInfo { name: "scrypt".into(), version: env!("DEP_VERSION_SCRYPT").into(), category: "Security".into() },
+        DependencyInfo { name: "ring".into(), version: env!("DEP_VERSION_RING").into(), category: "Security".into() },
+        DependencyInfo { name: "secrecy".into(), version: env!("DEP_VERSION_SECRECY").into(), category: "Security".into() },
+        DependencyInfo { name: "sha2".into(), version: env!("DEP_VERSION_SHA2").into(), category: "Security".into() },
+        DependencyInfo { name: "hmac".into(), version: env!("DEP_VERSION_HMAC").into(), category: "Security".into() },
+        DependencyInfo { name: "blake3".into(), version: env!("DEP_VERSION_BLAKE3").into(), category: "Security".into() },
+        DependencyInfo { name: "jsonwebtoken".into(), version: env!("DEP_VERSION_JSONWEBTOKEN").into(), category: "Security".into() },
         // Archives
         DependencyInfo { name: "sevenz-rust".into(), version: env!("DEP_VERSION_SEVENZ_RUST").into(), category: "Archives".into() },
         DependencyInfo { name: "zip".into(), version: env!("DEP_VERSION_ZIP").into(), category: "Archives".into() },
@@ -1901,6 +1905,7 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "flate2".into(), version: env!("DEP_VERSION_FLATE2").into(), category: "Archives".into() },
         DependencyInfo { name: "xz2".into(), version: env!("DEP_VERSION_XZ2").into(), category: "Archives".into() },
         DependencyInfo { name: "bzip2".into(), version: env!("DEP_VERSION_BZIP2").into(), category: "Archives".into() },
+        DependencyInfo { name: "unrar".into(), version: env!("DEP_VERSION_UNRAR").into(), category: "Archives".into() },
         // Tauri Plugins
         DependencyInfo { name: "tauri-plugin-fs".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_FS").into(), category: "Plugins".into() },
         DependencyInfo { name: "tauri-plugin-dialog".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_DIALOG").into(), category: "Plugins".into() },
@@ -1908,6 +1913,8 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "tauri-plugin-notification".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_NOTIFICATION").into(), category: "Plugins".into() },
         DependencyInfo { name: "tauri-plugin-log".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_LOG").into(), category: "Plugins".into() },
         DependencyInfo { name: "tauri-plugin-single-instance".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_SINGLE_INSTANCE").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-localhost".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_LOCALHOST").into(), category: "Plugins".into() },
+        DependencyInfo { name: "tauri-plugin-autostart".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_AUTOSTART").into(), category: "Plugins".into() },
     ]
 }
 
@@ -2005,7 +2012,6 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("russh-sftp".into(), env!("DEP_VERSION_RUSSH_SFTP").into());
     dep_versions.insert("suppaftp".into(), env!("DEP_VERSION_SUPPAFTP").into());
     dep_versions.insert("reqwest".into(), env!("DEP_VERSION_REQWEST").into());
-    dep_versions.insert("keyring".into(), env!("DEP_VERSION_KEYRING").into());
     dep_versions.insert("aes-gcm".into(), env!("DEP_VERSION_AES_GCM").into());
     dep_versions.insert("argon2".into(), env!("DEP_VERSION_ARGON2").into());
     dep_versions.insert("zip".into(), env!("DEP_VERSION_ZIP").into());
@@ -2018,6 +2024,8 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("aes-kw".into(), env!("DEP_VERSION_AES_KW").into());
     dep_versions.insert("aes-siv".into(), env!("DEP_VERSION_AES_SIV").into());
     dep_versions.insert("scrypt".into(), env!("DEP_VERSION_SCRYPT").into());
+    dep_versions.insert("blake3".into(), env!("DEP_VERSION_BLAKE3").into());
+    dep_versions.insert("native-tls".into(), env!("DEP_VERSION_NATIVE_TLS").into());
 
     SystemInfo {
         app_version: env!("CARGO_PKG_VERSION").into(),

@@ -13,6 +13,9 @@ const TRACKED_DEPS: &[&str] = &[
     "chrono",
     "log",
     "tracing",
+    "portable-pty",
+    "notify",
+    "image",
     // Protocols
     "suppaftp",
     "russh",
@@ -20,8 +23,8 @@ const TRACKED_DEPS: &[&str] = &[
     "reqwest",
     "quick-xml",
     "oauth2",
+    "native-tls",
     // Security
-    "keyring",
     "argon2",
     "aes-gcm",
     "aes-gcm-siv",
@@ -31,10 +34,11 @@ const TRACKED_DEPS: &[&str] = &[
     "aes-siv",
     "scrypt",
     "ring",
-    "zeroize",
     "secrecy",
     "sha2",
     "hmac",
+    "blake3",
+    "jsonwebtoken",
     // Archives
     "sevenz-rust",
     "zip",
@@ -42,6 +46,7 @@ const TRACKED_DEPS: &[&str] = &[
     "flate2",
     "xz2",
     "bzip2",
+    "unrar",
     // Plugins
     "tauri-plugin-fs",
     "tauri-plugin-dialog",
@@ -49,6 +54,8 @@ const TRACKED_DEPS: &[&str] = &[
     "tauri-plugin-notification",
     "tauri-plugin-log",
     "tauri-plugin-single-instance",
+    "tauri-plugin-localhost",
+    "tauri-plugin-autostart",
 ];
 
 fn main() {

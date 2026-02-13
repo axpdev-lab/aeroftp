@@ -12,6 +12,8 @@ interface BreadcrumbBarProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   isCoherent?: boolean;
+  /** When set, segments at or above this path are visually locked (sync navigation boundary) */
+  minPath?: string;
   t: (key: string) => string;
 }
 
@@ -61,6 +63,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   currentPath,
   onNavigate,
   isCoherent = true,
+  minPath,
   t,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -154,20 +157,31 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     setEditValue('');
   }, []);
 
+  // Check if a path is above (proper ancestor of) the minPath boundary
+  const isAboveMinPath = useCallback((segmentPath: string): boolean => {
+    if (!minPath) return false;
+    const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+    const sp = norm(segmentPath);
+    const mp = norm(minPath);
+    if (sp === mp) return false; // at boundary, not above
+    if (sp === '/') return true; // root is above everything
+    return mp.startsWith(sp + '/');
+  }, [minPath]);
+
   const confirmEdit = useCallback(() => {
     const trimmed = editValue.trim();
-    if (trimmed && trimmed !== currentPath) {
+    if (trimmed && trimmed !== currentPath && !isAboveMinPath(trimmed)) {
       onNavigate(trimmed);
     }
     setIsEditing(false);
     setEditValue('');
-  }, [editValue, currentPath, onNavigate]);
+  }, [editValue, currentPath, onNavigate, isAboveMinPath]);
 
   const handleSegmentClick = useCallback((fullPath: string) => {
-    if (fullPath !== currentPath) {
+    if (fullPath !== currentPath && !isAboveMinPath(fullPath)) {
       onNavigate(fullPath);
     }
-  }, [currentPath, onNavigate]);
+  }, [currentPath, onNavigate, isAboveMinPath]);
 
   const handleChevronClick = useCallback(async (e: React.MouseEvent, segmentIndex: number) => {
     e.stopPropagation();
@@ -279,11 +293,14 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
         <button
           onClick={() => handleSegmentClick(segments[0].fullPath)}
           className={`flex-shrink-0 p-1 rounded transition-colors ${
-            segments.length === 1
-              ? 'text-white'
-              : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700/50'
+            isAboveMinPath(segments[0].fullPath)
+              ? 'text-gray-600 cursor-not-allowed'
+              : segments.length === 1
+                ? 'text-white'
+                : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700/50'
           }`}
           title={segments[0].fullPath}
+          disabled={isAboveMinPath(segments[0].fullPath)}
         >
           <HardDrive size={14} />
         </button>
@@ -304,16 +321,20 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
               {/* Overflow dropdown */}
               {overflowDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-md shadow-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
-                  {collapsedSegments.map((seg) => (
-                    <button
+                  {collapsedSegments.map((seg) => {
+                    const locked = isAboveMinPath(seg.fullPath);
+                    return <button
                       key={seg.fullPath}
-                      onClick={() => handleDropdownNavigate(seg.fullPath)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer w-full text-left transition-colors"
+                      onClick={() => !locked && handleDropdownNavigate(seg.fullPath)}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left transition-colors ${
+                        locked ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
+                      }`}
+                      disabled={locked}
                     >
-                      <Folder size={14} className="text-amber-400 flex-shrink-0" />
+                      <Folder size={14} className={`flex-shrink-0 ${locked ? 'text-gray-600' : 'text-amber-400'}`} />
                       <span className="truncate">{seg.segment}</span>
-                    </button>
-                  ))}
+                    </button>;
+                  })}
                 </div>
               )}
             </div>
@@ -381,18 +402,24 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
               </div>
 
               {/* Segment button */}
-              <button
-                onClick={() => handleSegmentClick(seg.fullPath)}
-                className={`text-sm px-1 py-0.5 rounded transition-colors truncate max-w-[150px] ${
-                  isLast
-                    ? 'text-white font-medium cursor-default'
-                    : 'text-gray-300 hover:text-blue-400 hover:underline hover:bg-gray-700/50'
-                }`}
-                title={seg.fullPath}
-                {...(isLast ? { 'aria-current': 'page' as const } : {})}
-              >
-                {seg.segment}
-              </button>
+              {(() => {
+                const locked = isAboveMinPath(seg.fullPath);
+                return <button
+                  onClick={() => handleSegmentClick(seg.fullPath)}
+                  className={`text-sm px-1 py-0.5 rounded transition-colors truncate max-w-[150px] ${
+                    locked
+                      ? 'text-gray-600 cursor-not-allowed'
+                      : isLast
+                        ? 'text-white font-medium cursor-default'
+                        : 'text-gray-300 hover:text-blue-400 hover:underline hover:bg-gray-700/50'
+                  }`}
+                  title={locked ? `${seg.fullPath} (sync boundary)` : seg.fullPath}
+                  disabled={locked}
+                  {...(isLast ? { 'aria-current': 'page' as const } : {})}
+                >
+                  {seg.segment}
+                </button>;
+              })()}
             </React.Fragment>
           );
         })}

@@ -2124,6 +2124,11 @@ const App: React.FC = () => {
     }
   };
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string) => {
+    // Sync navigation guard: prevent navigating above the sync base path
+    if (isSyncNavigation && syncBasePaths && path === '..') {
+      const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+      if (norm(currentRemotePath) === norm(syncBasePaths.remote)) return;
+    }
     // Increment navigation counter — used to discard stale async responses
     const navId = ++remoteNavCounter.current;
     try {
@@ -2179,6 +2184,14 @@ const App: React.FC = () => {
   };
 
   const changeLocalDirectory = async (path: string) => {
+    // Sync navigation guard: prevent navigating above the sync base path
+    if (isSyncNavigation && syncBasePaths) {
+      const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+      const normBase = norm(syncBasePaths.local);
+      const normTarget = norm(path);
+      // Block if target is a proper ancestor of the base path
+      if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return;
+    }
     const success = await loadLocalFiles(path);
     if (!success) return; // Don't record failed navigations
     humanLog.logNavigate(path, false);
@@ -4706,9 +4719,21 @@ const App: React.FC = () => {
             {/* Toolbar */}
             <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
-                <button onClick={() => activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
-                  <FolderUp size={16} /> {t('common.up')}
-                </button>
+                {(() => {
+                  const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+                  const atSyncRemoteRoot = isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote);
+                  const atSyncLocalRoot = isSyncNavigation && syncBasePaths && normP(currentLocalPath) === normP(syncBasePaths.local);
+                  const isDisabled = activePanel === 'remote'
+                    ? (currentRemotePath === '/' || !!atSyncRemoteRoot)
+                    : (currentLocalPath === '/' || !!atSyncLocalRoot);
+                  return <button
+                    onClick={() => !isDisabled && (activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/'))}
+                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${isDisabled ? 'bg-gray-200 dark:bg-gray-600 opacity-50 cursor-not-allowed' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                    disabled={isDisabled}
+                  >
+                    <FolderUp size={16} /> {t('common.up')}
+                  </button>;
+                })()}
                 <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
                   <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                 </button>
@@ -5027,20 +5052,26 @@ const App: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {/* Go Up Row - always visible, disabled at root */}
-                        <tr
-                          className={`${currentRemotePath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                          onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
-                        >
-                          <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
-                            <FolderUp size={16} />
-                            <span className="italic">{t('browser.parentFolder')}</span>
-                          </td>
-                          {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
-                          {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
-                          {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
-                          {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
-                        </tr>
+                        {/* Go Up Row - always visible, disabled at root or sync base */}
+                        {(() => {
+                          const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+                          const canGoUp = currentRemotePath !== '/' && !(isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote));
+                          return (
+                            <tr
+                              className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                              onClick={() => canGoUp && changeRemoteDirectory('..')}
+                            >
+                              <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
+                                <FolderUp size={16} />
+                                <span className="italic">{t('browser.parentFolder')}</span>
+                              </td>
+                              {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                              {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
+                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
+                              {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                            </tr>
+                          );
+                        })()}
                         {sortedRemoteFiles.map((file, i) => (
                           <tr
                             key={`${file.name}-${i}`}
@@ -5256,6 +5287,7 @@ const App: React.FC = () => {
                           currentPath={currentLocalPath}
                           onNavigate={changeLocalDirectory}
                           isCoherent={isLocalPathCoherent}
+                          minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.local : undefined}
                           t={t}
                         />
                       </div>
@@ -5771,7 +5803,7 @@ const App: React.FC = () => {
                         }
                       }}
                       onNavigateUp={() => changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
-                      isAtRoot={currentLocalPath === '/'}
+                      isAtRoot={currentLocalPath === '/' || !!(isSyncNavigation && syncBasePaths && (currentLocalPath.endsWith('/') && currentLocalPath.length > 1 ? currentLocalPath.slice(0, -1) : currentLocalPath) === (syncBasePaths.local.endsWith('/') && syncBasePaths.local.length > 1 ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local))}
                       getFileIcon={(name, isDir) => {
                         if (isDir) return { icon: <Folder size={64} className="text-yellow-500" />, color: 'text-yellow-500' };
                         return getFileIcon(name, 48);
@@ -6055,9 +6087,16 @@ const App: React.FC = () => {
           connectionSecurity={isConnected ? (() => {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            if (protocol === 'ftp') return 'insecure' as const;
+            const opts = connectionParams.options ?? activeSession?.connectionParams?.options;
+            const verifyCert = opts?.verifyCert ?? true;
+            if (protocol === 'ftp') {
+              const tlsMode = opts?.tlsMode ?? 'explicit_if_available';
+              if (tlsMode === 'none') return 'insecure' as const;
+              if (tlsMode === 'explicit_if_available') return 'warning' as const;
+              // explicit or implicit — TLS is enforced
+              return verifyCert ? 'secure' as const : 'warning' as const;
+            }
             if (protocol === 'ftps') {
-              const verifyCert = connectionParams.options?.verifyCert ?? activeSession?.connectionParams?.options?.verifyCert ?? true;
               return verifyCert ? 'secure' as const : 'warning' as const;
             }
             return 'secure' as const;
@@ -6065,7 +6104,11 @@ const App: React.FC = () => {
           secureProtocol={isConnected ? (() => {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            if (protocol === 'ftp') return undefined;
+            if (protocol === 'ftp') {
+              const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit_if_available';
+              if (tlsMode === 'none') return undefined;
+              return 'TLS';
+            }
             if (protocol === 'ftps') return 'TLS';
             if (protocol === 'sftp') return 'SSH';
             if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
