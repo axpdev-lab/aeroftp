@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI 助手",
             "aeroagent": "AeroAgent",
             "insecureConnection": "不安全连接",
-            "insecureConnectionTitle": "证书验证已禁用"
+            "insecureConnectionTitle": "证书验证已禁用",
+            "update": "更新",
+            "insecureConnectionUnencrypted": "此连接未加密。凭据以纯文本形式发送。",
+            "secureConnection": "安全",
+            "secureConnectionTitle": "通过 {protocol} 加密连接"
         },
         "dialogs": {
             "confirmTitle": "确认",
@@ -951,7 +955,17 @@
             "update_available": "有可用更新：v{version} (.{format})",
             "update_uptodate": "已是最新版本 (v{version})",
             "update_error": "无法检查更新：{error}",
-            "file_skipped": "我跳过了 {filename}（无更改）"
+            "file_skipped": "我跳过了 {filename}（无更改）",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "选择协议...",

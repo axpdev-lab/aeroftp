@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - Pembantu AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Sambungan Tidak Selamat",
-            "insecureConnectionTitle": "Pengesahan sijil dilumpuhkan"
+            "insecureConnectionTitle": "Pengesahan sijil dilumpuhkan",
+            "update": "Kemas Kini",
+            "insecureConnectionUnencrypted": "Sambungan ini tidak disulitkan. Kelayakan dihantar dalam teks biasa.",
+            "secureConnection": "Selamat",
+            "secureConnectionTitle": "Sambungan disulitkan melalui {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Sahkan",
@@ -951,7 +955,17 @@
             "navigate_opened": "Saya membuka folder: {path}",
             "navigate_entered": "Saya memasuki folder: {path}",
             "navigate_up_one": "Saya naik satu tahap: {path}",
-            "navigate_up_to": "Saya naik ke: {path}"
+            "navigate_up_to": "Saya naik ke: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

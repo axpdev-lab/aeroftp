@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
@@ -30,7 +30,8 @@ interface StatusBarProps {
     aeroAgentOpen?: boolean;
     debugMode?: boolean;
     storageQuota?: StorageQuota | null;
-    insecureConnection?: boolean;
+    connectionSecurity?: 'secure' | 'warning' | 'insecure';
+    secureProtocol?: string;
     onToggleAeroFile?: () => void;
     onToggleAeroAgent?: () => void;
     onToggleDebug?: () => void;
@@ -71,7 +72,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleTransferQueue,
     onToggleActivityLog,
     onShowUpdateToast,
-    insecureConnection = false,
+    connectionSecurity,
+    secureProtocol,
 }) => {
     const t = useTranslation();
 
@@ -97,12 +99,29 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     )}
                 </div>
 
-                {isConnected && insecureConnection && (
-                    <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                {/* Connection Security Badges */}
+                {isConnected && connectionSecurity === 'insecure' && (
+                    <div className="flex items-center px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 cursor-default"
+                        title={t('statusBar.insecureConnectionUnencrypted')}
+                    >
+                        <AlertTriangle size={13} />
+                    </div>
+                )}
+
+                {isConnected && connectionSecurity === 'warning' && (
+                    <div className="flex items-center px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-default"
                         title={t('statusBar.insecureConnectionTitle')}
                     >
-                        <AlertTriangle size={12} />
-                        <span className="font-medium">{t('statusBar.insecureConnection')}</span>
+                        <AlertTriangle size={13} />
+                    </div>
+                )}
+
+                {isConnected && connectionSecurity === 'secure' && secureProtocol && (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 cursor-default"
+                        title={t('statusBar.secureConnectionTitle', { protocol: secureProtocol })}
+                    >
+                        <ShieldCheck size={12} />
+                        <span className="font-medium text-[11px]">{secureProtocol}</span>
                     </div>
                 )}
 
@@ -111,10 +130,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <button
                         onClick={onShowUpdateToast}
                         className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md cursor-pointer"
-                        title={`Download AeroFTP v${updateAvailable.latest_version}`}
+                        title={`${t('statusBar.updateAvailable')} — AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />
-                        <span>{t('statusbar.updateAvailable')}</span>
+                        <span>{t('statusBar.update')}</span>
                     </button>
                 )}
 

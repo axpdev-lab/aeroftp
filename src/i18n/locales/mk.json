@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI асистент",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Несигурна врска",
-            "insecureConnectionTitle": "Проверката на сертификати е оневозможена"
+            "insecureConnectionTitle": "Проверката на сертификати е оневозможена",
+            "update": "Ажурирање",
+            "insecureConnectionUnencrypted": "Оваа врска не е шифрирана. Акредитивите се испраќаат како обичен текст.",
+            "secureConnection": "Сигурна",
+            "secureConnectionTitle": "Шифрирана врска преку {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Потврди",
@@ -951,7 +955,17 @@
             "navigate_opened": "Ја отворив папката: {path}",
             "navigate_entered": "Влегов во папката: {path}",
             "navigate_up_one": "Се качив едно ниво: {path}",
-            "navigate_up_to": "Се качив до: {path}"
+            "navigate_up_to": "Се качив до: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

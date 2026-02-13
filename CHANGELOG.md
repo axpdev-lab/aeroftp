@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.10] - 2026-02-13
+
+### Connection Intelligence, Security Badges & Windows Build Fix
+
+Enhanced connection logging with DNS resolution and protocol-level step details, redesigned StatusBar security badges, and fixed Windows build regression from suppaftp 8.0.2.
+
+#### Added
+
+- **DNS resolution in Activity Log**: Hostname resolution with resolved IP address displayed before connection attempt, similar to FileZilla's connection log
+- **Protocol step logging**: TLS/SSH/HTTPS establishment, authentication method (password or SSH key), and directory listing completion now logged as individual activity entries
+- **Secure connection badge**: Green ShieldCheck badge in StatusBar showing protocol abbreviation (TLS/SSH/HTTPS/E2EE) when connected via encrypted channel
+- **3-tier connection security model**: StatusBar now distinguishes `insecure` (plain FTP, red), `warning` (FTPS without cert verification, amber), and `secure` (all encrypted protocols, green)
+- **New Rust command `resolve_hostname`**: Async DNS resolution via `tokio::net::lookup_host` for pre-connection hostname lookup
+- **14 new i18n keys**: 4 StatusBar security keys and 10 Activity Log connection step keys, translated in English and Italian
+
+#### Changed
+
+- **StatusBar insecure badge**: Now icon-only (AlertTriangle) with full explanation in tooltip, reducing visual noise
+- **StatusBar update badge**: Shortened from "Update Available" to just "Update" with full text in tooltip
+
+#### Fixed
+
+- **Windows build failure**: Pinned `suppaftp` to `=8.0.1` to avoid `std::os::fd::AsFd` Unix-only API regression in v8.0.2 that broke Windows compilation
+
+---
+
 ## [2.0.9] - 2026-02-13
 
 ### Smart Auto-Update with Platform-Native Installation

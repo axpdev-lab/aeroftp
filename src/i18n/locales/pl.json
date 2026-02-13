@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent — Asystent AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Niezabezpieczone połączenie",
-            "insecureConnectionTitle": "Weryfikacja certyfikatów jest wyłączona"
+            "insecureConnectionTitle": "Weryfikacja certyfikatów jest wyłączona",
+            "update": "Aktualizacja",
+            "insecureConnectionUnencrypted": "To połączenie nie jest szyfrowane. Dane logowania są wysyłane jako zwykły tekst.",
+            "secureConnection": "Bezpieczne",
+            "secureConnectionTitle": "Szyfrowane połączenie przez {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Potwierdź",
@@ -951,7 +955,17 @@
             "navigate_opened": "Otworzyłem folder: {path}",
             "navigate_entered": "Wszedłem do folderu: {path}",
             "navigate_up_one": "Wszedłem o jeden poziom wyżej: {path}",
-            "navigate_up_to": "Wszedłem do: {path}"
+            "navigate_up_to": "Wszedłem do: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",

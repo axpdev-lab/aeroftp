@@ -752,7 +752,11 @@
             "activityLog": "गतिविधि लॉग",
             "log": "लॉग",
             "insecureConnection": "असुरक्षित कनेक्शन",
-            "insecureConnectionTitle": "प्रमाणपत्र सत्यापन अक्षम है"
+            "insecureConnectionTitle": "प्रमाणपत्र सत्यापन अक्षम है",
+            "update": "अपडेट",
+            "insecureConnectionUnencrypted": "यह कनेक्शन एन्क्रिप्टेड नहीं है। प्रमाणपत्र सादे पाठ में भेजे जाते हैं।",
+            "secureConnection": "सुरक्षित",
+            "secureConnectionTitle": "{protocol} के माध्यम से एन्क्रिप्टेड कनेक्शन"
         },
         "dialogs": {
             "confirmTitle": "पुष्टिी करें",
@@ -951,7 +955,17 @@
             "navigate_opened": "मैंने फोल्डर खोला: {path}",
             "navigate_entered": "मैं फोल्डर में गया: {path}",
             "navigate_up_one": "मैं एक स्तर ऊपर गया: {path}",
-            "navigate_up_to": "मैं ऊपर गया: {path}"
+            "navigate_up_to": "मैं ऊपर गया: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",

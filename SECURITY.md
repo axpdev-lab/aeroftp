@@ -332,4 +332,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.0.9 - 13 February 2026*
+*AeroFTP v2.0.10 - 13 February 2026*

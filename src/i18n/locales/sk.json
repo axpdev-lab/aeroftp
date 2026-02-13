@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent — AI asistent",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Nezabezpečené pripojenie",
-            "insecureConnectionTitle": "Overovanie certifikátu je vypnuté"
+            "insecureConnectionTitle": "Overovanie certifikátu je vypnuté",
+            "update": "Aktualizácia",
+            "insecureConnectionUnencrypted": "Toto pripojenie nie je šifrované. Prihlasovacie údaje sa odosielajú ako obyčajný text.",
+            "secureConnection": "Zabezpečené",
+            "secureConnectionTitle": "Šifrované pripojenie cez {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Potvrdiť",
@@ -951,7 +955,17 @@
             "update_available": "Dostupná aktualizácia: v{version} (.{format})",
             "update_uptodate": "Už som aktualizovaný (v{version})",
             "update_error": "Nemohol som nájsť aktualizácie: {error}",
-            "file_skipped": "Preskočil som {filename} (bez zmien)"
+            "file_skipped": "Preskočil som {filename} (bez zmien)",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",

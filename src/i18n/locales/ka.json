@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI ასისტენტი",
             "aeroagent": "AeroAgent",
             "insecureConnection": "დაუცველი კავშირი",
-            "insecureConnectionTitle": "სერტიფიკატების გადამოწმება გამორთულია"
+            "insecureConnectionTitle": "სერტიფიკატების გადამოწმება გამორთულია",
+            "update": "განახლება",
+            "insecureConnectionUnencrypted": "ეს კავშირი არ არის დაშიფრული. სერთიფიკატები იგზავნება უბრალო ტექსტით.",
+            "secureConnection": "უსაფრთხო",
+            "secureConnectionTitle": "დაშიფრული კავშირი {protocol}-ის საშუალებით"
         },
         "dialogs": {
             "confirmTitle": "დადასტურება",
@@ -951,7 +955,17 @@
             "navigate_opened": "გავხსენი საქაღალდე: {path}",
             "navigate_entered": "შევედი საქაღალდეში: {path}",
             "navigate_up_one": "ერთი დონით ზემოთ ავედი: {path}",
-            "navigate_up_to": "ზემოთ ავედი: {path}"
+            "navigate_up_to": "ზემოთ ავედი: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",

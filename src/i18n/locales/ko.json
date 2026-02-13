@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI 어시스턴트",
             "aeroagent": "AeroAgent",
             "insecureConnection": "안전하지 않은 연결",
-            "insecureConnectionTitle": "인증서 검증이 비활성화됨"
+            "insecureConnectionTitle": "인증서 검증이 비활성화됨",
+            "update": "업데이트",
+            "insecureConnectionUnencrypted": "이 연결은 암호화되지 않았습니다. 자격 증명이 일반 텍스트로 전송됩니다.",
+            "secureConnection": "보안",
+            "secureConnectionTitle": "{protocol}을 통한 암호화 연결"
         },
         "dialogs": {
             "confirmTitle": "확인",
@@ -951,7 +955,17 @@
             "navigate_opened": "폴더를 열었습니다: {path}",
             "navigate_entered": "폴더에 들어갔습니다: {path}",
             "navigate_up_one": "한 수준 위로 올라갔습니다: {path}",
-            "navigate_up_to": "위로 올라갔습니다: {path}"
+            "navigate_up_to": "위로 올라갔습니다: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",

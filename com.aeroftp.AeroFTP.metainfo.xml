@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.0.10" date="2026-02-13">
+      <description>
+        <p>Connection Intelligence, Security Badges and Windows Build Fix: DNS resolution with resolved IP in Activity Log, protocol step logging (TLS/SSH/HTTPS establishment, authentication, directory listing), secure connection badge (ShieldCheck with protocol abbreviation), 3-tier security model (insecure/warning/secure) in StatusBar, and suppaftp pinned to 8.0.1 to fix Windows build regression.</p>
+      </description>
+    </release>
     <release version="2.0.9" date="2026-02-13">
       <description>
         <p>Smart Auto-Update with Platform-Native Installation: One-click Install and Restart for .deb, .rpm, .msi and .exe packages via platform-native tools (pkexec/msiexec). Smart asset availability detection retries hourly when CI artifacts are still building. Update toast UX redesigned with clear state progression. StatusBar badge re-triggers dismissed toast. 2 new i18n keys (openInstaller, skipForNow) translated in all 47 languages. Runtime version detection replaces compile-time macro.</p>

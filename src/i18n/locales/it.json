@@ -869,7 +869,11 @@
             "aeroagentTitle": "AeroAgent - Assistente AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Connessione non sicura",
-            "insecureConnectionTitle": "La verifica dei certificati è disattivata"
+            "insecureConnectionTitle": "La verifica dei certificati è disattivata",
+            "update": "Aggiornamento",
+            "secureConnection": "Sicura",
+            "secureConnectionTitle": "Connessione cifrata via {protocol}",
+            "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro."
         },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",
@@ -1106,7 +1110,17 @@
             "navigate_opened": "Ho aperto la cartella: {path}",
             "navigate_entered": "Sono entrato nella cartella: {path}",
             "navigate_up_one": "Sono salito di un livello: {path}",
-            "navigate_up_to": "Sono salito a: {path}"
+            "navigate_up_to": "Sono salito a: {path}",
+            "dns_resolving": "Risoluzione di {hostname}...",
+            "dns_resolved": "{hostname} → {ip}",
+            "dns_failed": "Risoluzione DNS fallita per {hostname}: {error}",
+            "connecting_to": "Connessione a {ip}:{port}...",
+            "tls_established": "Connessione TLS stabilita ({mode})",
+            "ssh_established": "Connessione SSH stabilita",
+            "https_established": "Connessione HTTPS stabilita",
+            "auth_success": "Autenticato come {username}",
+            "auth_method_key": "Autenticato con chiave SSH ({username})",
+            "listing_complete": "Elenco directory \"{path}\" completato ({count} elementi)"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",

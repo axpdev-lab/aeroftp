@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent – AI asistents",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Nedrošs savienojums",
-            "insecureConnectionTitle": "Sertifikātu pārbaude ir atspējota"
+            "insecureConnectionTitle": "Sertifikātu pārbaude ir atspējota",
+            "update": "Atjauninājums",
+            "insecureConnectionUnencrypted": "Šis savienojums nav šifrēts. Akreditācijas dati tiek sūtīti vienkāršā tekstā.",
+            "secureConnection": "Droša",
+            "secureConnectionTitle": "Šifrēts savienojums caur {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Apstiprināt",
@@ -951,7 +955,17 @@
             "navigate_opened": "Atvēru mapi: {path}",
             "navigate_entered": "Iegāju mapē: {path}",
             "navigate_up_one": "Uzkāpu vienu līmeni: {path}",
-            "navigate_up_to": "Uzkāpu uz: {path}"
+            "navigate_up_to": "Uzkāpu uz: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",

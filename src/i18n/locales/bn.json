@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI সহকারী",
             "aeroagent": "AeroAgent",
             "insecureConnection": "অসুরক্ষিত সংযোগ",
-            "insecureConnectionTitle": "সার্টিফিকেট যাচাইকরণ নিস্ক্রিয়"
+            "insecureConnectionTitle": "সার্টিফিকেট যাচাইকরণ নিস্ক্রিয়",
+            "update": "আপডেট",
+            "insecureConnectionUnencrypted": "এই সংযোগটি এনক্রিপ্ট করা নেই। শংসাপত্রগুলি সাধারণ পাঠ্যে পাঠানো হয়।",
+            "secureConnection": "নিরাপদ",
+            "secureConnectionTitle": "{protocol} এর মাধ্যমে এনক্রিপ্টেড সংযোগ"
         },
         "dialogs": {
             "confirmTitle": "নিশ্চিত করুন",
@@ -951,7 +955,17 @@
             "navigate_opened": "আমি ফোল্ডার খুলেছি: {path}",
             "navigate_entered": "আমি ফোল্ডারে প্রবেশ করেছি: {path}",
             "navigate_up_one": "আমি এক স্তর উপরে উঠেছি: {path}",
-            "navigate_up_to": "আমি উপরে উঠেছি: {path}"
+            "navigate_up_to": "আমি উপরে উঠেছি: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",

@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - Asisten AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Koneksi Tidak Aman",
-            "insecureConnectionTitle": "Verifikasi sertifikat dinonaktifkan"
+            "insecureConnectionTitle": "Verifikasi sertifikat dinonaktifkan",
+            "update": "Pembaruan",
+            "insecureConnectionUnencrypted": "Koneksi ini tidak terenkripsi. Kredensial dikirim dalam teks biasa.",
+            "secureConnection": "Aman",
+            "secureConnectionTitle": "Koneksi terenkripsi melalui {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Konfirmasi",
@@ -951,7 +955,17 @@
             "navigate_opened": "Saya membuka folder: {path}",
             "navigate_entered": "Saya masuk ke folder: {path}",
             "navigate_up_one": "Saya naik satu tingkat: {path}",
-            "navigate_up_to": "Saya naik ke: {path}"
+            "navigate_up_to": "Saya naik ke: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

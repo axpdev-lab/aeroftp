@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - Pomočnik z umetno inteligenco",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Nezavarovana povezava",
-            "insecureConnectionTitle": "Preverjanje potrdila je onemogočeno"
+            "insecureConnectionTitle": "Preverjanje potrdila je onemogočeno",
+            "update": "Posodobitev",
+            "insecureConnectionUnencrypted": "Ta povezava ni šifrirana. Poverilnice se pošiljajo kot navadno besedilo.",
+            "secureConnection": "Varna",
+            "secureConnectionTitle": "Šifrirana povezava prek {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Potrdi",
@@ -951,7 +955,17 @@
             "update_available": "Na voljo je posodobitev: v{version} (.{format})",
             "update_uptodate": "Sem že posodobljen (v{version})",
             "update_error": "Nisem mogel najti posodobitev: {error}",
-            "file_skipped": "Preskočil sem {filename} (brez sprememb)"
+            "file_skipped": "Preskočil sem {filename} (brez sprememb)",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",

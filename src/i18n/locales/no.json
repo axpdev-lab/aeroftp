@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI-assistent",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Usikker tilkobling",
-            "insecureConnectionTitle": "Sertifikatverifisering er deaktivert"
+            "insecureConnectionTitle": "Sertifikatverifisering er deaktivert",
+            "update": "Oppdatering",
+            "insecureConnectionUnencrypted": "Denne tilkoblingen er ikke kryptert. Påloggingsopplysninger sendes som ren tekst.",
+            "secureConnection": "Sikker",
+            "secureConnectionTitle": "Kryptert tilkobling via {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Bekreft",
@@ -951,7 +955,17 @@
             "navigate_opened": "Jeg åpnet mappen: {path}",
             "navigate_entered": "Jeg gikk inn i mappen: {path}",
             "navigate_up_one": "Jeg gikk ett nivå opp: {path}",
-            "navigate_up_to": "Jeg gikk opp til: {path}"
+            "navigate_up_to": "Jeg gikk opp til: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",

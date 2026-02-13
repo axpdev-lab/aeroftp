@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - ผู้ช่วย AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "การเชื่อมต่อไม่ปลอดภัย",
-            "insecureConnectionTitle": "การตรวจสอบใบรับรองถูกปิด"
+            "insecureConnectionTitle": "การตรวจสอบใบรับรองถูกปิด",
+            "update": "อัปเดต",
+            "insecureConnectionUnencrypted": "การเชื่อมต่อนี้ไม่ได้เข้ารหัส ข้อมูลรับรองจะถูกส่งเป็นข้อความธรรมดา",
+            "secureConnection": "ปลอดภัย",
+            "secureConnectionTitle": "การเชื่อมต่อที่เข้ารหัสผ่าน {protocol}"
         },
         "dialogs": {
             "confirmTitle": "ยืนยัน",
@@ -951,7 +955,17 @@
             "update_available": "มีการอัปเดต: v{version} (.{format})",
             "update_uptodate": "ฉันอัปเดตแล้ว (v{version})",
             "update_error": "ไม่สามารถค้นหาการอัปเดต: {error}",
-            "file_skipped": "ฉันข้าม {filename} (ไม่มีการเปลี่ยนแปลง)"
+            "file_skipped": "ฉันข้าม {filename} (ไม่มีการเปลี่ยนแปลง)",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",

@@ -101,7 +101,17 @@
             "navigate_opened": "I opened the folder: {path}",
             "navigate_entered": "I entered the folder: {path}",
             "navigate_up_one": "I went up one level: {path}",
-            "navigate_up_to": "I went up to: {path}"
+            "navigate_up_to": "I went up to: {path}",
+            "dns_resolving": "Resolving {hostname}...",
+            "dns_resolved": "{hostname} → {ip}",
+            "dns_failed": "DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "Connecting to {ip}:{port}...",
+            "tls_established": "TLS connection established ({mode})",
+            "ssh_established": "SSH connection established",
+            "https_established": "HTTPS connection established",
+            "auth_success": "Authenticated as {username}",
+            "auth_method_key": "Authenticated with SSH key ({username})",
+            "listing_complete": "Directory listing of \"{path}\" completed ({count} items)"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -2009,9 +2019,13 @@
             "syncFiles": "Sync Files",
             "syncing": "Syncing...",
             "transferQueue": "Transfer Queue",
+            "update": "Update",
             "updateAvailable": "Update Available",
             "insecureConnection": "Insecure Connection",
-            "insecureConnectionTitle": "Certificate verification is disabled"
+            "insecureConnectionTitle": "Certificate verification is disabled",
+            "insecureConnectionUnencrypted": "This connection is not encrypted. Credentials are sent in plain text.",
+            "secureConnection": "Secure",
+            "secureConnectionTitle": "Encrypted connection via {protocol}"
         },
         "support": {
             "buyMeACoffee": "Buy Me a Coffee",

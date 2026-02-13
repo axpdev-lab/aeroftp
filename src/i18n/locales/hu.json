@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - MI asszisztens",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Nem biztonságos kapcsolat",
-            "insecureConnectionTitle": "A tanúsítványellenőrzés le van tiltva"
+            "insecureConnectionTitle": "A tanúsítványellenőrzés le van tiltva",
+            "update": "Frissítés",
+            "insecureConnectionUnencrypted": "Ez a kapcsolat nem titkosított. A hitelesítő adatok egyszerű szövegként kerülnek elküldésre.",
+            "secureConnection": "Biztonságos",
+            "secureConnectionTitle": "Titkosított kapcsolat {protocol} protokollon"
         },
         "dialogs": {
             "confirmTitle": "Megerősítés",
@@ -951,7 +955,17 @@
             "navigate_opened": "Megnyitottam a mappát: {path}",
             "navigate_entered": "Bementem a mappába: {path}",
             "navigate_up_one": "Egy szinttel feljebb mentem: {path}",
-            "navigate_up_to": "Felmentem ide: {path}"
+            "navigate_up_to": "Felmentem ide: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",

@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - AI Asistanı",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Güvensiz Bağlantı",
-            "insecureConnectionTitle": "Sertifika doğrulama devre dışı"
+            "insecureConnectionTitle": "Sertifika doğrulama devre dışı",
+            "update": "Güncelleme",
+            "insecureConnectionUnencrypted": "Bu bağlantı şifrelenmemiştir. Kimlik bilgileri düz metin olarak gönderilmektedir.",
+            "secureConnection": "Güvenli",
+            "secureConnectionTitle": "{protocol} üzerinden şifreli bağlantı"
         },
         "dialogs": {
             "confirmTitle": "Onayla",
@@ -951,7 +955,17 @@
             "update_available": "Güncelleme mevcut: v{version} (.{format})",
             "update_uptodate": "Zaten güncel (v{version})",
             "update_error": "Güncellemeleri arayamadım: {error}",
-            "file_skipped": "{filename} dosyasını atladım (değişmedi)"
+            "file_skipped": "{filename} dosyasını atladım (değişmedi)",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",

@@ -294,6 +294,18 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn resolve_hostname(hostname: String, port: u16) -> Result<String, String> {
+    let addr = format!("{}:{}", hostname, port);
+    let mut addrs = tokio::net::lookup_host(&addr)
+        .await
+        .map_err(|e| format!("DNS resolution failed: {}", e))?;
+    addrs
+        .next()
+        .map(|a| a.ip().to_string())
+        .ok_or_else(|| "No addresses found".to_string())
+}
+
+#[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let current_version = app.package_info().version.to_string();
     let install_format = detect_install_format();
@@ -5286,6 +5298,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_ready,
             copy_to_clipboard,
+            resolve_hostname,
             connect_ftp,
             disconnect_ftp,
             check_connection,

@@ -1292,6 +1292,52 @@ const App: React.FC = () => {
     },
   });
 
+  // --- Connection step logging helpers ---
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'];
+
+  const logConnectionSteps = async (
+    server: string,
+    port: number,
+    protocol: string,
+  ): Promise<string | null> => {
+    if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return null;
+    humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname: server }, 'running');
+    let resolvedIp: string | null = null;
+    try {
+      resolvedIp = await invoke<string>('resolve_hostname', { hostname: server, port });
+      humanLog.logRaw('activity.dns_resolved', 'INFO', { hostname: server, ip: resolvedIp }, 'success');
+    } catch (e) {
+      humanLog.logRaw('activity.dns_failed', 'ERROR', { hostname: server, error: String(e) }, 'error');
+    }
+    humanLog.logRaw('activity.connecting_to', 'CONNECT',
+      { ip: resolvedIp || server, port: String(port) }, 'running');
+    return resolvedIp;
+  };
+
+  const logConnectionSuccess = (
+    protocol: string,
+    username: string,
+    options?: { tlsMode?: string; private_key_path?: string }
+  ) => {
+    if (protocol === 'sftp') {
+      humanLog.logRaw('activity.ssh_established', 'CONNECT', {}, 'success');
+    } else if (protocol === 'ftps') {
+      const mode = options?.tlsMode || 'explicit';
+      humanLog.logRaw('activity.tls_established', 'CONNECT', { mode }, 'success');
+    } else if (['webdav', 's3', 'filen'].includes(protocol)) {
+      humanLog.logRaw('activity.https_established', 'CONNECT', {}, 'success');
+    }
+    if (protocol === 'sftp' && options?.private_key_path) {
+      humanLog.logRaw('activity.auth_method_key', 'CONNECT', { username }, 'success');
+    } else if (username) {
+      humanLog.logRaw('activity.auth_success', 'CONNECT', { username }, 'success');
+    }
+  };
+
+  const logListingComplete = (path: string, count: number) => {
+    humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success');
+  };
+
   // FTP operations
   const connectToFtp = async () => {
     // OAuth providers don't need server/username validation - they're already connected
@@ -1393,8 +1439,13 @@ const App: React.FC = () => {
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+        await logConnectionSteps(connectionParams.server, connectionParams.port || 21, protocol);
         await invoke('provider_connect', { params: providerParams });
 
+        logConnectionSuccess(protocol, connectionParams.username, {
+          tlsMode: connectionParams.options?.tlsMode,
+          private_key_path: connectionParams.options?.private_key_path || undefined,
+        });
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
         humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
@@ -1422,6 +1473,7 @@ const App: React.FC = () => {
         logger.debug('[connectToFtp] Converted files:', files.length);
         setRemoteFiles(files);
         setCurrentRemotePath(response.current_path);
+        logListingComplete(response.current_path, files.length);
 
         // Navigate to initial local directory if specified
         if (quickConnectDirs.localDir) {
@@ -1473,7 +1525,13 @@ const App: React.FC = () => {
       } catch {
         // Ignore if not connected to OAuth
       }
+      const ftpProto = connectionParams.protocol || 'ftp';
+      await logConnectionSteps(connectionParams.server, connectionParams.port || 21, ftpProto);
       await invoke('connect_ftp', { params: connectionParams });
+      logConnectionSuccess(ftpProto, connectionParams.username, {
+        tlsMode: connectionParams.options?.tlsMode,
+        private_key_path: connectionParams.options?.private_key_path || undefined,
+      });
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       const protocol = (connectionParams.protocol || 'FTP').toUpperCase();
       humanLog.logSuccess('CONNECT', { server: connectionParams.server, protocol }, logId);
@@ -1485,6 +1543,9 @@ const App: React.FC = () => {
         await changeRemoteDirectory(quickConnectDirs.remoteDir, connectionParams.protocol || 'ftp');
       } else {
         ftpResponse = await loadRemoteFiles();
+      }
+      if (ftpResponse) {
+        logListingComplete(ftpResponse.current_path || '/', ftpResponse.files?.length || 0);
       }
       // Navigate to initial local directory if specified
       if (quickConnectDirs.localDir) {
@@ -4496,7 +4557,12 @@ const App: React.FC = () => {
                   };
 
                   logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+                  await logConnectionSteps(params.server, params.port || 21, params.protocol || 'ftp');
                   await invoke('provider_connect', { params: providerParams });
+                  logConnectionSuccess(params.protocol || 'ftp', params.username, {
+                    tlsMode: params.options?.tlsMode,
+                    private_key_path: params.options?.private_key_path || undefined,
+                  });
 
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
@@ -4517,6 +4583,7 @@ const App: React.FC = () => {
                   }));
                   setRemoteFiles(files);
                   setCurrentRemotePath(response.current_path);
+                  logListingComplete(response.current_path, files.length);
 
                   if (localInitialPath) {
                     await changeLocalDirectory(localInitialPath);
@@ -4553,7 +4620,13 @@ const App: React.FC = () => {
                 // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
                 try { await invoke('provider_disconnect'); } catch { }
 
+                const savedFtpProto = params.protocol || 'ftp';
+                await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
                 await invoke('connect_ftp', { params });
+                logConnectionSuccess(savedFtpProto, params.username, {
+                  tlsMode: params.options?.tlsMode,
+                  private_key_path: params.options?.private_key_path || undefined,
+                });
                 setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                 humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
                 notify.success(t('toast.connected'), t('toast.connectedTo', { server: params.server }));
@@ -4565,6 +4638,9 @@ const App: React.FC = () => {
                   await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
                 } else {
                   savedFtpResponse = await loadRemoteFiles();
+                }
+                if (savedFtpResponse) {
+                  logListingComplete(savedFtpResponse.current_path || '/', savedFtpResponse.files?.length || 0);
                 }
 
                 if (localInitialPath) {
@@ -5976,12 +6052,25 @@ const App: React.FC = () => {
       {showStatusBar && (
         <StatusBar
           isConnected={isConnected}
-          insecureConnection={isConnected ? (() => {
+          connectionSecurity={isConnected ? (() => {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const verifyCert = connectionParams.options?.verifyCert ?? activeSession?.connectionParams?.options?.verifyCert;
-            return (protocol === 'ftp' || protocol === 'ftps') && verifyCert === false;
-          })() : false}
+            if (protocol === 'ftp') return 'insecure' as const;
+            if (protocol === 'ftps') {
+              const verifyCert = connectionParams.options?.verifyCert ?? activeSession?.connectionParams?.options?.verifyCert ?? true;
+              return verifyCert ? 'secure' as const : 'warning' as const;
+            }
+            return 'secure' as const;
+          })() : undefined}
+          secureProtocol={isConnected ? (() => {
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+            if (protocol === 'ftp') return undefined;
+            if (protocol === 'ftps') return 'TLS';
+            if (protocol === 'sftp') return 'SSH';
+            if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
+            return 'HTTPS';
+          })() : undefined}
           serverInfo={isConnected ? (() => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);

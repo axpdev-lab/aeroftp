@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - Cynorthwyydd AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Cysylltiad Anniogel",
-            "insecureConnectionTitle": "Mae dilysu tystysgrifau wedi'i analluogi"
+            "insecureConnectionTitle": "Mae dilysu tystysgrifau wedi'i analluogi",
+            "update": "Diweddariad",
+            "insecureConnectionUnencrypted": "Nid yw'r cysylltiad hwn wedi'i amgryptio. Mae manylion mewngofnodi yn cael eu hanfon fel testun plaen.",
+            "secureConnection": "Diogel",
+            "secureConnectionTitle": "Cysylltiad wedi'i amgryptio trwy {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Cadarnhau",
@@ -951,7 +955,17 @@
             "navigate_opened": "Agorais y ffolder: {path}",
             "navigate_entered": "Aethais i mewn i'r ffolder: {path}",
             "navigate_up_one": "Esgynais un lefel: {path}",
-            "navigate_up_to": "Esgynais i: {path}"
+            "navigate_up_to": "Esgynais i: {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",

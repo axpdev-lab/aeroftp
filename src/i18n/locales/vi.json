@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - Trợ lý AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Kết nối Không an toàn",
-            "insecureConnectionTitle": "Xác minh chứng chỉ đã bị tắt"
+            "insecureConnectionTitle": "Xác minh chứng chỉ đã bị tắt",
+            "update": "Cập nhật",
+            "insecureConnectionUnencrypted": "Kết nối này không được mã hóa. Thông tin đăng nhập được gửi dưới dạng văn bản thuần.",
+            "secureConnection": "Bảo mật",
+            "secureConnectionTitle": "Kết nối được mã hóa qua {protocol}"
         },
         "dialogs": {
             "confirmTitle": "Xác nhận",
@@ -951,7 +955,17 @@
             "update_available": "Có bản cập nhật: v{version} (.{format})",
             "update_uptodate": "Đã cập nhật (v{version})",
             "update_error": "Không thể tìm bản cập nhật: {error}",
-            "file_skipped": "Tôi đã bỏ qua {filename} (không thay đổi)"
+            "file_skipped": "Tôi đã bỏ qua {filename} (không thay đổi)",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",

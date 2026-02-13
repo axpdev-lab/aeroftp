@@ -752,7 +752,11 @@
             "aeroagentTitle": "AeroAgent - ជំនួយការ AI",
             "aeroagent": "AeroAgent",
             "insecureConnection": "ការតភ្ជាប់មិនមានសុវត្ថិភាព",
-            "insecureConnectionTitle": "ការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទ"
+            "insecureConnectionTitle": "ការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទ",
+            "update": "ការធ្វើបច្ចុប្បន្នភាព",
+            "insecureConnectionUnencrypted": "ការតភ្ជាប់នេះមិនត្រូវបានអ៊ិនគ្រីបទេ។ អត្តសញ្ញាណត្រូវបានផ្ញើជាអត្ថបទធម្មតា។",
+            "secureConnection": "សុវត្ថិភាព",
+            "secureConnectionTitle": "ការតភ្ជាប់បានអ៊ិនគ្រីបតាមរយៈ {protocol}"
         },
         "dialogs": {
             "confirmTitle": "បញ្ជាក់",
@@ -951,7 +955,17 @@
             "navigate_opened": "ខ្ញុំបានបើកថត៖ {path}",
             "navigate_entered": "ខ្ញុំបានចូលថត៖ {path}",
             "navigate_up_one": "ខ្ញុំឡើងមួយកម្រិត៖ {path}",
-            "navigate_up_to": "ខ្ញុំឡើងទៅ៖ {path}"
+            "navigate_up_to": "ខ្ញុំឡើងទៅ៖ {path}",
+            "dns_resolving": "[NEEDS TRANSLATION] Resolving {hostname}...",
+            "dns_resolved": "[NEEDS TRANSLATION] {hostname} → {ip}",
+            "dns_failed": "[NEEDS TRANSLATION] DNS resolution failed for {hostname}: {error}",
+            "connecting_to": "[NEEDS TRANSLATION] Connecting to {ip}:{port}...",
+            "tls_established": "[NEEDS TRANSLATION] TLS connection established ({mode})",
+            "ssh_established": "[NEEDS TRANSLATION] SSH connection established",
+            "https_established": "[NEEDS TRANSLATION] HTTPS connection established",
+            "auth_success": "[NEEDS TRANSLATION] Authenticated as {username}",
+            "auth_method_key": "[NEEDS TRANSLATION] Authenticated with SSH key ({username})",
+            "listing_complete": "[NEEDS TRANSLATION] Directory listing of \"{path}\" completed ({count} items)"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
