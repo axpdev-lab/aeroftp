@@ -1,9 +1,9 @@
 [package]
 name = "aeroftp"
-version = "2.0.7"
+version = "2.0.8"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
-license = "MIT"
+license = "GPL-3.0"
 repository = "https://github.com/axpnet/aeroftp"
 edition = "2021"
 rust-version = "1.77.2"
