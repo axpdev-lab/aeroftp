@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Staðbundinn skráastjóri",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI aðstoðarmaður",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Óörugg tenging",
+            "insecureConnectionTitle": "Vottorðssannprófun er óvirk"
         },
         "dialogs": {
             "confirmTitle": "Staðfesta",
@@ -945,7 +947,11 @@
             "update_available": "Uppfærsla tiltæk: v{version} (.{format})",
             "update_uptodate": "Uppfært (v{version})",
             "update_error": "Uppfærsluathugun mistókst: {error}",
-            "file_skipped": "Sleppt (óbreytt): {filename}"
+            "file_skipped": "Sleppt (óbreytt): {filename}",
+            "navigate_opened": "Ég opnaði möppuna: {path}",
+            "navigate_entered": "Ég fór inn í möppuna: {path}",
+            "navigate_up_one": "Ég fór upp um eitt stig: {path}",
+            "navigate_up_to": "Ég fór upp í: {path}"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB ókeypis geymsla, US/EU svæði",
             "s3Tooltip": "S3-samhæf geymsla - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP yfir SSH - örugg skeljaflutningur skráa, styður lykilauðkenningu",
-            "webdavTooltip": "WebDAV samskiptareglur - samhæft við Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV samskiptareglur - samhæft við Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Aðvörun: þú ert að fara að samþykkja ógild/sjálfundirrituð vottorð. Þetta veikir öryggi tengingar. Áfram?",
+            "insecureCertConfirmSecond": "Loka staðfesting: halda áfram í óöruggu vottorðsham?"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

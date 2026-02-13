@@ -98,6 +98,7 @@ interface SettingsPanelProps {
 
 // Settings storage key
 const SETTINGS_KEY = 'aeroftp_settings';
+const SETTINGS_VAULT_KEY = 'app_settings';
 const SERVERS_KEY = 'aeroftp-saved-servers';
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
 
@@ -338,62 +339,67 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     // Load settings on open
     useEffect(() => {
         if (isOpen) {
-            try {
-                const saved = localStorage.getItem(SETTINGS_KEY);
-                if (saved) setSettings({ ...defaultSettings, ...JSON.parse(saved) });
-                // Load servers: sync fallback first, then try vault
-                const savedServers = localStorage.getItem(SERVERS_KEY);
-                if (savedServers) setServers(JSON.parse(savedServers));
-                (async () => {
+            (async () => {
+                try {
+                    const saved = await secureGetWithFallback<AppSettings>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
+                    if (saved) {
+                        setSettings({ ...defaultSettings, ...saved });
+                        // One-way idempotent migration to vault with plaintext cleanup
+                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, { ...defaultSettings, ...saved }).catch(() => {});
+                    }
+
+                    // Load servers: sync fallback first, then try vault
+                    const savedServers = localStorage.getItem(SERVERS_KEY);
+                    if (savedServers) setServers(JSON.parse(savedServers));
                     const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_KEY);
                     if (vaultServers && vaultServers.length > 0) setServers(vaultServers);
-                })();
-                // Load OAuth settings from secure credential store (fallback: localStorage)
-                const loadOAuthFromStore = async () => {
-                    const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
-                    const loaded = { ...defaultOAuthSettings };
-                    for (const p of providers) {
-                        try {
-                            const id = await invoke<string>('get_credential', { account: `oauth_${p}_client_id` });
-                            const secret = await invoke<string>('get_credential', { account: `oauth_${p}_client_secret` });
-                            loaded[p] = { clientId: id || '', clientSecret: secret || '' };
-                        } catch {
-                            // Fallback: legacy localStorage
-                            const legacyOAuth = localStorage.getItem(OAUTH_SETTINGS_KEY);
-                            if (legacyOAuth) {
-                                const parsed = JSON.parse(legacyOAuth);
-                                if (parsed[p]) loaded[p] = parsed[p];
+
+                    // Load OAuth settings from secure credential store (fallback: localStorage)
+                    const loadOAuthFromStore = async () => {
+                        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
+                        const loaded = { ...defaultOAuthSettings };
+                        for (const p of providers) {
+                            try {
+                                const id = await invoke<string>('get_credential', { account: `oauth_${p}_client_id` });
+                                const secret = await invoke<string>('get_credential', { account: `oauth_${p}_client_secret` });
+                                loaded[p] = { clientId: id || '', clientSecret: secret || '' };
+                            } catch {
+                                // SEC: No localStorage fallback — credentials must be in vault.
+                                // Migration wizard handles legacy data on first launch.
                             }
                         }
+                        setOauthSettings(loaded);
+                    };
+                    await loadOAuthFromStore();
+
+                    const savedAnalytics = localStorage.getItem('analytics_enabled');
+                    if (savedAnalytics !== null) {
+                        setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
                     }
-                    setOauthSettings(loaded);
-                };
-                loadOAuthFromStore();
-                const savedAnalytics = localStorage.getItem('analytics_enabled');
-                if (savedAnalytics !== null) {
-                    setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
-                }
-                // Sync autostart state from OS (authoritative source)
-                isAutostartEnabled()
-                    .then(enabled => setSettings(prev => ({ ...prev, launchOnStartup: enabled })))
-                    .catch(e => logger.debug('Autostart status check failed:', e));
-                // Load credential store status
-                invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number }>('get_credential_store_status')
-                    .then(status => {
-                        setMasterPasswordStatus({
-                            is_set: status.master_mode,
-                            is_locked: status.is_locked,
-                            timeout_seconds: Number(status.timeout_seconds),
-                        });
-                        if (status.timeout_seconds > 0) {
-                            setAutoLockTimeout(Math.floor(Number(status.timeout_seconds) / 60));
-                        }
-                        if (typeof status.accounts_count === 'number') {
-                            setVaultEntriesCount(status.accounts_count);
-                        }
-                    })
-                    .catch(console.error);
-            } catch { }
+
+                    // Sync autostart state from OS (authoritative source)
+                    isAutostartEnabled()
+                        .then(enabled => setSettings(prev => ({ ...prev, launchOnStartup: enabled })))
+                        .catch(e => logger.debug('Autostart status check failed:', e));
+
+                    // Load credential store status
+                    invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number }>('get_credential_store_status')
+                        .then(status => {
+                            setMasterPasswordStatus({
+                                is_set: status.master_mode,
+                                is_locked: status.is_locked,
+                                timeout_seconds: Number(status.timeout_seconds),
+                            });
+                            if (status.timeout_seconds > 0) {
+                                setAutoLockTimeout(Math.floor(Number(status.timeout_seconds) / 60));
+                            }
+                            if (typeof status.accounts_count === 'number') {
+                                setVaultEntriesCount(status.accounts_count);
+                            }
+                        })
+                        .catch(console.error);
+                } catch { }
+            })();
         }
     }, [isOpen]);
 
@@ -404,7 +410,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     };
 
     const handleSave = async () => {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
         localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
         // Persist servers to vault (async, removes localStorage copy on success)
         secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});

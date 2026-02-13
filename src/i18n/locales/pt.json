@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Gerenciador de Arquivos Local",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Assistente de IA",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Conexão insegura",
+            "insecureConnectionTitle": "A verificação de certificados está desativada"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",
@@ -945,7 +947,11 @@
             "update_available": "Atualização disponível: v{version} (.{format})",
             "update_uptodate": "Atualizado (v{version})",
             "update_error": "Falha na verificação de atualizações: {error}",
-            "file_skipped": "Ignorado (sem alterações): {filename}"
+            "file_skipped": "Ignorado (sem alterações): {filename}",
+            "navigate_opened": "Abri a pasta: {path}",
+            "navigate_entered": "Entrei na pasta: {path}",
+            "navigate_up_one": "Subi um nível: {path}",
+            "navigate_up_to": "Subi para: {path}"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -989,6 +995,8 @@
             "encryptionImplicit": "Exigir FTP implícito sobre TLS",
             "encryptionExplicitIfAvailable": "Usar FTP explícito sobre TLS se disponível",
             "acceptInvalidCerts": "Aceitar certificados inválidos ou autoassinados",
+            "insecureCertConfirmFirst": "Aviso: você está prestes a aceitar certificados inválidos/autossinados. Isso enfraquece a segurança da conexão. Continuar?",
+            "insecureCertConfirmSecond": "Confirmação final: prosseguir no modo de certificado inseguro?",
             "boxDesc": "Conectar com conta Box",
             "pcloudDesc": "Conectar com conta pCloud",
             "azureDesc": "Armazenamento Microsoft Azure",

@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - লোকাল ফাইল ম্যানেজার",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI সহকারী",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "অসুরক্ষিত সংযোগ",
+            "insecureConnectionTitle": "সার্টিফিকেট যাচাইকরণ নিস্ক্রিয়"
         },
         "dialogs": {
             "confirmTitle": "নিশ্চিত করুন",
@@ -945,7 +947,11 @@
             "update_available": "আপডেট উপলব্ধ: v{version} (.{format})",
             "update_uptodate": "আপ টু ডেট (v{version})",
             "update_error": "আপডেট চেক ব্যর্থ: {error}",
-            "file_skipped": "এড়িয়ে যাওয়া হয়েছে (অপরিবর্তিত): {filename}"
+            "file_skipped": "এড়িয়ে যাওয়া হয়েছে (অপরিবর্তিত): {filename}",
+            "navigate_opened": "আমি ফোল্ডার খুলেছি: {path}",
+            "navigate_entered": "আমি ফোল্ডারে প্রবেশ করেছি: {path}",
+            "navigate_up_one": "আমি এক স্তর উপরে উঠেছি: {path}",
+            "navigate_up_to": "আমি উপরে উঠেছি: {path}"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10GB বিনামূল্যে স্টোরেজ, US/EU অঞ্চল",
             "s3Tooltip": "S3-সামঞ্জস্যপূর্ণ স্টোরেজ — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH-এর মাধ্যমে SFTP — নিরাপদ শেল ফাইল স্থানান্তর, কী প্রমাণীকরণ সমর্থন করে",
-            "webdavTooltip": "WebDAV প্রোটোকল — Nextcloud, CloudMe, Koofr, Synology NAS-এর সাথে সামঞ্জস্যপূর্ণ"
+            "webdavTooltip": "WebDAV প্রোটোকল — Nextcloud, CloudMe, Koofr, Synology NAS-এর সাথে সামঞ্জস্যপূর্ণ",
+            "insecureCertConfirmFirst": "সতর্কতা: আপনি অবৈধ/স্ব-স্বাক্ষরিত সার্টিফিকেট গ্রহণ করতে যাচ্ছেন। এটি সংযোগ নিরাপত্তা দুর্বল করে। চালিয়ে যাবেন?",
+            "insecureCertConfirmSecond": "চূড়ান্ত নিশ্চিতকরণ: অসুরক্ষিত সার্টিফিকেট মোডে চালিয়ে যাবেন?"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

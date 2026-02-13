@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Lokaler Dateimanager",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - KI-Assistent",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Unsichere Verbindung",
+            "insecureConnectionTitle": "Zertifikatsüberprüfung ist deaktiviert"
         },
         "dialogs": {
             "confirmTitle": "Bestätigen",
@@ -945,7 +947,11 @@
             "update_available": "Update verfügbar: v{version} (.{format})",
             "update_uptodate": "Aktuell (v{version})",
             "update_error": "Update-Prüfung fehlgeschlagen: {error}",
-            "file_skipped": "Übersprungen (unverändert): {filename}"
+            "file_skipped": "Übersprungen (unverändert): {filename}",
+            "navigate_opened": "Ich habe den Ordner geöffnet: {path}",
+            "navigate_entered": "Ich bin in den Ordner gegangen: {path}",
+            "navigate_up_one": "Ich bin eine Ebene nach oben gegangen: {path}",
+            "navigate_up_to": "Ich bin hochgegangen zu: {path}"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB kostenloser Speicher, US/EU-Regionen",
             "s3Tooltip": "S3-kompatibler Speicher - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP über SSH - sichere Shell-Dateiübertragung, unterstützt Schlüsselauthentifizierung",
-            "webdavTooltip": "WebDAV-Protokoll - kompatibel mit Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV-Protokoll - kompatibel mit Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Warnung: Sie sind dabei, ungültige/selbstsignierte Zertifikate zu akzeptieren. Dies schwächt die Verbindungssicherheit. Fortfahren?",
+            "insecureCertConfirmSecond": "Abschließende Bestätigung: im unsicheren Zertifikatsmodus fortfahren?"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

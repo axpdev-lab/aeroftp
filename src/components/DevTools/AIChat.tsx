@@ -706,6 +706,24 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 if (!command) {
                     throw new Error(t('ai.error.noCommandSpecified'));
                 }
+                // SEC: Deny destructive commands that could cause irreversible damage
+                const DENIED_COMMANDS = [
+                    /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\s*$/,     // rm -rf /
+                    /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\s*$/, // rm -rf /
+                    /^\s*mkfs\b/,                               // mkfs (format disk)
+                    /^\s*dd\s+.*of=\/dev\//,                    // dd to device
+                    /^\s*shutdown\b/,                            // shutdown
+                    /^\s*reboot\b/,                              // reboot
+                    /^\s*halt\b/,                                // halt
+                    /^\s*init\s+[06]\b/,                         // init 0/6
+                    /^\s*:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:/,  // fork bomb
+                    /^\s*>\s*\/dev\/sd[a-z]/,                   // overwrite disk
+                    /^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+\//,    // chmod 777 /
+                    /^\s*chown\s+.*\s+\/\s*$/,                  // chown /
+                ];
+                if (DENIED_COMMANDS.some(rx => rx.test(command))) {
+                    throw new Error('Command blocked: potentially destructive system command');
+                }
                 // Dispatch event for terminal to pick up
                 window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command } }));
                 // Also activate terminal panel

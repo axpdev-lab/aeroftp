@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile — Lokalni spravce souboru",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent — AI asistent",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Nezabezpečené připojení",
+            "insecureConnectionTitle": "Ověřování certifikátů je vypnuto"
         },
         "dialogs": {
             "confirmTitle": "Potvrdit",
@@ -945,7 +947,11 @@
             "update_available": "Dostupná aktualizace: v{version} (.{format})",
             "update_uptodate": "Aktuální (v{version})",
             "update_error": "Kontrola aktualizací selhala: {error}",
-            "file_skipped": "Preskoceno (beze zmen): {filename}"
+            "file_skipped": "Preskoceno (beze zmen): {filename}",
+            "navigate_opened": "Otevřel jsem složku: {path}",
+            "navigate_entered": "Vstoupil jsem do složky: {path}",
+            "navigate_up_one": "Přešel jsem o úroveň výš: {path}",
+            "navigate_up_to": "Přešel jsem do: {path}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10GB bezplatného úložiště, regiony USA/EU",
             "s3Tooltip": "S3 kompatibilní úložiště — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP přes SSH — bezpečný přenos souborů přes shell, podpora ověření klíčem",
-            "webdavTooltip": "Protokol WebDAV — kompatibilní s Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV — kompatibilní s Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Varování: chystáte se přijmout neplatné/automaticky podepsané certifikáty. To oslabuje zabezpečení připojení. Pokračovat?",
+            "insecureCertConfirmSecond": "Konečné potvrzení: pokračovat v režimu nezabezpečených certifikátů?"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

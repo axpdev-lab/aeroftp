@@ -48,11 +48,12 @@ impl Handler for ShellSshHandler {
                 Ok(false)
             }
             Err(e) => {
-                tracing::warn!("SSH Shell: known_hosts error: {} - accepting TOFU", e);
-                if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
-                    tracing::warn!("SSH Shell: Failed to save host key: {}", e);
-                }
-                Ok(true)
+                // SEC: Reject on unknown errors — do not silently accept.
+                tracing::error!(
+                    "SSH Shell: REJECTING {} - known_hosts verification error: {}",
+                    self.host, e
+                );
+                Ok(false)
             }
         }
     }

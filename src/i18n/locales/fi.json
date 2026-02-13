@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Paikallinen tiedostonhallinta",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Tekoälyavustaja",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Turvaton yhteys",
+            "insecureConnectionTitle": "Varmennetarkistus on poistettu käytöstä"
         },
         "dialogs": {
             "confirmTitle": "Vahvista",
@@ -945,7 +947,11 @@
             "update_available": "Päivitys saatavilla: v{version} (.{format})",
             "update_uptodate": "Ajan tasalla (v{version})",
             "update_error": "Päivitystarkistus epäonnistui: {error}",
-            "file_skipped": "Ohitettu (muuttumaton): {filename}"
+            "file_skipped": "Ohitettu (muuttumaton): {filename}",
+            "navigate_opened": "Avasin kansion: {path}",
+            "navigate_entered": "Menin kansioon: {path}",
+            "navigate_up_one": "Menin yhden tason ylös: {path}",
+            "navigate_up_to": "Menin ylös: {path}"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB ilmaiseksi, US/EU-alueet",
             "s3Tooltip": "S3-yhteensopiva tallennustila - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH:n kautta - suojattu tiedostonsiirto, tukee avaintunnistautumista",
-            "webdavTooltip": "WebDAV-protokolla - yhteensopiva Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV-protokolla - yhteensopiva Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Varoitus: olet hyväksymässä virheellisiä/itse allekirjoitettuja varmenteita. Tämä heikentää yhteyden turvallisuutta. Jatka?",
+            "insecureCertConfirmSecond": "Lopullinen vahvistus: jatka turvattomassa varennetilassa?"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

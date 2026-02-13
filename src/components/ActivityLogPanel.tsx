@@ -632,7 +632,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                     <button
                         onClick={() => {
                             const logText = filteredEntries.map(e =>
-                                `[${formatTimestamp(e.timestamp)}] ${e.operation} - ${e.message}`
+                                `[${formatTimestamp(e.timestamp)}] ${e.operation} - ${e.message}${e.details ? ` (${e.details})` : ''}`
                             ).join('\n');
                             navigator.clipboard.writeText(logText);
                         }}

@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Helyi fájlkezelő",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - MI asszisztens",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Nem biztonságos kapcsolat",
+            "insecureConnectionTitle": "A tanúsítványellenőrzés le van tiltva"
         },
         "dialogs": {
             "confirmTitle": "Megerősítés",
@@ -945,7 +947,11 @@
             "update_available": "Frissítés elérhető: v{version} (.{format})",
             "update_uptodate": "Naprakész (v{version})",
             "update_error": "Frissítés-ellenőrzés sikertelen: {error}",
-            "file_skipped": "Kihagyva (változatlan): {filename}"
+            "file_skipped": "Kihagyva (változatlan): {filename}",
+            "navigate_opened": "Megnyitottam a mappát: {path}",
+            "navigate_entered": "Bementem a mappába: {path}",
+            "navigate_up_one": "Egy szinttel feljebb mentem: {path}",
+            "navigate_up_to": "Felmentem ide: {path}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB ingyenes tárhely, US/EU régiók",
             "s3Tooltip": "S3-kompatibilis tárhely - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH-n keresztül - biztonságos fájlátvitel, támogatja a kulcsalapú hitelesítést",
-            "webdavTooltip": "WebDAV protokoll - kompatibilis a Nextcloud, CloudMe, Koofr, Synology NAS szolgáltatásokkal"
+            "webdavTooltip": "WebDAV protokoll - kompatibilis a Nextcloud, CloudMe, Koofr, Synology NAS szolgáltatásokkal",
+            "insecureCertConfirmFirst": "Figyelmeztetés: érvénytelen/önaláírt tanúsítványokat fogad el. Ez gyengíti a kapcsolat biztonságát. Folytatja?",
+            "insecureCertConfirmSecond": "Végső megerősítés: folytatja a nem biztonságos tanúsítvány módban?"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

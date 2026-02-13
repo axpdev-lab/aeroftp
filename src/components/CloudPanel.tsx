@@ -53,6 +53,7 @@ interface SyncResult {
     conflicts: number;
     errors: string[];
     duration_secs: number;
+    file_details?: { path: string; direction: string; size: number }[];
 }
 
 interface CloudPanelProps {

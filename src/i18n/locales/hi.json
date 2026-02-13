@@ -750,7 +750,9 @@
             "aeroagentTitle": "AeroAgent - AI सहायक",
             "aeroagent": "AeroAgent",
             "activityLog": "गतिविधि लॉग",
-            "log": "लॉग"
+            "log": "लॉग",
+            "insecureConnection": "असुरक्षित कनेक्शन",
+            "insecureConnectionTitle": "प्रमाणपत्र सत्यापन अक्षम है"
         },
         "dialogs": {
             "confirmTitle": "पुष्टिी करें",
@@ -945,7 +947,11 @@
             "update_uptodate": "अद्यतित (v{version})",
             "update_error": "अपडेट जाँच विफल: {error}",
             "file_skipped": "छोड़ा गया (कोई बदलाव नहीं): {filename}",
-            "delete_multiple_done": "{count} आइटम हटाए गए: {items}"
+            "delete_multiple_done": "{count} आइटम हटाए गए: {items}",
+            "navigate_opened": "मैंने फोल्डर खोला: {path}",
+            "navigate_entered": "मैं फोल्डर में गया: {path}",
+            "navigate_up_one": "मैं एक स्तर ऊपर गया: {path}",
+            "navigate_up_to": "मैं ऊपर गया: {path}"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB मुफ़्त स्टोरेज, US/EU क्षेत्र",
             "s3Tooltip": "S3-संगत स्टोरेज - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH पर SFTP - सुरक्षित शेल फ़ाइल ट्रांसफ़र, की प्रमाणीकरण समर्थित",
-            "webdavTooltip": "WebDAV प्रोटोकॉल - Nextcloud, CloudMe, Koofr, Synology NAS के साथ संगत"
+            "webdavTooltip": "WebDAV प्रोटोकॉल - Nextcloud, CloudMe, Koofr, Synology NAS के साथ संगत",
+            "insecureCertConfirmFirst": "चेतावनी: आप अमान्य/स्व-हस्ताक्षरित प्रमाणपत्र स्वीकार करने वाले हैं। यह कनेक्शन सुरक्षा कमजोर करता है। जारी रखें?",
+            "insecureCertConfirmSecond": "अंतिम पुष्टि: असुरक्षित प्रमाणपत्र मोड में आगे बढ़ें?"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

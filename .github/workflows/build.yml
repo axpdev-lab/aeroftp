@@ -66,6 +66,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Run security regression suite (MVP)
+        run: npm run security:regression
+
       - name: Build Tauri app
         run: npm run tauri build
         env:

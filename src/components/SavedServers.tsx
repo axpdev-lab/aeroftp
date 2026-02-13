@@ -11,36 +11,6 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
-// OAuth settings storage key (same as SettingsPanel)
-const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
-
-interface OAuthSettings {
-    googledrive: { clientId: string; clientSecret: string };
-    dropbox: { clientId: string; clientSecret: string };
-    onedrive: { clientId: string; clientSecret: string };
-    [key: string]: { clientId: string; clientSecret: string };
-}
-
-// Get OAuth settings from localStorage
-const getOAuthSettings = (): OAuthSettings | null => {
-    try {
-        const stored = localStorage.getItem(OAUTH_SETTINGS_KEY);
-        return stored ? JSON.parse(stored) : null;
-    } catch {
-        return null;
-    }
-};
-
-// Map protocol to OAuth provider key for localStorage settings
-const getOAuthProviderKey = (protocol: ProviderType): keyof OAuthSettings | null => {
-    switch (protocol) {
-        case 'googledrive': return 'googledrive';
-        case 'dropbox': return 'dropbox';
-        case 'onedrive': return 'onedrive';
-        default: return null;
-    }
-};
-
 // Helper: get credential with retry if vault not ready yet (race condition on app startup)
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -279,22 +249,9 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
         // Check if this is an OAuth provider
         if (server.protocol && isOAuthProvider(server.protocol)) {
-            // Try localStorage settings first (Google Drive, Dropbox, OneDrive)
-            const providerKey = getOAuthProviderKey(server.protocol);
-            const oauthSettings = getOAuthSettings();
+            // SEC: Load credentials from vault only — no localStorage fallback.
             let credentials: { clientId: string; clientSecret: string } | null = null;
-
-            if (providerKey && oauthSettings) {
-                const stored = oauthSettings[providerKey];
-                if (stored?.clientId && stored?.clientSecret) {
-                    credentials = stored;
-                }
-            }
-
-            // Fallback: load from credential vault
-            if (!credentials) {
-                credentials = await loadOAuthCredentials(server.protocol);
-            }
+            credentials = await loadOAuthCredentials(server.protocol);
 
             if (!credentials) {
                 const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };

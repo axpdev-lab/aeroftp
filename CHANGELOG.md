@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2026-02-13
+
+### Security Hardening Completion, Full i18n Coverage, and Media Startup Stabilization
+
+Completed security hardening remediations, finalized all locale keys (including Armenian), and stabilized Linux media first-play behavior with buffered startup.
+
+#### Changed
+
+- **SEC-P3-02 completed**: app settings (`aeroftp_settings`) now use vault-first storage (`app_settings`) with one-way idempotent migration and plaintext cleanup during writes
+- **SEC-P1-04 hardening baseline landed (compatibility-first CSP)**: explicit `csp` and `devCsp` profiles added in Tauri security config while retaining `dangerousDisableAssetCspModification: true` as a controlled baseline
+- **Settings load/save flow unified**: `useSettings`, `SettingsPanel`, and `App` no longer rely on direct localStorage writes for core app preferences
+- **Overwrite policy source aligned**: overwrite behavior now reads in-memory settings state instead of reading `aeroftp_settings` directly in transfer hooks
+- **Security UX surfaced in protocol/status UI**: insecure connection labels and certificate confirmation copy are now present and localized across all supported locales
+- **Media startup flow hardened**: `AudioPlayer` now queues first play during buffering and auto-starts when minimum prebuffer is available, avoiding the Linux “first click no start” race
+- **Roadmap status updated**: SEC-P3-02 marked completed in `docs/dev/ROADMAP.md`
+
+#### Added
+
+- **Security regression coverage for settings vault migration**: new `Settings vault migration` check in `scripts/security-regression.cjs`
+
+#### Verified
+
+- **Security regression suite**: `npm run security:regression` passed (Terminal denylist, Host-key fail-closed, OAuth/settings leak guard, Settings vault migration, Plugin sandbox constraints)
+- **Build + CSP baseline sanity**: `npm run build` completed after CSP config introduction without build-time regressions
+- **i18n validation complete**: all required activity + security keys are present across all locales, including final Armenian (`hy`) completion and placeholder integrity checks
+- **Media behavior check**: first Play action now transitions into visible prebuffer state and starts automatically when buffered threshold is reached
+
+---
+
 ## [2.0.7] - 2026-02-12
 
 ### Translation Quality Audit and Linguistic Integrity

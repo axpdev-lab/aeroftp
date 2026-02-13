@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Pengurus Fail Setempat",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Pembantu AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Sambungan Tidak Selamat",
+            "insecureConnectionTitle": "Pengesahan sijil dilumpuhkan"
         },
         "dialogs": {
             "confirmTitle": "Sahkan",
@@ -945,7 +947,11 @@
             "update_available": "Kemas kini tersedia: v{version} (.{format})",
             "update_uptodate": "Terkini (v{version})",
             "update_error": "Semakan kemas kini gagal: {error}",
-            "file_skipped": "Dilangkau (tidak berubah): {filename}"
+            "file_skipped": "Dilangkau (tidak berubah): {filename}",
+            "navigate_opened": "Saya membuka folder: {path}",
+            "navigate_entered": "Saya memasuki folder: {path}",
+            "navigate_up_one": "Saya naik satu tahap: {path}",
+            "navigate_up_to": "Saya naik ke: {path}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10GB storan percuma, wilayah AS/EU",
             "s3Tooltip": "Storan serasi S3 — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP melalui SSH — pemindahan fail shell selamat, menyokong pengesahan kunci",
-            "webdavTooltip": "Protokol WebDAV — serasi dengan Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV — serasi dengan Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Amaran: anda akan menerima sijil tidak sah/tandatangan sendiri. Ini melemahkan keselamatan sambungan. Teruskan?",
+            "insecureCertConfirmSecond": "Pengesahan akhir: teruskan dengan mod sijil tidak selamat?"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

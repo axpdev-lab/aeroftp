@@ -97,7 +97,11 @@
             "upload_overwrite": "[Remote] Overwriting: {filename}",
             "upload_skipped": "[Remote] Skipped (file exists): {filename}",
             "upload_start": "[Remote] Uploading {filename}...",
-            "upload_success": "[Remote] Upload completed: {filename} {details}"
+            "upload_success": "[Remote] Upload completed: {filename} {details}",
+            "navigate_opened": "I opened the folder: {path}",
+            "navigate_entered": "I entered the folder: {path}",
+            "navigate_up_one": "I went up one level: {path}",
+            "navigate_up_to": "I went up to: {path}"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -1580,7 +1584,9 @@
             "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
             "webdavExampleLabel": "Example:",
             "webdavNote": "WebDAV path should include the full path to your files. For Nextcloud use:",
-            "webdavTooltip": "WebDAV protocol - compatible with Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV protocol - compatible with Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Warning: you are about to accept invalid/self-signed certificates. This weakens connection security. Continue?",
+            "insecureCertConfirmSecond": "Final confirmation: proceed with insecure certificate mode?"
         },
         "quickLook": {
             "noPreview": "No preview available",
@@ -2003,7 +2009,9 @@
             "syncFiles": "Sync Files",
             "syncing": "Syncing...",
             "transferQueue": "Transfer Queue",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "insecureConnection": "Insecure Connection",
+            "insecureConnectionTitle": "Certificate verification is disabled"
         },
         "support": {
             "buyMeACoffee": "Buy Me a Coffee",

@@ -13,8 +13,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 const SETTINGS_KEY = 'aeroftp_settings';
+const SETTINGS_VAULT_KEY = 'app_settings';
 
 export interface AppSettings {
   compactMode: boolean;
@@ -34,6 +36,9 @@ export interface AppSettings {
   visibleColumns: string[];
   sortFoldersFirst: boolean;
   showFileExtensions: boolean;
+  fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
+  lastLocalPath?: string;
+  showSystemMenu?: boolean;
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -56,6 +61,7 @@ const DEFAULTS: AppSettings = {
   visibleColumns: ALL_COLUMNS,
   sortFoldersFirst: true,
   showFileExtensions: true,
+  fileExistsAction: 'ask',
 };
 
 export const useSettings = () => {
@@ -76,6 +82,7 @@ export const useSettings = () => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULTS.visibleColumns);
   const [sortFoldersFirst, setSortFoldersFirst] = useState(DEFAULTS.sortFoldersFirst);
   const [showFileExtensions, setShowFileExtensions] = useState(DEFAULTS.showFileExtensions);
+  const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -96,36 +103,52 @@ export const useSettings = () => {
     if (Array.isArray(parsed.visibleColumns)) setVisibleColumns(parsed.visibleColumns.filter((c: unknown) => typeof c === 'string' && ALL_COLUMNS.includes(c as string)));
     if (typeof parsed.sortFoldersFirst === 'boolean') setSortFoldersFirst(parsed.sortFoldersFirst);
     if (typeof parsed.showFileExtensions === 'boolean') setShowFileExtensions(parsed.showFileExtensions);
+    if (
+      typeof parsed.fileExistsAction === 'string' &&
+      ['ask', 'overwrite', 'skip', 'rename', 'resume', 'overwrite_if_newer', 'overwrite_if_different', 'skip_if_identical'].includes(parsed.fileExistsAction)
+    ) {
+      setFileExistsAction(parsed.fileExistsAction as AppSettings['fileExistsAction']);
+    }
   }, []);
 
   // Load settings on mount + listen for changes
   useEffect(() => {
-    try {
-      const savedSettings = localStorage.getItem(SETTINGS_KEY);
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        applySettings(parsed);
+    const loadSettings = async () => {
+      try {
+        const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
+        if (parsed) {
+          applySettings(parsed);
 
-        // System menu visibility
-        const showMenu = typeof parsed.showSystemMenu === 'boolean' ? parsed.showSystemMenu : false;
-        setSystemMenuVisible(showMenu);
-        invoke('toggle_menu_bar', { visible: showMenu });
-      } else {
-        // No settings saved, apply defaults for system menu
-        invoke('toggle_menu_bar', { visible: false });
+          // System menu visibility
+          const showMenu = typeof parsed.showSystemMenu === 'boolean' ? parsed.showSystemMenu : false;
+          setSystemMenuVisible(showMenu);
+          invoke('toggle_menu_bar', { visible: showMenu });
+
+          // One-way idempotent migration to vault (no-op if already in vault)
+          secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, parsed).catch(() => {});
+        } else {
+          // No settings saved, apply defaults for system menu
+          invoke('toggle_menu_bar', { visible: false });
+        }
+      } catch (e) {
+        console.error('Failed to init settings', e);
       }
-    } catch (e) {
-      console.error('Failed to init settings', e);
-    }
+    };
 
     const handleSettingsChange = () => {
-      try {
-        const saved = localStorage.getItem(SETTINGS_KEY);
-        if (saved) {
-          applySettings(JSON.parse(saved));
-        }
-      } catch { /* ignore */ }
+      void (async () => {
+        try {
+          const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
+          if (parsed) {
+            applySettings(parsed);
+            const showMenu = typeof parsed.showSystemMenu === 'boolean' ? parsed.showSystemMenu : false;
+            setSystemMenuVisible(showMenu);
+          }
+        } catch { /* ignore */ }
+      })();
     };
+
+    void loadSettings();
 
     window.addEventListener('storage', handleSettingsChange);
     window.addEventListener('aeroftp-settings-changed', handleSettingsChange);
@@ -154,6 +177,7 @@ export const useSettings = () => {
     visibleColumns,
     sortFoldersFirst,
     showFileExtensions,
+    fileExistsAction,
     showSettingsPanel,
 
     // Setters
@@ -174,10 +198,12 @@ export const useSettings = () => {
     setVisibleColumns,
     setSortFoldersFirst,
     setShowFileExtensions,
+    setFileExistsAction,
     setShowSettingsPanel,
 
     // Constants
     SETTINGS_KEY,
+    SETTINGS_VAULT_KEY,
   };
 };
 

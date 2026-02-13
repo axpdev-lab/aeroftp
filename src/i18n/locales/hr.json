@@ -750,7 +750,9 @@
             "aeroagentTitle": "AeroAgent - AI Pomoćnik",
             "aeroagent": "AeroAgent",
             "activityLog": "Dnevnik aktivnosti",
-            "log": "Dnevnik"
+            "log": "Dnevnik",
+            "insecureConnection": "Nesigurna veza",
+            "insecureConnectionTitle": "Provjera certifikata je onemogućena"
         },
         "dialogs": {
             "confirmTitle": "Potvrdi",
@@ -945,7 +947,11 @@
             "update_uptodate": "Ažurirano (v{version})",
             "update_error": "Provjera ažuriranja nije uspjela: {error}",
             "file_skipped": "Preskočeno (nepromijenjeno): {filename}",
-            "delete_multiple_done": "Obrisano {count} stavki: {items}"
+            "delete_multiple_done": "Obrisano {count} stavki: {items}",
+            "navigate_opened": "Otvorio sam mapu: {path}",
+            "navigate_entered": "Ušao sam u mapu: {path}",
+            "navigate_up_one": "Popio sam se jedan nivo: {path}",
+            "navigate_up_to": "Popio sam se do: {path}"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB besplatnog prostora, US/EU regije",
             "s3Tooltip": "S3-kompatibilna pohrana - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP preko SSH - siguran prijenos datoteka, podržava autentifikaciju ključem",
-            "webdavTooltip": "WebDAV protokol - kompatibilan s Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV protokol - kompatibilan s Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Upozorenje: usvajate nevažeće/samopotpisane certifikate. To slabi sigurnost veze. Nastaviti?",
+            "insecureCertConfirmSecond": "Konačna potvrda: nastaviti u načinu nesigurnih certifikata?"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

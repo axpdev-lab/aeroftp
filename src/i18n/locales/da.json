@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Lokal filhåndtering",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI-assistent",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Usikker forbindelse",
+            "insecureConnectionTitle": "Certifikatverificering er deaktiveret"
         },
         "dialogs": {
             "confirmTitle": "Bekræft",
@@ -945,7 +947,11 @@
             "update_available": "Opdatering tilgængelig: v{version} (.{format})",
             "update_uptodate": "Opdateret (v{version})",
             "update_error": "Opdateringskontrol mislykkedes: {error}",
-            "file_skipped": "Sprunget over (uændret): {filename}"
+            "file_skipped": "Sprunget over (uændret): {filename}",
+            "navigate_opened": "Jeg åbnede mappen: {path}",
+            "navigate_entered": "Jeg gik ind i mappen: {path}",
+            "navigate_up_one": "Jeg gik et niveau op: {path}",
+            "navigate_up_to": "Jeg gik op til: {path}"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB gratis lagerplads, US/EU-regioner",
             "s3Tooltip": "S3-kompatibel lagring - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP over SSH - sikker filoverførsel via shell, understøtter nøglegodkendelse",
-            "webdavTooltip": "WebDAV-protokol - kompatibel med Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV-protokol - kompatibel med Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Advarsel: du er ved at acceptere ugyldige/selvsignerede certifikater. Dette svækker forbindelsessikkerheden. Fortsæt?",
+            "insecureCertConfirmSecond": "Endelig bekræftelse: fortsæt i usikker certifikat-tilstand?"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

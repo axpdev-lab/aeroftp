@@ -162,16 +162,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         const savedId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
         if (savedId) setClientId(savedId);
       } catch {
-        // Fallback: legacy localStorage (pre-v1.3.2)
-        const legacyId = localStorage.getItem(`oauth_${provider}_client_id`);
-        if (legacyId) setClientId(legacyId);
+        // SEC: No localStorage fallback — credentials must be in vault.
       }
       try {
         const savedSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
         if (savedSecret) setClientSecret(savedSecret);
       } catch {
-        const legacySecret = localStorage.getItem(`oauth_${provider}_client_secret`);
-        if (legacySecret) setClientSecret(legacySecret);
+        // SEC: No localStorage fallback — credentials must be in vault.
       }
     };
     loadCredentials();

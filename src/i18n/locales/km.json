@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - កម្មវិធីគ្រប់គ្រងឯកសារមូលដ្ឋាន",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - ជំនួយការ AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "ការតភ្ជាប់មិនមានសុវត្ថិភាព",
+            "insecureConnectionTitle": "ការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទ"
         },
         "dialogs": {
             "confirmTitle": "បញ្ជាក់",
@@ -945,7 +947,11 @@
             "update_available": "មានបច្ចុប្បន្នភាព: v{version}",
             "update_uptodate": "កម្មវិធីគឺទាន់សម័យ",
             "update_error": "កំហុសក្នុងការពិនិត្យបច្ចុប្បន្នភាព",
-            "file_skipped": "រំលង (មិនបានកែប្រែ): {filename}"
+            "file_skipped": "រំលង (មិនបានកែប្រែ): {filename}",
+            "navigate_opened": "ខ្ញុំបានបើកថត៖ {path}",
+            "navigate_entered": "ខ្ញុំបានចូលថត៖ {path}",
+            "navigate_up_one": "ខ្ញុំឡើងមួយកម្រិត៖ {path}",
+            "navigate_up_to": "ខ្ញុំឡើងទៅ៖ {path}"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - កន្លែងផ្ទុកឥតគិតថ្លៃ 10GB, តំបន់ US/EU",
             "s3Tooltip": "កន្លែងផ្ទុកដែលត្រូវគ្នានឹង S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP តាម SSH - ការផ្ទេរឯកសារសុវត្ថិភាព, គាំទ្រការផ្ទៀងផ្ទាត់តាមកូនសោរ",
-            "webdavTooltip": "ពិធីការ WebDAV - ត្រូវគ្នានឹង Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "ពិធីការ WebDAV - ត្រូវគ្នានឹង Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "ការព្រមាន៖ អ្នករៀបនឹងទទួលយកវិញ្ញាបនបត្រមិនត្រឹមត្រូវ/ហត្ថលេខាដោយខ្លួនឯង។ វាកាត់បន្ថយសុវត្ថិភាពការតភ្ជាប់។ បន្ត?",
+            "insecureCertConfirmSecond": "ការបញ្ជាក់ចុងក្រោយ៖ បន្តក្នុងរបៀបវិញ្ញាបនបត្រមិនមានសុវត្ថិភាព?"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

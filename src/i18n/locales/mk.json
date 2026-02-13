@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Локален менаџер на датотеки",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI асистент",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Несигурна врска",
+            "insecureConnectionTitle": "Проверката на сертификати е оневозможена"
         },
         "dialogs": {
             "confirmTitle": "Потврди",
@@ -945,7 +947,11 @@
             "update_available": "Достапно ажурирање: v{version} (.{format})",
             "update_uptodate": "Ажурна верзија (v{version})",
             "update_error": "Проверката за ажурирања не успеа: {error}",
-            "file_skipped": "Прескокнато (непроменето): {filename}"
+            "file_skipped": "Прескокнато (непроменето): {filename}",
+            "navigate_opened": "Ја отворив папката: {path}",
+            "navigate_entered": "Влегов во папката: {path}",
+            "navigate_up_one": "Се качив едно ниво: {path}",
+            "navigate_up_to": "Се качив до: {path}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10 GB бесплатно складирање, САД/ЕУ региони",
             "s3Tooltip": "S3-компатибилно складирање — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP преку SSH — безбеден пренос на датотеки преку школка, поддржува автентикација со клуч",
-            "webdavTooltip": "WebDAV протокол — компатибилен со Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV протокол — компатибилен со Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Предупредување: ќе прифатите неважечки/самопотпишани сертификати. Ова ја слабее безбедноста на врската. Продолжувате?",
+            "insecureCertConfirmSecond": "Конечна потврда: продолжувате во режим на несигурни сертификати?"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",

@@ -3431,19 +3431,31 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
 fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String>) -> Result<(), String> {
     use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
 
+    let accel = |shortcut: &'static str| -> Option<&'static str> {
+        #[cfg(target_os = "linux")]
+        {
+            let _ = shortcut;
+            None
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Some(shortcut)
+        }
+    };
+
     let get = |key: &str, fallback: &str| -> String {
         labels.get(key).cloned().unwrap_or_else(|| fallback.to_string())
     };
 
-    let quit = MenuItem::with_id(&app, "quit", &get("quit", "Quit AeroFTP"), true, Some("CmdOrCtrl+Q"))
+    let quit = MenuItem::with_id(&app, "quit", &get("quit", "Quit AeroFTP"), true, accel("CmdOrCtrl+Q"))
         .map_err(|e| e.to_string())?;
     let about = MenuItem::with_id(&app, "about", &get("about", "About AeroFTP"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let settings = MenuItem::with_id(&app, "settings", &get("settings", "Settings..."), true, Some("CmdOrCtrl+,"))
+    let settings = MenuItem::with_id(&app, "settings", &get("settings", "Settings..."), true, accel("CmdOrCtrl+,"))
         .map_err(|e| e.to_string())?;
-    let refresh = MenuItem::with_id(&app, "refresh", &get("refresh", "Refresh"), true, Some("CmdOrCtrl+R"))
+    let refresh = MenuItem::with_id(&app, "refresh", &get("refresh", "Refresh"), true, accel("CmdOrCtrl+R"))
         .map_err(|e| e.to_string())?;
-    let shortcuts = MenuItem::with_id(&app, "shortcuts", &get("shortcuts", "Keyboard Shortcuts"), true, Some("F1"))
+    let shortcuts = MenuItem::with_id(&app, "shortcuts", &get("shortcuts", "Keyboard Shortcuts"), true, accel("F1"))
         .map_err(|e| e.to_string())?;
     let support = MenuItem::with_id(&app, "support", &get("support", "Support Development"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
@@ -3453,12 +3465,12 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         &get("file", "File"),
         true,
         &[
-            &MenuItem::with_id(&app, "new_folder", &get("newFolder", "New Folder"), true, Some("CmdOrCtrl+N"))
+            &MenuItem::with_id(&app, "new_folder", &get("newFolder", "New Folder"), true, accel("CmdOrCtrl+N"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &settings,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_debug_mode", &get("debugMode", "Debug Mode"), true, Some("CmdOrCtrl+Shift+F12"))
+            &MenuItem::with_id(&app, "toggle_debug_mode", &get("debugMode", "Debug Mode"), true, accel("CmdOrCtrl+Shift+F12"))
                 .map_err(|e| e.to_string())?,
             &MenuItem::with_id(&app, "show_dependencies", &get("dependencies", "Dependencies..."), true, None::<&str>)
                 .map_err(|e| e.to_string())?,
@@ -3481,9 +3493,9 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &PredefinedMenuItem::select_all(&app, None).map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "rename", &get("rename", "Rename"), true, Some("F2"))
+            &MenuItem::with_id(&app, "rename", &get("rename", "Rename"), true, accel("F2"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "delete", &get("delete", "Delete"), true, Some("Delete"))
+            &MenuItem::with_id(&app, "delete", &get("delete", "Delete"), true, accel("Delete"))
                 .map_err(|e| e.to_string())?,
         ],
     ).map_err(|e| e.to_string())?;
@@ -3493,14 +3505,14 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         &get("devtools", "DevTools"),
         true,
         &[
-            &MenuItem::with_id(&app, "toggle_devtools", &get("toggleDevtools", "Toggle DevTools"), true, Some("CmdOrCtrl+Shift+D"))
+            &MenuItem::with_id(&app, "toggle_devtools", &get("toggleDevtools", "Toggle DevTools"), true, accel("CmdOrCtrl+Shift+D"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_editor", &get("toggleEditor", "Toggle Editor"), true, Some("CmdOrCtrl+1"))
+            &MenuItem::with_id(&app, "toggle_editor", &get("toggleEditor", "Toggle Editor"), true, accel("CmdOrCtrl+1"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_terminal", &get("toggleTerminal", "Toggle Terminal"), true, Some("CmdOrCtrl+2"))
+            &MenuItem::with_id(&app, "toggle_terminal", &get("toggleTerminal", "Toggle Terminal"), true, accel("CmdOrCtrl+2"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_agent", &get("toggleAgent", "Toggle Agent"), true, Some("CmdOrCtrl+3"))
+            &MenuItem::with_id(&app, "toggle_agent", &get("toggleAgent", "Toggle Agent"), true, accel("CmdOrCtrl+3"))
                 .map_err(|e| e.to_string())?,
         ],
     ).map_err(|e| e.to_string())?;
@@ -3512,7 +3524,7 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         &[
             &refresh,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_theme", &get("toggleTheme", "Toggle Theme"), true, Some("CmdOrCtrl+T"))
+            &MenuItem::with_id(&app, "toggle_theme", &get("toggleTheme", "Toggle Theme"), true, accel("CmdOrCtrl+T"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &devtools_submenu,
@@ -4933,12 +4945,24 @@ pub fn run() {
                 }
             });
 
+            let accel = |shortcut: &'static str| -> Option<&'static str> {
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = shortcut;
+                    None
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    Some(shortcut)
+                }
+            };
+
             // Create menu items
-            let quit = MenuItem::with_id(app, "quit", "Quit AeroFTP", true, Some("CmdOrCtrl+Q"))?;
+            let quit = MenuItem::with_id(app, "quit", "Quit AeroFTP", true, accel("CmdOrCtrl+Q"))?;
             let about = MenuItem::with_id(app, "about", "About AeroFTP", true, None::<&str>)?;
-            let settings = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+,"))?;
-            let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, Some("CmdOrCtrl+R"))?;
-            let shortcuts = MenuItem::with_id(app, "shortcuts", "Keyboard Shortcuts", true, Some("F1"))?;
+            let settings = MenuItem::with_id(app, "settings", "Settings...", true, accel("CmdOrCtrl+,"))?;
+            let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, accel("CmdOrCtrl+R"))?;
+            let shortcuts = MenuItem::with_id(app, "shortcuts", "Keyboard Shortcuts", true, accel("F1"))?;
             let support = MenuItem::with_id(app, "support", "Support Development ❤️", true, None::<&str>)?;
             
             // File menu
@@ -4947,11 +4971,11 @@ pub fn run() {
                 "File",
                 true,
                 &[
-                    &MenuItem::with_id(app, "new_folder", "New Folder", true, Some("CmdOrCtrl+N"))?,
+                    &MenuItem::with_id(app, "new_folder", "New Folder", true, accel("CmdOrCtrl+N"))?,
                     &PredefinedMenuItem::separator(app)?,
                     &settings,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_debug_mode", "Debug Mode", true, Some("CmdOrCtrl+Shift+F12"))?,
+                    &MenuItem::with_id(app, "toggle_debug_mode", "Debug Mode", true, accel("CmdOrCtrl+Shift+F12"))?,
                     &MenuItem::with_id(app, "show_dependencies", "Dependencies...", true, None::<&str>)?,
                     &PredefinedMenuItem::separator(app)?,
                     &quit,
@@ -4973,8 +4997,8 @@ pub fn run() {
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::select_all(app, None)?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "rename", "Rename", true, Some("F2"))?,
-                    &MenuItem::with_id(app, "delete", "Delete", true, Some("Delete"))?,
+                    &MenuItem::with_id(app, "rename", "Rename", true, accel("F2"))?,
+                    &MenuItem::with_id(app, "delete", "Delete", true, accel("Delete"))?,
                 ],
             )?;
             
@@ -4984,11 +5008,11 @@ pub fn run() {
                 "DevTools",
                 true,
                 &[
-                    &MenuItem::with_id(app, "toggle_devtools", "Toggle DevTools", true, Some("CmdOrCtrl+Shift+D"))?,
+                    &MenuItem::with_id(app, "toggle_devtools", "Toggle DevTools", true, accel("CmdOrCtrl+Shift+D"))?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_editor", "Toggle Editor", true, Some("CmdOrCtrl+1"))?,
-                    &MenuItem::with_id(app, "toggle_terminal", "Toggle Terminal", true, Some("CmdOrCtrl+2"))?,
-                    &MenuItem::with_id(app, "toggle_agent", "Toggle Agent", true, Some("CmdOrCtrl+3"))?,
+                    &MenuItem::with_id(app, "toggle_editor", "Toggle Editor", true, accel("CmdOrCtrl+1"))?,
+                    &MenuItem::with_id(app, "toggle_terminal", "Toggle Terminal", true, accel("CmdOrCtrl+2"))?,
+                    &MenuItem::with_id(app, "toggle_agent", "Toggle Agent", true, accel("CmdOrCtrl+3"))?,
                 ],
             )?;
             
@@ -4999,7 +5023,7 @@ pub fn run() {
                 &[
                     &refresh,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, Some("CmdOrCtrl+T"))?,
+                    &MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, accel("CmdOrCtrl+T"))?,
                     &PredefinedMenuItem::separator(app)?,
                     &devtools_submenu,
                 ],

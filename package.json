@@ -9,6 +9,7 @@
     "build": "tsc && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "security:regression": "node scripts/security-regression.cjs",
     "i18n:validate": "npx tsx scripts/i18n-validate.ts",
     "i18n:sync": "npx tsx scripts/i18n-sync.ts",
     "i18n:stats": "npx tsx scripts/i18n-stats.ts"

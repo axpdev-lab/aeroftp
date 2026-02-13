@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile – Lokāls failu pārvaldnieks",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent – AI asistents",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Nedrošs savienojums",
+            "insecureConnectionTitle": "Sertifikātu pārbaude ir atspējota"
         },
         "dialogs": {
             "confirmTitle": "Apstiprināt",
@@ -945,7 +947,11 @@
             "update_available": "Pieejams atjauninājums: v{version} (.{format})",
             "update_uptodate": "Atjaunināts (v{version})",
             "update_error": "Atjauninājumu pārbaude neizdevās: {error}",
-            "file_skipped": "Izlaists (nemainīts): {filename}"
+            "file_skipped": "Izlaists (nemainīts): {filename}",
+            "navigate_opened": "Atvēru mapi: {path}",
+            "navigate_entered": "Iegāju mapē: {path}",
+            "navigate_up_one": "Uzkāpu vienu līmeni: {path}",
+            "navigate_up_to": "Uzkāpu uz: {path}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10 GB bezmaksas krātuve, ASV/ES reģioni",
             "s3Tooltip": "S3 saderīga krātuve — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP caur SSH — droša čaulas failu pārsūtīšana, atbalsta atslēgu autentifikāciju",
-            "webdavTooltip": "WebDAV protokols — saderīgs ar Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV protokols — saderīgs ar Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Brīdinājums: jūs gatavojaties pieņemt nederīgus/pašparakstītus sertifikātus. Tas vājina savienojuma drošību. Turpināt?",
+            "insecureCertConfirmSecond": "Gala apstiprinājums: turpināt nedroša sertifikāta režīmā?"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

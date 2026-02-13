@@ -166,6 +166,7 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 - **Beat detection**: Onset energy algorithm driving beat-reactive effects across all modes
 - **WebGL shader engine**: 6 GLSL fragment shaders — GPU-accelerated ray marching, metaballs, fractals, particles
 - **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
+- **Resilient startup buffering**: First Play now queues during prebuffer and auto-starts when ready, with explicit buffering feedback on Linux/WebKit runtimes
 - **Zero dependencies**: Native HTML5 `<audio>` + Web Audio API
 
 ### DevTools Panel
@@ -175,9 +176,11 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 
 ### Security
 - **Unified Encrypted Keystore**: ALL credentials in AES-256-GCM vault — nothing in localStorage
+- **Vault-first app settings migration**: Core settings moved from plaintext browser storage into encrypted vault entries with idempotent migration
 - **Keystore backup/restore**: Export/import `.aeroftp-keystore` with Argon2id + AES-256-GCM
 - **Universal Vault**: Single `vault.key` + `vault.db` backend — no OS keyring dependency
 - **XSS-hardened AI chat**: Source-level HTML escaping pipeline (`escapeHtml → renderMarkdown → formatToolCallDisplay`)
+- **Fail-closed host-key validation**: SFTP host key mismatch/verification errors now block connection instead of degrading to insecure behavior
 - **WebDAV Digest auth (RFC 2617)**: Auto-detection of HTTP Digest authentication with HMAC-MD5 challenge-response — password never transmitted, replay protection via nonce counting
 - **SFTP host key verification**: Trust On First Use with `~/.ssh/known_hosts`
 - **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)

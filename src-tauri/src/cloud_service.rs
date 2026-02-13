@@ -39,6 +39,14 @@ pub enum SyncTask {
 
 /// Result of a sync operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncedFileDetail {
+    pub path: String,
+    pub direction: String,
+    pub size: u64,
+}
+
+/// Result of a sync operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncOperationResult {
     pub uploaded: u32,
     pub downloaded: u32,
@@ -47,6 +55,7 @@ pub struct SyncOperationResult {
     pub conflicts: u32,
     pub errors: Vec<String>,
     pub duration_secs: u64,
+    pub file_details: Vec<SyncedFileDetail>,
 }
 
 /// A file conflict that needs resolution
@@ -167,6 +176,7 @@ impl CloudService {
             conflicts: 0,
             errors: Vec::new(),
             duration_secs: 0,
+            file_details: Vec::new(),
         };
 
         // Process each comparison
@@ -181,11 +191,6 @@ impl CloudService {
 
             match self.process_comparison(ftp_manager, &config, comparison).await {
                 Ok(action) => match action {
-                    SyncAction::Upload => result.uploaded += 1,
-                    SyncAction::Download => result.downloaded += 1,
-                    SyncAction::KeepBoth => { result.downloaded += 1; }
-                    SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
-                    SyncAction::Skip => result.skipped += 1,
                     SyncAction::AskUser => {
                         result.conflicts += 1;
                         // Add to conflicts list
@@ -199,6 +204,7 @@ impl CloudService {
                             status: comparison.status.clone(),
                         });
                     }
+                    _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
                 Err(e) => {
                     result.errors.push(format!("{}: {}", comparison.relative_path, e));
@@ -285,6 +291,7 @@ impl CloudService {
             conflicts: 0,
             errors: Vec::new(),
             duration_secs: 0,
+            file_details: Vec::new(),
         };
 
         // Process each comparison
@@ -299,11 +306,6 @@ impl CloudService {
 
             match self.process_comparison_with_provider(provider, &config, comparison).await {
                 Ok(action) => match action {
-                    SyncAction::Upload => result.uploaded += 1,
-                    SyncAction::Download => result.downloaded += 1,
-                    SyncAction::KeepBoth => { result.downloaded += 1; }
-                    SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
-                    SyncAction::Skip => result.skipped += 1,
                     SyncAction::AskUser => {
                         result.conflicts += 1;
                         // Add to conflicts list
@@ -317,6 +319,7 @@ impl CloudService {
                             status: comparison.status.clone(),
                         });
                     }
+                    _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
                 Err(e) => {
                     result.errors.push(format!("{}: {}", comparison.relative_path, e));
@@ -355,6 +358,44 @@ impl CloudService {
         }
 
         Ok(result)
+    }
+
+    fn record_sync_action(result: &mut SyncOperationResult, comparison: &FileComparison, action: &SyncAction) {
+        match action {
+            SyncAction::Upload => {
+                result.uploaded += 1;
+                if !comparison.is_dir {
+                    result.file_details.push(SyncedFileDetail {
+                        path: comparison.relative_path.clone(),
+                        direction: "upload".to_string(),
+                        size: comparison.local_info.as_ref().map(|i| i.size).unwrap_or(0),
+                    });
+                }
+            }
+            SyncAction::Download => {
+                result.downloaded += 1;
+                if !comparison.is_dir {
+                    result.file_details.push(SyncedFileDetail {
+                        path: comparison.relative_path.clone(),
+                        direction: "download".to_string(),
+                        size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
+                    });
+                }
+            }
+            SyncAction::KeepBoth => {
+                result.downloaded += 1;
+                if !comparison.is_dir {
+                    result.file_details.push(SyncedFileDetail {
+                        path: comparison.relative_path.clone(),
+                        direction: "download".to_string(),
+                        size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
+                    });
+                }
+            }
+            SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
+            SyncAction::Skip => result.skipped += 1,
+            SyncAction::AskUser => {}
+        }
     }
 
     /// Scan local folder and build file info map

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
@@ -30,6 +30,7 @@ interface StatusBarProps {
     aeroAgentOpen?: boolean;
     debugMode?: boolean;
     storageQuota?: StorageQuota | null;
+    insecureConnection?: boolean;
     onToggleAeroFile?: () => void;
     onToggleAeroAgent?: () => void;
     onToggleDebug?: () => void;
@@ -68,6 +69,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleCloud,
     onToggleTransferQueue,
     onToggleActivityLog,
+    insecureConnection = false,
 }) => {
     const t = useTranslation();
 
@@ -92,6 +94,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         </>
                     )}
                 </div>
+
+                {isConnected && insecureConnection && (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                        title={t('statusBar.insecureConnectionTitle')}
+                    >
+                        <AlertTriangle size={12} />
+                        <span className="font-medium">{t('statusBar.insecureConnection')}</span>
+                    </div>
+                )}
 
                 {/* Update Available Button */}
                 {updateAvailable?.has_update && (

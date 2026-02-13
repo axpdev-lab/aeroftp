@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile – Vietinis failų tvarkytuvasis",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent – AI asistentas",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Nesaugus ryšys",
+            "insecureConnectionTitle": "Sertifikatų tikrinimas išjungtas"
         },
         "dialogs": {
             "confirmTitle": "Patvirtinti",
@@ -945,7 +947,11 @@
             "update_available": "Galimas atnaujinimas: v{version} (.{format})",
             "update_uptodate": "Atnaujinta (v{version})",
             "update_error": "Atnaujinimų tikrinimas nepavyko: {error}",
-            "file_skipped": "Praleista (nepakeista): {filename}"
+            "file_skipped": "Praleista (nepakeista): {filename}",
+            "navigate_opened": "Atidariau aplanką: {path}",
+            "navigate_entered": "Įėjau į aplanką: {path}",
+            "navigate_up_one": "Užlipau vienu lygiu: {path}",
+            "navigate_up_to": "Užlipau į: {path}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud – 10GB nemokamos saugyklos, US/EU regionai",
             "s3Tooltip": "S3 suderinama saugykla – AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP per SSH – saugus failų perdavimas, palaikoma rakto autentifikacija",
-            "webdavTooltip": "WebDAV protokolas – suderinamas su Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV protokolas – suderinamas su Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Įspėjimas: ketinate priimti negaliojančius/savarankiškai pasirašytus sertifikatus. Tai susilpnina ryšio saugumą. Tęsti?",
+            "insecureCertConfirmSecond": "Galutinis patvirtinimas: tęsti nesaugaus sertifikato režimu?"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

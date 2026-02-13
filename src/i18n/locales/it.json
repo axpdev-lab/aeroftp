@@ -282,7 +282,9 @@
             "filenTooltip": "Filen - Crittografia E2E zero-knowledge, 10GB gratuiti",
             "pcloudTooltip": "pCloud - 10GB di spazio gratuito, regioni USA/UE",
             "foursharedTooltip": "4shared - 15GB di spazio gratuito, autenticazione OAuth 1.0",
-            "azureTooltip": "Azure Blob Storage - Autenticazione con Shared Key o token SAS"
+            "azureTooltip": "Azure Blob Storage - Autenticazione con Shared Key o token SAS",
+            "insecureCertConfirmFirst": "Avviso: stai per accettare certificati non validi/autofirmati. Questo indebolisce la sicurezza della connessione. Continuare?",
+            "insecureCertConfirmSecond": "Conferma finale: procedere in modalità certificato non sicuro?"
         },
         "browser": {
             "remote": "Remoto",
@@ -865,7 +867,9 @@
             "aerofileTitle": "AeroFile - Gestore File Locale",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Assistente AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Connessione non sicura",
+            "insecureConnectionTitle": "La verifica dei certificati è disattivata"
         },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",
@@ -1098,7 +1102,11 @@
             "update_available": "Aggiornamento disponibile: v{version} (.{format})",
             "update_uptodate": "Aggiornato (v{version})",
             "update_error": "Controllo aggiornamenti fallito: {error}",
-            "file_skipped": "Saltato (invariato): {filename}"
+            "file_skipped": "Saltato (invariato): {filename}",
+            "navigate_opened": "Ho aperto la cartella: {path}",
+            "navigate_entered": "Sono entrato nella cartella: {path}",
+            "navigate_up_one": "Sono salito di un livello: {path}",
+            "navigate_up_to": "Sono salito a: {path}"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",

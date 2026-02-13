@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile – Kohalik failihaldur",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent – AI assistent",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Ebaturvaline ühendus",
+            "insecureConnectionTitle": "Sertifikaatide kontroll on keelatud"
         },
         "dialogs": {
             "confirmTitle": "Kinnita",
@@ -945,7 +947,11 @@
             "update_available": "Värskendus saadaval: v{version} (.{format})",
             "update_uptodate": "Ajakohane (v{version})",
             "update_error": "Värskenduste kontroll ebaõnnestus: {error}",
-            "file_skipped": "Vahele jäetud (muutmata): {filename}"
+            "file_skipped": "Vahele jäetud (muutmata): {filename}",
+            "navigate_opened": "Avasin kausta: {path}",
+            "navigate_entered": "Sisin kausta: {path}",
+            "navigate_up_one": "Lahin ühe taseme võrra üles: {path}",
+            "navigate_up_to": "Lahin üles: {path}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB tasuta salvestusruumi, USA/EL piirkonnad",
             "s3Tooltip": "S3-ühilduv salvestusruum - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP üle SSH - turvaline kestafailiedastus, toetab võtmeautentimist",
-            "webdavTooltip": "WebDAV-protokoll - ühilduv Nextcloud, CloudMe, Koofr, Synology NAS-iga"
+            "webdavTooltip": "WebDAV-protokoll - ühilduv Nextcloud, CloudMe, Koofr, Synology NAS-iga",
+            "insecureCertConfirmFirst": "Hoiatus: olete vastuvõtmas kehtetu/isesigneeritud serte. See nõrgendab ühenduse turvalisust. Jätkata?",
+            "insecureCertConfirmSecond": "Lõplik kinnitus: jätkata ebaturvalise serdi režiimis?"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

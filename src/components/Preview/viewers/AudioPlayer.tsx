@@ -61,6 +61,7 @@ const GL_MODES: { name: string; shader: WebGLShaderName }[] = [
 
 // EQ frequency values matching AudioMixer bands
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+const MIN_START_BUFFER_SECONDS = 4.0;
 
 // Global map to track audio elements already connected to MediaElementSource
 // Once connected, an audio element cannot be reconnected to a new source node
@@ -87,6 +88,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const pannerRef = useRef<StereoPannerNode | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const graphBuiltRef = useRef(false);
+    const retryPlayOnCanPlayRef = useRef(false);
+    const warmupDoneRef = useRef(false);
+    const warmupInProgressRef = useRef(false);
+    const suppressPlaybackUiRef = useRef(false);
+    const pendingUserPlayRef = useRef(false);
 
     // Get localized visualizer modes
     const VISUALIZER_MODES = getVisualizerModes(t);
@@ -111,6 +117,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const [showVisualizerMenu, setShowVisualizerMenu] = useState(false);
     const [isAudioReady, setIsAudioReady] = useState(false);
     const [isBuffering, setIsBuffering] = useState(true);
+    const [isPlayQueued, setIsPlayQueued] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState(0);
@@ -201,8 +208,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         if (!audioEl || !audioSrc) return;
 
         // Reset state for new source
+        warmupDoneRef.current = false;
+        warmupInProgressRef.current = false;
+        suppressPlaybackUiRef.current = false;
+        pendingUserPlayRef.current = false;
         setIsAudioReady(false);
         setIsBuffering(true);
+        setIsPlayQueued(false);
         setLoadError(null);
 
         audioEl.src = audioSrc;
@@ -252,35 +264,165 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         };
     }, []);
 
+    const runSilentWarmup = useCallback(async () => {
+        const audioEl = audioRef.current;
+        if (!audioEl || warmupDoneRef.current || warmupInProgressRef.current) return;
+        if (!audioEl.paused || retryPlayOnCanPlayRef.current) return;
+
+        warmupInProgressRef.current = true;
+        suppressPlaybackUiRef.current = true;
+
+        const previousMuted = audioEl.muted;
+        const previousVolume = audioEl.volume;
+
+        logger.debug('[AudioDebug] warmup start');
+
+        try {
+            audioEl.muted = true;
+            audioEl.volume = 0;
+
+            await audioEl.play();
+            await new Promise(resolve => window.setTimeout(resolve, 180));
+            audioEl.pause();
+
+            if (audioEl.currentTime > 0) {
+                audioEl.currentTime = 0;
+            }
+
+            warmupDoneRef.current = true;
+            logger.debug('[AudioDebug] warmup success');
+        } catch (err: any) {
+            logger.debug(
+                `[AudioDebug] warmup skipped name=${err?.name ?? 'unknown'} message=${err?.message ?? 'n/a'}`
+            );
+        } finally {
+            audioEl.muted = previousMuted;
+            audioEl.volume = playback.isMuted ? 0 : playback.volume;
+            suppressPlaybackUiRef.current = false;
+            warmupInProgressRef.current = false;
+        }
+    }, [playback.isMuted, playback.volume]);
+
+    const getBufferedAheadSeconds = useCallback((audioEl: HTMLAudioElement) => {
+        if (audioEl.buffered.length === 0) return 0;
+
+        const currentTime = audioEl.currentTime;
+        for (let i = 0; i < audioEl.buffered.length; i++) {
+            const start = audioEl.buffered.start(i);
+            const end = audioEl.buffered.end(i);
+            if (currentTime >= start && currentTime <= end) {
+                return Math.max(0, end - currentTime);
+            }
+        }
+
+        return 0;
+    }, []);
+
+    const attemptStartQueuedPlay = useCallback(async (trigger: string) => {
+        const audioEl = audioRef.current;
+        if (!audioEl || !pendingUserPlayRef.current || !audioEl.paused) return;
+
+        const bufferedAhead = getBufferedAheadSeconds(audioEl);
+        const hasMinimumBuffer =
+            audioEl.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && bufferedAhead >= MIN_START_BUFFER_SECONDS;
+
+        if (!hasMinimumBuffer) {
+            setIsBuffering(true);
+            logger.debug(
+                `[AudioDebug] queued play waiting buffer trigger=${trigger} readyState=${audioEl.readyState} bufferedAhead=${bufferedAhead.toFixed(3)}`
+            );
+            return;
+        }
+
+        if (audioCtxRef.current?.state === 'suspended') {
+            try {
+                await audioCtxRef.current.resume();
+            } catch {
+                // Keep going: HTMLAudioElement playback may still succeed
+            }
+        }
+
+        if (!graphBuiltRef.current) {
+            buildAudioGraph();
+        }
+
+        try {
+            await audioEl.play();
+            pendingUserPlayRef.current = false;
+            setIsPlayQueued(false);
+            setIsBuffering(false);
+            setLoadError(null);
+            logger.debug(`[AudioDebug] queued play started trigger=${trigger}`);
+        } catch (err: any) {
+            logger.debug(
+                `[AudioDebug] queued play rejected trigger=${trigger} name=${err?.name ?? 'unknown'} message=${err?.message ?? 'n/a'}`
+            );
+
+            if (err?.name === 'AbortError') {
+                retryPlayOnCanPlayRef.current = true;
+                setIsBuffering(true);
+                return;
+            }
+
+            pendingUserPlayRef.current = false;
+            setIsPlayQueued(false);
+            if (err?.name !== 'NotAllowedError') {
+                setLoadError(t('preview.audio.playbackFailed'));
+            }
+        }
+    }, [buildAudioGraph, getBufferedAheadSeconds, t]);
+
     // Playback controls
     const togglePlay = useCallback(async () => {
         const audioEl = audioRef.current;
         if (!audioEl) return;
 
-        // Resume AudioContext if suspended (autoplay policy)
-        if (audioCtxRef.current?.state === 'suspended') {
-            await audioCtxRef.current.resume();
-        }
+        const delay = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
-        // Build audio graph on first user interaction (ensures AudioContext is allowed)
-        if (!graphBuiltRef.current) {
-            buildAudioGraph();
+        if (warmupInProgressRef.current) {
+            logger.debug('[AudioDebug] interrupting warmup due to user play request');
+            suppressPlaybackUiRef.current = false;
+            warmupInProgressRef.current = false;
+            try {
+                audioEl.pause();
+            } catch {
+                // ignore
+            }
+            if (audioEl.currentTime > 0) {
+                audioEl.currentTime = 0;
+            }
+            audioEl.muted = playback.isMuted;
+            audioEl.volume = playback.isMuted ? 0 : playback.volume;
         }
 
         // Use actual DOM state, not React state
         if (audioEl.paused) {
-            try {
-                await audioEl.play();
-            } catch (err: any) {
-                if (err.name !== 'AbortError') {
-                    console.error('Play failed:', err);
-                    setLoadError(t('preview.audio.playbackFailed'));
-                }
+            retryPlayOnCanPlayRef.current = false;
+            pendingUserPlayRef.current = true;
+            setIsPlayQueued(true);
+            setLoadError(null);
+
+            logger.debug(
+                `[AudioDebug] togglePlay->requestPlay readyState=${audioEl.readyState} networkState=${audioEl.networkState} src=${Boolean(audioEl.src)}`
+            );
+
+            if (!audioEl.src && audioSrc) {
+                audioEl.src = audioSrc;
+                logger.debug('[AudioDebug] audio src assigned during togglePlay');
             }
+
+            setIsBuffering(true);
+            logger.debug('[AudioDebug] play queued while buffering');
+
+            await attemptStartQueuedPlay('togglePlay');
         } else {
+            retryPlayOnCanPlayRef.current = false;
+            pendingUserPlayRef.current = false;
+            setIsPlayQueued(false);
+            logger.debug('[AudioDebug] togglePlay->pause');
             audioEl.pause();
         }
-    }, [buildAudioGraph]);
+    }, [attemptStartQueuedPlay, audioSrc, playback.isMuted, playback.volume]);
 
     const seek = useCallback((time: number) => {
         if (audioRef.current) {
@@ -316,6 +458,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     // Audio element event handlers
     const handleLoadedMetadata = useCallback(() => {
         if (audioRef.current) {
+            logger.debug(
+                `[AudioDebug] loadedmetadata duration=${audioRef.current.duration} readyState=${audioRef.current.readyState}`
+            );
             setIsAudioReady(true);
             setIsBuffering(false);
             setLoadError(null);
@@ -335,6 +480,46 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         }
     }, [file.name, buildAudioGraph]);
 
+    const handleCanPlay = useCallback(() => {
+        const audioEl = audioRef.current;
+        logger.debug(
+            `[AudioDebug] canplay readyState=${audioEl?.readyState ?? -1} currentTime=${audioEl?.currentTime ?? 0}`
+        );
+        setIsAudioReady(true);
+        if (!pendingUserPlayRef.current) {
+            setIsBuffering(false);
+        }
+
+        if (pendingUserPlayRef.current) {
+            void attemptStartQueuedPlay('canplay');
+            return;
+        }
+
+        if (!retryPlayOnCanPlayRef.current) {
+            void runSilentWarmup();
+        }
+
+        if (audioEl && retryPlayOnCanPlayRef.current && audioEl.paused) {
+            retryPlayOnCanPlayRef.current = false;
+            logger.debug('[AudioDebug] executing one-shot play retry on canplay');
+
+            void audioEl.play()
+                .then(() => {
+                    setLoadError(null);
+                    logger.debug('[AudioDebug] canplay retry success');
+                })
+                .catch((err: any) => {
+                    logger.debug(
+                        `[AudioDebug] canplay retry rejected name=${err?.name ?? 'unknown'} message=${err?.message ?? 'n/a'}`
+                    );
+
+                    if (err?.name !== 'NotAllowedError' && err?.name !== 'AbortError') {
+                        setLoadError(t('preview.audio.playbackFailed'));
+                    }
+                });
+        }
+    }, [attemptStartQueuedPlay, runSilentWarmup, t]);
+
     const handleTimeUpdate = useCallback(() => {
         if (audioRef.current) {
             setPlayback(prev => ({
@@ -353,10 +538,20 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 ...prev,
                 bufferedPercent: duration > 0 ? (bufferedEnd / duration) * 100 : 0,
             }));
+
+            if (pendingUserPlayRef.current && audioEl.paused) {
+                void attemptStartQueuedPlay('progress');
+            }
         }
-    }, []);
+    }, [attemptStartQueuedPlay]);
 
     const handleError = useCallback(() => {
+        const mediaErrorCode = audioRef.current?.error?.code;
+        const mediaErrorMessage = audioRef.current?.error?.message;
+        logger.debug(
+            `[AudioDebug] audio error code=${mediaErrorCode ?? 'n/a'} message=${mediaErrorMessage ?? 'n/a'} retry=${retryCount}/${maxRetries}`
+        );
+
         if (retryCount < maxRetries) {
             logger.debug(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
             setRetryCount(prev => prev + 1);
@@ -367,6 +562,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             }, 500 * (retryCount + 1));
             return;
         }
+        retryPlayOnCanPlayRef.current = false;
+        pendingUserPlayRef.current = false;
+        setIsPlayQueued(false);
         setIsBuffering(false);
         setLoadError(t('preview.audio.loadFailed'));
         onError?.(t('preview.audio.loadFailed'));
@@ -475,8 +673,17 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 preload="auto"
                 onLoadedMetadata={handleLoadedMetadata}
                 onTimeUpdate={handleTimeUpdate}
-                onPlay={() => setPlayback(prev => ({ ...prev, isPlaying: true }))}
-                onPause={() => setPlayback(prev => ({ ...prev, isPlaying: false }))}
+                onPlay={() => {
+                    if (!suppressPlaybackUiRef.current) {
+                        setPlayback(prev => ({ ...prev, isPlaying: true }));
+                    }
+                }}
+                onPause={() => {
+                    if (!suppressPlaybackUiRef.current) {
+                        setIsPlayQueued(false);
+                        setPlayback(prev => ({ ...prev, isPlaying: false }));
+                    }
+                }}
                 onEnded={() => {
                     if (!playback.isLooping) {
                         setPlayback(prev => ({ ...prev, isPlaying: false }));
@@ -485,7 +692,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 onProgress={handleProgress}
                 onError={handleError}
                 onWaiting={() => setIsBuffering(true)}
-                onCanPlay={() => setIsBuffering(false)}
+                onCanPlay={handleCanPlay}
                 style={{ display: 'none' }}
             />
 
@@ -715,13 +922,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 {/* Play/Pause */}
                 <button
                     onClick={togglePlay}
-                    disabled={isBuffering}
-                    className={`p-4 rounded-full shadow-lg transition-all disabled:opacity-70 ${cyberMode
+                    className={`p-4 rounded-full shadow-lg transition-all ${cyberMode
                         ? 'bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 shadow-cyan-500/30'
                         : 'bg-gradient-to-br from-blue-500 to-purple-600 hover:from-blue-400 hover:to-purple-500'
                         }`}
                 >
-                    {isBuffering ? (
+                    {isBuffering || isPlayQueued ? (
                         <Loader2 size={24} className="text-white animate-spin" />
                     ) : playback.isPlaying ? (
                         <Pause size={24} className="text-white" />

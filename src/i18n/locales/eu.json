@@ -750,7 +750,9 @@
             "aeroagentTitle": "AeroAgent - AI Laguntzailea",
             "aeroagent": "AeroAgent",
             "activityLog": "Jarduera erregistroa",
-            "log": "Erregistroa"
+            "log": "Erregistroa",
+            "insecureConnection": "Konexio ez-segurua",
+            "insecureConnectionTitle": "Ziurtagirien egiaztapena desgaituta dago"
         },
         "dialogs": {
             "confirmTitle": "Berretsi",
@@ -945,7 +947,11 @@
             "update_uptodate": "Eguneratuta (v{version})",
             "update_error": "Eguneraketa egiaztapenak huts egin du: {error}",
             "file_skipped": "Saltatuta (ez da aldatu): {filename}",
-            "delete_multiple_done": "{count} elementu ezabatu dira: {items}"
+            "delete_multiple_done": "{count} elementu ezabatu dira: {items}",
+            "navigate_opened": "Karpeta ireki dut: {path}",
+            "navigate_entered": "Karpetan sartu naiz: {path}",
+            "navigate_up_one": "Maila bat igo naiz: {path}",
+            "navigate_up_to": "Hona igo naiz: {path}"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB doan, AEB/EB eskualdeak",
             "s3Tooltip": "S3-bateragarria - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH bidez - shell seguruko fitxategi-transferentzia, gako-autentifikazioa onartzen du",
-            "webdavTooltip": "WebDAV protokoloa - Nextcloud, CloudMe, Koofr, Synology NAS-ekin bateragarria"
+            "webdavTooltip": "WebDAV protokoloa - Nextcloud, CloudMe, Koofr, Synology NAS-ekin bateragarria",
+            "insecureCertConfirmFirst": "Abisua: ziurtagiri baliogabeak/norberak sinatutakoak onartzeko zorian zaude. Honek konexioaren segurtasuna ahultzen du. Jarraitu?",
+            "insecureCertConfirmSecond": "Berrespen azkena: ziurtagiri ez-seguru moduan jarraitu?"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

@@ -104,6 +104,19 @@ In v1.9.0, AeroFTP consolidates **all sensitive data** from localStorage into th
 
 **What changed**: Before v1.9.0, `localStorage` contained server profile metadata (host, port, username — not passwords), AI provider selection, model preferences, and UI settings. After v1.9.0, all of these are encrypted in `vault.db`. The only data remaining in localStorage is non-sensitive UI state (window size, panel layout).
 
+### Security Hardening Updates (v2.0.8)
+
+The v2.0.8 cycle closes key remediation items from the GPT-5.3 security review while preserving Linux/WebKit compatibility.
+
+| Area | Update |
+| ---- | ------ |
+| **Settings confidentiality** | Core app settings now use vault-first storage (`app_settings`) with one-way idempotent migration from legacy `aeroftp_settings` and plaintext cleanup on write |
+| **SFTP trust model** | Host-key verification follows fail-closed behavior — mismatch/verification errors abort connection instead of allowing insecure continuation |
+| **Plugin execution safety** | Plugin shell execution path hardened to reduce shell-injection surface and keep command execution constrained to validated plugin context |
+| **Terminal guardrails** | Destructive-command denylist enforced in terminal tool execution path to reduce accidental high-risk operations |
+| **CSP baseline** | Explicit `csp` and `devCsp` profiles introduced with compatibility-first posture (`dangerousDisableAssetCspModification: true`) to avoid WebKit regressions while enabling staged tightening |
+| **Release evidence** | Security change evidence tracked in `docs/security-evidence/` for auditable release-by-release verification |
+
 ### Keystore Backup and Restore (v1.9.0)
 
 AeroFTP v1.9.0 introduces full vault export/import for disaster recovery and device migration.

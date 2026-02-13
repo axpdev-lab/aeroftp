@@ -64,11 +64,14 @@ impl Handler for SshHandler {
                 Ok(false)
             }
             Err(e) => {
-                tracing::warn!("SFTP: Error checking known_hosts: {} - accepting on first use", e);
-                if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
-                    tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
-                }
-                Ok(true)
+                // SEC: Reject on unknown errors — do not silently accept.
+                // Only TOFU (Ok(false)) should auto-accept; other errors may indicate
+                // corrupted known_hosts or key format issues.
+                tracing::error!(
+                    "SFTP: REJECTING connection to {} - known_hosts verification error: {}",
+                    self.host, e
+                );
+                Ok(false)
             }
         }
     }

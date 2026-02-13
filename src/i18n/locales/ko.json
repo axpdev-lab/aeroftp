@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - 로컬 파일 관리자",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI 어시스턴트",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "안전하지 않은 연결",
+            "insecureConnectionTitle": "인증서 검증이 비활성화됨"
         },
         "dialogs": {
             "confirmTitle": "확인",
@@ -945,7 +947,11 @@
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "Up to date (v{version})",
             "update_error": "Update check failed: {error}",
-            "file_skipped": "건너뜀 (변경 없음): {filename}"
+            "file_skipped": "건너뜀 (변경 없음): {filename}",
+            "navigate_opened": "폴더를 열었습니다: {path}",
+            "navigate_entered": "폴더에 들어갔습니다: {path}",
+            "navigate_up_one": "한 수준 위로 올라갔습니다: {path}",
+            "navigate_up_to": "위로 올라갔습니다: {path}"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB 무료 저장공간, US/EU 리전",
             "s3Tooltip": "S3 호환 스토리지 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH를 통한 SFTP - 보안 셸 파일 전송, 키 인증 지원",
-            "webdavTooltip": "WebDAV 프로토콜 - Nextcloud, CloudMe, Koofr, Synology NAS와 호환"
+            "webdavTooltip": "WebDAV 프로토콜 - Nextcloud, CloudMe, Koofr, Synology NAS와 호환",
+            "insecureCertConfirmFirst": "경고: 잘못된/자체 서명된 인증서를 수락하려고 합니다. 이는 연결 보안을 약화시킵니다. 계속하시겠습니까?",
+            "insecureCertConfirmSecond": "최종 확인: 안전하지 않은 인증서 모드로 계속하시겠습니까?"
         },
         "shortcuts": {
             "title": "단축키",

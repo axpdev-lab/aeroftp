@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Lokaal bestandsbeheer",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI-assistent",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Onveilige verbinding",
+            "insecureConnectionTitle": "Certificaatverificatie is uitgeschakeld"
         },
         "dialogs": {
             "confirmTitle": "Bevestigen",
@@ -945,7 +947,11 @@
             "update_available": "Update beschikbaar: v{version} (.{format})",
             "update_uptodate": "Up-to-date (v{version})",
             "update_error": "Updatecontrole mislukt: {error}",
-            "file_skipped": "Overgeslagen (ongewijzigd): {filename}"
+            "file_skipped": "Overgeslagen (ongewijzigd): {filename}",
+            "navigate_opened": "Ik heb de map geopend: {path}",
+            "navigate_entered": "Ik ben de map binnengegaan: {path}",
+            "navigate_up_one": "Ik ging één niveau omhoog: {path}",
+            "navigate_up_to": "Ik ging omhoog naar: {path}"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10 GB gratis opslag, VS/EU-regio's",
             "s3Tooltip": "S3-compatibele opslag — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP via SSH — veilige shell-bestandsoverdracht, ondersteunt sleutelauthenticatie",
-            "webdavTooltip": "WebDAV-protocol — compatibel met Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV-protocol — compatibel met Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Waarschuwing: u staat op het punt ongeldige/zelfondertekende certificaten te accepteren. Dit verzwakt de verbindingsbeveiliging. Doorgaan?",
+            "insecureCertConfirmSecond": "Definitieve bevestiging: doorgaan in onveilige certificaatmodus?"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

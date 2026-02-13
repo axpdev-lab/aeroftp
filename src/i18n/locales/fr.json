@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Gestionnaire de fichiers local",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Assistant IA",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Connexion non sécurisée",
+            "insecureConnectionTitle": "La vérification des certificats est désactivée"
         },
         "dialogs": {
             "confirmTitle": "Confirmer",
@@ -945,7 +947,11 @@
             "update_available": "Mise à jour disponible : v{version} (.{format})",
             "update_uptodate": "À jour (v{version})",
             "update_error": "Échec de la vérification des mises à jour : {error}",
-            "file_skipped": "Ignore (inchange) : {filename}"
+            "file_skipped": "Ignore (inchange) : {filename}",
+            "navigate_opened": "J'ai ouvert le dossier: {path}",
+            "navigate_entered": "Je suis entré dans le dossier: {path}",
+            "navigate_up_one": "Je suis remonté d'un niveau: {path}",
+            "navigate_up_to": "Je suis remonté à: {path}"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 Go gratuits, régions US/UE",
             "s3Tooltip": "Stockage S3-compatible - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP via SSH - transfert de fichiers sécurisé, prend en charge l'authentification par clé",
-            "webdavTooltip": "Protocole WebDAV - compatible avec Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocole WebDAV - compatible avec Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Avertissement: vous êtes sur le point d'accepter des certificats invalides/auto-signés. Cela affaiblit la sécurité de la connexion. Continuer?",
+            "insecureCertConfirmSecond": "Confirmation finale: procéder en mode certificat non sécurisé?"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

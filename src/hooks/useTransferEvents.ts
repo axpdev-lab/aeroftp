@@ -13,6 +13,7 @@ interface UseTransferEventsOptions {
   loadRemoteFiles: (overrideProtocol?: string) => unknown;
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
+  currentRemotePath: string;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -28,12 +29,34 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
   const pendingDeleteLogIds = useRef<Map<string, string>>(new Map());
+  const transferIdToDisplayPath = useRef<Map<string, string>>(new Map());
+  const detailedDeleteCompletedIds = useRef<Set<string>>(new Set());
   // Track completed transfer IDs to prevent late progress events from re-showing the toast
   const completedTransferIds = useRef<Set<string>>(new Set());
   // Track last known file-level speed for display in folder transfer toast
   const lastFileSpeedRef = useRef<number>(0);
 
   useEffect(() => {
+    const joinPath = (base: string, name: string): string => {
+      if (!base) return name;
+      return `${base.replace(/[\\/]$/, '')}/${name}`;
+    };
+
+    const resolveTransferDisplayPath = (data: TransferEvent, currentLocalPath: string, currentRemotePath: string): string => {
+      if (data.path && data.path.trim().length > 0) return data.path;
+      if (!data.filename) return '';
+      if (data.direction === 'upload') return joinPath(currentRemotePath, data.filename);
+      if (data.direction === 'download') return joinPath(currentLocalPath, data.filename);
+      return data.filename;
+    };
+
+    const resolveDisplayPath = (data: TransferEvent, currentLocalPath: string, currentRemotePath: string): string => {
+      if (data.path && data.path.trim().length > 0) return data.path;
+      const base = data.direction === 'remote' ? currentRemotePath : currentLocalPath;
+      if (!base || !data.filename) return data.filename;
+      return `${base.replace(/\/$/, '')}/${data.filename}`;
+    };
+
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
       const { t, activityLog, humanLog, transferQueue, notify, setActiveTransfer } = optRef.current;
       const data = event.payload;
@@ -43,7 +66,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Clean up completed set and reset speed tracking for this new transfer
         completedTransferIds.current.delete(data.transfer_id);
         lastFileSpeedRef.current = 0;
-        const displayName = data.path || data.filename;
+        const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
+        transferIdToDisplayPath.current.set(data.transfer_id, displayName);
         let logId = '';
         // Check if we have a pending manual log for this file (deduplication)
         if (pendingFileLogIds.current.has(data.filename)) {
@@ -121,7 +145,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       } else if (data.event_type === 'file_skip') {
         // File skipped due to file_exists_action setting (identical/not newer)
-        const displayName = data.path || data.filename;
+        const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         humanLog.logRaw('activity.file_skipped', 'SKIP', { filename: displayName }, 'success');
 
         // Add skipped file to queue and mark as completed
@@ -170,7 +194,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
+          || resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
         const details = size && time ? `(${size} in ${time})` : size ? `(${size})` : '';
         const formattedMessage = t(successKey, { filename: displayName, location: loc, details });
@@ -180,6 +205,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           activityLog.updateEntry(logId, { status: 'success', message: formattedMessage });
           transferIdToLogId.current.delete(data.transfer_id);
         }
+        transferIdToDisplayPath.current.delete(data.transfer_id);
 
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
         if (queueId) {
@@ -193,7 +219,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         setActiveTransfer(null);
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
+          || resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const errorKey = data.direction === 'upload' ? 'activity.upload_error' : 'activity.download_error';
         const formattedMessage = t(errorKey, { filename: displayName, location: loc });
 
@@ -210,6 +237,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.failTransfer(queueId, data.message || 'Transfer failed');
           transferIdToQueueId.current.delete(data.transfer_id);
         }
+        transferIdToDisplayPath.current.delete(data.transfer_id);
 
         notify.error('Transfer Failed', data.message);
       } else if (data.event_type === 'cancelled') {
@@ -228,6 +256,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.failTransfer(queueId, 'Cancelled by user');
           transferIdToQueueId.current.delete(data.transfer_id);
         }
+        transferIdToDisplayPath.current.delete(data.transfer_id);
 
         // Clean up any in-progress file log entries that belong to this folder transfer.
         // Keys in pendingFileLogIds are like "dl-folder-123-5:/path/to/file" where
@@ -253,65 +282,73 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       // ========== DELETE EVENTS ==========
       else if (data.event_type === 'delete_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');
         // Track by transfer_id (like upload/download) so delete_complete can find it
         transferIdToLogId.current.set(data.transfer_id, logId);
         pendingDeleteLogIds.current.set(data.filename, logId);
+        pendingDeleteLogIds.current.set(displayName, logId);
       } else if (data.event_type === 'delete_file_start') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');
         pendingDeleteLogIds.current.set(data.filename, logId);
+        pendingDeleteLogIds.current.set(displayName, logId);
       } else if (data.event_type === 'delete_file_complete') {
+        detailedDeleteCompletedIds.current.add(data.transfer_id);
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
+        const existingId = pendingDeleteLogIds.current.get(data.filename) || pendingDeleteLogIds.current.get(displayName);
         if (existingId) {
           const msg = t('activity.delete_file_success', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'success', message: msg });
           pendingDeleteLogIds.current.delete(data.filename);
+          pendingDeleteLogIds.current.delete(displayName);
         } else {
           humanLog.logRaw('activity.delete_file_success', 'DELETE', { location: loc, filename: displayName }, 'success');
         }
       } else if (data.event_type === 'delete_dir_complete') {
+        detailedDeleteCompletedIds.current.add(data.transfer_id);
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
-        const existingId = pendingDeleteLogIds.current.get(data.filename);
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
+        const existingId = pendingDeleteLogIds.current.get(data.filename) || pendingDeleteLogIds.current.get(displayName);
         if (existingId) {
           const msg = t('activity.delete_dir_success', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'success', message: msg });
           pendingDeleteLogIds.current.delete(data.filename);
-        } else {
-          humanLog.logRaw('activity.delete_dir_success', 'DELETE', { location: loc, filename: displayName }, 'success');
+          pendingDeleteLogIds.current.delete(displayName);
         }
       } else if (data.event_type === 'delete_complete') {
         // Update the overall delete log entry to "success" (same pattern as upload/download complete)
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
+        const hasDetailedCompletion = detailedDeleteCompletedIds.current.has(data.transfer_id);
         const logId = transferIdToLogId.current.get(data.transfer_id);
-        if (logId) {
+        if (!hasDetailedCompletion && logId) {
           const msg = t('activity.delete_success', { location: loc, filename: displayName });
           activityLog.updateEntry(logId, { status: 'success', message: msg });
-          transferIdToLogId.current.delete(data.transfer_id);
         }
+        transferIdToLogId.current.delete(data.transfer_id);
+        detailedDeleteCompletedIds.current.delete(data.transfer_id);
         // Also clean up any remaining pending delete log for this filename
         pendingDeleteLogIds.current.delete(data.filename);
+        pendingDeleteLogIds.current.delete(displayName);
 
         const { loadRemoteFiles, loadLocalFiles, currentLocalPath } = optRef.current;
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        const displayName = data.path || data.filename;
+        const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         // Try transfer_id first (overall delete), then filename (file-level)
         const logId = transferIdToLogId.current.get(data.transfer_id);
-        const existingId = logId || pendingDeleteLogIds.current.get(data.filename);
+        const existingId = logId || pendingDeleteLogIds.current.get(data.filename) || pendingDeleteLogIds.current.get(displayName);
         if (existingId) {
           const msg = t('activity.delete_error', { location: loc, filename: displayName });
           activityLog.updateEntry(existingId, { status: 'error', message: msg });
           if (logId) transferIdToLogId.current.delete(data.transfer_id);
           pendingDeleteLogIds.current.delete(data.filename);
+          pendingDeleteLogIds.current.delete(displayName);
         } else {
           humanLog.logRaw('activity.delete_error', 'ERROR', { location: loc, filename: data.message || t('errors.unknown') }, 'error');
         }

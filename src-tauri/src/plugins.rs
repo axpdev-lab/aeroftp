@@ -157,10 +157,35 @@ pub async fn execute_plugin_tool(
         .find(|t| t.name == tool_name)
         .ok_or_else(|| format!("Tool '{}' not found in plugin '{}'", tool_name, plugin_id))?;
 
-    // Spawn subprocess
+    // SEC: Direct argv execution — no shell interpretation.
+    // Reject shell metacharacters to prevent injection via crafted manifests.
     let command = &tool.command;
-    let mut child = tokio::process::Command::new("sh")
-        .args(["-c", command])
+    const SHELL_METACHARACTERS: &[char] = &[
+        '|', '&', ';', '`', '$', '(', ')', '>', '<', '{', '}', '\n', '\r', '!', '#',
+    ];
+    if command.chars().any(|c| SHELL_METACHARACTERS.contains(&c)) {
+        return Err(format!(
+            "Plugin command contains forbidden shell metacharacters: {}",
+            tool_name
+        ));
+    }
+
+    let argv: Vec<&str> = command.split_whitespace().collect();
+    if argv.is_empty() {
+        return Err(format!("Plugin '{}' has empty command", tool_name));
+    }
+    let program = argv[0];
+
+    // Block path traversal (.. components) and absolute paths in the executable
+    if program.contains("..") || program.starts_with('/') {
+        return Err(format!(
+            "Plugin command must be a relative path without traversal: {}",
+            program
+        ));
+    }
+
+    let mut child = tokio::process::Command::new(program)
+        .args(&argv[1..])
         .current_dir(&plugin_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

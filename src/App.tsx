@@ -72,7 +72,7 @@ import type { TrashItem, FolderSizeResult } from './types/aerofile';
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
 import { logger } from './utils/logger';
-import { secureGetWithFallback } from './utils/secureStorage';
+import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import { useTranslation } from './i18n';
 
 // Components
@@ -128,7 +128,7 @@ const App: React.FC = () => {
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
     showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder, visibleColumns,
-    sortFoldersFirst, showFileExtensions,
+    sortFoldersFirst, showFileExtensions, fileExistsAction,
     systemMenuVisible, showMenuBar, showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowMenuBar, setSystemMenuVisible, setShowActivityLog,
@@ -224,7 +224,7 @@ const App: React.FC = () => {
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
-  const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles });
+  const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles, fileExistsAction });
   // Folder overwrite dialog state
   const [folderOverwriteDialog, setFolderOverwriteDialog] = useState<{
     isOpen: boolean;
@@ -309,6 +309,7 @@ const App: React.FC = () => {
 
   const [localSearchFilter, setLocalSearchFilter] = useState('');
   const [showLocalSearchBar, setShowLocalSearchBar] = useState(false);
+  const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
@@ -487,6 +488,25 @@ const App: React.FC = () => {
   const contextMenu = useContextMenu();
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
+
+  useEffect(() => {
+    const protocol = connectionParams.protocol;
+    const isFtpFamily = protocol === 'ftp' || protocol === 'ftps';
+    const insecureEnabled = isFtpFamily && connectionParams.options?.verifyCert === false;
+
+    if (insecureEnabled && !insecureCertPreviouslyEnabledRef.current) {
+      activityLog.log(
+        'INFO',
+        t('activity.insecure_cert_enabled', {
+          protocol: (protocol || 'ftp').toUpperCase(),
+          server: connectionParams.server || '-'
+        }),
+        'success'
+      );
+    }
+
+    insecureCertPreviouslyEnabledRef.current = insecureEnabled;
+  }, [connectionParams.protocol, connectionParams.options?.verifyCert, connectionParams.server, activityLog, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
@@ -1155,6 +1175,7 @@ const App: React.FC = () => {
   const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
+    currentRemotePath,
   });
 
   const handleRemoteSearch = async (query: string) => {
@@ -1206,12 +1227,11 @@ const App: React.FC = () => {
     (async () => {
       // Check for saved settings with defaultLocalPath or last visited folder
       try {
-        const savedSettings = localStorage.getItem(SETTINGS_KEY);
-        if (savedSettings) {
-          const parsed = JSON.parse(savedSettings);
+        const parsed = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+        if (parsed) {
 
           // If rememberLastFolder is enabled, try to load last visited folder
-          if (parsed.rememberLastFolder && parsed.lastLocalPath) {
+          if (parsed.rememberLastFolder === true && typeof parsed.lastLocalPath === 'string') {
             try {
               await loadLocalFiles(parsed.lastLocalPath);
               return;
@@ -1219,7 +1239,7 @@ const App: React.FC = () => {
           }
 
           // Try defaultLocalPath from settings
-          if (parsed.defaultLocalPath) {
+          if (typeof parsed.defaultLocalPath === 'string' && parsed.defaultLocalPath.length > 0) {
             try {
               await loadLocalFiles(parsed.defaultLocalPath);
               return;
@@ -1634,12 +1654,6 @@ const App: React.FC = () => {
           console.warn('[switchSession] Failed to parse OAuth settings:', e);
         }
 
-        // Fall back to legacy per-provider storage
-        if (!clientId || !clientSecret) {
-          clientId = localStorage.getItem(`oauth_${protocol}_client_id`);
-          clientSecret = localStorage.getItem(`oauth_${protocol}_client_secret`);
-        }
-
         // Fall back to OS keyring (Box, pCloud, and others store credentials there)
         if (!clientId || !clientSecret) {
           try {
@@ -1980,7 +1994,10 @@ const App: React.FC = () => {
           setCloudRemoteFolder(cloudConfig.remote_folder);
           setCloudLocalFolder(cloudConfig.local_folder);
 
-          humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: connectionParams.protocol || 'FTP' }, 'success');
+          // Avoid duplicate connect-success log when we already logged it in the reconnect block above.
+          if (isSameServer) {
+            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: connectionParams.protocol || 'FTP' }, 'success');
+          }
         } catch (navError) {
           logger.error('Navigation error:', navError);
         }
@@ -2005,7 +2022,9 @@ const App: React.FC = () => {
       // Connect
       setLoading(true);
       const logId = humanLog.logStart('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})` });
-      notify.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
+      if (showToastNotifications) {
+        toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
+      }
 
       await invoke('connect_ftp', { params });
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -2028,8 +2047,10 @@ const App: React.FC = () => {
 
       // Trigger a sync after connecting to cloud
       try {
+        if (showToastNotifications) {
+          toast.info(t('toast.syncStartedTitle'), t('toast.syncingCloudFiles'));
+        }
         await invoke('trigger_cloud_sync');
-        notify.info(t('toast.syncStartedTitle'), t('toast.syncingCloudFiles'));
       } catch (e) {
         logger.error('Sync trigger error:', e);
       }
@@ -2106,14 +2127,11 @@ const App: React.FC = () => {
 
     // Save last local path if remember folder is enabled
     if (rememberLastFolder) {
-      try {
-        const savedSettings = localStorage.getItem(SETTINGS_KEY);
-        const settings = savedSettings ? JSON.parse(savedSettings) : {};
-        settings.lastLocalPath = path;
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      } catch (e) {
-        console.error('Failed to save last local path:', e);
-      }
+      secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY)
+        .then(existing => secureStoreAndClean('app_settings', SETTINGS_KEY, { ...(existing || {}), lastLocalPath: path }))
+        .catch((e) => {
+          console.error('Failed to save last local path:', e);
+        });
     }
 
     // Navigation Sync: mirror to remote panel if enabled
@@ -2224,8 +2242,6 @@ const App: React.FC = () => {
       return { action: 'merge_overwrite', applyToAll: false };
     }
     // Read settings
-    const savedSettings = localStorage.getItem('aeroftp_settings');
-    const fileExistsAction = savedSettings ? (JSON.parse(savedSettings).fileExistsAction || 'ask') : 'ask';
     if (fileExistsAction !== 'ask') {
       // Map setting to folder action without showing dialog
       return { action: 'merge_overwrite', applyToAll: false };
@@ -2262,9 +2278,6 @@ const App: React.FC = () => {
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
-          // Read file exists action from settings for folder transfers
-          const savedSettings = localStorage.getItem('aeroftp_settings');
-          const fileExistsAction = savedSettings ? (JSON.parse(savedSettings).fileExistsAction || 'ask') : 'ask';
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
           let folderResult: string;
@@ -2277,8 +2290,8 @@ const App: React.FC = () => {
           // Don't log success if the transfer was cancelled
           if (!folderResult.toLowerCase().includes('cancelled')) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${fileName} in ${elapsed}s`, 'success');
-            humanLog.updateEntry(logId, { status: 'success', message: `Downloaded folder ${fileName} in ${elapsed}s` });
+            humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${folderPath} in ${elapsed}s`, 'success');
+            humanLog.updateEntry(logId, { status: 'success', message: `Downloaded folder ${folderPath} in ${elapsed}s` });
           }
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
@@ -2298,7 +2311,7 @@ const App: React.FC = () => {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const sizeStr = fileSize ? formatBytes(fileSize) : '';
           const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
-          const msg = t('activity.download_success', { filename: fileName, details });
+          const msg = t('activity.download_success', { filename: localFilePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
@@ -2358,24 +2371,21 @@ const App: React.FC = () => {
 
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
-          const msg = t('activity.upload_success', { filename: fileName, details });
+          const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
           humanLog.updateEntry(logId, { message: msg });
           // Refresh list
           loadRemoteFiles();
           return;
         }
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
-        // Read file exists action from settings for folder transfers
-        const savedSettings2 = localStorage.getItem('aeroftp_settings');
-        const fileExistsAction2 = savedSettings2 ? (JSON.parse(savedSettings2).fileExistsAction || 'ask') : 'ask';
-        const folderAction2 = fileExistsAction2 === 'ask' ? '' : fileExistsAction2;
+        const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
         const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath, file_exists_action: folderAction2 || undefined };
         const uploadResult = await invoke<string>('upload_folder', { params });
         // Don't log success if the transfer was cancelled
         if (!uploadResult.toLowerCase().includes('cancelled')) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
-          const msg = t('activity.upload_success', { filename: fileName, details });
+          const msg = t('activity.upload_success', { filename: remotePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         }
       } else {
@@ -2390,7 +2400,7 @@ const App: React.FC = () => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const sizeStr = fileSize ? formatBytes(fileSize) : '';
         const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
-        const msg = t('activity.upload_success', { filename: fileName, details });
+        const msg = t('activity.upload_success', { filename: remotePath, details });
         humanLog.updateEntry(logId, { status: 'success', message: msg });
       }
     } catch (error) {
@@ -2831,9 +2841,9 @@ const App: React.FC = () => {
             }
 
             if (file.is_dir) {
-              deletedFolders.push(name);
+              deletedFolders.push(file.path);
             } else {
-              deletedFiles.push(name);
+              deletedFiles.push(file.path);
             }
           } catch (err) {
             notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
@@ -2858,7 +2868,11 @@ const App: React.FC = () => {
       } else {
         // Multiple items
         const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
-        humanLog.updateEntry(logId, { status: 'success', message: `[${loc}] ${t('activity.delete_multiple_done', { count, items: allDeleted.join(', ') })}` });
+        humanLog.updateEntry(logId, {
+          status: 'success',
+          message: `[${loc}] ${t('activity.delete_multiple_success', { count })}`,
+          details: allDeleted.join('\n')
+        });
       }
       const parts = [];
       if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
@@ -2895,9 +2909,9 @@ const App: React.FC = () => {
           try {
             await invoke('delete_to_trash', { path: file.path });
             if (file.is_dir) {
-              deletedFolders.push(name);
+              deletedFolders.push(file.path);
             } else {
-              deletedFiles.push(name);
+              deletedFiles.push(file.path);
             }
           } catch (err) {
             failedFiles.push(name);
@@ -2916,7 +2930,11 @@ const App: React.FC = () => {
         humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_file_success', { location: loc, filename: deletedFiles[0] }) });
       } else {
         const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
-        humanLog.updateEntry(logId, { status: 'success', message: `[${loc}] ${t('activity.delete_multiple_done', { count, items: allDeleted.join(', ') })}` });
+        humanLog.updateEntry(logId, {
+          status: 'success',
+          message: `[${loc}] ${t('activity.delete_multiple_success', { count })}`,
+          details: allDeleted.join('\n')
+        });
       }
       const parts = [];
       if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
@@ -2943,7 +2961,7 @@ const App: React.FC = () => {
     const fileName = path.split(/[\\/]/).pop() || path;
 
     const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE', { filename: fileName });
+      const logId = humanLog.logStart('DELETE', { filename: path });
       try {
         // Get protocol from active session as fallback
         const activeSession = sessions.find(s => s.id === activeSessionId);
@@ -2959,12 +2977,12 @@ const App: React.FC = () => {
         } else {
           await invoke('delete_remote_file', { path, isDir });
         }
-        humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+        humanLog.logSuccess('DELETE', { filename: path }, logId);
         notify.success(t('toast.deleted'), fileName);
         await loadRemoteFiles();
       }
       catch (error) {
-        humanLog.logError('DELETE', { filename: fileName }, logId);
+        humanLog.logError('DELETE', { filename: path }, logId);
         notify.error(t('toast.deleteFail'), String(error));
       }
     };
@@ -2987,15 +3005,15 @@ const App: React.FC = () => {
     const fileName = path.split(/[\\/]/).pop() || path;
 
     const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE', { filename: fileName });
+      const logId = humanLog.logStart('DELETE', { filename: path });
       try {
         await invoke('delete_to_trash', { path });
-        humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+        humanLog.logSuccess('DELETE', { filename: path }, logId);
         notify.success(t('toast.deleted'), fileName);
         await loadLocalFiles(currentLocalPath);
       }
       catch (error) {
-        humanLog.logError('DELETE', { filename: fileName }, logId);
+        humanLog.logError('DELETE', { filename: path }, logId);
         notify.error(t('toast.deleteFail'), String(error));
       }
     };
@@ -3017,14 +3035,14 @@ const App: React.FC = () => {
   // Legacy wrapper to maintain compatibility - removed duplicate error handling
   const deleteLocalFileInternal = async (path: string) => {
     const fileName = path.split(/[\\/]/).pop() || path;
-    const logId = humanLog.logStart('DELETE', { filename: fileName });
+    const logId = humanLog.logStart('DELETE', { filename: path });
     try {
       await invoke('delete_to_trash', { path });
-      humanLog.logSuccess('DELETE', { filename: fileName }, logId);
+      humanLog.logSuccess('DELETE', { filename: path }, logId);
       notify.success(t('toast.deleted'), fileName);
       await loadLocalFiles(currentLocalPath);
     } catch (error) {
-      humanLog.logError('DELETE', { filename: fileName }, logId);
+      humanLog.logError('DELETE', { filename: path }, logId);
       notify.error(t('toast.deleteFail'), String(error));
     }
   };
@@ -5917,6 +5935,12 @@ const App: React.FC = () => {
       {showStatusBar && (
         <StatusBar
           isConnected={isConnected}
+          insecureConnection={isConnected ? (() => {
+            const activeSession = sessions.find(s => s.id === activeSessionId);
+            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+            const verifyCert = connectionParams.options?.verifyCert ?? activeSession?.connectionParams?.options?.verifyCert;
+            return (protocol === 'ftp' || protocol === 'ftps') && verifyCert === false;
+          })() : false}
           serverInfo={isConnected ? (() => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);

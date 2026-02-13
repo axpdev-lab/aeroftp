@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Gestor de archivos local",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Asistente de IA",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Conexión insegura",
+            "insecureConnectionTitle": "La verificación de certificados está desactivada"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",
@@ -945,7 +947,11 @@
             "update_available": "Actualización disponible: v{version} (.{format})",
             "update_uptodate": "Al día (v{version})",
             "update_error": "Error al buscar actualizaciones: {error}",
-            "file_skipped": "Omitido (sin cambios): {filename}"
+            "file_skipped": "Omitido (sin cambios): {filename}",
+            "navigate_opened": "Abrí la carpeta: {path}",
+            "navigate_entered": "Entré en la carpeta: {path}",
+            "navigate_up_one": "Subí un nivel: {path}",
+            "navigate_up_to": "Subí a: {path}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB de almacenamiento gratuito, regiones US/EU",
             "s3Tooltip": "Almacenamiento compatible con S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP sobre SSH - transferencia segura de archivos por shell, soporta autenticación por clave",
-            "webdavTooltip": "Protocolo WebDAV - compatible con Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocolo WebDAV - compatible con Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Advertencia: está a punto de aceptar certificados no válidos/autofirmados. Esto debilita la seguridad de la conexión. ¿Continuar?",
+            "insecureCertConfirmSecond": "Confirmación final: ¿proceder en modo de certificado inseguro?"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

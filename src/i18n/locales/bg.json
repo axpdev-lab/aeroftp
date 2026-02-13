@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Локален файлов мениджър",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI асистент",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Несигурна връзка",
+            "insecureConnectionTitle": "Проверката на сертификати е изключена"
         },
         "dialogs": {
             "confirmTitle": "Потвърждение",
@@ -945,7 +947,11 @@
             "update_available": "Налична актуализация: v{version} (.{format})",
             "update_uptodate": "Актуална версия (v{version})",
             "update_error": "Проверката за актуализации не успя: {error}",
-            "file_skipped": "Пропуснат (непроменен): {filename}"
+            "file_skipped": "Пропуснат (непроменен): {filename}",
+            "navigate_opened": "Отворих папка: {path}",
+            "navigate_entered": "Влязох в папка: {path}",
+            "navigate_up_one": "Качих се едно ниво: {path}",
+            "navigate_up_to": "Качих се до: {path}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10GB безплатно хранилище, региони САЩ/ЕС",
             "s3Tooltip": "S3-съвместимо хранилище — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP през SSH — сигурен трансфер на файлове чрез командна обвивка, поддържа автентикация с ключ",
-            "webdavTooltip": "WebDAV протокол — съвместим с Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV протокол — съвместим с Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Предупреждение: ще приемете невалидни/самоподписани сертификати. Това отслабва сигурността на връзката. Продължавате ли?",
+            "insecureCertConfirmSecond": "Окончателно потвърждение: продължавате ли в режим на несигурни сертификати?"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

@@ -28,6 +28,8 @@
         ],
         "security": {
             "dangerousDisableAssetCspModification": true,
+            "csp": "default-src 'self' asset: http://asset.localhost data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https: wss:; worker-src 'self' blob:; media-src 'self' asset: http://asset.localhost data: blob: https:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+            "devCsp": "default-src 'self' asset: http://asset.localhost data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https: wss: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; media-src 'self' asset: http://asset.localhost data: blob: https:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
             "assetProtocol": {
                 "enable": true,
                 "scope": [
@@ -56,6 +58,15 @@
         "licenseFile": "../LICENSE",
         "linux": {
             "deb": {
+                "depends": [
+                    "libgtk-3-0",
+                    "libwebkit2gtk-4.1-0",
+                    "libayatana-appindicator3-1",
+                    "libgstreamer1.0-0",
+                    "gstreamer1.0-plugins-base",
+                    "gstreamer1.0-plugins-good",
+                    "gstreamer1.0-plugins-bad"
+                ],
                 "files": {
                     "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml"
                 }

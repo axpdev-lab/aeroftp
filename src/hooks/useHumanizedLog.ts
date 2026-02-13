@@ -6,9 +6,9 @@
  * NO EMOJIS - Professional icon-based feedback only
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useActivityLog, OperationType } from './useActivityLog';
-import { useTranslation } from '../i18n';
+import { useI18n, useTranslation } from '../i18n';
 
 // ============================================================================
 // Types
@@ -51,6 +51,26 @@ export type HumanizedOperationType =
 export function useHumanizedLog() {
     const activityLog = useActivityLog();
     const t = useTranslation();
+    const { language } = useI18n();
+    const lastNavigatePathRef = useRef<{ remote: string | null; local: string | null }>({
+        remote: null,
+        local: null,
+    });
+
+    const normalizePath = (value: string): string => {
+        if (!value || value.trim() === '') return '/';
+        const cleaned = value.replace(/\\/g, '/').replace(/\/+/g, '/');
+        if (cleaned === '/') return '/';
+        return cleaned.endsWith('/') ? cleaned.slice(0, -1) : cleaned;
+    };
+
+    const getParentPath = (value: string): string => {
+        const normalized = normalizePath(value);
+        if (normalized === '/') return '/';
+        const idx = normalized.lastIndexOf('/');
+        if (idx <= 0) return '/';
+        return normalized.slice(0, idx);
+    };
 
     /**
      * Helper to get location string
@@ -102,12 +122,13 @@ export function useHumanizedLog() {
         const message = t(key, buildVars(params));
 
         // Determine base operation type for the icon
-        const opType = operation.includes('CONNECT') || operation === 'RECONNECT' ? 'CONNECT' :
-            operation.includes('DELETE') ? 'DELETE' :
-                operation.includes('UPLOAD') ? 'UPLOAD' :
-                    operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
-                        operation.includes('SYNC') ? 'INFO' :
-                            operation as OperationType;
+        const opType = operation === 'DISCONNECT' ? 'DISCONNECT' :
+            operation === 'CONNECT' || operation === 'RECONNECT' ? 'CONNECT' :
+                operation.includes('DELETE') ? 'DELETE' :
+                    operation.includes('UPLOAD') ? 'UPLOAD' :
+                        operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
+                            operation.includes('SYNC') ? 'INFO' :
+                                operation as OperationType;
 
         return activityLog.log(opType, message, 'running');
     }, [t, activityLog]);
@@ -123,12 +144,13 @@ export function useHumanizedLog() {
         const key = getTranslationKey(operation, 'success');
         const message = t(key, buildVars(params));
 
-        const opType = operation.includes('CONNECT') || operation === 'RECONNECT' ? 'CONNECT' :
-            operation.includes('DELETE') ? 'DELETE' :
-                operation.includes('UPLOAD') ? 'UPLOAD' :
-                    operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
-                        operation.includes('SYNC') ? 'INFO' :
-                            operation as OperationType;
+        const opType = operation === 'DISCONNECT' ? 'DISCONNECT' :
+            operation === 'CONNECT' || operation === 'RECONNECT' ? 'CONNECT' :
+                operation.includes('DELETE') ? 'DELETE' :
+                    operation.includes('UPLOAD') ? 'UPLOAD' :
+                        operation.includes('DOWNLOAD') ? 'DOWNLOAD' :
+                            operation.includes('SYNC') ? 'INFO' :
+                                operation as OperationType;
 
         if (existingId) {
             activityLog.updateEntry(existingId, { status: 'success', message });
@@ -161,13 +183,36 @@ export function useHumanizedLog() {
      * Log navigation (instant success)
      */
     const logNavigate = useCallback((path: string, isRemote: boolean): string => {
+        const panelKey = isRemote ? 'remote' : 'local';
+        const previousPath = lastNavigatePathRef.current[panelKey];
+        const currentPath = normalizePath(path);
+
         const vars = {
-            path,
+            path: currentPath,
             location: getLocationString(isRemote)
         };
-        const message = t('activity.navigate_success', vars);
+
+        let message = t('activity.navigate_success', vars);
+        if (language === 'it' || language === 'en') {
+            const previousNormalized = previousPath ? normalizePath(previousPath) : null;
+            if (previousNormalized) {
+                if (currentPath === getParentPath(previousNormalized)) {
+                    message = t('activity.navigate_up_one', vars);
+                } else if (previousNormalized.startsWith(`${currentPath}/`)) {
+                    message = t('activity.navigate_up_to', vars);
+                } else if (currentPath.startsWith(`${previousNormalized}/`)) {
+                    message = t('activity.navigate_entered', vars);
+                } else {
+                    message = t('activity.navigate_opened', vars);
+                }
+            } else {
+                message = t('activity.navigate_opened', vars);
+            }
+        }
+
+        lastNavigatePathRef.current[panelKey] = currentPath;
         return activityLog.log('NAVIGATE', message, 'success');
-    }, [t, activityLog]);
+    }, [t, activityLog, language]);
 
     /**
      * Specialized log functions using translations

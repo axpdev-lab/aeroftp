@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - ローカルファイルマネージャー",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AIアシスタント",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "安全でない接続",
+            "insecureConnectionTitle": "証明書検証が無効です"
         },
         "dialogs": {
             "confirmTitle": "確認",
@@ -945,7 +947,11 @@
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "Up to date (v{version})",
             "update_error": "Update check failed: {error}",
-            "file_skipped": "スキップ（変更なし）: {filename}"
+            "file_skipped": "スキップ（変更なし）: {filename}",
+            "navigate_opened": "フォルダを開きました: {path}",
+            "navigate_entered": "フォルダに入りました: {path}",
+            "navigate_up_one": "1つ上のレベルに移動しました: {path}",
+            "navigate_up_to": "上に移動しました: {path}"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB無料ストレージ、US/EUリージョン",
             "s3Tooltip": "S3互換ストレージ - AWS S3、MinIO、Cloudflare R2、Backblaze B2",
             "sftpTooltip": "SSH経由のSFTP - セキュアシェルファイル転送、鍵認証をサポート",
-            "webdavTooltip": "WebDAV プロトコル - Nextcloud、CloudMe、Koofr、Synology NAS と互換性あり"
+            "webdavTooltip": "WebDAV プロトコル - Nextcloud、CloudMe、Koofr、Synology NAS と互換性あり",
+            "insecureCertConfirmFirst": "警告: 無効/自己署名証明書を受け入れようとしています。これは接続セキュリティを弱めます。続行しますか?",
+            "insecureCertConfirmSecond": "最終確認: 安全でない証明書モードで続行しますか?"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

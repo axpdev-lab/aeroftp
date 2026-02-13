@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Manajer File Lokal",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Asisten AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Koneksi Tidak Aman",
+            "insecureConnectionTitle": "Verifikasi sertifikat dinonaktifkan"
         },
         "dialogs": {
             "confirmTitle": "Konfirmasi",
@@ -945,7 +947,11 @@
             "update_available": "Pembaruan tersedia: v{version} (.{format})",
             "update_uptodate": "Terbaru (v{version})",
             "update_error": "Pemeriksaan pembaruan gagal: {error}",
-            "file_skipped": "Dilewati (tidak berubah): {filename}"
+            "file_skipped": "Dilewati (tidak berubah): {filename}",
+            "navigate_opened": "Saya membuka folder: {path}",
+            "navigate_entered": "Saya masuk ke folder: {path}",
+            "navigate_up_one": "Saya naik satu tingkat: {path}",
+            "navigate_up_to": "Saya naik ke: {path}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB penyimpanan gratis, wilayah US/EU",
             "s3Tooltip": "Penyimpanan kompatibel S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP melalui SSH - transfer file shell aman, mendukung autentikasi kunci",
-            "webdavTooltip": "Protokol WebDAV - kompatibel dengan Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV - kompatibel dengan Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Peringatan: Anda akan menerima sertifikat tidak valid/ber-tanda tangan sendiri. Ini melemahkan keamanan koneksi. Lanjutkan?",
+            "insecureCertConfirmSecond": "Konfirmasi akhir: lanjutkan dengan mode sertifikat tidak aman?"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

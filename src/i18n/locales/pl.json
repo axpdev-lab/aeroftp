@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile — Lokalny menedżer plików",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent — Asystent AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Niezabezpieczone połączenie",
+            "insecureConnectionTitle": "Weryfikacja certyfikatów jest wyłączona"
         },
         "dialogs": {
             "confirmTitle": "Potwierdź",
@@ -945,7 +947,11 @@
             "update_available": "Dostępna aktualizacja: v{version} (.{format})",
             "update_uptodate": "Aktualne (v{version})",
             "update_error": "Sprawdzanie aktualizacji nie powiodło się: {error}",
-            "file_skipped": "Pominięto (bez zmian): {filename}"
+            "file_skipped": "Pominięto (bez zmian): {filename}",
+            "navigate_opened": "Otworzyłem folder: {path}",
+            "navigate_entered": "Wszedłem do folderu: {path}",
+            "navigate_up_one": "Wszedłem o jeden poziom wyżej: {path}",
+            "navigate_up_to": "Wszedłem do: {path}"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10 GB darmowej przestrzeni, regiony US/EU",
             "s3Tooltip": "Pamiec kompatybilna z S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP przez SSH - bezpieczny transfer plikow, obsluguje uwierzytelnianie kluczem",
-            "webdavTooltip": "Protokol WebDAV - kompatybilny z Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV - kompatybilny z Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Ostrzeżenie: zamierzasz zaakceptować nieprawidłowe/samopodpisane certyfikaty. To osłabia bezpieczeństwo połączenia. Kontynuować?",
+            "insecureCertConfirmSecond": "Ostateczne potwierdzenie: kontynuować w trybie niebezpiecznych certyfikatów?"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

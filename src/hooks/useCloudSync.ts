@@ -42,6 +42,14 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   callbacksRef.current = { activityLog, humanLog, t, checkForUpdate, cloudServerName };
 
   useEffect(() => {
+    const formatBytes = (bytes: number): string => {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const value = bytes / Math.pow(1024, exp);
+      return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
+    };
+
     // Check initial cloud config
     const checkCloudConfig = async () => {
       try {
@@ -103,7 +111,14 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       } else if (status === 'syncing') {
         setCloudSyncing(true);
         setIsCloudActive(true);
-        cloudSyncLogId = hl.logRaw('activity.sync_start', 'INFO', { server: csn }, 'running');
+        if (!cloudSyncLogId) {
+          cloudSyncLogId = hl.logRaw('activity.sync_start', 'INFO', { server: csn }, 'running');
+        } else {
+          al.updateEntry(cloudSyncLogId, {
+            status: 'running',
+            message: tr('activity.sync_start', { server: csn })
+          });
+        }
       } else if (status === 'error') {
         setCloudSyncing(false);
         console.error('Cloud sync error:', message);
@@ -130,7 +145,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
       if (action === 'cloud_sync_now') {
         try {
-          al.log('INFO', tr('cloud.manualSyncStarted'), 'running');
+          al.log('INFO', tr('cloud.manualSyncStarted'), 'success');
           await invoke('trigger_cloud_sync');
         } catch (e) {
           al.log('INFO', tr('cloud.syncFailed', { error: String(e) }), 'error');
@@ -159,19 +174,50 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     // Listen for cloud sync completion — update the existing "Syncing..." log entry
     // instead of creating a duplicate. Clear cloudSyncLogId so the later 'active' status
     // event doesn't create yet another update.
-    const unlistenSyncComplete = listen<{ uploaded: number; downloaded: number; errors: string[] }>('cloud_sync_complete', (event) => {
+    const unlistenSyncComplete = listen<{
+      uploaded: number;
+      downloaded: number;
+      errors: string[];
+      file_details?: { path: string; direction: string; size: number }[];
+    }>('cloud_sync_complete', (event) => {
       const { activityLog: al, t: tr } = callbacksRef.current;
       const result = event.payload;
       const hasErrors = result.errors.length > 0;
+      const syncedFiles = Array.isArray(result.file_details) ? result.file_details : [];
+      const details = undefined;
       const msg = hasErrors
         ? tr('cloud.syncError', { count: result.errors.length.toString() })
         : tr('cloud.syncComplete', { uploaded: result.uploaded.toString(), downloaded: result.downloaded.toString() });
 
       if (cloudSyncLogId) {
-        al.updateEntry(cloudSyncLogId, { status: hasErrors ? 'error' : 'success', message: msg });
+        al.updateEntry(cloudSyncLogId, {
+          status: hasErrors ? 'error' : 'success',
+          message: msg,
+          details,
+        });
         cloudSyncLogId = null;
       } else {
-        al.log('INFO', msg, hasErrors ? 'error' : 'success');
+        al.log('INFO', msg, hasErrors ? 'error' : 'success', details);
+      }
+
+      // Also emit per-file records for clearer activity browsing/copying
+      if (!hasErrors && syncedFiles.length > 0) {
+        const MAX_FILE_RECORDS = 30;
+        const visibleFiles = syncedFiles.slice(0, MAX_FILE_RECORDS);
+
+        for (const file of visibleFiles) {
+          const isUpload = file.direction === 'upload';
+          al.log(
+            isUpload ? 'UPLOAD' : 'DOWNLOAD',
+            `AeroCloud ${isUpload ? '↑' : '↓'} ${file.path}`,
+            'success',
+            formatBytes(file.size)
+          );
+        }
+
+        if (syncedFiles.length > MAX_FILE_RECORDS) {
+          al.log('INFO', `AeroCloud: +${syncedFiles.length - MAX_FILE_RECORDS} file records omitted`, 'success');
+        }
       }
     });
 

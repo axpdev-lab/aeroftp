@@ -750,7 +750,9 @@
             "aeroagentTitle": "AeroAgent - Asistente IA",
             "aeroagent": "AeroAgent",
             "activityLog": "Rexistro de actividade",
-            "log": "Rexistro"
+            "log": "Rexistro",
+            "insecureConnection": "Conexión insegura",
+            "insecureConnectionTitle": "A verificación de certificados está desactivada"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",
@@ -945,7 +947,11 @@
             "update_uptodate": "Actualizado (v{version})",
             "update_error": "Fallo ao buscar actualizacións: {error}",
             "file_skipped": "Omitido (sen cambios): {filename}",
-            "delete_multiple_done": "Elimináronse {count} elementos: {items}"
+            "delete_multiple_done": "Elimináronse {count} elementos: {items}",
+            "navigate_opened": "Abri o cartafol: {path}",
+            "navigate_entered": "Entrei no cartafol: {path}",
+            "navigate_up_one": "Subin un nivel: {path}",
+            "navigate_up_to": "Subin a: {path}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB gratis, rexións EUA/UE",
             "s3Tooltip": "Almacenamento S3-compatible - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP sobre SSH - transferencia segura de ficheiros, soporta autenticación por clave",
-            "webdavTooltip": "Protocolo WebDAV - compatible con Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocolo WebDAV - compatible con Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Aviso: está a piques de aceptar certificados non válidos/autosinados. Isto debilita a seguridade da conexión. Continuar?",
+            "insecureCertConfirmSecond": "Confirmación final: proceder en modo de certificado inseguro?"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

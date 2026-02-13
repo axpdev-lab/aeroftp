@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - Rheolwr Ffeiliau Lleol",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - Cynorthwyydd AI",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "Cysylltiad Anniogel",
+            "insecureConnectionTitle": "Mae dilysu tystysgrifau wedi'i analluogi"
         },
         "dialogs": {
             "confirmTitle": "Cadarnhau",
@@ -945,7 +947,11 @@
             "update_available": "Diweddariad ar gael: v{version} (.{format})",
             "update_uptodate": "Cyfredol (v{version})",
             "update_error": "Methwyd gwirio am ddiweddariadau: {error}",
-            "file_skipped": "Wedi hepgor (dim newid): {filename}"
+            "file_skipped": "Wedi hepgor (dim newid): {filename}",
+            "navigate_opened": "Agorais y ffolder: {path}",
+            "navigate_entered": "Aethais i mewn i'r ffolder: {path}",
+            "navigate_up_one": "Esgynais un lefel: {path}",
+            "navigate_up_to": "Esgynais i: {path}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud — 10GB o storfa am ddim, rhanbarthau UDA/UE",
             "s3Tooltip": "Storfa gydnaws ag S3 — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP dros SSH — trosglwyddo ffeiliau diogel trwy shell, yn cefnogi dilysu allwedd",
-            "webdavTooltip": "Protocol WebDAV — cydnaws a Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocol WebDAV — cydnaws a Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertConfirmFirst": "Rhybudd: rydych ar fin derbyn tystysgrifau annilys/ hunan-lofnod. Mae hyn yn gwanegu diogelwch cysylltiad. Parhau?",
+            "insecureCertConfirmSecond": "Cadarnhad terfynol: parhau gyda modd tystysgrif anniogel?"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

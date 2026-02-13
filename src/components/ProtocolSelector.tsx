@@ -793,7 +793,19 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <input
                             type="checkbox"
                             checked={options.verifyCert === false}
-                            onChange={(e) => onChange({ ...options, verifyCert: !e.target.checked })}
+                            onChange={(e) => {
+                                const enableInsecureMode = e.target.checked;
+
+                                if (enableInsecureMode) {
+                                    const firstConfirm = window.confirm(t('protocol.insecureCertConfirmFirst'));
+                                    if (!firstConfirm) return;
+
+                                    const secondConfirm = window.confirm(t('protocol.insecureCertConfirmSecond'));
+                                    if (!secondConfirm) return;
+                                }
+
+                                onChange({ ...options, verifyCert: !enableInsecureMode });
+                            }}
                             disabled={disabled}
                             className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                         />

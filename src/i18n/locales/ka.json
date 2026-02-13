@@ -750,7 +750,9 @@
             "aerofileTitle": "AeroFile - ლოკალური ფაილების მმართველი",
             "aerofile": "AeroFile",
             "aeroagentTitle": "AeroAgent - AI ასისტენტი",
-            "aeroagent": "AeroAgent"
+            "aeroagent": "AeroAgent",
+            "insecureConnection": "დაუცველი კავშირი",
+            "insecureConnectionTitle": "სერტიფიკატების გადამოწმება გამორთულია"
         },
         "dialogs": {
             "confirmTitle": "დადასტურება",
@@ -945,7 +947,11 @@
             "update_available": "ხელმისაწვდომია განახლება: v{version} (.{format})",
             "update_uptodate": "განახლებულია (v{version})",
             "update_error": "განახლების შემოწმება ვერ მოხერხდა: {error}",
-            "file_skipped": "გამოტოვებულია (უცვლელი): {filename}"
+            "file_skipped": "გამოტოვებულია (უცვლელი): {filename}",
+            "navigate_opened": "გავხსენი საქაღალდე: {path}",
+            "navigate_entered": "შევედი საქაღალდეში: {path}",
+            "navigate_up_one": "ერთი დონით ზემოთ ავედი: {path}",
+            "navigate_up_to": "ზემოთ ავედი: {path}"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -1021,7 +1027,9 @@
             "pcloudTooltip": "pCloud - 10GB უფასო სივრცე, US/EU რეგიონები",
             "s3Tooltip": "S3-თავსებადი საცავი - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH-ით - უსაფრთხო ფაილის გადაცემა, გასაღებით ავტორიზაციის მხარდაჭერა",
-            "webdavTooltip": "WebDAV პროტოკოლი - თავსებადია Nextcloud, CloudMe, Koofr, Synology NAS-თან"
+            "webdavTooltip": "WebDAV პროტოკოლი - თავსებადია Nextcloud, CloudMe, Koofr, Synology NAS-თან",
+            "insecureCertConfirmFirst": "გაფრთხილება: აპირებთ მიიღოთ არასწორი/თვითხელმოწერილი სერტიფიკატები. ეს ასუსტებს კავშირის უსაფრთხოებას. გავაგრძელოთ?",
+            "insecureCertConfirmSecond": "საბოლოო დადასტურება: გავაგრძელოთ დაუცველი სერტიფიკატის რეჟიმში?"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
