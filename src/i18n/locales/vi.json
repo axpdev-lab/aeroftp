@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Lưu trữ tương thích S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP qua SSH - truyền tệp qua shell bảo mật, hỗ trợ xác thực khóa",
             "webdavTooltip": "Giao thức WebDAV - tương thích với Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Cảnh báo: bạn sắp chấp nhận chứng chỉ không hợp lệ/tự ký. Điều này làm giảm bảo mật kết nối. Tiếp tục?",
-            "insecureCertConfirmSecond": "Xác nhận cuối cùng: tiếp tục với chế độ chứng chỉ không an toàn?"
+            "insecureCertConfirmFirst": "Chấp nhận chứng chỉ không hợp lệ hoặc tự ký sẽ làm suy yếu bảo mật kết nối. Chỉ bật tính năng này nếu bạn tin tưởng máy chủ và hiểu các rủi ro.",
+            "insecureCertTitle": "Cảnh báo bảo mật",
+            "insecureCertAccept": "Chấp nhận rủi ro"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Thư mục đã tạo",
             "indexAvailable": "Chỉ mục đã lưu",
-            "indexAvailableTooltip": "Chỉ mục đồng bộ từ lần đồng bộ trước đã có sẵn — phát hiện xung đột được nâng cao"
+            "indexAvailableTooltip": "Chỉ mục đồng bộ từ lần đồng bộ trước đã có sẵn — phát hiện xung đột được nâng cao",
+            "journalFound": "Phát hiện đồng bộ bị gián đoạn",
+            "journalDescription": "{completed}/{total} tệp đã hoàn thành (cập nhật lần cuối: {date})",
+            "resumeSync": "Tiếp tục",
+            "dismissJournal": "Bỏ qua",
+            "reportRetried": "Đã thử lại",
+            "reportVerifyFailed": "Xác minh thất bại",
+            "errorBreakdown": "Chi tiết lỗi",
+            "retryable": "có thể thử lại",
+            "verifyNone": "Không xác minh",
+            "verifySize": "Xác minh kích thước",
+            "verifySizeMtime": "Xác minh kích thước + thời gian",
+            "verifyFull": "Xác minh đầy đủ",
+            "retries": "{count} lần thử lại",
+            "errorKind": {
+                "network": "Mạng",
+                "auth": "Xác thực",
+                "path_not_found": "Không tìm thấy",
+                "permission_denied": "Từ chối quyền truy cập",
+                "quota_exceeded": "Vượt quá hạn mức",
+                "rate_limit": "Giới hạn tốc độ",
+                "timeout": "Timeout",
+                "file_locked": "Tệp bị khóa",
+                "disk_error": "Lỗi đĩa",
+                "unknown": "Không xác định"
+            }
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Đang kết nối...",
                 "disconnected": "Đã ngắt kết nối",
                 "newConnection": "Kết nối mới",
-                "syncing": "Đang đồng bộ..."
+                "syncing": "Đang đồng bộ...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Chỉ cục bộ",
             "showRemote": "Hiện từ xa",
             "showSystemMenu": "Hiện thanh menu hệ thống"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Đóng các tab khác",
+            "closeAll": "Đóng tất cả tab"
         }
     }
 }

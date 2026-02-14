@@ -3695,9 +3695,12 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 // ============ Sync Commands ============
 
 use sync::{
-    CompareOptions, FileComparison, FileInfo, SyncIndex,
+    CompareOptions, FileComparison, FileInfo, SyncIndex, SyncJournal,
+    VerifyPolicy, VerifyResult, RetryPolicy, SyncErrorInfo,
     build_comparison_results_with_index, should_exclude,
     load_sync_index, save_sync_index,
+    load_sync_journal, save_sync_journal, delete_sync_journal,
+    verify_local_file, classify_sync_error,
 };
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use std::collections::HashMap;
@@ -3720,8 +3723,8 @@ async fn compare_directories(
         "files_found": 0,
     }));
 
-    // Get local files
-    let local_files = get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns)
+    // Get local files (with optional SHA-256 checksums)
+    let local_files = get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns, options.compare_checksum)
         .await
         .map_err(|e| format!("Failed to scan local directory: {}", e))?;
 
@@ -3752,77 +3755,102 @@ async fn compare_directories(
     Ok(results)
 }
 
-/// Scan local directory iteratively and build file info map
+/// Compute SHA-256 hash of a local file (streaming, 64KB chunks)
+async fn compute_sha256(path: &std::path::Path) -> Option<String> {
+    use sha2::{Sha256, Digest};
+    use tokio::io::AsyncReadExt;
+
+    let mut file = tokio::fs::File::open(path).await.ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 65_536];
+    loop {
+        let n = file.read(&mut buf).await.ok()?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// Scan local directory iteratively and build file info map.
+/// When `compare_checksum` is true, computes SHA-256 for each file.
 pub async fn get_local_files_recursive(
     base_path: &str,
     _current_path: &str,
     exclude_patterns: &[String],
+    compare_checksum: bool,
 ) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
     let base = PathBuf::from(base_path);
-    
+
     if !base.exists() {
         return Ok(files);
     }
-    
+
     // Use a stack for iterative traversal instead of recursion
     let mut dirs_to_process = vec![base.clone()];
-    
+
     while let Some(current_dir) = dirs_to_process.pop() {
         let mut entries = match tokio::fs::read_dir(&current_dir).await {
             Ok(e) => e,
             Err(_) => continue,
         };
-        
+
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            
+
             // Calculate relative path
             let relative_path = path
                 .strip_prefix(&base)
                 .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
                 .unwrap_or_else(|_| name.clone());
-            
+
             // Skip excluded paths
             if should_exclude(&relative_path, exclude_patterns) {
                 continue;
             }
-            
+
             let metadata = entry.metadata().await.ok();
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-            
+
             let modified = metadata.as_ref().and_then(|m| {
                 m.modified().ok().map(|t| {
                     let datetime: chrono::DateTime<chrono::Utc> = t.into();
                     datetime
                 })
             });
-            
+
             let size = if is_dir {
                 0
             } else {
                 metadata.as_ref().map(|m| m.len()).unwrap_or(0)
             };
-            
+
+            // Compute SHA-256 checksum if requested (only for files, not directories)
+            let checksum = if compare_checksum && !is_dir {
+                compute_sha256(&path).await
+            } else {
+                None
+            };
+
             let file_info = FileInfo {
                 name: name.clone(),
                 path: path.to_string_lossy().to_string(),
                 size,
                 modified,
                 is_dir,
-                checksum: None,
+                checksum,
             };
-            
+
             files.insert(relative_path, file_info);
-            
+
             // Add subdirectories to process
             if is_dir {
                 dirs_to_process.push(path);
             }
         }
     }
-    
+
     Ok(files)
 }
 
@@ -3917,6 +3945,46 @@ fn load_sync_index_cmd(local_path: String, remote_path: String) -> Result<Option
 #[tauri::command]
 fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
     save_sync_index(&index)
+}
+
+// ============ Sync Journal Commands (Phase 2: Reliability) ============
+
+#[tauri::command]
+fn load_sync_journal_cmd(local_path: String, remote_path: String) -> Result<Option<SyncJournal>, String> {
+    load_sync_journal(&local_path, &remote_path)
+}
+
+#[tauri::command]
+fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
+    save_sync_journal(&journal)
+}
+
+#[tauri::command]
+fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
+    delete_sync_journal(&local_path, &remote_path)
+}
+
+#[tauri::command]
+fn get_default_retry_policy() -> RetryPolicy {
+    RetryPolicy::default()
+}
+
+#[tauri::command]
+fn verify_local_transfer(
+    local_path: String,
+    expected_size: u64,
+    expected_mtime: Option<String>,
+    policy: VerifyPolicy,
+) -> VerifyResult {
+    let mtime = expected_mtime.and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+    verify_local_file(&local_path, expected_size, mtime, &policy)
+}
+
+#[tauri::command]
+fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> SyncErrorInfo {
+    classify_sync_error(&raw_error, file_path.as_deref())
 }
 
 // ============ AI Commands ============
@@ -5356,6 +5424,12 @@ pub fn run() {
             get_compare_options_default,
             load_sync_index_cmd,
             save_sync_index_cmd,
+            load_sync_journal_cmd,
+            save_sync_journal_cmd,
+            delete_sync_journal_cmd,
+            get_default_retry_policy,
+            verify_local_transfer,
+            classify_transfer_error,
             // AeroCloud commands
             get_cloud_config,
             save_cloud_config_cmd,

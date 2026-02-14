@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-kompatibel lagring - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP over SSH - sikker filoverførsel via shell, understøtter nøglegodkendelse",
             "webdavTooltip": "WebDAV-protokol - kompatibel med Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Advarsel: du er ved at acceptere ugyldige/selvsignerede certifikater. Dette svækker forbindelsessikkerheden. Fortsæt?",
-            "insecureCertConfirmSecond": "Endelig bekræftelse: fortsæt i usikker certifikat-tilstand?"
+            "insecureCertConfirmFirst": "Accept af ugyldige eller selvsignerede certifikater svækker forbindelsessikkerheden. Aktiver kun dette, hvis du stoler på serveren og forstår risiciene.",
+            "insecureCertTitle": "Sikkerhedsadvarsel",
+            "insecureCertAccept": "Accepter risiko"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Mapper oprettet",
             "indexAvailable": "Indeks cachelagret",
-            "indexAvailableTooltip": "Et synkroniseringsindeks fra en tidligere synkronisering er tilgængeligt — konfliktdetektion er forbedret"
+            "indexAvailableTooltip": "Et synkroniseringsindeks fra en tidligere synkronisering er tilgængeligt — konfliktdetektion er forbedret",
+            "journalFound": "Afbrudt synkronisering registreret",
+            "journalDescription": "{completed}/{total} filer fuldført (sidst opdateret: {date})",
+            "resumeSync": "Genoptag",
+            "dismissJournal": "Afvis",
+            "reportRetried": "Forsøgt igen",
+            "reportVerifyFailed": "Verifikation mislykkedes",
+            "errorBreakdown": "Fejlopdeling",
+            "retryable": "kan forsøges igen",
+            "verifyNone": "Ingen verifikation",
+            "verifySize": "Verificer størrelse",
+            "verifySizeMtime": "Verificer størrelse + tid",
+            "verifyFull": "Fuld verifikation",
+            "retries": "{count} genforsøg",
+            "errorKind": {
+                "network": "Netværk",
+                "auth": "Godkendelse",
+                "path_not_found": "Ikke fundet",
+                "permission_denied": "Adgang nægtet",
+                "quota_exceeded": "Kvote overskredet",
+                "rate_limit": "Hastighedsgrænse",
+                "timeout": "Timeout",
+                "file_locked": "Fil låst",
+                "disk_error": "Diskfejl",
+                "unknown": "Ukendt"
+            }
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Opretter forbindelse...",
                 "disconnected": "Frakoblet",
                 "newConnection": "Ny forbindelse",
-                "syncing": "Synkroniserer..."
+                "syncing": "Synkroniserer...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Kun lokalt",
             "showRemote": "Vis fjern",
             "showSystemMenu": "Vis systemmenulinje"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Luk andre faner",
+            "closeAll": "Luk alle faner"
         }
     }
 }

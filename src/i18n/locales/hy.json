@@ -1035,8 +1035,9 @@
             "s3Tooltip": "S3-համատեղ պահոց — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH-ով — անվտանգ ֆայլերի փոխանցում, աջակցում է բանալիի նույնականացում",
             "webdavTooltip": "WebDAV պրոտոկոլ — համատեղ Nextcloud, CloudMe, Koofr, Synology NAS հետ",
-            "insecureCertConfirmFirst": "Զգուշացում։ Դուք պատրաստվում եք ընդունել անվավեր/ինքնաստորագրված վկայագրեր։ Սա անվտանգ է միայն եթե վստահ եք սերվերին։",
-            "insecureCertConfirmSecond": "Վերջնական հաստատում։ Շարունակե՞լ անապահով վկայագրի ռեժիմով։"
+            "insecureCertConfirmFirst": "Անվավեր կամ ինքնաստորագրված վկայականների ընդունումը թուլացնում է կապի անվտանգությունը: Միացրեք սա միայն այն դեպքում, երբ վստահում եք սերվերին և հասկանում եք ռիսկերը:",
+            "insecureCertTitle": "Անվտանգության նախազգուշացում",
+            "insecureCertAccept": "Ընդունել ռիսկը"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -1206,6 +1207,31 @@
                 "local": "Տեղական ֆայլերի սկանավորում",
                 "remote": "Հեռակա ֆայլերի սկանավորում",
                 "comparing": "Ֆայլերի համեմատում"
+            },
+            "journalFound": "Հայտնաբերվել է ընդհատված համաժամեցում",
+            "journalDescription": "{completed}/{total} ֆայլ ավարտված (վերջին թարմացում՝ {date})",
+            "resumeSync": "Շարունակել",
+            "dismissJournal": "Անտեսել",
+            "reportRetried": "Կրկին փորձված",
+            "reportVerifyFailed": "Ստուգումը ձախողվեց",
+            "errorBreakdown": "Սխալների բաշխում",
+            "retryable": "կրկնակի փորձելի",
+            "verifyNone": "Ստուգում չկա",
+            "verifySize": "Ստուգել չափը",
+            "verifySizeMtime": "Ստուգել չափը + ժամանակը",
+            "verifyFull": "Ամբողջական ստուգում",
+            "retries": "{count} կրկնակի փորձ",
+            "errorKind": {
+                "network": "Ցանց",
+                "auth": "Նույնականացում",
+                "path_not_found": "Չի գտնվել",
+                "permission_denied": "Մուտքը մերժված է",
+                "quota_exceeded": "Քվոտան գերազանցված է",
+                "rate_limit": "Սահմանաչափ",
+                "timeout": "Timeout",
+                "file_locked": "Ֆայլը կողպված է",
+                "disk_error": "Սկավառակի սխալ",
+                "unknown": "Անհայտ"
             }
         },
         "ui": {
@@ -1256,7 +1282,9 @@
                 "connecting": "Միանում...",
                 "disconnected": "Անջատված",
                 "newConnection": "Նոր կապակցություն",
-                "syncing": "Համաժամանակում..."
+                "syncing": "Համաժամանակում...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "errorTitle": "Սխալ",
             "successTitle": "Հաջողություն",
             "warningTitle": "Զգուշացում"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Փակել մյուս ներդիրները",
+            "closeAll": "Փակել բոլոր ներդիրները"
         }
     }
 }

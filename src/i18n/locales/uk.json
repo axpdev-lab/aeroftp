@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-сумісне сховище - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP через SSH - безпечна передача файлів, підтримка автентифікації ключем",
             "webdavTooltip": "Протокол WebDAV - сумісний з Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Попередження: ви збираєтеся прийняти недійсні/самопідписані сертифікати. Це послаблює безпеку з'єднання. Продовжити?",
-            "insecureCertConfirmSecond": "Остаточне підтвердження: продовжити в режимі незахищених сертифікатів?"
+            "insecureCertConfirmFirst": "Прийняття недійсних або самопідписаних сертифікатів послаблює безпеку з'єднання. Увімкніть це лише якщо довіряєте серверу та розумієте ризики.",
+            "insecureCertTitle": "Попередження безпеки",
+            "insecureCertAccept": "Прийняти ризик"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Створено тек",
             "indexAvailable": "Індекс кешовано",
-            "indexAvailableTooltip": "Індекс попередньої синхронізації доступний — виявлення конфліктів покращено"
+            "indexAvailableTooltip": "Індекс попередньої синхронізації доступний — виявлення конфліктів покращено",
+            "journalFound": "Виявлено перервану синхронізацію",
+            "journalDescription": "{completed}/{total} файлів завершено (останнє оновлення: {date})",
+            "resumeSync": "Відновити",
+            "dismissJournal": "Відхилити",
+            "reportRetried": "Повторних спроб",
+            "reportVerifyFailed": "Перевірка не вдалася",
+            "errorBreakdown": "Деталі помилок",
+            "retryable": "повторювана",
+            "verifyNone": "Без перевірки",
+            "verifySize": "Перевірити розмір",
+            "verifySizeMtime": "Перевірити розмір + час",
+            "verifyFull": "Повна перевірка",
+            "retries": "{count} повторних спроб",
+            "errorKind": {
+                "network": "Мережа",
+                "auth": "Автентифікація",
+                "path_not_found": "Не знайдено",
+                "permission_denied": "Доступ заборонено",
+                "quota_exceeded": "Квоту перевищено",
+                "rate_limit": "Обмеження частоти",
+                "timeout": "Timeout",
+                "file_locked": "Файл заблоковано",
+                "disk_error": "Помилка диска",
+                "unknown": "Невідомо"
+            }
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Підключення...",
                 "disconnected": "Відключено",
                 "newConnection": "Нове підключення",
-                "syncing": "Синхронізація..."
+                "syncing": "Синхронізація...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Лише локально",
             "showRemote": "Показати віддалене",
             "showSystemMenu": "Показати системне меню"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Закрити інші вкладки",
+            "closeAll": "Закрити всі вкладки"
         }
     }
 }

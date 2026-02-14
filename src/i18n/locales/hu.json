@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-kompatibilis tárhely - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH-n keresztül - biztonságos fájlátvitel, támogatja a kulcsalapú hitelesítést",
             "webdavTooltip": "WebDAV protokoll - kompatibilis a Nextcloud, CloudMe, Koofr, Synology NAS szolgáltatásokkal",
-            "insecureCertConfirmFirst": "Figyelmeztetés: érvénytelen/önaláírt tanúsítványokat fogad el. Ez gyengíti a kapcsolat biztonságát. Folytatja?",
-            "insecureCertConfirmSecond": "Végső megerősítés: folytatja a nem biztonságos tanúsítvány módban?"
+            "insecureCertConfirmFirst": "Ervenytelen vagy onalairt tanusitvanyok elfogadasa gyengiti a kapcsolat biztonsagat. Csak akkor engedelyezze, ha megbizik a szerverben es erti a kockazatokat.",
+            "insecureCertTitle": "Biztonsagi figyelmeztetes",
+            "insecureCertAccept": "Kockazat elfogadasa"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Létrehozott mappák",
             "indexAvailable": "Index gyorsítótárban",
-            "indexAvailableTooltip": "Előző szinkronizálás indexe elérhető — ütközés-észlelés javítva"
+            "indexAvailableTooltip": "Előző szinkronizálás indexe elérhető — ütközés-észlelés javítva",
+            "journalFound": "Megszakított szinkronizálás észlelve",
+            "journalDescription": "{completed}/{total} fájl kész (utoljára frissítve: {date})",
+            "resumeSync": "Folytatás",
+            "dismissJournal": "Elvetés",
+            "reportRetried": "Újrapróbálva",
+            "reportVerifyFailed": "Ellenőrzés sikertelen",
+            "errorBreakdown": "Hibák részletezése",
+            "retryable": "újrapróbálható",
+            "verifyNone": "Nincs ellenőrzés",
+            "verifySize": "Méret ellenőrzése",
+            "verifySizeMtime": "Méret + idő ellenőrzése",
+            "verifyFull": "Teljes ellenőrzés",
+            "retries": "{count} újrapróbálkozás",
+            "errorKind": {
+                "network": "Hálózat",
+                "auth": "Hitelesítés",
+                "path_not_found": "Nem található",
+                "permission_denied": "Hozzáférés megtagadva",
+                "quota_exceeded": "Kvóta túllépve",
+                "rate_limit": "Sebességkorlát",
+                "timeout": "Timeout",
+                "file_locked": "Fájl zárolva",
+                "disk_error": "Lemezhiba",
+                "unknown": "Ismeretlen"
+            }
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Csatlakozás...",
                 "disconnected": "Leválasztva",
                 "newConnection": "Új kapcsolat",
-                "syncing": "Szinkronizálás..."
+                "syncing": "Szinkronizálás...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Csak helyi",
             "showRemote": "Távoli megjelenítése",
             "showSystemMenu": "Rendszer menüsor megjelenítése"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Mas lapok bezarasa",
+            "closeAll": "Osszes lap bezarasa"
         }
     }
 }

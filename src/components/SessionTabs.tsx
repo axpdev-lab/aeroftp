@@ -17,6 +17,7 @@ interface SessionTabsProps {
     activeSessionId: string | null;
     onTabClick: (sessionId: string) => void;
     onTabClose: (sessionId: string) => void;
+    onCloseAll: () => void;
     onNewTab: () => void;
     // Cloud tab props
     cloudTab?: CloudTabState;
@@ -138,6 +139,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     activeSessionId,
     onTabClick,
     onTabClose,
+    onCloseAll,
     onNewTab,
     cloudTab,
     onCloudTabClick,
@@ -151,6 +153,22 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
     const dragNodeRef = useRef<HTMLDivElement | null>(null);
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+    const contextMenuRef = useRef<HTMLDivElement | null>(null);
+
+    // Close context menu on outside click
+    React.useEffect(() => {
+        if (!contextMenu) return;
+        const handleClick = (e: MouseEvent) => {
+            if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+                setContextMenu(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [contextMenu]);
 
     const handleTabDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
         setDragIdx(idx);
@@ -256,6 +274,10 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                             : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
                             } ${dragIdx === idx ? 'scale-95' : ''} ${isDragTarget ? 'border-l-2 border-blue-500' : ''}`}
                         onClick={() => onTabClick(session.id)}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({ x: e.clientX, y: e.clientY, sessionId: session.id });
+                        }}
                     >
                         {/* Status/Provider indicator */}
                         <span 
@@ -299,6 +321,45 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
             >
                 <Plus size={16} />
             </button>
+
+            {/* Tab context menu */}
+            {contextMenu && (
+                <div
+                    ref={contextMenuRef}
+                    className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px]"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                >
+                    <button
+                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                        onClick={() => { onTabClose(contextMenu.sessionId); setContextMenu(null); }}
+                    >
+                        <X size={14} />
+                        {t('ui.session.closeTab')}
+                    </button>
+                    {sessions.length > 1 && (
+                        <>
+                            <button
+                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                                onClick={() => {
+                                    sessions.filter(s => s.id !== contextMenu.sessionId).forEach(s => onTabClose(s.id));
+                                    setContextMenu(null);
+                                }}
+                            >
+                                <X size={14} />
+                                {t('ui.session.closeOthers')}
+                            </button>
+                            <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                            <button
+                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 text-red-600 dark:text-red-400"
+                                onClick={() => { onCloseAll(); setContextMenu(null); }}
+                            >
+                                <X size={14} />
+                                {t('ui.session.closeAll')}
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

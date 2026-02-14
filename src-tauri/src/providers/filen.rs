@@ -529,15 +529,14 @@ impl StorageProvider for FilenProvider {
         // Step 2: Derive password hash and master key
         let (auth_hash, derived_master_key) = Self::derive_auth_credentials(password, &auth_data.salt, auth_data.auth_version)?;
 
-        // Step 3: Login — include twoFactorCode only when user provides a TOTP code
-        let mut login_body = serde_json::json!({
+        // Step 3: Login — Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled
+        let two_fa = self.config.two_factor_code.as_deref().unwrap_or("XXXXXX");
+        let login_body = serde_json::json!({
             "email": self.config.email,
             "password": auth_hash,
             "authVersion": auth_data.auth_version,
+            "twoFactorCode": two_fa,
         });
-        if let Some(ref code) = self.config.two_factor_code {
-            login_body["twoFactorCode"] = serde_json::Value::String(code.clone());
-        }
         let login_resp: LoginResponse = self.client
             .post(&format!("{}/v3/login", GATEWAY))
             .json(&login_body)

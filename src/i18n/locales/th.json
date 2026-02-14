@@ -1042,8 +1042,9 @@
             "s3Tooltip": "พื้นที่เก็บข้อมูลที่เข้ากันได้กับ S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP ผ่าน SSH - การถ่ายโอนไฟล์อย่างปลอดภัยผ่าน shell รองรับการยืนยันตัวตนด้วยคีย์",
             "webdavTooltip": "โปรโตคอล WebDAV - เข้ากันได้กับ Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "คำเตือน: คุณกำลังจะยอมรับใบรับรองที่ไม่ถูกต้อง/ลงนามเอง ซึ่งจะลดความปลอดภัยของการเชื่อมต่อ ดำเนินการต่อ?",
-            "insecureCertConfirmSecond": "การยืนยันครั้งสุดท้าย: ดำเนินการต่อในโหมดใบรับรองไม่ปลอดภัย?"
+            "insecureCertConfirmFirst": "การยอมรับใบรับรองที่ไม่ถูกต้องหรือลงนามด้วยตนเองจะทำให้ความปลอดภัยของการเชื่อมต่ออ่อนแอลง เปิดใช้งานเฉพาะเมื่อคุณเชื่อถือเซิร์ฟเวอร์และเข้าใจความเสี่ยง",
+            "insecureCertTitle": "คำเตือนด้านความปลอดภัย",
+            "insecureCertAccept": "ยอมรับความเสี่ยง"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "สร้างโฟลเดอร์แล้ว",
             "indexAvailable": "แคชดัชนี",
-            "indexAvailableTooltip": "มีดัชนีซิงค์จากการซิงค์ก่อนหน้า — การตรวจจับข้อขัดแย้งได้รับการปรับปรุง"
+            "indexAvailableTooltip": "มีดัชนีซิงค์จากการซิงค์ก่อนหน้า — การตรวจจับข้อขัดแย้งได้รับการปรับปรุง",
+            "journalFound": "ตรวจพบการซิงค์ที่ถูกขัดจังหวะ",
+            "journalDescription": "{completed}/{total} ไฟล์เสร็จสมบูรณ์ (อัปเดตล่าสุด: {date})",
+            "resumeSync": "ดำเนินการต่อ",
+            "dismissJournal": "ยกเลิก",
+            "reportRetried": "ลองใหม่แล้ว",
+            "reportVerifyFailed": "การตรวจสอบล้มเหลว",
+            "errorBreakdown": "รายละเอียดข้อผิดพลาด",
+            "retryable": "ลองใหม่ได้",
+            "verifyNone": "ไม่มีการตรวจสอบ",
+            "verifySize": "ตรวจสอบขนาด",
+            "verifySizeMtime": "ตรวจสอบขนาด + เวลา",
+            "verifyFull": "ตรวจสอบแบบเต็ม",
+            "retries": "{count} ครั้งที่ลองใหม่",
+            "errorKind": {
+                "network": "เครือข่าย",
+                "auth": "การยืนยันตัวตน",
+                "path_not_found": "ไม่พบ",
+                "permission_denied": "ไม่มีสิทธิ์",
+                "quota_exceeded": "เกินโควตา",
+                "rate_limit": "จำกัดอัตรา",
+                "timeout": "Timeout",
+                "file_locked": "ไฟล์ถูกล็อก",
+                "disk_error": "ข้อผิดพลาดดิสก์",
+                "unknown": "ไม่ทราบ"
+            }
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -1263,7 +1289,9 @@
                 "connecting": "กำลังเชื่อมต่อ...",
                 "disconnected": "ตัดการเชื่อมต่อ",
                 "newConnection": "การเชื่อมต่อใหม่",
-                "syncing": "กำลังซิงค์..."
+                "syncing": "กำลังซิงค์...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "เฉพาะในเครื่อง",
             "showRemote": "แสดงระยะไกล",
             "showSystemMenu": "แสดงแถบเมนูระบบ"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "ปิดแท็บอื่นๆ",
+            "closeAll": "ปิดแท็บทั้งหมด"
         }
     }
 }

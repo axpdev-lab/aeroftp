@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType, isFtpProtocol, TransferProgress, SyncIndex } from '../types';
+import {
+    FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType,
+    isFtpProtocol, TransferProgress, TransferEvent, SyncIndex,
+    RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry,
+    SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus
+} from '../types';
 import { useTranslation } from '../i18n';
 import {
     Loader2, Search, RefreshCw, Zap, X, FolderSync,
     Folder, Globe, File, AlertTriangle, Check,
     ArrowUp, ArrowDown, Plus, Minus, ArrowLeftRight,
     ArrowDownToLine, ArrowUpFromLine, CheckCircle2, XCircle,
-    Clock, SkipForward, StopCircle
+    Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
+    Wifi, WifiOff, KeyRound, HardDrive, Timer, Ban
 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
@@ -28,13 +34,15 @@ interface SyncReport {
     downloaded: number;
     skipped: number;
     dirsCreated: number;
-    errors: string[];
+    errors: SyncErrorInfo[];
+    verifyFailed: number;
+    retried: number;
     totalBytes: number;
     durationMs: number;
 }
 
 // Per-file sync result tracking
-type FileSyncResult = 'pending' | 'syncing' | 'success' | 'error' | 'skipped';
+type FileSyncResult = 'pending' | 'syncing' | 'success' | 'error' | 'skipped' | 'retrying' | 'verifying' | 'verify_failed';
 
 // Status display configuration with Lucide icon components
 const STATUS_ICONS: Record<SyncStatus, { Icon: typeof Check; color: string }> = {
@@ -47,10 +55,31 @@ const STATUS_ICONS: Record<SyncStatus, { Icon: typeof Check; color: string }> = 
     size_mismatch: { Icon: ArrowLeftRight, color: '#ef4444' },
 };
 
+// Error kind icon mapping
+const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
+    network: WifiOff,
+    auth: KeyRound,
+    path_not_found: Search,
+    permission_denied: Ban,
+    quota_exceeded: HardDrive,
+    rate_limit: Timer,
+    timeout: Clock,
+    file_locked: Ban,
+    disk_error: HardDrive,
+    unknown: AlertTriangle,
+};
+
 // FTP transfer settings to avoid "Data connection already open"
 const FTP_TRANSFER_DELAY_MS = 350;
-const FTP_RETRY_MAX = 3;
-const FTP_RETRY_BASE_DELAY_MS = 500;
+
+// Default retry/verify policies
+const DEFAULT_RETRY_POLICY: RetryPolicy = {
+    max_retries: 3,
+    base_delay_ms: 500,
+    max_delay_ms: 10_000,
+    timeout_ms: 120_000,
+    backoff_multiplier: 2.0,
+};
 
 export const SyncPanel: React.FC<SyncPanelProps> = ({
     isOpen,
@@ -75,8 +104,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
     const [fileResults, setFileResults] = useState<Map<string, FileSyncResult>>(new Map());
     const [hasIndex, setHasIndex] = useState(false);
+    const [hasJournal, setHasJournal] = useState(false);
+    const [pendingJournal, setPendingJournal] = useState<SyncJournal | null>(null);
     const isProvider = !!protocol && !isFtpProtocol(protocol);
     const isFtp = !isProvider;
+
+    // Phase 2: Retry and Verify policies
+    const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>(DEFAULT_RETRY_POLICY);
+    const [verifyPolicy, setVerifyPolicy] = useState<VerifyPolicy>('size_only');
 
     const [options, setOptions] = useState<CompareOptions>({
         // Cloud providers don't preserve timestamps on upload, so default to size-only
@@ -98,6 +133,21 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             invoke<SyncIndex | null>('load_sync_index_cmd', { localPath, remotePath })
                 .then(idx => setHasIndex(!!idx))
                 .catch(() => setHasIndex(false));
+            // Check for interrupted journal
+            invoke<SyncJournal | null>('load_sync_journal_cmd', { localPath, remotePath })
+                .then(journal => {
+                    if (journal && !journal.completed) {
+                        setHasJournal(true);
+                        setPendingJournal(journal);
+                    } else {
+                        setHasJournal(false);
+                        setPendingJournal(null);
+                    }
+                })
+                .catch(() => {
+                    setHasJournal(false);
+                    setPendingJournal(null);
+                });
         }
     }, [isOpen, localPath, remotePath]);
 
@@ -239,7 +289,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // Count directories that would be synced (empty dirs not in selectedPaths)
     const syncableDirs = comparisons.filter(c => c.is_dir &&
         ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) ||
-         (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
+            (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
     ).length;
 
     const hasSyncableItems = selectedPaths.size > 0 || syncableDirs > 0;
@@ -255,21 +305,121 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         cancelledRef.current = false;
     };
 
-    const handleClose = () => {
+    const handleClose = async () => {
         cancelledRef.current = true;
+        if (isSyncing) {
+            try {
+                await invoke('cancel_transfer');
+            } catch (e) {
+                console.error('[SyncPanel] Cancel on close error:', e);
+            }
+        }
         handleReset();
         onClose();
     };
 
-    const handleCancel = () => {
+    const handleCancel = async () => {
         cancelledRef.current = true;
+        // Invoke backend cancel_transfer command to hard-stop the transfer engine
+        try {
+            await invoke('cancel_transfer');
+        } catch (e) {
+            console.error('[SyncPanel] Cancel transfer error:', e);
+        }
+    };
+
+    // Dismiss a pending journal (discard resume)
+    const handleDismissJournal = async () => {
+        try {
+            await invoke('delete_sync_journal_cmd', {
+                localPath: editLocalPath,
+                remotePath: editRemotePath,
+            });
+        } catch { /* ignore */ }
+        setHasJournal(false);
+        setPendingJournal(null);
     };
 
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Execute sync
-    const handleSync = async () => {
-        if (!hasSyncableItems || !isConnected) return;
+    // Calculate retry delay with exponential backoff
+    const getRetryDelay = (attempt: number): number => {
+        const d = retryPolicy.base_delay_ms * Math.pow(retryPolicy.backoff_multiplier, attempt - 1);
+        return Math.min(d, retryPolicy.max_delay_ms);
+    };
+
+    // Execute a single transfer with retry logic and error classification
+    const executeTransferWithRetry = async (
+        cmd: string,
+        args: Record<string, any>,
+        filePath: string,
+    ): Promise<{ success: boolean; attempts: number; error?: SyncErrorInfo }> => {
+        const maxAttempts = retryPolicy.max_retries;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                // Wrap with timeout if configured
+                if (retryPolicy.timeout_ms > 0) {
+                    const timeoutPromise = new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('Operation timed out')), retryPolicy.timeout_ms)
+                    );
+                    await Promise.race([invoke(cmd, args), timeoutPromise]);
+                } else {
+                    await invoke(cmd, args);
+                }
+                return { success: true, attempts: attempt };
+            } catch (err: any) {
+                const rawMsg = err?.toString() || 'Unknown error';
+                const errorInfo = await invoke<SyncErrorInfo>('classify_transfer_error', {
+                    rawError: rawMsg,
+                    filePath,
+                }).catch(() => ({
+                    kind: 'unknown' as SyncErrorKind,
+                    message: rawMsg,
+                    retryable: true,
+                    file_path: filePath,
+                }));
+
+                if (errorInfo.retryable && attempt < maxAttempts) {
+                    // Update UI to show retrying
+                    setFileResults(prev => new Map(prev).set(filePath, 'retrying'));
+                    // FTP: NOOP to reset server state
+                    if (isFtp) {
+                        try { await invoke('ftp_noop'); } catch { /* ignore */ }
+                    }
+                    await delay(getRetryDelay(attempt));
+                    continue;
+                }
+
+                return { success: false, attempts: attempt, error: errorInfo };
+            }
+        }
+        return { success: false, attempts: maxAttempts };
+    };
+
+    // Post-transfer verification for downloads
+    const verifyDownload = async (
+        localFilePath: string,
+        expectedSize: number,
+        expectedMtime: string | null,
+    ): Promise<VerifyResult | null> => {
+        if (verifyPolicy === 'none') return null;
+        try {
+            return await invoke<VerifyResult>('verify_local_transfer', {
+                localPath: localFilePath,
+                expectedSize,
+                expectedMtime: expectedMtime,
+                policy: verifyPolicy,
+            });
+        } catch {
+            return null;
+        }
+    };
+
+    // Execute sync (new or resume)
+    const handleSync = async (resumeJournal?: SyncJournal) => {
+        if (!hasSyncableItems && !resumeJournal) return;
+        if (!isConnected) return;
 
         setIsSyncing(true);
         setError(null);
@@ -287,9 +437,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setFileResults(initialResults);
 
         // Listen for transfer progress events
-        const unlisten = await listen<TransferProgress>('transfer_event', (event) => {
-            if (event.payload && event.payload.percentage !== undefined) {
-                setCurrentFileProgress(event.payload);
+        const unlisten = await listen<TransferEvent>('transfer_event', (event) => {
+            // TransferEvent has a nested 'progress' field
+            if (event.payload?.progress && event.payload.progress.percentage !== undefined) {
+                setCurrentFileProgress(event.payload.progress);
             }
         });
         unlistenRef.current = unlisten;
@@ -300,8 +451,39 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         let downloaded = 0;
         let skipped = 0;
         let totalBytes = 0;
-        const errors: string[] = [];
+        let retried = 0;
+        let verifyFailed = 0;
+        const errors: SyncErrorInfo[] = [];
         const startTime = Date.now();
+
+        // Create journal for checkpoint
+        const journal: SyncJournal = resumeJournal || {
+            id: crypto.randomUUID?.() || `${Date.now()}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            local_path: editLocalPath,
+            remote_path: editRemotePath,
+            direction: options.direction,
+            retry_policy: retryPolicy,
+            verify_policy: verifyPolicy,
+            entries: selectedComparisons.map(c => ({
+                relative_path: c.relative_path,
+                action: (c.status === 'local_newer' || c.status === 'local_only') ? 'upload' : 'download',
+                status: 'pending' as JournalEntryStatus,
+                attempts: 0,
+                last_error: null,
+                verified: null,
+                bytes_transferred: 0,
+            })),
+            completed: false,
+        };
+
+        // Save initial journal
+        try {
+            await invoke('save_sync_journal_cmd', { journal });
+        } catch (e) {
+            console.error('[SyncPanel] Failed to save journal:', e);
+        }
 
         // Pre-create remote directories needed for uploads
         if (selectedComparisons.some(c => c.status === 'local_newer' || c.status === 'local_only')) {
@@ -310,14 +492,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') &&
                     (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
                 if (shouldUpload && /[\\/]/.test(item.relative_path)) {
-                    // Collect all parent directories
                     const parts = item.relative_path.split(/[\\/]/);
                     for (let i = 1; i < parts.length; i++) {
                         dirsToCreate.add(parts.slice(0, i).join('/'));
                     }
                 }
             }
-            // Sort by depth (shortest first) so parents are created before children
             const sortedDirs = [...dirsToCreate].sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length);
             const remoteBase = editRemotePath.replace(/\/+$/, '');
             for (const dir of sortedDirs) {
@@ -361,7 +541,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         let dirsCreated = 0;
         const dirComparisons = comparisons.filter(c => c.is_dir &&
             ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) ||
-             (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
+                (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
         );
         for (const dir of dirComparisons.sort((a, b) => a.relative_path.split('/').length - b.relative_path.split('/').length)) {
             try {
@@ -384,108 +564,196 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             }
         }
 
-        for (const item of selectedComparisons) {
+        for (let i = 0; i < selectedComparisons.length; i++) {
+            const item = selectedComparisons[i];
+            const journalEntry = journal.entries[i];
+
+            // Skip already completed entries (for resume)
+            if (resumeJournal && (journalEntry?.status === 'completed' || journalEntry?.status === 'skipped')) {
+                if (journalEntry.status === 'completed') {
+                    uploaded += journalEntry.action === 'upload' ? 1 : 0;
+                    downloaded += journalEntry.action === 'download' ? 1 : 0;
+                    totalBytes += journalEntry.bytes_transferred;
+                } else {
+                    skipped++;
+                }
+                completed++;
+                setSyncProgress({ current: completed, total: selectedComparisons.length });
+                continue;
+            }
+
             // Check for cancellation
             if (cancelledRef.current) {
-                // Mark remaining as skipped
+                // Mark remaining as skipped in journal
+                for (let j = i; j < selectedComparisons.length; j++) {
+                    if (journal.entries[j] && journal.entries[j].status === 'pending') {
+                        journal.entries[j].status = 'skipped';
+                    }
+                }
                 setFileResults(prev => {
                     const next = new Map(prev);
-                    for (const c of selectedComparisons.slice(completed)) {
+                    for (const c of selectedComparisons.slice(i)) {
                         if (next.get(c.relative_path) === 'pending') {
                             next.set(c.relative_path, 'skipped');
                         }
                     }
                     return next;
                 });
-                skipped += selectedComparisons.length - completed;
+                skipped += selectedComparisons.length - i;
+                // Save journal checkpoint on cancel
+                try {
+                    await invoke('save_sync_journal_cmd', { journal });
+                } catch { /* ignore */ }
                 break;
             }
 
             // Mark current file as syncing
             setFileResults(prev => new Map(prev).set(item.relative_path, 'syncing'));
+            if (journalEntry) journalEntry.status = 'in_progress';
 
-            try {
-                const localFilePath = `${editLocalPath.replace(/\/+$/, '')}/${item.relative_path}`;
-                const remoteFilePath = `${editRemotePath.replace(/\/+$/, '')}/${item.relative_path}`;
+            const localFilePath = `${editLocalPath.replace(/\/+$/, '')}/${item.relative_path}`;
+            const remoteFilePath = `${editRemotePath.replace(/\/+$/, '')}/${item.relative_path}`;
 
-                const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') &&
-                    (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
+            const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') &&
+                (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
 
-                const shouldDownload = (item.status === 'remote_newer' || item.status === 'remote_only') &&
-                    (options.direction === 'remote_to_local' || options.direction === 'bidirectional');
+            const shouldDownload = (item.status === 'remote_newer' || item.status === 'remote_only') &&
+                (options.direction === 'remote_to_local' || options.direction === 'bidirectional');
 
-                // Helper: execute a transfer invoke with FTP retry logic
-                const executeTransfer = async (cmd: string, args: Record<string, any>) => {
-                    if (!isFtp) {
-                        await invoke(cmd, args);
-                        return;
-                    }
-                    // FTP: retry on "Data connection" errors with exponential backoff
-                    for (let attempt = 1; attempt <= FTP_RETRY_MAX; attempt++) {
-                        try {
-                            await invoke(cmd, args);
-                            return;
-                        } catch (err: any) {
-                            const msg = err?.toString() || '';
-                            const isRetryable = msg.includes('Data connection') || msg.includes('data connection');
-                            if (isRetryable && attempt < FTP_RETRY_MAX) {
-                                // NOOP to reset server state + exponential backoff
-                                try { await invoke('ftp_noop'); } catch { /* ignore */ }
-                                await delay(FTP_RETRY_BASE_DELAY_MS * attempt);
-                                continue;
-                            }
-                            throw err;
-                        }
-                    }
-                };
+            if (shouldUpload) {
+                const cmd = isProvider ? 'provider_upload_file' : 'upload_file';
+                const args = isProvider
+                    ? { localPath: localFilePath, remotePath: remoteFilePath }
+                    : { params: { local_path: localFilePath, remote_path: remoteFilePath } };
 
-                if (shouldUpload) {
-                    if (isProvider) {
-                        await invoke('provider_upload_file', {
-                            localPath: localFilePath,
-                            remotePath: remoteFilePath,
-                        });
-                    } else {
-                        await executeTransfer('upload_file', {
-                            params: { local_path: localFilePath, remote_path: remoteFilePath }
-                        });
-                    }
+                const result = await executeTransferWithRetry(cmd, args, item.relative_path);
+                if (journalEntry) {
+                    journalEntry.attempts = result.attempts;
+                    if (result.attempts > 1) retried++;
+                }
+
+                if (result.success) {
                     uploaded++;
-                    totalBytes += item.local_info?.size || 0;
-                    setFileResults(prev => new Map(prev).set(item.relative_path, 'success'));
-                } else if (shouldDownload) {
-                    if (isProvider) {
-                        await invoke('provider_download_file', {
-                            remotePath: remoteFilePath,
-                            localPath: localFilePath,
-                        });
-                    } else {
-                        await executeTransfer('download_file', {
-                            params: { remote_path: remoteFilePath, local_path: localFilePath }
-                        });
+                    const bytes = item.local_info?.size || 0;
+                    totalBytes += bytes;
+                    if (journalEntry) {
+                        journalEntry.status = 'completed';
+                        journalEntry.bytes_transferred = bytes;
+                        journalEntry.verified = true; // Uploads verified by server acceptance
                     }
-                    downloaded++;
-                    totalBytes += item.remote_info?.size || 0;
                     setFileResults(prev => new Map(prev).set(item.relative_path, 'success'));
                 } else {
-                    skipped++;
-                    setFileResults(prev => new Map(prev).set(item.relative_path, 'skipped'));
+                    if (journalEntry) {
+                        journalEntry.status = 'failed';
+                        journalEntry.last_error = result.error || null;
+                    }
+                    errors.push(result.error || {
+                        kind: 'unknown',
+                        message: `Upload failed: ${item.relative_path}`,
+                        retryable: false,
+                        file_path: item.relative_path,
+                    });
+                    setFileResults(prev => new Map(prev).set(item.relative_path, 'error'));
+                }
+            } else if (shouldDownload) {
+                const cmd = isProvider ? 'provider_download_file' : 'download_file';
+                const args = isProvider
+                    ? { remotePath: remoteFilePath, localPath: localFilePath }
+                    : { params: { remote_path: remoteFilePath, local_path: localFilePath } };
+
+                const result = await executeTransferWithRetry(cmd, args, item.relative_path);
+                if (journalEntry) {
+                    journalEntry.attempts = result.attempts;
+                    if (result.attempts > 1) retried++;
                 }
 
-                // Between FTP transfers: NOOP + delay to flush server data connection state
-                if (isFtp && completed < selectedComparisons.length - 1) {
-                    try { await invoke('ftp_noop'); } catch { /* ignore */ }
-                    await delay(FTP_TRANSFER_DELAY_MS);
+                if (result.success) {
+                    // Post-transfer verification for downloads
+                    const expectedSize = item.remote_info?.size || 0;
+                    const expectedMtime = item.remote_info?.modified || null;
+                    setFileResults(prev => new Map(prev).set(item.relative_path, 'verifying'));
+
+                    const vResult = await verifyDownload(localFilePath, expectedSize, expectedMtime);
+
+                    if (vResult && !vResult.passed) {
+                        verifyFailed++;
+                        if (journalEntry) {
+                            journalEntry.status = 'verify_failed';
+                            journalEntry.verified = false;
+                            journalEntry.last_error = {
+                                kind: 'unknown',
+                                message: vResult.message || 'Verification failed',
+                                retryable: true,
+                                file_path: item.relative_path,
+                            };
+                        }
+                        errors.push({
+                            kind: 'unknown',
+                            message: `${item.relative_path}: ${vResult.message || 'Verification failed'}`,
+                            retryable: true,
+                            file_path: item.relative_path,
+                        });
+                        setFileResults(prev => new Map(prev).set(item.relative_path, 'verify_failed'));
+                    } else {
+                        downloaded++;
+                        const bytes = expectedSize;
+                        totalBytes += bytes;
+                        if (journalEntry) {
+                            journalEntry.status = 'completed';
+                            journalEntry.bytes_transferred = bytes;
+                            journalEntry.verified = true;
+                        }
+                        setFileResults(prev => new Map(prev).set(item.relative_path, 'success'));
+                    }
+                } else {
+                    if (journalEntry) {
+                        journalEntry.status = 'failed';
+                        journalEntry.last_error = result.error || null;
+                    }
+                    errors.push(result.error || {
+                        kind: 'unknown',
+                        message: `Download failed: ${item.relative_path}`,
+                        retryable: false,
+                        file_path: item.relative_path,
+                    });
+                    setFileResults(prev => new Map(prev).set(item.relative_path, 'error'));
                 }
-            } catch (e: any) {
-                errors.push(`${item.relative_path}: ${e.toString()}`);
-                setFileResults(prev => new Map(prev).set(item.relative_path, 'error'));
+            } else {
+                skipped++;
+                if (journalEntry) journalEntry.status = 'skipped';
+                setFileResults(prev => new Map(prev).set(item.relative_path, 'skipped'));
+            }
+
+            // Between FTP transfers: NOOP + delay to flush server data connection state
+            if (isFtp && i < selectedComparisons.length - 1) {
+                try { await invoke('ftp_noop'); } catch { /* ignore */ }
+                await delay(FTP_TRANSFER_DELAY_MS);
             }
 
             completed++;
             setSyncProgress({ current: completed, total: selectedComparisons.length });
             setCurrentFileProgress(null);
+
+            // Save journal checkpoint every 10 files
+            if (completed % 10 === 0) {
+                try {
+                    await invoke('save_sync_journal_cmd', { journal });
+                } catch { /* ignore */ }
+            }
         }
+
+        // Mark journal as complete and save final state
+        journal.completed = !cancelledRef.current;
+        try {
+            await invoke('save_sync_journal_cmd', { journal });
+            // If fully completed, clean up journal
+            if (journal.completed) {
+                await invoke('delete_sync_journal_cmd', {
+                    localPath: editLocalPath,
+                    remotePath: editRemotePath,
+                });
+            }
+        } catch { /* ignore */ }
 
         // Cleanup listener
         unlisten();
@@ -494,6 +762,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setIsSyncing(false);
         setSyncProgress(null);
         setCurrentFileProgress(null);
+        setHasJournal(!journal.completed);
+        setPendingJournal(!journal.completed ? journal : null);
 
         // Show completion report
         setSyncReport({
@@ -502,6 +772,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             skipped,
             dirsCreated,
             errors,
+            verifyFailed,
+            retried,
             totalBytes,
             durationMs: Date.now() - startTime,
         });
@@ -509,12 +781,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         // Save sync index for faster future comparisons
         try {
             const indexFiles: Record<string, { size: number; modified: string | null; is_dir: boolean }> = {};
-            // Record successfully synced files (uploaded + downloaded + dirs created)
             const successPaths = new Set<string>();
-            for (const item of selectedComparisons) {
-                // Items that were uploaded or downloaded successfully (not in errors)
-                if (!errors.some(e => e.startsWith(item.relative_path + ':'))) {
-                    successPaths.add(item.relative_path);
+            for (const entry of journal.entries) {
+                if (entry.status === 'completed') {
+                    successPaths.add(entry.relative_path);
                 }
             }
             for (const dir of dirComparisons) {
@@ -522,7 +792,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             }
             for (const item of [...selectedComparisons, ...dirComparisons]) {
                 if (!successPaths.has(item.relative_path)) continue;
-                // Use the "winning" side's info as the synced state
                 const info = item.local_info || item.remote_info;
                 if (info) {
                     indexFiles[item.relative_path] = {
@@ -532,7 +801,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     };
                 }
             }
-            // Merge with existing index (keep entries we didn't touch)
             const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
                 localPath: editLocalPath,
                 remotePath: editRemotePath,
@@ -551,18 +819,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             console.error('[SyncPanel] Failed to save sync index:', e);
         }
 
-        // Refresh file listings
-        if (onSyncComplete && errors.length === 0) {
+        // Refresh file listings if at least one operation completed
+        if (onSyncComplete && (uploaded > 0 || downloaded > 0)) {
             await onSyncComplete();
         }
     };
 
     if (!isOpen) return null;
-
-    const truncatePath = (path: string, maxLen: number = 50): string => {
-        if (path.length <= maxLen) return path;
-        return '...' + path.slice(-maxLen + 3);
-    };
 
     const getStatusLabel = (status: SyncStatus): string => {
         switch (status) {
@@ -587,15 +850,35 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    const getErrorKindLabel = (kind: SyncErrorKind): string => {
+        const key = `syncPanel.errorKind.${kind}`;
+        const val = t(key);
+        return val !== key ? val : kind.replace(/_/g, ' ');
+    };
+
     // Get the sync result indicator for a file row
     const getFileResultIcon = (path: string): React.ReactNode => {
         const result = fileResults.get(path);
         if (!result || result === 'pending') return null;
         if (result === 'syncing') return <Loader2 size={14} className="animate-spin text-blue-400" />;
+        if (result === 'retrying') return <RotateCcw size={14} className="animate-spin text-amber-400" />;
+        if (result === 'verifying') return <ShieldCheck size={14} className="animate-pulse text-cyan-400" />;
         if (result === 'success') return <CheckCircle2 size={14} className="text-green-500" />;
         if (result === 'error') return <XCircle size={14} className="text-red-500" />;
+        if (result === 'verify_failed') return <ShieldCheck size={14} className="text-red-500" />;
         if (result === 'skipped') return <SkipForward size={14} className="text-gray-400" />;
         return null;
+    };
+
+    // Group errors by kind for the report
+    const groupErrorsByKind = (errs: SyncErrorInfo[]): Map<SyncErrorKind, SyncErrorInfo[]> => {
+        const grouped = new Map<SyncErrorKind, SyncErrorInfo[]>();
+        for (const err of errs) {
+            const list = grouped.get(err.kind) || [];
+            list.push(err);
+            grouped.set(err.kind, list);
+        }
+        return grouped;
     };
 
     const dirDesc = getDirectionDescription(options.direction);
@@ -631,6 +914,39 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         />
                     </div>
                 </div>
+
+                {/* Resume Journal Banner */}
+                {hasJournal && pendingJournal && !isSyncing && !syncReport && (
+                    <div className="mx-4 my-2 p-3 rounded-lg border bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700">
+                        <div className="flex items-center gap-2 mb-1">
+                            <RotateCcw size={16} className="text-amber-500" />
+                            <span className="font-semibold text-sm">{t('syncPanel.journalFound')}</span>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                            {t('syncPanel.journalDescription', {
+                                completed: String(pendingJournal.entries.filter(e => e.status === 'completed').length),
+                                total: String(pendingJournal.entries.length),
+                                date: new Date(pendingJournal.updated_at).toLocaleString(),
+                            })}
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                className="text-xs px-3 py-1 rounded bg-amber-500 text-white hover:bg-amber-600"
+                                onClick={() => handleSync(pendingJournal)}
+                                disabled={!isConnected}
+                            >
+                                <RotateCcw size={12} className="inline mr-1" />
+                                {t('syncPanel.resumeSync')}
+                            </button>
+                            <button
+                                className="text-xs px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                                onClick={handleDismissJournal}
+                            >
+                                {t('syncPanel.dismissJournal')}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Sync Report (shown after sync completes) */}
                 {syncReport && (
@@ -670,6 +986,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     <span>{t('syncPanel.reportSkipped')}: <strong>{syncReport.skipped}</strong></span>
                                 </div>
                             )}
+                            {syncReport.retried > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                    <RotateCcw size={14} className="text-amber-400" />
+                                    <span>{t('syncPanel.reportRetried')}: <strong>{syncReport.retried}</strong></span>
+                                </div>
+                            )}
+                            {syncReport.verifyFailed > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                    <ShieldCheck size={14} className="text-red-500" />
+                                    <span>{t('syncPanel.reportVerifyFailed')}: <strong>{syncReport.verifyFailed}</strong></span>
+                                </div>
+                            )}
                             {syncReport.errors.length > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <XCircle size={14} className="text-red-500" />
@@ -685,11 +1013,29 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 <span>{t('syncPanel.reportDuration')}: <strong>{formatDuration(syncReport.durationMs)}</strong></span>
                             </div>
                         </div>
+                        {/* Classified error breakdown */}
                         {syncReport.errors.length > 0 && (
-                            <div className="mt-2 text-xs text-red-600 dark:text-red-400 max-h-32 overflow-y-auto">
-                                {syncReport.errors.map((err, i) => (
-                                    <div key={i} className="truncate">{err}</div>
-                                ))}
+                            <div className="mt-3 border-t border-gray-200 dark:border-gray-600 pt-2">
+                                <div className="text-xs font-semibold mb-1">{t('syncPanel.errorBreakdown')}</div>
+                                {[...groupErrorsByKind(syncReport.errors)].map(([kind, errs]) => {
+                                    const ErrIcon = ERROR_KIND_ICONS[kind] || AlertTriangle;
+                                    return (
+                                        <div key={kind} className="mb-1">
+                                            <div className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                                                <ErrIcon size={12} />
+                                                <span>{getErrorKindLabel(kind)} ({errs.length})</span>
+                                                {errs[0]?.retryable && (
+                                                    <span className="text-[10px] text-amber-500 ml-1">{t('syncPanel.retryable')}</span>
+                                                )}
+                                            </div>
+                                            <div className="ml-4 text-[11px] text-red-600 dark:text-red-400 max-h-20 overflow-y-auto">
+                                                {errs.map((err, i) => (
+                                                    <div key={i} className="truncate">{err.file_path || err.message}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -758,6 +1104,38 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     disabled={isSyncing}
                                 />
                                 {t('syncPanel.checksum')}
+                            </label>
+                        </div>
+
+                        {/* Phase 2: Verify & Retry Options */}
+                        <div className="sync-compare-options">
+                            <label className="flex items-center gap-1">
+                                <ShieldCheck size={12} className="text-cyan-500" />
+                                <select
+                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
+                                    value={verifyPolicy}
+                                    onChange={e => setVerifyPolicy(e.target.value as VerifyPolicy)}
+                                    disabled={isSyncing}
+                                >
+                                    <option value="none">{t('syncPanel.verifyNone')}</option>
+                                    <option value="size_only">{t('syncPanel.verifySize')}</option>
+                                    <option value="size_and_mtime">{t('syncPanel.verifySizeMtime')}</option>
+                                    <option value="full">{t('syncPanel.verifyFull')}</option>
+                                </select>
+                            </label>
+                            <label className="flex items-center gap-1">
+                                <RotateCcw size={12} className="text-amber-500" />
+                                <select
+                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
+                                    value={retryPolicy.max_retries}
+                                    onChange={e => setRetryPolicy(prev => ({ ...prev, max_retries: Number(e.target.value) }))}
+                                    disabled={isSyncing}
+                                >
+                                    <option value="1">{t('syncPanel.retries', { count: '1' })}</option>
+                                    <option value="3">{t('syncPanel.retries', { count: '3' })}</option>
+                                    <option value="5">{t('syncPanel.retries', { count: '5' })}</option>
+                                    <option value="10">{t('syncPanel.retries', { count: '10' })}</option>
+                                </select>
                             </label>
                         </div>
 
@@ -855,7 +1233,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     return (
                                         <div
                                             key={comparison.relative_path}
-                                            className={`sync-row ${selectedPaths.has(comparison.relative_path) ? 'selected' : ''} ${result === 'success' ? 'sync-row-success' : result === 'error' ? 'sync-row-error' : ''} ${comparison.is_dir ? 'sync-row-dir' : ''}`}
+                                            className={`sync-row ${selectedPaths.has(comparison.relative_path) ? 'selected' : ''} ${result === 'success' ? 'sync-row-success' : result === 'error' || result === 'verify_failed' ? 'sync-row-error' : ''} ${comparison.is_dir ? 'sync-row-dir' : ''}`}
                                             onClick={() => !isSyncing && !comparison.is_dir && toggleSelection(comparison.relative_path)}
                                         >
                                             <div className="sync-col-check">
@@ -942,7 +1320,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         ) : (
                             <button
                                 className="sync-execute-btn"
-                                onClick={handleSync}
+                                onClick={() => handleSync()}
                                 disabled={!hasSyncableItems || isSyncing}
                             >
                                 {isSyncing ? (

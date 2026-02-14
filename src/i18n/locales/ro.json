@@ -1009,8 +1009,7 @@
             "encryptionImplicit": "Necesită FTP implicit peste TLS",
             "encryptionExplicitIfAvailable": "Folosește FTP explicit peste TLS dacă este disponibil",
             "acceptInvalidCerts": "Acceptă certificatele invalide sau auto-semnate",
-            "insecureCertConfirmFirst": "Avertisment: sunteți pe cale să acceptați certificate invalide/auto-semnate. Acest lucru slăbește securitatea conexiunii. Continuați?",
-            "insecureCertConfirmSecond": "Confirmare finală: continuați cu modul de certificat nesigur?",
+            "insecureCertConfirmFirst": "Acceptarea certificatelor invalide sau autosemnate slăbește securitatea conexiunii. Activați aceasta doar dacă aveți încredere în server și înțelegeți riscurile.",
             "boxDesc": "Conectare cu cont Box",
             "pcloudDesc": "Conectare cu cont pCloud",
             "azureDesc": "Microsoft Azure Storage",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud - 10 GB stocare gratuita, regiuni US/EU",
             "s3Tooltip": "Stocare compatibila S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP prin SSH - transfer securizat de fisiere, suporta autentificare cu cheie",
-            "webdavTooltip": "Protocol WebDAV - compatibil cu Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocol WebDAV - compatibil cu Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Avertisment de securitate",
+            "insecureCertAccept": "Acceptați riscul"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Dosare create",
             "indexAvailable": "Index în cache",
-            "indexAvailableTooltip": "Un index de sincronizare dintr-o sincronizare anterioară este disponibil — detecția conflictelor este îmbunătățită"
+            "indexAvailableTooltip": "Un index de sincronizare dintr-o sincronizare anterioară este disponibil — detecția conflictelor este îmbunătățită",
+            "journalFound": "Sincronizare întreruptă detectată",
+            "journalDescription": "{completed}/{total} fișiere finalizate (ultima actualizare: {date})",
+            "resumeSync": "Reia",
+            "dismissJournal": "Respinge",
+            "reportRetried": "Reîncercate",
+            "reportVerifyFailed": "Verificare eșuată",
+            "errorBreakdown": "Detalii erori",
+            "retryable": "recuperabil",
+            "verifyNone": "Fără verificare",
+            "verifySize": "Verificare dimensiune",
+            "verifySizeMtime": "Verificare dimensiune + timp",
+            "verifyFull": "Verificare completă",
+            "retries": "{count} reîncercări",
+            "errorKind": {
+                "network": "Rețea",
+                "auth": "Autentificare",
+                "path_not_found": "Nu a fost găsit",
+                "permission_denied": "Permisiune refuzată",
+                "quota_exceeded": "Cotă depășită",
+                "rate_limit": "Limită de rată",
+                "timeout": "Timeout",
+                "file_locked": "Fișier blocat",
+                "disk_error": "Eroare disc",
+                "unknown": "Necunoscut"
+            }
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Se conecteaza...",
                 "disconnected": "Deconectat",
                 "newConnection": "Conexiune noua",
-                "syncing": "Se sincronizeaza..."
+                "syncing": "Se sincronizeaza...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Doar local",
             "showRemote": "Afișează la distanță",
             "showSystemMenu": "Afișează bara de meniu sistem"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Inchide celelalte file",
+            "closeAll": "Inchide toate filele"
         }
     }
 }

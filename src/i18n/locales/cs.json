@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 kompatibilní úložiště — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP přes SSH — bezpečný přenos souborů přes shell, podpora ověření klíčem",
             "webdavTooltip": "Protokol WebDAV — kompatibilní s Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Varování: chystáte se přijmout neplatné/automaticky podepsané certifikáty. To oslabuje zabezpečení připojení. Pokračovat?",
-            "insecureCertConfirmSecond": "Konečné potvrzení: pokračovat v režimu nezabezpečených certifikátů?"
+            "insecureCertConfirmFirst": "Přijetí neplatných nebo vlastnoručně podepsaných certifikátů oslabuje zabezpečení připojení. Povolte tuto možnost pouze tehdy, pokud důvěřujete serveru a chápete rizika.",
+            "insecureCertTitle": "Varování zabezpečení",
+            "insecureCertAccept": "Přijmout riziko"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Vytvorenych slozek",
             "indexAvailable": "Index v pameti cache",
-            "indexAvailableTooltip": "Index z predchozi synchronizace je dostupny — detekce konfliktu je vylepsena"
+            "indexAvailableTooltip": "Index z predchozi synchronizace je dostupny — detekce konfliktu je vylepsena",
+            "journalFound": "Zjistena prerusena synchronizace",
+            "journalDescription": "{completed}/{total} souboru dokonceno (posledni aktualizace: {date})",
+            "resumeSync": "Pokracovat",
+            "dismissJournal": "Zavrít",
+            "reportRetried": "Zopakovano",
+            "reportVerifyFailed": "Overeni selhalo",
+            "errorBreakdown": "Rozdeleni chyb",
+            "retryable": "opakovatelne",
+            "verifyNone": "Zadne overeni",
+            "verifySize": "Overit velikost",
+            "verifySizeMtime": "Overit velikost + cas",
+            "verifyFull": "Uplne overeni",
+            "retries": "{count} opakovani",
+            "errorKind": {
+                "network": "Sit",
+                "auth": "Overeni",
+                "path_not_found": "Nenalezeno",
+                "permission_denied": "Pristup odepren",
+                "quota_exceeded": "Kvota prekrocena",
+                "rate_limit": "Limit pozadavku",
+                "timeout": "Timeout",
+                "file_locked": "Soubor zamknut",
+                "disk_error": "Chyba disku",
+                "unknown": "Neznamy"
+            }
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Připojování...",
                 "disconnected": "Odpojeno",
                 "newConnection": "Nové připojení",
-                "syncing": "Synchronizace..."
+                "syncing": "Synchronizace...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Pouze místně",
             "showRemote": "Zobrazit vzdálené",
             "showSystemMenu": "Zobrazit systémové menu"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Zavřít ostatní karty",
+            "closeAll": "Zavřít všechny karty"
         }
     }
 }

@@ -1500,7 +1500,7 @@ pub async fn provider_compare_directories(
     }));
 
     // Get local files (reuse the same logic from lib.rs)
-    let local_files = crate::get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns)
+    let local_files = crate::get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns, options.compare_checksum)
         .await
         .map_err(|e| format!("Failed to scan local directory: {}", e))?;
 

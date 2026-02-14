@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-kompatibilna pohrana - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP preko SSH - siguran prijenos datoteka, podržava autentifikaciju ključem",
             "webdavTooltip": "WebDAV protokol - kompatibilan s Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Upozorenje: usvajate nevažeće/samopotpisane certifikate. To slabi sigurnost veze. Nastaviti?",
-            "insecureCertConfirmSecond": "Konačna potvrda: nastaviti u načinu nesigurnih certifikata?"
+            "insecureCertConfirmFirst": "Prihvacanje nevaljalih ili samopotpisanih certifikata slabi sigurnost veze. Omogucite ovo samo ako vjerujete posluzitelju i razumijete rizike.",
+            "insecureCertTitle": "Sigurnosno upozorenje",
+            "insecureCertAccept": "Prihvati rizik"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -1208,6 +1209,31 @@
             "cancel": "Odustani",
             "indexAvailable": "Indeks spremljen u predmemoriju",
             "indexAvailableTooltip": "Dostupan je indeks sinkronizacije iz prethodne sinkronizacije — otkrivanje sukoba je poboljšano",
+            "journalFound": "Otkrivena prekinuta sinkronizacija",
+            "journalDescription": "{completed}/{total} datoteka dovršeno (zadnje ažurirano: {date})",
+            "resumeSync": "Nastavi",
+            "dismissJournal": "Odbaci",
+            "reportRetried": "Ponovljeno",
+            "reportVerifyFailed": "Provjera neuspješna",
+            "errorBreakdown": "Raščlamba pogrešaka",
+            "retryable": "ponovljivo",
+            "verifyNone": "Bez provjere",
+            "verifySize": "Provjeri veličinu",
+            "verifySizeMtime": "Provjeri veličinu + vrijeme",
+            "verifyFull": "Potpuna provjera",
+            "retries": "{count} pokušaja",
+            "errorKind": {
+                "network": "Mreža",
+                "auth": "Autentifikacija",
+                "path_not_found": "Nije pronađeno",
+                "permission_denied": "Pristup odbijen",
+                "quota_exceeded": "Kvota premašena",
+                "rate_limit": "Ograničenje brzine",
+                "timeout": "Timeout",
+                "file_locked": "Datoteka zaključana",
+                "disk_error": "Pogreška diska",
+                "unknown": "Nepoznato"
+            },
             "filesFound": "datoteka pronađeno",
             "scanPhase": {
                 "local": "Skeniranje lokalnih datoteka",
@@ -1263,7 +1289,9 @@
                 "connecting": "Povezivanje...",
                 "disconnected": "Odspojeno",
                 "newConnection": "Nova veza",
-                "syncing": "Sinkronizacija..."
+                "syncing": "Sinkronizacija...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Samo lokalno",
             "showRemote": "Prikaži udaljeno",
             "showSystemMenu": "Prikaži sistemski izbornik"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Zatvori druge kartice",
+            "closeAll": "Zatvori sve kartice"
         }
     }
 }

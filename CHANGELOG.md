@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Sync Phase 2 — Operational Reliability + UX Improvements
+
+Enterprise-grade sync hardening with transfer journal for checkpoint/resume, SHA-256 checksum verification during scan, structured error taxonomy with 10 error categories, post-transfer verification policies, and configurable retry with exponential backoff. Plus session tab context menu, improved certificate warning UX, and Filen 2FA compatibility fix.
+
+#### Added
+
+- **Transfer journal with checkpoint/resume**: Persistent JSON journal in `~/.config/aeroftp/sync-journal/` tracks every sync operation. Interrupted syncs can be resumed from where they left off, with automatic detection of incomplete journals on next sync
+- **SHA-256 checksum during scan**: When `compare_checksum` is enabled, local files are hashed with streaming SHA-256 (64KB chunks) during the scan phase for accurate content-based comparison
+- **Structured error taxonomy**: 10 error categories (Network, Auth, PathNotFound, PermissionDenied, QuotaExceeded, RateLimit, Timeout, FileLocked, DiskError, Unknown) with automatic classification from raw error messages and retryability hints
+- **Post-transfer verification**: 4 verification policies (None, Size, Size+Time, Full) applied after each download to confirm transfer integrity
+- **Configurable retry with exponential backoff**: Per-file retry policy with base delay, max delay cap, backoff multiplier, and per-file timeout. Default: 3 retries, 500ms base, 2x multiplier, 10s cap, 2min timeout
+- **Journal resume banner**: Amber notification banner when an interrupted sync is detected, showing completion progress and last update time, with Resume and Dismiss actions
+- **Error breakdown in sync report**: Post-sync report groups errors by category with dedicated icons, showing retryable vs non-retryable counts
+- **Verify and retry policy dropdowns**: New UI controls in sync options for selecting verification and retry policies before starting sync
+- **Session tab context menu**: Right-click on session tabs for Close Tab, Close Other Tabs, and Close All Tabs actions with drag-and-drop reordering preserved
+- **Insecure certificate confirmation modal**: Replaced double `window.confirm()` dialogs with a styled modal featuring ShieldAlert icon, risk explanation, and clear Accept/Cancel buttons
+- **12 Rust unit tests**: Full test coverage for error classification, retry policy delay calculation, journal resumability, and file verification
+- **23 new i18n keys**: Journal, verification, retry, and error taxonomy strings translated in all 47 languages
+
+#### Fixed
+
+- **Filen 2FA login compatibility**: Always send `twoFactorCode` field in login request with `"XXXXXX"` default when 2FA is not enabled, matching Filen API v3 requirements
+- **Main content overflow**: Fixed scroll behavior on connection screen transition by using consistent `overflow-auto` class
+
+---
+
 ## [2.0.11] - 2026-02-13
 
 ### Complete i18n for Connection Intelligence

@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 호환 스토리지 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH를 통한 SFTP - 보안 셸 파일 전송, 키 인증 지원",
             "webdavTooltip": "WebDAV 프로토콜 - Nextcloud, CloudMe, Koofr, Synology NAS와 호환",
-            "insecureCertConfirmFirst": "경고: 잘못된/자체 서명된 인증서를 수락하려고 합니다. 이는 연결 보안을 약화시킵니다. 계속하시겠습니까?",
-            "insecureCertConfirmSecond": "최종 확인: 안전하지 않은 인증서 모드로 계속하시겠습니까?"
+            "insecureCertConfirmFirst": "유효하지 않거나 자체 서명된 인증서를 수락하면 연결 보안이 약화됩니다. 서버를 신뢰하고 위험을 이해하는 경우에만 활성화하세요.",
+            "insecureCertTitle": "보안 경고",
+            "insecureCertAccept": "위험 수락"
         },
         "shortcuts": {
             "title": "단축키",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "생성된 폴더",
             "indexAvailable": "인덱스 캐시됨",
-            "indexAvailableTooltip": "이전 동기화의 인덱스가 사용 가능합니다 — 충돌 감지가 향상됩니다"
+            "indexAvailableTooltip": "이전 동기화의 인덱스가 사용 가능합니다 — 충돌 감지가 향상됩니다",
+            "journalFound": "중단된 동기화가 감지되었습니다",
+            "journalDescription": "{completed}/{total} 파일 완료 (마지막 업데이트: {date})",
+            "resumeSync": "재개",
+            "dismissJournal": "닫기",
+            "reportRetried": "재시도됨",
+            "reportVerifyFailed": "검증 실패",
+            "errorBreakdown": "오류 상세 내역",
+            "retryable": "재시도 가능",
+            "verifyNone": "검증 없음",
+            "verifySize": "크기 검증",
+            "verifySizeMtime": "크기 + 시간 검증",
+            "verifyFull": "전체 검증",
+            "retries": "{count}회 재시도",
+            "errorKind": {
+                "network": "네트워크",
+                "auth": "인증",
+                "path_not_found": "찾을 수 없음",
+                "permission_denied": "권한 거부",
+                "quota_exceeded": "할당량 초과",
+                "rate_limit": "속도 제한",
+                "timeout": "타임아웃",
+                "file_locked": "파일 잠김",
+                "disk_error": "디스크 오류",
+                "unknown": "알 수 없음"
+            }
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -1263,7 +1289,9 @@
                 "connecting": "연결 중...",
                 "disconnected": "연결 끊김",
                 "newConnection": "새 연결",
-                "syncing": "동기화 중..."
+                "syncing": "동기화 중...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "로컬만",
             "showRemote": "원격 표시",
             "showSystemMenu": "시스템 메뉴바 표시"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "다른 탭 닫기",
+            "closeAll": "모든 탭 닫기"
         }
     }
 }

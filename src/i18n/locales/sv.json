@@ -1008,8 +1008,7 @@
             "encryptionExplicit": "Kräv explicit FTP över TLS",
             "encryptionImplicit": "Kräv implicit FTP över TLS",
             "encryptionExplicitIfAvailable": "Använd explicit FTP över TLS om tillgängligt",
-            "insecureCertConfirmFirst": "Varning: du håller på att acceptera ogiltiga/självsignerade certifikat. Detta försvagar anslutningssäkerheten. Fortsätta?",
-            "insecureCertConfirmSecond": "Slutgiltig bekräftelse: fortsätta med osäkert certifikatläge?",
+            "insecureCertConfirmFirst": "Att acceptera ogiltiga eller sjalvsignerade certifikat forsvagar anslutningens sakerhet. Aktivera detta endast om du litar pa servern och forstar riskerna.",
             "acceptInvalidCerts": "Acceptera ogiltiga eller självsignerade certifikat",
             "boxDesc": "Anslut med Box-konto",
             "pcloudDesc": "Anslut med pCloud-konto",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud - 10 GB gratis lagring, USA/EU-regioner",
             "s3Tooltip": "S3-kompatibel lagring - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP over SSH - saker filoverforing via skal, stoder nyckelautentisering",
-            "webdavTooltip": "WebDAV-protokoll - kompatibel med Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "WebDAV-protokoll - kompatibel med Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Sakerhetsvarning",
+            "insecureCertAccept": "Acceptera risk"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Mappar skapade",
             "indexAvailable": "Index cachelagrat",
-            "indexAvailableTooltip": "Ett synkroniseringsindex från en tidigare synkronisering finns tillgängligt — konfliktdetektering är förbättrad"
+            "indexAvailableTooltip": "Ett synkroniseringsindex från en tidigare synkronisering finns tillgängligt — konfliktdetektering är förbättrad",
+            "journalFound": "Avbruten synkronisering upptäckt",
+            "journalDescription": "{completed}/{total} filer slutförda (senast uppdaterad: {date})",
+            "resumeSync": "Återuppta",
+            "dismissJournal": "Avfärda",
+            "reportRetried": "Omförsök",
+            "reportVerifyFailed": "Verifiering misslyckades",
+            "errorBreakdown": "Felöversikt",
+            "retryable": "återförsökbar",
+            "verifyNone": "Ingen verifiering",
+            "verifySize": "Verifiera storlek",
+            "verifySizeMtime": "Verifiera storlek + tid",
+            "verifyFull": "Fullständig verifiering",
+            "retries": "{count} omförsök",
+            "errorKind": {
+                "network": "Nätverk",
+                "auth": "Autentisering",
+                "path_not_found": "Hittades inte",
+                "permission_denied": "Åtkomst nekad",
+                "quota_exceeded": "Kvot överskriden",
+                "rate_limit": "Hastighetsgräns",
+                "timeout": "Timeout",
+                "file_locked": "Fil låst",
+                "disk_error": "Diskfel",
+                "unknown": "Okänt"
+            }
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Ansluter...",
                 "disconnected": "Frankoopplad",
                 "newConnection": "Ny anslutning",
-                "syncing": "Synkroniserar..."
+                "syncing": "Synkroniserar...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Endast lokalt",
             "showRemote": "Visa fjärr",
             "showSystemMenu": "Visa systemmenyrad"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Stang andra flikar",
+            "closeAll": "Stang alla flikar"
         }
     }
 }

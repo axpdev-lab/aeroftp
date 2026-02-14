@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 兼容存储 - AWS S3、MinIO、Cloudflare R2、Backblaze B2",
             "sftpTooltip": "基于 SSH 的 SFTP - 安全的 Shell 文件传输，支持密钥认证",
             "webdavTooltip": "WebDAV 协议 - 兼容 Nextcloud、CloudMe、Koofr、Synology NAS",
-            "insecureCertConfirmFirst": "警告：您即将接受无效/自签名证书。这将削弱连接安全性。继续？",
-            "insecureCertConfirmSecond": "最终确认：以不安全证书模式继续？"
+            "insecureCertConfirmFirst": "接受无效或自签名证书会削弱连接安全性。仅当您信任服务器并了解风险时才启用此功能。",
+            "insecureCertTitle": "安全警告",
+            "insecureCertAccept": "接受风险"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "已创建文件夹",
             "indexAvailable": "索引已缓存",
-            "indexAvailableTooltip": "上次同步的索引可用 — 冲突检测已增强"
+            "indexAvailableTooltip": "上次同步的索引可用 — 冲突检测已增强",
+            "journalFound": "检测到中断的同步",
+            "journalDescription": "{completed}/{total} 个文件已完成（最后更新：{date}）",
+            "resumeSync": "恢复",
+            "dismissJournal": "忽略",
+            "reportRetried": "已重试",
+            "reportVerifyFailed": "验证失败",
+            "errorBreakdown": "错误详情",
+            "retryable": "可重试",
+            "verifyNone": "不验证",
+            "verifySize": "验证大小",
+            "verifySizeMtime": "验证大小 + 时间",
+            "verifyFull": "完整验证",
+            "retries": "{count} 次重试",
+            "errorKind": {
+                "network": "网络",
+                "auth": "身份验证",
+                "path_not_found": "未找到",
+                "permission_denied": "权限被拒绝",
+                "quota_exceeded": "超出配额",
+                "rate_limit": "速率限制",
+                "timeout": "Timeout",
+                "file_locked": "文件已锁定",
+                "disk_error": "磁盘错误",
+                "unknown": "未知"
+            }
         },
         "ui": {
             "syncing": "正在同步...",
@@ -1263,7 +1289,9 @@
                 "connecting": "连接中...",
                 "disconnected": "已断开",
                 "newConnection": "新建连接",
-                "syncing": "同步中..."
+                "syncing": "同步中...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "仅本地",
             "showRemote": "显示远程",
             "showSystemMenu": "显示系统菜单栏"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "关闭其他标签页",
+            "closeAll": "关闭所有标签页"
         }
     }
 }

@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-samhæf geymsla - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP yfir SSH - örugg skeljaflutningur skráa, styður lykilauðkenningu",
             "webdavTooltip": "WebDAV samskiptareglur - samhæft við Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Aðvörun: þú ert að fara að samþykkja ógild/sjálfundirrituð vottorð. Þetta veikir öryggi tengingar. Áfram?",
-            "insecureCertConfirmSecond": "Loka staðfesting: halda áfram í óöruggu vottorðsham?"
+            "insecureCertConfirmFirst": "Að samþykkja ógild eða sjálfundirritað skírteini veikir öryggi tengingar. Virkjaðu þetta aðeins ef þú treystir þjóninum og skilur áhættuna.",
+            "insecureCertTitle": "Öryggisviðvörun",
+            "insecureCertAccept": "Samþykkja áhættu"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Möppur búnar til",
             "indexAvailable": "Vísitala í skyndiminni",
-            "indexAvailableTooltip": "Samstillingarvísitala frá fyrri samstillingu í boði — árekstragreining bætt"
+            "indexAvailableTooltip": "Samstillingarvísitala frá fyrri samstillingu í boði — árekstragreining bætt",
+            "journalFound": "Rofin samstilling greindist",
+            "journalDescription": "{completed}/{total} skrár kláraðar (síðast uppfært: {date})",
+            "resumeSync": "Halda áfram",
+            "dismissJournal": "Hunsa",
+            "reportRetried": "Reynt aftur",
+            "reportVerifyFailed": "Sannprófun mistókst",
+            "errorBreakdown": "Sundurliðun villna",
+            "retryable": "endurreynanlegt",
+            "verifyNone": "Engin sannprófun",
+            "verifySize": "Sannprófa stærð",
+            "verifySizeMtime": "Sannprófa stærð + tíma",
+            "verifyFull": "Full sannprófun",
+            "retries": "{count} endurtilraunir",
+            "errorKind": {
+                "network": "Netkerfi",
+                "auth": "Auðkenning",
+                "path_not_found": "Fannst ekki",
+                "permission_denied": "Heimild hafnað",
+                "quota_exceeded": "Kvóti farinn yfir",
+                "rate_limit": "Hraðatakmörkun",
+                "timeout": "Timeout",
+                "file_locked": "Skrá læst",
+                "disk_error": "Diskavilla",
+                "unknown": "Óþekkt"
+            }
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Tengist...",
                 "disconnected": "Aftengt",
                 "newConnection": "Ný tenging",
-                "syncing": "Samstillir..."
+                "syncing": "Samstillir...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Aðeins staðbundið",
             "showRemote": "Sýna fjartengd",
             "showSystemMenu": "Sýna valmyndarstiku kerfis"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Loka öðrum flipum",
+            "closeAll": "Loka öllum flipum"
         }
     }
 }

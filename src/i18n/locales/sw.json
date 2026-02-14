@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Hifadhi inayoendana na S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP kupitia SSH - uhamisho salama wa faili kupitia shell, inasaidia uthibitishaji wa ufunguo",
             "webdavTooltip": "Itifaki ya WebDAV - inayoendana na Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Onyo: unakaribia kukubali vyeti batili/vilivyojitegemea. Hii inapunguza usalama wa muunganisho. Endelea?",
-            "insecureCertConfirmSecond": "Uthibitisho wa mwisho: endelea na hali ya cheti lisilo salama?"
+            "insecureCertConfirmFirst": "Kukubali vyeti batili au vilivyoandikwa na mwenyewe hupunguza usalama wa muunganisho. Wezesha hii tu ikiwa unaamini seva na kuelewa hatari.",
+            "insecureCertTitle": "Onyo la Usalama",
+            "insecureCertAccept": "Kubali Hatari"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Folda zimeundwa",
             "indexAvailable": "Kielelezo kimehifadhiwa",
-            "indexAvailableTooltip": "Kielelezo cha usawazishaji kutoka usawazishaji uliopita kinapatikana — ugunduzi wa migogoro umeimarishwa"
+            "indexAvailableTooltip": "Kielelezo cha usawazishaji kutoka usawazishaji uliopita kinapatikana — ugunduzi wa migogoro umeimarishwa",
+            "journalFound": "Usawazishaji uliokatizwa umegunduliwa",
+            "journalDescription": "{completed}/{total} faili zimekamilika (ilisasishwa mwisho: {date})",
+            "resumeSync": "Endelea",
+            "dismissJournal": "Ondoa",
+            "reportRetried": "Majaribio yaliyorudiwa",
+            "reportVerifyFailed": "Uthibitishaji umeshindwa",
+            "errorBreakdown": "Muhtasari wa makosa",
+            "retryable": "inayoweza kurudiwa",
+            "verifyNone": "Hakuna uthibitishaji",
+            "verifySize": "Thibitisha ukubwa",
+            "verifySizeMtime": "Thibitisha ukubwa + wakati",
+            "verifyFull": "Uthibitishaji kamili",
+            "retries": "majaribio {count}",
+            "errorKind": {
+                "network": "Mtandao",
+                "auth": "Uthibitishaji",
+                "path_not_found": "Haijapatikana",
+                "permission_denied": "Ruhusa imekataliwa",
+                "quota_exceeded": "Kiwango kimezidi",
+                "rate_limit": "Kikomo cha kasi",
+                "timeout": "Timeout",
+                "file_locked": "Faili imefungwa",
+                "disk_error": "Hitilafu ya diski",
+                "unknown": "Haijulikani"
+            }
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Inaunganisha...",
                 "disconnected": "Imetenganishwa",
                 "newConnection": "Muunganisho mpya",
-                "syncing": "Inasawazisha..."
+                "syncing": "Inasawazisha...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Ndani tu",
             "showRemote": "Onyesha mbali",
             "showSystemMenu": "Onyesha upau wa menyu ya mfumo"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Funga vichupo vingine",
+            "closeAll": "Funga vichupo vyote"
         }
     }
 }

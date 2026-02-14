@@ -3,13 +3,14 @@
  * Dropdown for selecting storage protocol (FTP, WebDAV, S3, etc.)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Server,
     Cloud,
     Database,
     Lock,
     ShieldCheck,
+    ShieldAlert,
     HardDrive,
     ChevronDown,
     ExternalLink
@@ -487,6 +488,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 }) => {
     const t = useTranslation();
     const providerConfig = selectedProviderId ? getProviderById(selectedProviderId) : null;
+    const [showInsecureCertModal, setShowInsecureCertModal] = useState(false);
 
     if (protocol === 'sftp') {
         return (
@@ -794,17 +796,11 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             type="checkbox"
                             checked={options.verifyCert === false}
                             onChange={(e) => {
-                                const enableInsecureMode = e.target.checked;
-
-                                if (enableInsecureMode) {
-                                    const firstConfirm = window.confirm(t('protocol.insecureCertConfirmFirst'));
-                                    if (!firstConfirm) return;
-
-                                    const secondConfirm = window.confirm(t('protocol.insecureCertConfirmSecond'));
-                                    if (!secondConfirm) return;
+                                if (e.target.checked) {
+                                    setShowInsecureCertModal(true);
+                                } else {
+                                    onChange({ ...options, verifyCert: true });
                                 }
-
-                                onChange({ ...options, verifyCert: !enableInsecureMode });
                             }}
                             disabled={disabled}
                             className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
@@ -825,6 +821,44 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                                     {t('protocol.ftpWarningDesc')}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Insecure certificate confirmation modal */}
+                {showInsecureCertModal && (
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInsecureCertModal(false)}>
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                                        <ShieldAlert size={20} className="text-amber-500" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                        {t('protocol.insecureCertTitle')}
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                    {t('protocol.insecureCertConfirmFirst')}
+                                </p>
+                            </div>
+                            <div className="flex border-t border-gray-200 dark:border-gray-700">
+                                <button
+                                    onClick={() => setShowInsecureCertModal(false)}
+                                    className="flex-1 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                >
+                                    {t('common.cancel')}
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowInsecureCertModal(false);
+                                        onChange({ ...options, verifyCert: false });
+                                    }}
+                                    className="flex-1 px-4 py-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-l border-gray-200 dark:border-gray-700"
+                                >
+                                    {t('protocol.insecureCertAccept')}
+                                </button>
                             </div>
                         </div>
                     </div>

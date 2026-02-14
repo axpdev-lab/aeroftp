@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-bateragarria - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH bidez - shell seguruko fitxategi-transferentzia, gako-autentifikazioa onartzen du",
             "webdavTooltip": "WebDAV protokoloa - Nextcloud, CloudMe, Koofr, Synology NAS-ekin bateragarria",
-            "insecureCertConfirmFirst": "Abisua: ziurtagiri baliogabeak/norberak sinatutakoak onartzeko zorian zaude. Honek konexioaren segurtasuna ahultzen du. Jarraitu?",
-            "insecureCertConfirmSecond": "Berrespen azkena: ziurtagiri ez-seguru moduan jarraitu?"
+            "insecureCertConfirmFirst": "Ziurtagiri baliogabeak edo norberak sinatutakoak onartzeak konexioaren segurtasuna ahultzen du. Gaitu hau zerbitzarian fidatzen bazara eta arriskuak ulertzen badituzu soilik.",
+            "insecureCertTitle": "Segurtasun abisua",
+            "insecureCertAccept": "Onartu arriskua"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -1213,6 +1214,31 @@
                 "local": "Fitxategi lokalak eskaneatzen",
                 "remote": "Urruneko fitxategiak eskaneatzen",
                 "comparing": "Fitxategiak alderatzen"
+            },
+            "journalFound": "Etendako sinkronizazioa detektatu da",
+            "journalDescription": "{completed}/{total} fitxategi osatu (azken eguneratzea: {date})",
+            "resumeSync": "Berrekin",
+            "dismissJournal": "Baztertu",
+            "reportRetried": "Berriz saiatuta",
+            "reportVerifyFailed": "Egiaztapenak huts egin du",
+            "errorBreakdown": "Errore-xehetasuna",
+            "retryable": "berriro saiagarria",
+            "verifyNone": "Egiaztapenik ez",
+            "verifySize": "Tamaina egiaztatu",
+            "verifySizeMtime": "Tamaina + denbora egiaztatu",
+            "verifyFull": "Egiaztapen osoa",
+            "retries": "{count} berriro saiakera",
+            "errorKind": {
+                "network": "Sarea",
+                "auth": "Autentifikazioa",
+                "path_not_found": "Ez da aurkitu",
+                "permission_denied": "Baimena ukatua",
+                "quota_exceeded": "Kuota gainditua",
+                "rate_limit": "Tasa muga",
+                "timeout": "Timeout",
+                "file_locked": "Fitxategia blokeatuta",
+                "disk_error": "Disko errorea",
+                "unknown": "Ezezaguna"
             }
         },
         "ui": {
@@ -1263,7 +1289,9 @@
                 "connecting": "Konektatzen...",
                 "disconnected": "Deskonektatuta",
                 "newConnection": "Konexio berria",
-                "syncing": "Sinkronizatzen..."
+                "syncing": "Sinkronizatzen...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Tokikoa soilik",
             "showRemote": "Erakutsi urrunekoa",
             "showSystemMenu": "Erakutsi sistemaren menu-barra"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Itxi beste fitxak",
+            "closeAll": "Itxi fitxa guztiak"
         }
     }
 }

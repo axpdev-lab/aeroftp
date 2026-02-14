@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 suderinama saugykla – AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP per SSH – saugus failų perdavimas, palaikoma rakto autentifikacija",
             "webdavTooltip": "WebDAV protokolas – suderinamas su Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Įspėjimas: ketinate priimti negaliojančius/savarankiškai pasirašytus sertifikatus. Tai susilpnina ryšio saugumą. Tęsti?",
-            "insecureCertConfirmSecond": "Galutinis patvirtinimas: tęsti nesaugaus sertifikato režimu?"
+            "insecureCertConfirmFirst": "Negalimu arba savarankiskai pasirasytu sertifikatu priemimas silpnina ryšio sauguma. Naudokite tai tik jei pasiticate serveriu ir suprantate rizika.",
+            "insecureCertTitle": "Saugumo ispejimas",
+            "insecureCertAccept": "Priimti rizika"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Aplankų sukurta",
             "indexAvailable": "Indeksas talpykloje",
-            "indexAvailableTooltip": "Prieinamas ankstesnio sinchronizavimo indeksas — konfliktų aptikimas pagerėjęs"
+            "indexAvailableTooltip": "Prieinamas ankstesnio sinchronizavimo indeksas — konfliktų aptikimas pagerėjęs",
+            "journalFound": "Aptiktas nutrauktas sinchronizavimas",
+            "journalDescription": "{completed}/{total} failų baigta (paskutinis atnaujinimas: {date})",
+            "resumeSync": "Tęsti",
+            "dismissJournal": "Atmesti",
+            "reportRetried": "Pakartota",
+            "reportVerifyFailed": "Patikra nepavyko",
+            "errorBreakdown": "Klaidų suskirstymas",
+            "retryable": "galima pakartoti",
+            "verifyNone": "Be patikros",
+            "verifySize": "Tikrinti dydį",
+            "verifySizeMtime": "Tikrinti dydį + laiką",
+            "verifyFull": "Pilna patikra",
+            "retries": "{count} pakartojimų",
+            "errorKind": {
+                "network": "Tinklas",
+                "auth": "Autentifikacija",
+                "path_not_found": "Nerasta",
+                "permission_denied": "Prieiga uždrausta",
+                "quota_exceeded": "Kvota viršyta",
+                "rate_limit": "Dažnio limitas",
+                "timeout": "Timeout",
+                "file_locked": "Failas užrakintas",
+                "disk_error": "Disko klaida",
+                "unknown": "Nežinoma"
+            }
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Jungiamasi...",
                 "disconnected": "Atjungta",
                 "newConnection": "Naujas ryšys",
-                "syncing": "Sinchronizuojama..."
+                "syncing": "Sinchronizuojama...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Tik vietinis",
             "showRemote": "Rodyti nuotolinį",
             "showSystemMenu": "Rodyti sistemos meniu juostą"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Uzdaryti kitus skirtukus",
+            "closeAll": "Uzdaryti visus skirtukus"
         }
     }
 }

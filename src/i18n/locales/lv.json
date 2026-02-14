@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 saderīga krātuve — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP caur SSH — droša čaulas failu pārsūtīšana, atbalsta atslēgu autentifikāciju",
             "webdavTooltip": "WebDAV protokols — saderīgs ar Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Brīdinājums: jūs gatavojaties pieņemt nederīgus/pašparakstītus sertifikātus. Tas vājina savienojuma drošību. Turpināt?",
-            "insecureCertConfirmSecond": "Gala apstiprinājums: turpināt nedroša sertifikāta režīmā?"
+            "insecureCertConfirmFirst": "Nederīgu vai pasparakstitu sertifikatu piekemsana vajina savienojuma drosibu. Aktivizet to tikai tad, ja uzticaties serverim un saprotat riskus.",
+            "insecureCertTitle": "Drosibas bridinajums",
+            "insecureCertAccept": "Piemt risku"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Mapes izveidotas",
             "indexAvailable": "Indekss kešatmiņā",
-            "indexAvailableTooltip": "Pieejams iepriekšējās sinhronizācijas indekss — konfliktu noteikšana ir uzlabota"
+            "indexAvailableTooltip": "Pieejams iepriekšējās sinhronizācijas indekss — konfliktu noteikšana ir uzlabota",
+            "journalFound": "Konstatēta pārtraukta sinhronizācija",
+            "journalDescription": "{completed}/{total} failu pabeigti (pēdējoreiz atjaunināts: {date})",
+            "resumeSync": "Turpināt",
+            "dismissJournal": "Noraidīt",
+            "reportRetried": "Atkārtots",
+            "reportVerifyFailed": "Verifikācija neizdevās",
+            "errorBreakdown": "Kļūdu sadalījums",
+            "retryable": "atkārtojams",
+            "verifyNone": "Bez verifikācijas",
+            "verifySize": "Verificēt izmēru",
+            "verifySizeMtime": "Verificēt izmēru + laiku",
+            "verifyFull": "Pilna verifikācija",
+            "retries": "{count} atkārtojumi",
+            "errorKind": {
+                "network": "Tīkls",
+                "auth": "Autentifikācija",
+                "path_not_found": "Nav atrasts",
+                "permission_denied": "Piekļuve liegta",
+                "quota_exceeded": "Kvota pārsniegta",
+                "rate_limit": "Ātruma ierobežojums",
+                "timeout": "Timeout",
+                "file_locked": "Fails bloķēts",
+                "disk_error": "Diska kļūda",
+                "unknown": "Nezināms"
+            }
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Savienojas...",
                 "disconnected": "Atvienots",
                 "newConnection": "Jauns savienojums",
-                "syncing": "Sinhronizē..."
+                "syncing": "Sinhronizē...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Tikai lokāli",
             "showRemote": "Rādīt attālināto",
             "showSystemMenu": "Rādīt sistēmas izvēlnes joslu"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Aizvert citas cilnes",
+            "closeAll": "Aizvert visas cilnes"
         }
     }
 }

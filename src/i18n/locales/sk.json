@@ -1009,8 +1009,7 @@
             "encryptionImplicit": "Vyzadovat implicitne FTP cez TLS",
             "encryptionExplicitIfAvailable": "Pouzit explicitne FTP cez TLS, ak je dostupne",
             "acceptInvalidCerts": "Prijat neplatne alebo samopodpisane certifikaty",
-            "insecureCertConfirmFirst": "Upozornenie: chystáte sa prijať neplatné/samopodpísané certifikáty. To oslabuje bezpečnosť pripojenia. Pokračovať?",
-            "insecureCertConfirmSecond": "Konečné potvrdenie: pokračovať v režime nezabezpečeného certifikátu?",
+            "insecureCertConfirmFirst": "Prijatie neplatnych alebo samopodpisanych certifikatov oslabuje bezpecnost pripojenia. Povolte to len ak doverujete serveru a chape rizika.",
             "boxDesc": "Pripojit sa uctom Box",
             "pcloudDesc": "Pripojit sa uctom pCloud",
             "azureDesc": "Ulozisko Microsoft Azure",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud - 10 GB bezplatneho uloziska, regiony US/EU",
             "s3Tooltip": "S3-kompatibilne ulozisko - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP cez SSH - bezpecny prenos suborov, podpora autentifikacie klucom",
-            "webdavTooltip": "Protokol WebDAV - kompatibilny s Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV - kompatibilny s Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Varovanie bezpecnosti",
+            "insecureCertAccept": "Prija riziko"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Vytvorenych priecinkov",
             "indexAvailable": "Index v pamati cache",
-            "indexAvailableTooltip": "Index z predchadzajucej synchronizacie je dostupny — detekcia konfliktov je vylepsena"
+            "indexAvailableTooltip": "Index z predchadzajucej synchronizacie je dostupny — detekcia konfliktov je vylepsena",
+            "journalFound": "Zistená prerušená synchronizácia",
+            "journalDescription": "{completed}/{total} súborov dokončených (posledná aktualizácia: {date})",
+            "resumeSync": "Pokračovať",
+            "dismissJournal": "Zamietnuť",
+            "reportRetried": "Opakované pokusy",
+            "reportVerifyFailed": "Overenie zlyhalo",
+            "errorBreakdown": "Rozčlenenie chýb",
+            "retryable": "opakovateľná",
+            "verifyNone": "Bez overenia",
+            "verifySize": "Overiť veľkosť",
+            "verifySizeMtime": "Overiť veľkosť + čas",
+            "verifyFull": "Úplné overenie",
+            "retries": "{count} opakovaní",
+            "errorKind": {
+                "network": "Sieť",
+                "auth": "Autentifikácia",
+                "path_not_found": "Nenájdené",
+                "permission_denied": "Prístup zamietnutý",
+                "quota_exceeded": "Kvóta prekročená",
+                "rate_limit": "Limit rýchlosti",
+                "timeout": "Timeout",
+                "file_locked": "Súbor uzamknutý",
+                "disk_error": "Chyba disku",
+                "unknown": "Neznáme"
+            }
         },
         "ui": {
             "syncing": "Synchronizacia...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Pripajanie...",
                 "disconnected": "Odpojeny",
                 "newConnection": "Nove pripojenie",
-                "syncing": "Synchronizacia..."
+                "syncing": "Synchronizacia...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Len lokálne",
             "showRemote": "Zobraziť vzdialené",
             "showSystemMenu": "Zobraziť systémové menu"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Zavriet ostatne karty",
+            "closeAll": "Zavriet vsetky karty"
         }
     }
 }

@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-kompatibler Speicher - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP über SSH - sichere Shell-Dateiübertragung, unterstützt Schlüsselauthentifizierung",
             "webdavTooltip": "WebDAV-Protokoll - kompatibel mit Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Warnung: Sie sind dabei, ungültige/selbstsignierte Zertifikate zu akzeptieren. Dies schwächt die Verbindungssicherheit. Fortfahren?",
-            "insecureCertConfirmSecond": "Abschließende Bestätigung: im unsicheren Zertifikatsmodus fortfahren?"
+            "insecureCertConfirmFirst": "Das Akzeptieren ungültiger oder selbstsignierter Zertifikate schwächt die Verbindungssicherheit. Aktivieren Sie dies nur, wenn Sie dem Server vertrauen und die Risiken verstehen.",
+            "insecureCertTitle": "Sicherheitswarnung",
+            "insecureCertAccept": "Risiko akzeptieren"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Ordner erstellt",
             "indexAvailable": "Index zwischengespeichert",
-            "indexAvailableTooltip": "Ein Synchronisierungsindex aus einer früheren Synchronisierung ist verfügbar — Konflikterkennung ist verbessert"
+            "indexAvailableTooltip": "Ein Synchronisierungsindex aus einer früheren Synchronisierung ist verfügbar — Konflikterkennung ist verbessert",
+            "journalFound": "Unterbrochene Synchronisierung erkannt",
+            "journalDescription": "{completed}/{total} Dateien abgeschlossen (letzte Aktualisierung: {date})",
+            "resumeSync": "Fortsetzen",
+            "dismissJournal": "Verwerfen",
+            "reportRetried": "Wiederholt",
+            "reportVerifyFailed": "Überprüfung fehlgeschlagen",
+            "errorBreakdown": "Fehleraufschlüsselung",
+            "retryable": "wiederholbar",
+            "verifyNone": "Keine Überprüfung",
+            "verifySize": "Größe überprüfen",
+            "verifySizeMtime": "Größe + Zeit überprüfen",
+            "verifyFull": "Vollständige Überprüfung",
+            "retries": "{count} Wiederholungen",
+            "errorKind": {
+                "network": "Netzwerk",
+                "auth": "Authentifizierung",
+                "path_not_found": "Nicht gefunden",
+                "permission_denied": "Zugriff verweigert",
+                "quota_exceeded": "Kontingent überschritten",
+                "rate_limit": "Ratenbegrenzung",
+                "timeout": "Timeout",
+                "file_locked": "Datei gesperrt",
+                "disk_error": "Festplattenfehler",
+                "unknown": "Unbekannt"
+            }
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Verbinde...",
                 "disconnected": "Getrennt",
                 "newConnection": "Neue Verbindung",
-                "syncing": "Synchronisiere..."
+                "syncing": "Synchronisiere...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Nur lokal",
             "showRemote": "Remote anzeigen",
             "showSystemMenu": "Systemmenüleiste anzeigen"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Andere Tabs schliessen",
+            "closeAll": "Alle Tabs schliessen"
         }
     }
 }

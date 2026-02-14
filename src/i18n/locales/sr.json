@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-компатибилно складиште - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP преко SSH - безбедни пренос датотека преко шела, подржава аутентификацију кључем",
             "webdavTooltip": "WebDAV протокол - компатибилан са Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Упозорење: управо ћете прихватити неважеће/самопотписане сертификате. Ово слаби безбедност везе. Наставити?",
-            "insecureCertConfirmSecond": "Коначна потврда: наставити са режимом несигурних сертификата?"
+            "insecureCertConfirmFirst": "Прихватање неважећих или самопотписаних сертификата слаби безбедност везе. Омогућите ово само ако верујете серверу и разумете ризике.",
+            "insecureCertTitle": "Упозорење о безбедности",
+            "insecureCertAccept": "Прихвати ризик"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Fascikle kreirane",
             "indexAvailable": "Indeks keširan",
-            "indexAvailableTooltip": "Indeks sinhronizacije iz prethodne sinhronizacije je dostupan — detekcija konflikata je poboljšana"
+            "indexAvailableTooltip": "Indeks sinhronizacije iz prethodne sinhronizacije je dostupan — detekcija konflikata je poboljšana",
+            "journalFound": "Otkrivena prekinuta sinhronizacija",
+            "journalDescription": "{completed}/{total} fajlova završeno (poslednje ažuriranje: {date})",
+            "resumeSync": "Nastavi",
+            "dismissJournal": "Odbaci",
+            "reportRetried": "Ponovljeni pokušaji",
+            "reportVerifyFailed": "Verifikacija neuspešna",
+            "errorBreakdown": "Pregled grešaka",
+            "retryable": "ponovljiva",
+            "verifyNone": "Bez verifikacije",
+            "verifySize": "Proveri veličinu",
+            "verifySizeMtime": "Proveri veličinu + vreme",
+            "verifyFull": "Potpuna verifikacija",
+            "retries": "{count} ponovnih pokušaja",
+            "errorKind": {
+                "network": "Mreža",
+                "auth": "Autentifikacija",
+                "path_not_found": "Nije pronađeno",
+                "permission_denied": "Pristup odbijen",
+                "quota_exceeded": "Kvota premašena",
+                "rate_limit": "Ograničenje brzine",
+                "timeout": "Timeout",
+                "file_locked": "Fajl zaključan",
+                "disk_error": "Greška diska",
+                "unknown": "Nepoznato"
+            }
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Повезивање...",
                 "disconnected": "Прекинуто",
                 "newConnection": "Нова конекција",
-                "syncing": "Синхронизација..."
+                "syncing": "Синхронизација...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Само локално",
             "showRemote": "Прикажи удаљено",
             "showSystemMenu": "Прикажи системски мени"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Затвори друге картице",
+            "closeAll": "Затвори све картице"
         }
     }
 }

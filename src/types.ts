@@ -266,6 +266,80 @@ export interface SyncIndex {
   files: Record<string, SyncIndexEntry>;
 }
 
+// ============ Sync Phase 2: Reliability Types ============
+
+export type SyncErrorKind =
+  | 'network'
+  | 'auth'
+  | 'path_not_found'
+  | 'permission_denied'
+  | 'quota_exceeded'
+  | 'rate_limit'
+  | 'timeout'
+  | 'file_locked'
+  | 'disk_error'
+  | 'unknown';
+
+export interface SyncErrorInfo {
+  kind: SyncErrorKind;
+  message: string;
+  retryable: boolean;
+  file_path: string | null;
+}
+
+export interface RetryPolicy {
+  max_retries: number;
+  base_delay_ms: number;
+  max_delay_ms: number;
+  timeout_ms: number;
+  backoff_multiplier: number;
+}
+
+export type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full';
+
+export interface VerifyResult {
+  path: string;
+  passed: boolean;
+  policy: VerifyPolicy;
+  expected_size: number;
+  actual_size: number | null;
+  size_match: boolean;
+  mtime_match: boolean | null;
+  hash_match: boolean | null;
+  message: string | null;
+}
+
+export type JournalEntryStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'verify_failed';
+
+export interface SyncJournalEntry {
+  relative_path: string;
+  action: string;
+  status: JournalEntryStatus;
+  attempts: number;
+  last_error: SyncErrorInfo | null;
+  verified: boolean | null;
+  bytes_transferred: number;
+}
+
+export interface SyncJournal {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  local_path: string;
+  remote_path: string;
+  direction: SyncDirection;
+  retry_policy: RetryPolicy;
+  verify_policy: VerifyPolicy;
+  entries: SyncJournalEntry[];
+  completed: boolean;
+}
+
 // Archive browsing types
 export interface ArchiveEntry {
   name: string;

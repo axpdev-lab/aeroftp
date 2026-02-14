@@ -1890,6 +1890,11 @@ const App: React.FC = () => {
     setSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
+  const closeAllSessions = async () => {
+    await disconnectFromFtp();
+    setSessions([]);
+  };
+
   const handleNewTabFromSavedServer = () => {
     // Capture current state before any changes
     const capturedRemoteFiles = [...remoteFiles];
@@ -4472,7 +4477,7 @@ const App: React.FC = () => {
         </header>
       )}
 
-      <main className={`flex-1 min-h-0 p-6 ${!isConnected && showConnectionScreen ? 'overflow-hidden' : 'overflow-auto'} ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+      <main className={`flex-1 min-h-0 p-6 overflow-auto ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
         {!isConnected && showConnectionScreen ? (
           <ConnectionScreen
             connectionParams={connectionParams}
@@ -4705,6 +4710,7 @@ const App: React.FC = () => {
                 activeSessionId={activeSessionId}
                 onTabClick={switchSession}
                 onTabClose={closeSession}
+                onCloseAll={closeAllSessions}
                 onNewTab={handleNewTabFromSavedServer}
                 cloudTab={isCloudActive ? {
                   enabled: true,

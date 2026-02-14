@@ -1009,8 +1009,7 @@
             "encryptionImplicit": "Требовать неявный FTP поверх TLS",
             "encryptionExplicitIfAvailable": "Использовать явный FTP поверх TLS, если доступно",
             "acceptInvalidCerts": "Принимать недействительные или самоподписанные сертификаты",
-            "insecureCertConfirmFirst": "Предупреждение: вы собираетесь принять недействительные/самоподписанные сертификаты. Это ослабляет безопасность соединения. Продолжить?",
-            "insecureCertConfirmSecond": "Окончательное подтверждение: продолжить в режиме небезопасного сертификата?",
+            "insecureCertConfirmFirst": "Принятие недействительных или самоподписанных сертификатов ослабляет безопасность соединения. Включайте это только если доверяете серверу и понимаете риски.",
             "boxDesc": "Подключиться через аккаунт Box",
             "pcloudDesc": "Подключиться через аккаунт pCloud",
             "azureDesc": "Хранилище Microsoft Azure",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud — 10 ГБ бесплатного хранилища, регионы US/EU",
             "s3Tooltip": "S3-совместимое хранилище — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP по SSH — безопасная передача файлов, поддержка аутентификации по ключу",
-            "webdavTooltip": "Протокол WebDAV — совместим с Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Протокол WebDAV — совместим с Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Предупреждение безопасности",
+            "insecureCertAccept": "Принять риск"
         },
         "shortcuts": {
             "title": "Горячие клавиши",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Созданных папок",
             "indexAvailable": "Индекс кэширован",
-            "indexAvailableTooltip": "Индекс предыдущей синхронизации доступен — обнаружение конфликтов улучшено"
+            "indexAvailableTooltip": "Индекс предыдущей синхронизации доступен — обнаружение конфликтов улучшено",
+            "journalFound": "Обнаружена прерванная синхронизация",
+            "journalDescription": "{completed}/{total} файлов завершено (последнее обновление: {date})",
+            "resumeSync": "Возобновить",
+            "dismissJournal": "Отклонить",
+            "reportRetried": "Повторных попыток",
+            "reportVerifyFailed": "Проверка не пройдена",
+            "errorBreakdown": "Разбивка ошибок",
+            "retryable": "повторяемая",
+            "verifyNone": "Без проверки",
+            "verifySize": "Проверка размера",
+            "verifySizeMtime": "Проверка размера + времени",
+            "verifyFull": "Полная проверка",
+            "retries": "{count} повторных попыток",
+            "errorKind": {
+                "network": "Сеть",
+                "auth": "Аутентификация",
+                "path_not_found": "Не найдено",
+                "permission_denied": "Доступ запрещён",
+                "quota_exceeded": "Квота превышена",
+                "rate_limit": "Ограничение частоты",
+                "timeout": "Timeout",
+                "file_locked": "Файл заблокирован",
+                "disk_error": "Ошибка диска",
+                "unknown": "Неизвестно"
+            }
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Подключение...",
                 "disconnected": "Отключено",
                 "newConnection": "Новое подключение",
-                "syncing": "Синхронизация..."
+                "syncing": "Синхронизация...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Только локально",
             "showRemote": "Показать удаленное",
             "showSystemMenu": "Показать системное меню"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Закрыть другие вкладки",
+            "closeAll": "Закрыть все вкладки"
         }
     }
 }

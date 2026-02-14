@@ -1042,8 +1042,9 @@
             "s3Tooltip": "កន្លែងផ្ទុកដែលត្រូវគ្នានឹង S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP តាម SSH - ការផ្ទេរឯកសារសុវត្ថិភាព, គាំទ្រការផ្ទៀងផ្ទាត់តាមកូនសោរ",
             "webdavTooltip": "ពិធីការ WebDAV - ត្រូវគ្នានឹង Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "ការព្រមាន៖ អ្នករៀបនឹងទទួលយកវិញ្ញាបនបត្រមិនត្រឹមត្រូវ/ហត្ថលេខាដោយខ្លួនឯង។ វាកាត់បន្ថយសុវត្ថិភាពការតភ្ជាប់។ បន្ត?",
-            "insecureCertConfirmSecond": "ការបញ្ជាក់ចុងក្រោយ៖ បន្តក្នុងរបៀបវិញ្ញាបនបត្រមិនមានសុវត្ថិភាព?"
+            "insecureCertConfirmFirst": "ការទទួលយកវិញ្ញាបនបត្រដែលមិនត្រឹមត្រូវ ឬចុះហត្ថលេខាដោយខ្លួនឯងនឹងធ្វើឲ្យសុវត្ថិភាពនៃការតភ្ជាប់ចុះខ្សោយ។ បើកតែនៅពេលដែលអ្នកទុកចិត្តម៉ាស៊ីនមេ និងយល់ពីហានិភ័យប៉ុណ្ណោះ។",
+            "insecureCertTitle": "ការព្រមានសុវត្ថិភាព",
+            "insecureCertAccept": "ទទួលយកហានិភ័យ"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "ថតបានបង្កើត",
             "indexAvailable": "សន្ទស្សន៍សមកាលកម្មត្រូវបានរក្សាទុក",
-            "indexAvailableTooltip": "សន្ទស្សន៍ពីការធ្វើសមកាលកម្មមុនគឺអាចប្រើបាន - ការរកឃើញជម្លោះត្រូវបានកែលម្អ"
+            "indexAvailableTooltip": "សន្ទស្សន៍ពីការធ្វើសមកាលកម្មមុនគឺអាចប្រើបាន - ការរកឃើញជម្លោះត្រូវបានកែលម្អ",
+            "journalFound": "រកឃើញការធ្វើសមកាលកម្មដែលបានរំខាន",
+            "journalDescription": "{completed}/{total} ឯកសារបានបញ្ចប់ (ធ្វើបច្ចុប្បន្នភាពចុងក្រោយ: {date})",
+            "resumeSync": "បន្ត",
+            "dismissJournal": "បដិសេធ",
+            "reportRetried": "ព្យាយាមម្តងទៀត",
+            "reportVerifyFailed": "ការផ្ទៀងផ្ទាត់បរាជ័យ",
+            "errorBreakdown": "ការបែងចែកកំហុស",
+            "retryable": "អាចព្យាយាមម្តងទៀត",
+            "verifyNone": "គ្មានការផ្ទៀងផ្ទាត់",
+            "verifySize": "ផ្ទៀងផ្ទាត់ទំហំ",
+            "verifySizeMtime": "ផ្ទៀងផ្ទាត់ទំហំ + ពេលវេលា",
+            "verifyFull": "ការផ្ទៀងផ្ទាត់ពេញលេញ",
+            "retries": "{count} ការព្យាយាមម្តងទៀត",
+            "errorKind": {
+                "network": "បណ្ដាញ",
+                "auth": "ការផ្ទៀងផ្ទាត់អត្តសញ្ញាណ",
+                "path_not_found": "រកមិនឃើញ",
+                "permission_denied": "ការអនុញ្ញាតត្រូវបានបដិសេធ",
+                "quota_exceeded": "កូតាលើស",
+                "rate_limit": "កំណត់អត្រា",
+                "timeout": "Timeout",
+                "file_locked": "ឯកសារត្រូវបានចាក់សោ",
+                "disk_error": "កំហុសថាស",
+                "unknown": "មិនស្គាល់"
+            }
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -1263,7 +1289,9 @@
                 "connecting": "កំពុងភ្ជាប់...",
                 "disconnected": "បានផ្ដាច់",
                 "newConnection": "ការភ្ជាប់ថ្មី",
-                "syncing": "កំពុងធ្វើសមកាលកម្ម..."
+                "syncing": "កំពុងធ្វើសមកាលកម្ម...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "មូលដ្ឋានតែប៉ុណ្ណោះ",
             "showRemote": "បង្ហាញពីចម្ងាយ",
             "showSystemMenu": "បង្ហាញរបារម៉ឺនុយប្រព័ន្ធ"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "បិទផ្ទាំងផ្សេងទៀត",
+            "closeAll": "បិទផ្ទាំងទាំងអស់"
         }
     }
 }

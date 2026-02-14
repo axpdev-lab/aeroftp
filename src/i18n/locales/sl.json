@@ -1009,8 +1009,7 @@
             "encryptionImplicit": "Zahtevaj implicitni FTP prek TLS",
             "encryptionExplicitIfAvailable": "Uporabi eksplicitni FTP prek TLS, če je na voljo",
             "acceptInvalidCerts": "Sprejmi neveljavna ali samopodpisana potrdila",
-            "insecureCertConfirmFirst": "Opozorilo: nameravate sprejeti neveljavna/samopodpisana potrdila. To oslabi varnost povezave. Nadaljujem?",
-            "insecureCertConfirmSecond": "Končna potrditev: nadaljujem v načinu nezavarovanega potrdila?",
+            "insecureCertConfirmFirst": "Sprejemanje neveljavnih ali samopodpisanih potrdil slabša varnost povezave. Omogocite to le, ce zaupate strežniku in razumete tveganja.",
             "boxDesc": "Poveži se z računom Box",
             "pcloudDesc": "Poveži se z računom pCloud",
             "azureDesc": "Shramba Microsoft Azure",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud - 10 GB brezplačnega prostora, regije ZDA/EU",
             "s3Tooltip": "S3-združljiva shramba - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP prek SSH - varen prenos datotek prek lupine, podpira overitev s ključem",
-            "webdavTooltip": "Protokol WebDAV - združljiv z Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protokol WebDAV - združljiv z Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Varnostno opozorilo",
+            "insecureCertAccept": "Sprejmi tveganje"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Map ustvarjenih",
             "indexAvailable": "Indeks predpomnjen",
-            "indexAvailableTooltip": "Indeks sinhronizacije iz prejšnje sinhronizacije je na voljo — zaznavanje sporov je izboljšano"
+            "indexAvailableTooltip": "Indeks sinhronizacije iz prejšnje sinhronizacije je na voljo — zaznavanje sporov je izboljšano",
+            "journalFound": "Zaznana prekinjena sinhronizacija",
+            "journalDescription": "{completed}/{total} datotek dokončanih (zadnja posodobitev: {date})",
+            "resumeSync": "Nadaljuj",
+            "dismissJournal": "Opusti",
+            "reportRetried": "Ponovljeni poskusi",
+            "reportVerifyFailed": "Preverjanje neuspešno",
+            "errorBreakdown": "Razčlenitev napak",
+            "retryable": "ponovljiva",
+            "verifyNone": "Brez preverjanja",
+            "verifySize": "Preveri velikost",
+            "verifySizeMtime": "Preveri velikost + čas",
+            "verifyFull": "Popolno preverjanje",
+            "retries": "{count} ponovitev",
+            "errorKind": {
+                "network": "Omrežje",
+                "auth": "Avtentikacija",
+                "path_not_found": "Ni najdeno",
+                "permission_denied": "Dovoljenje zavrnjeno",
+                "quota_exceeded": "Kvota presežena",
+                "rate_limit": "Omejitev hitrosti",
+                "timeout": "Timeout",
+                "file_locked": "Datoteka zaklenjena",
+                "disk_error": "Napaka diska",
+                "unknown": "Neznano"
+            }
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Povezovanje...",
                 "disconnected": "Prekinjeno",
                 "newConnection": "Nova povezava",
-                "syncing": "Sinhronizacija..."
+                "syncing": "Sinhronizacija...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Samo lokalno",
             "showRemote": "Prikaži oddaljeno",
             "showSystemMenu": "Prikaži sistemski meni"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Zapri druge zavihke",
+            "closeAll": "Zapri vse zavihke"
         }
     }
 }

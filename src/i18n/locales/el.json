@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Συμβατός αποθηκευτικός χώρος S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP μέσω SSH - ασφαλής μεταφορά αρχείων μέσω shell, υποστηρίζει πιστοποίηση με κλειδί",
             "webdavTooltip": "Πρωτόκολλο WebDAV - συμβατό με Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Προειδοποίηση: πρόκειται να αποδεχτείτε μη έγκυρα/αυτο-υπογεγραμμένα πιστοποιητικά. Αυτό αποδυναμώνει την ασφάλεια σύνδεσης. Συνέχεια;",
-            "insecureCertConfirmSecond": "Τελική επιβεβαίωση: συνέχεια με λειτουργία μη ασφαλούς πιστοποιητικού;"
+            "insecureCertConfirmFirst": "Η αποδοχή άκυρων ή αυτο-υπογεγραμμένων πιστοποιητικών ασθενεί την ασφάλεια της σύνδεσης. Ενεργοποιήστε το μόνο αν πιστεύετε στον εξυπηρετητή και καταλαβαίνετε τους κινδύνους.",
+            "insecureCertTitle": "Προειδοποίηση ασφάλειας",
+            "insecureCertAccept": "Αποδοχή κινδύνου"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Φάκελοι δημιουργήθηκαν",
             "indexAvailable": "Ευρετήριο αποθηκευμένο",
-            "indexAvailableTooltip": "Ένα ευρετήριο συγχρονισμού από προηγούμενο συγχρονισμό είναι διαθέσιμο — η ανίχνευση συγκρούσεων είναι βελτιωμένη"
+            "indexAvailableTooltip": "Ένα ευρετήριο συγχρονισμού από προηγούμενο συγχρονισμό είναι διαθέσιμο — η ανίχνευση συγκρούσεων είναι βελτιωμένη",
+            "journalFound": "Εντοπίστηκε διακοπείς συγχρονισμός",
+            "journalDescription": "{completed}/{total} αρχεία ολοκληρώθηκαν (τελευταία ενημέρωση: {date})",
+            "resumeSync": "Συνέχιση",
+            "dismissJournal": "Απόρριψη",
+            "reportRetried": "Επαναπροσπάθεια",
+            "reportVerifyFailed": "Αποτυχία επαλήθευσης",
+            "errorBreakdown": "Ανάλυση σφαλμάτων",
+            "retryable": "επαναληπτέο",
+            "verifyNone": "Χωρίς επαλήθευση",
+            "verifySize": "Επαλήθευση μεγέθους",
+            "verifySizeMtime": "Επαλήθευση μεγέθους + χρόνου",
+            "verifyFull": "Πλήρης επαλήθευση",
+            "retries": "{count} επαναπροσπάθειες",
+            "errorKind": {
+                "network": "Δίκτυο",
+                "auth": "Πιστοποίηση",
+                "path_not_found": "Δεν βρέθηκε",
+                "permission_denied": "Άρνηση πρόσβασης",
+                "quota_exceeded": "Υπέρβαση ορίου",
+                "rate_limit": "Όριο ρυθμού",
+                "timeout": "Timeout",
+                "file_locked": "Αρχείο κλειδωμένο",
+                "disk_error": "Σφάλμα δίσκου",
+                "unknown": "Άγνωστο"
+            }
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Σύνδεση...",
                 "disconnected": "Αποσυνδεδεμένο",
                 "newConnection": "Νέα σύνδεση",
-                "syncing": "Συγχρονισμός..."
+                "syncing": "Συγχρονισμός...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Μόνο τοπικά",
             "showRemote": "Εμφάνιση απομακρυσμένου",
             "showSystemMenu": "Εμφάνιση γραμμής μενού συστήματος"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Κλείσιμο άλλων καρτελών",
+            "closeAll": "Κλείσιμο όλων των καρτελών"
         }
     }
 }

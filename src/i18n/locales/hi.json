@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-संगत स्टोरेज - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH पर SFTP - सुरक्षित शेल फ़ाइल ट्रांसफ़र, की प्रमाणीकरण समर्थित",
             "webdavTooltip": "WebDAV प्रोटोकॉल - Nextcloud, CloudMe, Koofr, Synology NAS के साथ संगत",
-            "insecureCertConfirmFirst": "चेतावनी: आप अमान्य/स्व-हस्ताक्षरित प्रमाणपत्र स्वीकार करने वाले हैं। यह कनेक्शन सुरक्षा कमजोर करता है। जारी रखें?",
-            "insecureCertConfirmSecond": "अंतिम पुष्टि: असुरक्षित प्रमाणपत्र मोड में आगे बढ़ें?"
+            "insecureCertConfirmFirst": "अमान्य या स्व-हस्ताक्षरित प्रमाणपत्र स्वीकार करने से कनेक्शन की सुरक्षा कमजोर होती है। इसे केवल तभी सक्षम करें जब आप सर्वर पर भरोसा करते हों और जोखिमों को समझते हों।",
+            "insecureCertTitle": "सुरक्षा चेतावनी",
+            "insecureCertAccept": "जोखिम स्वीकार करें"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -1213,6 +1214,31 @@
                 "local": "स्थानीय फ़ाइलें स्कैन हो रही हैं",
                 "remote": "रिमोट फ़ाइलें स्कैन हो रही हैं",
                 "comparing": "फ़ाइलों की तुलना हो रही है"
+            },
+            "journalFound": "बाधित सिंक पाया गया",
+            "journalDescription": "{completed}/{total} फ़ाइलें पूर्ण ({date} को अंतिम अपडेट)",
+            "resumeSync": "फिर से शुरू करें",
+            "dismissJournal": "खारिज करें",
+            "reportRetried": "पुनः प्रयास किया गया",
+            "reportVerifyFailed": "सत्यापन विफल",
+            "errorBreakdown": "त्रुटि विश्लेषण",
+            "retryable": "पुनः प्रयास योग्य",
+            "verifyNone": "कोई सत्यापन नहीं",
+            "verifySize": "आकार सत्यापन",
+            "verifySizeMtime": "आकार + समय सत्यापन",
+            "verifyFull": "पूर्ण सत्यापन",
+            "retries": "{count} पुनः प्रयास",
+            "errorKind": {
+                "network": "नेटवर्क",
+                "auth": "प्रमाणीकरण",
+                "path_not_found": "नहीं मिला",
+                "permission_denied": "अनुमति अस्वीकृत",
+                "quota_exceeded": "कोटा पार",
+                "rate_limit": "दर सीमा",
+                "timeout": "Timeout",
+                "file_locked": "फ़ाइल लॉक",
+                "disk_error": "डिस्क त्रुटि",
+                "unknown": "अज्ञात"
             }
         },
         "ui": {
@@ -1263,7 +1289,9 @@
                 "connecting": "कनेक्ट हो रहा है...",
                 "disconnected": "डिस्कनेक्टेड",
                 "newConnection": "नया कनेक्शन",
-                "syncing": "सिंक हो रहा है..."
+                "syncing": "सिंक हो रहा है...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "केवल स्थानीय",
             "showRemote": "रिमोट दिखाएं",
             "showSystemMenu": "सिस्टम मेनू बार दिखाएं"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "अन्य टैब बंद करें",
+            "closeAll": "सभी टैब बंद करें"
         }
     }
 }

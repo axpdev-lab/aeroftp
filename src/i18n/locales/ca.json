@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Emmagatzematge compatible amb S3 — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP sobre SSH — transferència segura de fitxers per shell, compatible amb autenticació per clau",
             "webdavTooltip": "Protocol WebDAV — compatible amb Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Avís: esteu a punt d'acceptar certificats no vàlids/autosignats. Això debilita la seguretat de la connexió. Voleu continuar?",
-            "insecureCertConfirmSecond": "Confirmació final: continuar en mode de certificat insegur?"
+            "insecureCertConfirmFirst": "Acceptar certificats no vàlids o autosignats debilita la seguretat de la connexió. Activeu-ho només si confieu en el servidor i enteneu els riscos.",
+            "insecureCertTitle": "Advertència de seguretat",
+            "insecureCertAccept": "Acceptar el risc"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Carpetes creades",
             "indexAvailable": "Índex en memòria cau",
-            "indexAvailableTooltip": "Hi ha un índex de sincronització d'una sincronització anterior disponible — la detecció de conflictes és millorada"
+            "indexAvailableTooltip": "Hi ha un índex de sincronització d'una sincronització anterior disponible — la detecció de conflictes és millorada",
+            "journalFound": "S'ha detectat una sincronització interrompuda",
+            "journalDescription": "{completed}/{total} fitxers completats (última actualització: {date})",
+            "resumeSync": "Reprèn",
+            "dismissJournal": "Descarta",
+            "reportRetried": "Reintentats",
+            "reportVerifyFailed": "Verificació fallida",
+            "errorBreakdown": "Desglossament d'errors",
+            "retryable": "reintentable",
+            "verifyNone": "Sense verificació",
+            "verifySize": "Verificar mida",
+            "verifySizeMtime": "Verificar mida + temps",
+            "verifyFull": "Verificació completa",
+            "retries": "{count} reintents",
+            "errorKind": {
+                "network": "Xarxa",
+                "auth": "Autenticació",
+                "path_not_found": "No trobat",
+                "permission_denied": "Permís denegat",
+                "quota_exceeded": "Quota superada",
+                "rate_limit": "Límit de velocitat",
+                "timeout": "Timeout",
+                "file_locked": "Fitxer bloquejat",
+                "disk_error": "Error de disc",
+                "unknown": "Desconegut"
+            }
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Connectant...",
                 "disconnected": "Desconnectat",
                 "newConnection": "Nova connexió",
-                "syncing": "Sincronitzant..."
+                "syncing": "Sincronitzant...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Només local",
             "showRemote": "Mostrar remot",
             "showSystemMenu": "Mostrar barra de menú del sistema"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Tancar altres pestanyes",
+            "closeAll": "Tancar totes les pestanyes"
         }
     }
 }

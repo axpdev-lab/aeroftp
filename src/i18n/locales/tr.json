@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3 uyumlu depolama - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SSH üzerinden SFTP - güvenli kabuk dosya aktarımı, anahtar kimlik doğrulaması destekler",
             "webdavTooltip": "WebDAV protokolü - Nextcloud, CloudMe, Koofr, Synology NAS ile uyumlu",
-            "insecureCertConfirmFirst": "Uyarı: geçersiz/kendinden imzalı sertifikaları kabul etmek üzeresiniz. Bu bağlantı güvenliğini zayıflatır. Devam edilsin mi?",
-            "insecureCertConfirmSecond": "Son onay: güvensiz sertifika moduyla devam edilsin mi?"
+            "insecureCertConfirmFirst": "Gecersiz veya kendinden imzali sertifikalar kabul etmek baglanti guvenligini zayiflatir. Bunu yalnizca sunucuya guveniyorsaniz ve riskleri anliyorsaniz etkinlestirin.",
+            "insecureCertTitle": "Guvenlik Uyarisi",
+            "insecureCertAccept": "Riski Kabul Et"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Oluşturulan klasörler",
             "indexAvailable": "Dizin önbelleğe alındı",
-            "indexAvailableTooltip": "Önceki bir senkronizasyondan dizin mevcut — çakışma algılama geliştirildi"
+            "indexAvailableTooltip": "Önceki bir senkronizasyondan dizin mevcut — çakışma algılama geliştirildi",
+            "journalFound": "Kesintiye uğramış senkronizasyon algılandı",
+            "journalDescription": "{completed}/{total} dosya tamamlandı (son güncelleme: {date})",
+            "resumeSync": "Devam Et",
+            "dismissJournal": "Kapat",
+            "reportRetried": "Yeniden denendi",
+            "reportVerifyFailed": "Doğrulama başarısız",
+            "errorBreakdown": "Hata dökümü",
+            "retryable": "tekrarlanabilir",
+            "verifyNone": "Doğrulama yok",
+            "verifySize": "Boyutu doğrula",
+            "verifySizeMtime": "Boyut + zamanı doğrula",
+            "verifyFull": "Tam doğrulama",
+            "retries": "{count} yeniden deneme",
+            "errorKind": {
+                "network": "Ağ",
+                "auth": "Kimlik doğrulama",
+                "path_not_found": "Bulunamadı",
+                "permission_denied": "İzin reddedildi",
+                "quota_exceeded": "Kota aşıldı",
+                "rate_limit": "Hız limiti",
+                "timeout": "Timeout",
+                "file_locked": "Dosya kilitli",
+                "disk_error": "Disk hatası",
+                "unknown": "Bilinmiyor"
+            }
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Bağlanıyor...",
                 "disconnected": "Bağlantı kesildi",
                 "newConnection": "Yeni bağlantı",
-                "syncing": "Senkronize ediliyor..."
+                "syncing": "Senkronize ediliyor...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Yalnızca yerel",
             "showRemote": "Uzak göster",
             "showSystemMenu": "Sistem menü çubuğunu göster"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Diger sekmeleri kapat",
+            "closeAll": "Tum sekmeleri kapat"
         }
     }
 }

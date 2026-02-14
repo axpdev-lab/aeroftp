@@ -4,6 +4,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
@@ -147,6 +148,7 @@ impl SyncResult {
 /// Check if a path matches any exclude pattern
 pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
     let path_lower = path.to_lowercase();
+    let path_segments: Vec<&str> = path_lower.split(&['/', '\\'][..]).collect();
     
     for pattern in patterns {
         let pattern_lower = pattern.to_lowercase();
@@ -158,9 +160,14 @@ pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
             if path_lower.ends_with(ext) {
                 return true;
             }
-        } else if path_lower.contains(&pattern_lower) {
-            // Direct name match
-            return true;
+        } else {
+            // Match against path segments (not just substring)
+            // This prevents false positives like "node" matching "node_modules"
+            for segment in &path_segments {
+                if segment == &pattern_lower {
+                    return true;
+                }
+            }
         }
     }
     
@@ -206,6 +213,35 @@ pub fn compare_file_pair(
         (None, Some(_)) => SyncStatus::RemoteOnly,
         (Some(l), Some(r)) => {
             // Both exist - compare attributes
+
+            // ──── Checksum Comparison (when enabled) ────
+            // Local file checksums are computed via SHA-256 in get_local_files_recursive
+            // when options.compare_checksum is true. Remote checksums are provider-dependent
+            // and may not always be available.
+            if options.compare_checksum {
+                match (&l.checksum, &r.checksum) {
+                    (Some(l_hash), Some(r_hash)) => {
+                        if l_hash == r_hash {
+                            return SyncStatus::Identical;
+                        }
+                        // Hashes differ - determine which is newer by timestamp
+                        if options.compare_timestamp {
+                            return compare_timestamps(l.modified, r.modified)
+                                .unwrap_or(SyncStatus::Conflict);
+                        } else {
+                            // No timestamp comparison, but hashes differ
+                            return SyncStatus::Conflict;
+                        }
+                    }
+                    (None, None) => {
+                        // Checksums not available, fall through to size/timestamp
+                    }
+                    _ => {
+                        // One has checksum, one doesn't - can't use checksum comparison
+                        // Fall through to size/timestamp
+                    }
+                }
+            }
 
             // First check size if enabled
             if options.compare_size && l.size != r.size {
@@ -457,19 +493,394 @@ pub fn build_comparison_results_with_index(
     results
 }
 
+// ============ Phase 2: Error Taxonomy ============
+
+/// Classification of sync errors for structured handling
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncErrorKind {
+    /// Network connectivity issue (timeout, DNS, connection reset)
+    Network,
+    /// Authentication failure (invalid credentials, expired token)
+    Auth,
+    /// Path not found (file/directory doesn't exist)
+    PathNotFound,
+    /// Permission denied (insufficient privileges)
+    PermissionDenied,
+    /// Storage quota exceeded
+    QuotaExceeded,
+    /// Rate limit hit (too many requests)
+    RateLimit,
+    /// Operation timed out
+    Timeout,
+    /// File is locked or in use
+    FileLocked,
+    /// Disk full or I/O error
+    DiskError,
+    /// Unclassified error
+    Unknown,
+}
+
+/// Structured sync error with classification and retry hint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncErrorInfo {
+    pub kind: SyncErrorKind,
+    pub message: String,
+    pub retryable: bool,
+    pub file_path: Option<String>,
+}
+
+/// Classify a raw error message into a structured SyncErrorInfo
+pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    let lower = raw.to_lowercase();
+
+    let (kind, retryable) = if lower.contains("timeout") || lower.contains("timed out") {
+        (SyncErrorKind::Timeout, true)
+    } else if lower.contains("rate limit") || lower.contains("too many requests") || lower.contains("429") {
+        (SyncErrorKind::RateLimit, true)
+    } else if lower.contains("quota") || lower.contains("storage full") || lower.contains("insufficient storage")
+        || lower.contains("552 ")
+    {
+        (SyncErrorKind::QuotaExceeded, false)
+    } else if lower.contains("permission denied") || lower.contains("access denied")
+        || lower.contains("403 ") || lower.contains("550 ")
+    {
+        (SyncErrorKind::PermissionDenied, false)
+    } else if lower.contains("not found") || lower.contains("no such file")
+        || lower.contains("404 ") || lower.contains("550 ")
+    {
+        // 550 can be either permission or not-found; prefer permission if already matched
+        (SyncErrorKind::PathNotFound, false)
+    } else if lower.contains("auth") || lower.contains("login") || lower.contains("credential")
+        || lower.contains("401 ") || lower.contains("530 ")
+    {
+        (SyncErrorKind::Auth, false)
+    } else if lower.contains("locked") || lower.contains("in use") {
+        (SyncErrorKind::FileLocked, true)
+    } else if lower.contains("disk full") || lower.contains("no space")
+        || lower.contains("i/o error") || lower.contains("broken pipe")
+    {
+        (SyncErrorKind::DiskError, false)
+    } else if lower.contains("connection") || lower.contains("network")
+        || lower.contains("dns") || lower.contains("refused")
+        || lower.contains("reset") || lower.contains("eof")
+        || lower.contains("data connection")
+    {
+        (SyncErrorKind::Network, true)
+    } else {
+        (SyncErrorKind::Unknown, true)
+    };
+
+    SyncErrorInfo {
+        kind,
+        message: raw.to_string(),
+        retryable,
+        file_path: file_path.map(|s| s.to_string()),
+    }
+}
+
+// ============ Phase 2: Retry Policy ============
+
+/// Configurable retry policy for sync operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryPolicy {
+    /// Maximum number of retry attempts per file
+    pub max_retries: u32,
+    /// Base delay between retries in milliseconds
+    pub base_delay_ms: u64,
+    /// Maximum delay cap in milliseconds
+    pub max_delay_ms: u64,
+    /// Per-file transfer timeout in milliseconds (0 = no timeout)
+    pub timeout_ms: u64,
+    /// Backoff multiplier (e.g. 2.0 for exponential)
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            base_delay_ms: 500,
+            max_delay_ms: 10_000,
+            timeout_ms: 120_000, // 2 minutes per file
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+impl RetryPolicy {
+    /// Calculate delay for a given attempt (1-indexed)
+    pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
+        let delay = (self.base_delay_ms as f64) * self.backoff_multiplier.powi(attempt.saturating_sub(1) as i32);
+        (delay as u64).min(self.max_delay_ms)
+    }
+}
+
+// ============ Phase 2: Post-Transfer Verification ============
+
+/// Policy for verifying transfers after completion
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifyPolicy {
+    /// No verification (fastest)
+    None,
+    /// Verify file size matches
+    SizeOnly,
+    /// Verify size and modification time
+    SizeAndMtime,
+    /// Verify size + SHA-256 hash (slowest, most accurate)
+    Full,
+}
+
+impl Default for VerifyPolicy {
+    fn default() -> Self {
+        Self::SizeOnly
+    }
+}
+
+/// Result of a post-transfer verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyResult {
+    pub path: String,
+    pub passed: bool,
+    pub policy: VerifyPolicy,
+    pub expected_size: u64,
+    pub actual_size: Option<u64>,
+    pub size_match: bool,
+    pub mtime_match: Option<bool>,
+    pub hash_match: Option<bool>,
+    pub message: Option<String>,
+}
+
+/// Verify a local file after download
+pub fn verify_local_file(
+    local_path: &str,
+    expected_size: u64,
+    expected_mtime: Option<DateTime<Utc>>,
+    policy: &VerifyPolicy,
+) -> VerifyResult {
+    let path = std::path::Path::new(local_path);
+    let metadata = path.metadata().ok();
+
+    let actual_size = metadata.as_ref().map(|m| m.len());
+    let size_match = actual_size.map(|s| s == expected_size).unwrap_or(false);
+
+    let mtime_match = if *policy == VerifyPolicy::SizeAndMtime || *policy == VerifyPolicy::Full {
+        if let (Some(meta), Some(expected)) = (&metadata, expected_mtime) {
+            meta.modified().ok().map(|t| {
+                let actual: DateTime<Utc> = t.into();
+                timestamps_equal(Some(actual), Some(expected))
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let passed = match policy {
+        VerifyPolicy::None => true,
+        VerifyPolicy::SizeOnly => size_match,
+        VerifyPolicy::SizeAndMtime => size_match && mtime_match.unwrap_or(true),
+        VerifyPolicy::Full => size_match && mtime_match.unwrap_or(true),
+    };
+
+    let message = if !passed {
+        if !size_match {
+            Some(format!(
+                "Size mismatch: expected {} bytes, got {} bytes",
+                expected_size,
+                actual_size.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ))
+        } else if mtime_match == Some(false) {
+            Some("Modification time mismatch after transfer".to_string())
+        } else {
+            Some("File not found after transfer".to_string())
+        }
+    } else {
+        None
+    };
+
+    VerifyResult {
+        path: local_path.to_string(),
+        passed,
+        policy: policy.clone(),
+        expected_size,
+        actual_size,
+        size_match,
+        mtime_match,
+        hash_match: None, // Hash verification is done on-demand via separate command
+        message,
+    }
+}
+
+// ============ Phase 2: Transfer Journal ============
+
+/// Status of a single journal entry
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum JournalEntryStatus {
+    /// Waiting to be processed
+    Pending,
+    /// Currently transferring
+    InProgress,
+    /// Completed successfully
+    Completed,
+    /// Failed after all retries
+    Failed,
+    /// Skipped by user or policy
+    Skipped,
+    /// Verification failed after transfer
+    VerifyFailed,
+}
+
+/// A single entry in the transfer journal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncJournalEntry {
+    pub relative_path: String,
+    pub action: String, // "upload" | "download" | "mkdir"
+    pub status: JournalEntryStatus,
+    pub attempts: u32,
+    pub last_error: Option<SyncErrorInfo>,
+    pub verified: Option<bool>,
+    pub bytes_transferred: u64,
+}
+
+/// Persistent transfer journal for checkpoint/resume
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncJournal {
+    /// Unique journal ID
+    pub id: String,
+    /// When the journal was created
+    pub created_at: DateTime<Utc>,
+    /// When the journal was last updated
+    pub updated_at: DateTime<Utc>,
+    /// Local root path
+    pub local_path: String,
+    /// Remote root path
+    pub remote_path: String,
+    /// Sync direction
+    pub direction: SyncDirection,
+    /// Retry policy used
+    pub retry_policy: RetryPolicy,
+    /// Verify policy used
+    pub verify_policy: VerifyPolicy,
+    /// Ordered list of operations
+    pub entries: Vec<SyncJournalEntry>,
+    /// Whether the journal is complete (all entries processed)
+    pub completed: bool,
+}
+
+impl SyncJournal {
+    pub fn new(
+        local_path: String,
+        remote_path: String,
+        direction: SyncDirection,
+        retry_policy: RetryPolicy,
+        verify_policy: VerifyPolicy,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            local_path,
+            remote_path,
+            direction,
+            retry_policy,
+            verify_policy,
+            entries: Vec::new(),
+            completed: false,
+        }
+    }
+
+    /// Count entries by status
+    pub fn count_by_status(&self, status: &JournalEntryStatus) -> usize {
+        self.entries.iter().filter(|e| e.status == *status).count()
+    }
+
+    /// Check if there are pending or failed-retryable entries
+    pub fn has_resumable_entries(&self) -> bool {
+        self.entries.iter().any(|e| {
+            e.status == JournalEntryStatus::Pending
+                || e.status == JournalEntryStatus::InProgress
+                || (e.status == JournalEntryStatus::Failed
+                    && e.last_error.as_ref().map(|err| err.retryable).unwrap_or(true)
+                    && e.attempts < self.retry_policy.max_retries)
+        })
+    }
+}
+
+/// Get the directory where sync journals are stored
+fn sync_journal_dir() -> Result<PathBuf, String> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let dir = base.join("aeroftp").join("sync-journal");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create sync journal directory: {}", e))?;
+    Ok(dir)
+}
+
+/// Generate a journal filename from path pair
+fn journal_filename(local_path: &str, remote_path: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    local_path.hash(&mut hasher);
+    remote_path.hash(&mut hasher);
+    format!("journal_{:016x}.json", hasher.finish())
+}
+
+/// Load an existing journal for a path pair
+pub fn load_sync_journal(local_path: &str, remote_path: &str) -> Result<Option<SyncJournal>, String> {
+    let dir = sync_journal_dir()?;
+    let path = dir.join(journal_filename(local_path, remote_path));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read sync journal: {}", e))?;
+    let journal: SyncJournal = serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse sync journal: {}", e))?;
+    Ok(Some(journal))
+}
+
+/// Save a journal (creates or overwrites)
+pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
+    let dir = sync_journal_dir()?;
+    let path = dir.join(journal_filename(&journal.local_path, &journal.remote_path));
+    let mut journal_to_save = journal.clone();
+    journal_to_save.updated_at = Utc::now();
+    let data = serde_json::to_string_pretty(&journal_to_save)
+        .map_err(|e| format!("Failed to serialize sync journal: {}", e))?;
+    std::fs::write(&path, data)
+        .map_err(|e| format!("Failed to write sync journal: {}", e))?;
+    Ok(())
+}
+
+/// Delete a journal for a path pair
+pub fn delete_sync_journal(local_path: &str, remote_path: &str) -> Result<(), String> {
+    let dir = sync_journal_dir()?;
+    let path = dir.join(journal_filename(local_path, remote_path));
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete sync journal: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_should_exclude() {
         let patterns = vec!["node_modules".to_string(), "*.pyc".to_string()];
-        
+
         assert!(should_exclude("node_modules/package/file.js", &patterns));
         assert!(should_exclude("src/__pycache__/module.pyc", &patterns));
         assert!(!should_exclude("src/main.rs", &patterns));
     }
-    
+
     #[test]
     fn test_compare_file_pair_local_only() {
         let local = FileInfo {
@@ -480,10 +891,130 @@ mod tests {
             is_dir: false,
             checksum: None,
         };
-        
+
         let options = CompareOptions::default();
         let status = compare_file_pair(Some(&local), None, &options);
-        
+
         assert_eq!(status, SyncStatus::LocalOnly);
+    }
+
+    #[test]
+    fn test_classify_sync_error_network() {
+        let err = classify_sync_error("Connection refused by remote host", Some("test.txt"));
+        assert_eq!(err.kind, SyncErrorKind::Network);
+        assert!(err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_timeout() {
+        let err = classify_sync_error("Operation timed out after 30s", None);
+        assert_eq!(err.kind, SyncErrorKind::Timeout);
+        assert!(err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_quota() {
+        let err = classify_sync_error("552 Insufficient storage space", Some("/path"));
+        assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_rate_limit() {
+        let err = classify_sync_error("429 Too Many Requests", None);
+        assert_eq!(err.kind, SyncErrorKind::RateLimit);
+        assert!(err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_auth() {
+        let err = classify_sync_error("530 Login authentication failed", None);
+        assert_eq!(err.kind, SyncErrorKind::Auth);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_retry_policy_delay() {
+        let policy = RetryPolicy::default();
+        assert_eq!(policy.delay_for_attempt(1), 500);
+        assert_eq!(policy.delay_for_attempt(2), 1000);
+        assert_eq!(policy.delay_for_attempt(3), 2000);
+    }
+
+    #[test]
+    fn test_retry_policy_max_cap() {
+        let policy = RetryPolicy {
+            max_retries: 10,
+            base_delay_ms: 1000,
+            max_delay_ms: 5000,
+            timeout_ms: 60_000,
+            backoff_multiplier: 3.0,
+        };
+        // 1000 * 3^4 = 81000, capped at 5000
+        assert_eq!(policy.delay_for_attempt(5), 5000);
+    }
+
+    #[test]
+    fn test_verify_local_file_missing() {
+        let result = verify_local_file("/nonexistent/path/file.txt", 100, None, &VerifyPolicy::SizeOnly);
+        assert!(!result.passed);
+        assert!(!result.size_match);
+    }
+
+    #[test]
+    fn test_journal_has_resumable() {
+        let mut journal = SyncJournal::new(
+            "/local".to_string(),
+            "/remote".to_string(),
+            SyncDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        journal.entries.push(SyncJournalEntry {
+            relative_path: "file.txt".to_string(),
+            action: "upload".to_string(),
+            status: JournalEntryStatus::Pending,
+            attempts: 0,
+            last_error: None,
+            verified: None,
+            bytes_transferred: 0,
+        });
+        assert!(journal.has_resumable_entries());
+
+        // Mark as completed
+        journal.entries[0].status = JournalEntryStatus::Completed;
+        assert!(!journal.has_resumable_entries());
+    }
+
+    #[test]
+    fn test_journal_count_by_status() {
+        let mut journal = SyncJournal::new(
+            "/a".to_string(),
+            "/b".to_string(),
+            SyncDirection::LocalToRemote,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        journal.entries.push(SyncJournalEntry {
+            relative_path: "a.txt".to_string(),
+            action: "upload".to_string(),
+            status: JournalEntryStatus::Completed,
+            attempts: 1,
+            last_error: None,
+            verified: Some(true),
+            bytes_transferred: 1024,
+        });
+        journal.entries.push(SyncJournalEntry {
+            relative_path: "b.txt".to_string(),
+            action: "upload".to_string(),
+            status: JournalEntryStatus::Failed,
+            attempts: 3,
+            last_error: None,
+            verified: None,
+            bytes_transferred: 0,
+        });
+        assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
+        assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);
+        assert_eq!(journal.count_by_status(&JournalEntryStatus::Pending), 0);
     }
 }

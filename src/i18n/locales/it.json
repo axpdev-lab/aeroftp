@@ -283,8 +283,9 @@
             "pcloudTooltip": "pCloud - 10GB di spazio gratuito, regioni USA/UE",
             "foursharedTooltip": "4shared - 15GB di spazio gratuito, autenticazione OAuth 1.0",
             "azureTooltip": "Azure Blob Storage - Autenticazione con Shared Key o token SAS",
-            "insecureCertConfirmFirst": "Avviso: stai per accettare certificati non validi/autofirmati. Questo indebolisce la sicurezza della connessione. Continuare?",
-            "insecureCertConfirmSecond": "Conferma finale: procedere in modalità certificato non sicuro?"
+            "insecureCertTitle": "Avviso di Sicurezza",
+            "insecureCertConfirmFirst": "Accettare certificati non validi o autofirmati indebolisce la sicurezza della connessione. Abilita questa opzione solo se ti fidi del server e comprendi i rischi.",
+            "insecureCertAccept": "Accetta Rischio"
         },
         "browser": {
             "remote": "Remoto",
@@ -1260,7 +1261,32 @@
             },
             "reportDirsCreated": "Cartelle create",
             "indexAvailable": "Indice in cache",
-            "indexAvailableTooltip": "Un indice di sincronizzazione precedente è disponibile — il rilevamento conflitti è migliorato"
+            "indexAvailableTooltip": "Un indice di sincronizzazione precedente è disponibile — il rilevamento conflitti è migliorato",
+            "journalFound": "Sincronizzazione interrotta rilevata",
+            "journalDescription": "{completed}/{total} file completati (ultimo aggiornamento: {date})",
+            "resumeSync": "Riprendi",
+            "dismissJournal": "Ignora",
+            "reportRetried": "Ritentati",
+            "reportVerifyFailed": "Verifica fallita",
+            "errorBreakdown": "Dettaglio errori",
+            "retryable": "ritentabile",
+            "verifyNone": "Nessuna verifica",
+            "verifySize": "Verifica dimensione",
+            "verifySizeMtime": "Verifica dimensione + data",
+            "verifyFull": "Verifica completa",
+            "retries": "{count} tentativi",
+            "errorKind": {
+                "network": "Rete",
+                "auth": "Autenticazione",
+                "path_not_found": "Non trovato",
+                "permission_denied": "Permesso negato",
+                "quota_exceeded": "Quota superata",
+                "rate_limit": "Limite richieste",
+                "timeout": "Timeout",
+                "file_locked": "File bloccato",
+                "disk_error": "Errore disco",
+                "unknown": "Sconosciuto"
+            }
         },
         "ui": {
             "syncing": "Sincronizzazione...",
@@ -1310,6 +1336,8 @@
                 "backgroundSyncActive": "Sincronizzazione in background attiva",
                 "aerocloudClickToOpen": "AeroCloud (clicca per aprire)",
                 "closeTab": "Chiudi scheda",
+                "closeOthers": "Chiudi le altre schede",
+                "closeAll": "Chiudi tutte le schede",
                 "newConnection": "Nuova connessione"
             }
         },

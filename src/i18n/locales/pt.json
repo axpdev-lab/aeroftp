@@ -1009,8 +1009,7 @@
             "encryptionImplicit": "Exigir FTP implícito sobre TLS",
             "encryptionExplicitIfAvailable": "Usar FTP explícito sobre TLS se disponível",
             "acceptInvalidCerts": "Aceitar certificados inválidos ou autoassinados",
-            "insecureCertConfirmFirst": "Aviso: você está prestes a aceitar certificados inválidos/autossinados. Isso enfraquece a segurança da conexão. Continuar?",
-            "insecureCertConfirmSecond": "Confirmação final: prosseguir no modo de certificado inseguro?",
+            "insecureCertConfirmFirst": "Aceitar certificados invalidos ou autoassinados enfraquece a seguranca da conexao. Ative isso apenas se confiar no servidor e entender os riscos.",
             "boxDesc": "Conectar com conta Box",
             "pcloudDesc": "Conectar com conta pCloud",
             "azureDesc": "Armazenamento Microsoft Azure",
@@ -1043,7 +1042,9 @@
             "pcloudTooltip": "pCloud - 10 GB de armazenamento gratuito, regioes US/EU",
             "s3Tooltip": "Armazenamento compativel com S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP via SSH - transferencia segura de arquivos, suporta autenticacao por chave",
-            "webdavTooltip": "Protocolo WebDAV - compativel com Nextcloud, CloudMe, Koofr, Synology NAS"
+            "webdavTooltip": "Protocolo WebDAV - compativel com Nextcloud, CloudMe, Koofr, Synology NAS",
+            "insecureCertTitle": "Aviso de seguranca",
+            "insecureCertAccept": "Aceitar risco"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Pastas criadas",
             "indexAvailable": "Índice em cache",
-            "indexAvailableTooltip": "Um índice de sincronização anterior está disponível — a detecção de conflitos é aprimorada"
+            "indexAvailableTooltip": "Um índice de sincronização anterior está disponível — a detecção de conflitos é aprimorada",
+            "journalFound": "Sincronização interrompida detectada",
+            "journalDescription": "{completed}/{total} ficheiros concluídos (última atualização: {date})",
+            "resumeSync": "Retomar",
+            "dismissJournal": "Dispensar",
+            "reportRetried": "Tentativas repetidas",
+            "reportVerifyFailed": "Verificação falhou",
+            "errorBreakdown": "Detalhes dos erros",
+            "retryable": "recuperável",
+            "verifyNone": "Sem verificação",
+            "verifySize": "Verificar tamanho",
+            "verifySizeMtime": "Verificar tamanho + data",
+            "verifyFull": "Verificação completa",
+            "retries": "{count} tentativas",
+            "errorKind": {
+                "network": "Rede",
+                "auth": "Autenticação",
+                "path_not_found": "Não encontrado",
+                "permission_denied": "Permissão negada",
+                "quota_exceeded": "Cota excedida",
+                "rate_limit": "Limite de taxa",
+                "timeout": "Timeout",
+                "file_locked": "Ficheiro bloqueado",
+                "disk_error": "Erro de disco",
+                "unknown": "Desconhecido"
+            }
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Conectando...",
                 "disconnected": "Desconectado",
                 "newConnection": "Nova conexao",
-                "syncing": "Sincronizando..."
+                "syncing": "Sincronizando...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Apenas local",
             "showRemote": "Mostrar remoto",
             "showSystemMenu": "Mostrar barra de menu do sistema"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Fechar outras abas",
+            "closeAll": "Fechar todas as abas"
         }
     }
 }

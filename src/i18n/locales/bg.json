@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-съвместимо хранилище — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP през SSH — сигурен трансфер на файлове чрез командна обвивка, поддържа автентикация с ключ",
             "webdavTooltip": "WebDAV протокол — съвместим с Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Предупреждение: ще приемете невалидни/самоподписани сертификати. Това отслабва сигурността на връзката. Продължавате ли?",
-            "insecureCertConfirmSecond": "Окончателно потвърждение: продължавате ли в режим на несигурни сертификати?"
+            "insecureCertConfirmFirst": "Приемането на невалидни или самоподписани сертификати отслабва сигурността на връзката. Активирайте това само ако се доверявате на сървъра и разбирате рисковете.",
+            "insecureCertTitle": "Предупреждение за сигурност",
+            "insecureCertAccept": "Приемане на риска"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Създадени папки",
             "indexAvailable": "Индексът е кеширан",
-            "indexAvailableTooltip": "Наличен е индекс за синхронизация от предишна синхронизация — откриването на конфликти е подобрено"
+            "indexAvailableTooltip": "Наличен е индекс за синхронизация от предишна синхронизация — откриването на конфликти е подобрено",
+            "journalFound": "Открита е прекъсната синхронизация",
+            "journalDescription": "{completed}/{total} файла завършени (последна актуализация: {date})",
+            "resumeSync": "Възобнови",
+            "dismissJournal": "Отхвърли",
+            "reportRetried": "Повторени",
+            "reportVerifyFailed": "Неуспешна проверка",
+            "errorBreakdown": "Разбивка на грешки",
+            "retryable": "повторимо",
+            "verifyNone": "Без проверка",
+            "verifySize": "Проверка на размер",
+            "verifySizeMtime": "Проверка на размер + време",
+            "verifyFull": "Пълна проверка",
+            "retries": "{count} повторни опити",
+            "errorKind": {
+                "network": "Мрежа",
+                "auth": "Удостоверяване",
+                "path_not_found": "Не е намерено",
+                "permission_denied": "Достъпът е отказан",
+                "quota_exceeded": "Квотата е надвишена",
+                "rate_limit": "Ограничение на скоростта",
+                "timeout": "Timeout",
+                "file_locked": "Файлът е заключен",
+                "disk_error": "Грешка на диска",
+                "unknown": "Неизвестно"
+            }
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Свързване...",
                 "disconnected": "Прекъсната връзка",
                 "newConnection": "Нова връзка",
-                "syncing": "Синхронизиране..."
+                "syncing": "Синхронизиране...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Само локално",
             "showRemote": "Покажи отдалечено",
             "showSystemMenu": "Покажи системно меню"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Затвори другите раздели",
+            "closeAll": "Затвори всички раздели"
         }
     }
 }

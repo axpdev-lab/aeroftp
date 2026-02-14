@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Storan serasi S3 — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP melalui SSH — pemindahan fail shell selamat, menyokong pengesahan kunci",
             "webdavTooltip": "Protokol WebDAV — serasi dengan Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Amaran: anda akan menerima sijil tidak sah/tandatangan sendiri. Ini melemahkan keselamatan sambungan. Teruskan?",
-            "insecureCertConfirmSecond": "Pengesahan akhir: teruskan dengan mod sijil tidak selamat?"
+            "insecureCertConfirmFirst": "Menerima sijil yang tidak sah atau ditandatangani sendiri melemahkan keselamatan sambungan. Dayakan ini hanya jika anda mempercayai pelayan dan memahami risiko.",
+            "insecureCertTitle": "Amaran Keselamatan",
+            "insecureCertAccept": "Terima Risiko"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Folder dicipta",
             "indexAvailable": "Indeks dicache",
-            "indexAvailableTooltip": "Indeks penyegerakan dari penyegerakan sebelumnya tersedia — pengesanan konflik dipertingkat"
+            "indexAvailableTooltip": "Indeks penyegerakan dari penyegerakan sebelumnya tersedia — pengesanan konflik dipertingkat",
+            "journalFound": "Penyegerakan terganggu dikesan",
+            "journalDescription": "{completed}/{total} fail selesai (terakhir dikemas kini: {date})",
+            "resumeSync": "Sambung",
+            "dismissJournal": "Abaikan",
+            "reportRetried": "Dicuba semula",
+            "reportVerifyFailed": "Pengesahan gagal",
+            "errorBreakdown": "Pecahan ralat",
+            "retryable": "boleh dicuba semula",
+            "verifyNone": "Tanpa pengesahan",
+            "verifySize": "Sahkan saiz",
+            "verifySizeMtime": "Sahkan saiz + masa",
+            "verifyFull": "Pengesahan penuh",
+            "retries": "{count} percubaan semula",
+            "errorKind": {
+                "network": "Rangkaian",
+                "auth": "Pengesahan identiti",
+                "path_not_found": "Tidak ditemui",
+                "permission_denied": "Kebenaran ditolak",
+                "quota_exceeded": "Kuota melebihi",
+                "rate_limit": "Had kadar",
+                "timeout": "Timeout",
+                "file_locked": "Fail dikunci",
+                "disk_error": "Ralat cakera",
+                "unknown": "Tidak diketahui"
+            }
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Menyambung...",
                 "disconnected": "Terputus",
                 "newConnection": "Sambungan baharu",
-                "syncing": "Menyegerakkan..."
+                "syncing": "Menyegerakkan...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Tempatan sahaja",
             "showRemote": "Tunjukkan jauh",
             "showSystemMenu": "Tunjukkan bar menu sistem"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Tutup tab lain",
+            "closeAll": "Tutup semua tab"
         }
     }
 }

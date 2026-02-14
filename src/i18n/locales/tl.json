@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP sa SSH - secure shell file transfer, sumusuporta sa key authentication",
             "webdavTooltip": "WebDAV protocol - compatible sa Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Babala: tatanggapin mo ang mga invalid/self-signed certificate. Binabawasan nito ang seguridad ng koneksyon. Ituloy?",
-            "insecureCertConfirmSecond": "Huling kumpirmasyon: ituloy sa hindi ligtas na certificate mode?"
+            "insecureCertConfirmFirst": "Ang pagtanggap ng hindi wastong o self-signed na mga sertipiko ay humihina sa seguridad ng koneksyon. I-enable lamang ito kung pinagkakatiwalaan mo ang server at nauunawaan ang mga panganib.",
+            "insecureCertTitle": "Babala sa Seguridad",
+            "insecureCertAccept": "Tanggapin ang Panganib"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Mga folder na ginawa",
             "indexAvailable": "Naka-cache ang index",
-            "indexAvailableTooltip": "Available ang sync index mula sa nakaraang sync — pinahusay ang pagtukoy ng salungatan"
+            "indexAvailableTooltip": "Available ang sync index mula sa nakaraang sync — pinahusay ang pagtukoy ng salungatan",
+            "journalFound": "Nakita ang naudlot na sync",
+            "journalDescription": "{completed}/{total} mga file ang nakumpleto (huling na-update: {date})",
+            "resumeSync": "Ipagpatuloy",
+            "dismissJournal": "I-dismiss",
+            "reportRetried": "Inulit",
+            "reportVerifyFailed": "Nabigo ang pag-verify",
+            "errorBreakdown": "Detalye ng mga error",
+            "retryable": "maaaring ulitin",
+            "verifyNone": "Walang verification",
+            "verifySize": "I-verify ang laki",
+            "verifySizeMtime": "I-verify ang laki + oras",
+            "verifyFull": "Buong verification",
+            "retries": "{count} pag-uulit",
+            "errorKind": {
+                "network": "Network",
+                "auth": "Authentication",
+                "path_not_found": "Hindi natagpuan",
+                "permission_denied": "Tinanggihan ang pahintulot",
+                "quota_exceeded": "Lumampas sa quota",
+                "rate_limit": "Limitasyon sa bilis",
+                "timeout": "Timeout",
+                "file_locked": "Naka-lock ang file",
+                "disk_error": "Error sa disk",
+                "unknown": "Hindi alam"
+            }
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Kumokonekta...",
                 "disconnected": "Nadiskonekta",
                 "newConnection": "Bagong koneksyon",
-                "syncing": "Nagsi-sync..."
+                "syncing": "Nagsi-sync...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Lokal lamang",
             "showRemote": "Ipakita ang remote",
             "showSystemMenu": "Ipakita ang system menu bar"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Isara ang ibang mga tab",
+            "closeAll": "Isara ang lahat ng mga tab"
         }
     }
 }

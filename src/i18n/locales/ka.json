@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-თავსებადი საცავი - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP SSH-ით - უსაფრთხო ფაილის გადაცემა, გასაღებით ავტორიზაციის მხარდაჭერა",
             "webdavTooltip": "WebDAV პროტოკოლი - თავსებადია Nextcloud, CloudMe, Koofr, Synology NAS-თან",
-            "insecureCertConfirmFirst": "გაფრთხილება: აპირებთ მიიღოთ არასწორი/თვითხელმოწერილი სერტიფიკატები. ეს ასუსტებს კავშირის უსაფრთხოებას. გავაგრძელოთ?",
-            "insecureCertConfirmSecond": "საბოლოო დადასტურება: გავაგრძელოთ დაუცველი სერტიფიკატის რეჟიმში?"
+            "insecureCertConfirmFirst": "არასწორი ან თვითხელმოწერილი სერტიფიკატების მიღება ასუსტებს კავშირის უსაფრთხოებას. ჩართეთ ეს მხოლოდ თუ ენდობით სერვერს და გესმით რისკები.",
+            "insecureCertTitle": "უსაფრთხოების გაფრთხილება",
+            "insecureCertAccept": "რისკის მიღება"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "საქაღალდეები შეიქმნა",
             "indexAvailable": "ინდექსი ქეშია",
-            "indexAvailableTooltip": "წინა სინქრონიზაციის ინდექსი ხელმისაწვდომია — კონფლიქტის აღმოჩენა გაუმჯობესებულია"
+            "indexAvailableTooltip": "წინა სინქრონიზაციის ინდექსი ხელმისაწვდომია — კონფლიქტის აღმოჩენა გაუმჯობესებულია",
+            "journalFound": "შეწყვეტილი სინქრონიზაცია აღმოჩენილია",
+            "journalDescription": "{completed}/{total} ფაილი დასრულებულია (ბოლო განახლება: {date})",
+            "resumeSync": "გაგრძელება",
+            "dismissJournal": "უარყოფა",
+            "reportRetried": "ხელახლა ცდილია",
+            "reportVerifyFailed": "შემოწმება ჩავარდა",
+            "errorBreakdown": "შეცდომების დეტალები",
+            "retryable": "ხელახლა შეიძლება",
+            "verifyNone": "შემოწმება არ არის",
+            "verifySize": "ზომის შემოწმება",
+            "verifySizeMtime": "ზომა + დროის შემოწმება",
+            "verifyFull": "სრული შემოწმება",
+            "retries": "{count} ხელახალი ცდა",
+            "errorKind": {
+                "network": "ქსელი",
+                "auth": "ავთენტიფიკაცია",
+                "path_not_found": "ვერ მოიძებნა",
+                "permission_denied": "წვდომა უარყოფილია",
+                "quota_exceeded": "კვოტა გადაჭარბებულია",
+                "rate_limit": "სიჩქარის ლიმიტი",
+                "timeout": "Timeout",
+                "file_locked": "ფაილი დაბლოკილია",
+                "disk_error": "დისკის შეცდომა",
+                "unknown": "უცნობი"
+            }
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -1263,7 +1289,9 @@
                 "connecting": "დაკავშირება...",
                 "disconnected": "გათიშულია",
                 "newConnection": "ახალი კავშირი",
-                "syncing": "სინქრონიზაცია..."
+                "syncing": "სინქრონიზაცია...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "მხოლოდ ლოკალური",
             "showRemote": "დისტანციურის ჩვენება",
             "showSystemMenu": "სისტემის მენიუს ზოლის ჩვენება"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "დახურე სხვა ჩანართები",
+            "closeAll": "დახურე ყველა ჩანართი"
         }
     }
 }

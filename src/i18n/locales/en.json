@@ -1595,8 +1595,9 @@
             "webdavExampleLabel": "Example:",
             "webdavNote": "WebDAV path should include the full path to your files. For Nextcloud use:",
             "webdavTooltip": "WebDAV protocol - compatible with Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Warning: you are about to accept invalid/self-signed certificates. This weakens connection security. Continue?",
-            "insecureCertConfirmSecond": "Final confirmation: proceed with insecure certificate mode?"
+            "insecureCertTitle": "Security Warning",
+            "insecureCertConfirmFirst": "Accepting invalid or self-signed certificates weakens connection security. Only enable this if you trust the server and understand the risks.",
+            "insecureCertAccept": "Accept Risk"
         },
         "quickLook": {
             "noPreview": "No preview available",
@@ -2092,7 +2093,32 @@
             "synchronize": "Synchronize",
             "syncing": "Syncing",
             "timestamp": "Timestamp",
-            "title": "Synchronize Files"
+            "title": "Synchronize Files",
+            "journalFound": "Interrupted sync detected",
+            "journalDescription": "{completed}/{total} files completed (last updated: {date})",
+            "resumeSync": "Resume",
+            "dismissJournal": "Dismiss",
+            "reportRetried": "Retried",
+            "reportVerifyFailed": "Verify failed",
+            "errorBreakdown": "Error breakdown",
+            "retryable": "retryable",
+            "verifyNone": "No verification",
+            "verifySize": "Verify size",
+            "verifySizeMtime": "Verify size + time",
+            "verifyFull": "Full verification",
+            "retries": "{count} retries",
+            "errorKind": {
+                "network": "Network",
+                "auth": "Authentication",
+                "path_not_found": "Not found",
+                "permission_denied": "Permission denied",
+                "quota_exceeded": "Quota exceeded",
+                "rate_limit": "Rate limit",
+                "timeout": "Timeout",
+                "file_locked": "File locked",
+                "disk_error": "Disk error",
+                "unknown": "Unknown"
+            }
         },
         "toast": {
             "batchRenamePartial": "Batch rename completed with errors",
@@ -2269,6 +2295,8 @@
                 "backgroundSyncActive": "Background sync active",
                 "cached": "Cached (reconnecting...)",
                 "closeTab": "Close tab",
+                "closeOthers": "Close other tabs",
+                "closeAll": "Close all tabs",
                 "connected": "Connected",
                 "connecting": "Connecting...",
                 "disconnected": "Disconnected",

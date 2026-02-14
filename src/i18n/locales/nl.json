@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-compatibele opslag — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP via SSH — veilige shell-bestandsoverdracht, ondersteunt sleutelauthenticatie",
             "webdavTooltip": "WebDAV-protocol — compatibel met Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Waarschuwing: u staat op het punt ongeldige/zelfondertekende certificaten te accepteren. Dit verzwakt de verbindingsbeveiliging. Doorgaan?",
-            "insecureCertConfirmSecond": "Definitieve bevestiging: doorgaan in onveilige certificaatmodus?"
+            "insecureCertConfirmFirst": "Het accepteren van ongeldige of zelfondertekende certificaten verzwakt de verbindingsbeveiliging. Schakel dit alleen in als u de server vertrouwt en de risico's begrijpt.",
+            "insecureCertTitle": "Beveiligingswaarschuwing",
+            "insecureCertAccept": "Risiko accepteren"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Mappen aangemaakt",
             "indexAvailable": "Index in cache",
-            "indexAvailableTooltip": "Een synchronisatie-index van een eerdere synchronisatie is beschikbaar — conflictdetectie is verbeterd"
+            "indexAvailableTooltip": "Een synchronisatie-index van een eerdere synchronisatie is beschikbaar — conflictdetectie is verbeterd",
+            "journalFound": "Onderbroken synchronisatie gedetecteerd",
+            "journalDescription": "{completed}/{total} bestanden voltooid (laatst bijgewerkt: {date})",
+            "resumeSync": "Hervatten",
+            "dismissJournal": "Negeren",
+            "reportRetried": "Opnieuw geprobeerd",
+            "reportVerifyFailed": "Verificatie mislukt",
+            "errorBreakdown": "Foutenanalyse",
+            "retryable": "herhaalbaar",
+            "verifyNone": "Geen verificatie",
+            "verifySize": "Grootte verifiëren",
+            "verifySizeMtime": "Grootte + tijd verifiëren",
+            "verifyFull": "Volledige verificatie",
+            "retries": "{count} nieuwe pogingen",
+            "errorKind": {
+                "network": "Netwerk",
+                "auth": "Authenticatie",
+                "path_not_found": "Niet gevonden",
+                "permission_denied": "Toegang geweigerd",
+                "quota_exceeded": "Quotum overschreden",
+                "rate_limit": "Snelheidslimiet",
+                "timeout": "Timeout",
+                "file_locked": "Bestand vergrendeld",
+                "disk_error": "Schijffout",
+                "unknown": "Onbekend"
+            }
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Verbinden...",
                 "disconnected": "Losgekoppeld",
                 "newConnection": "Nieuwe verbinding",
-                "syncing": "Synchroniseren..."
+                "syncing": "Synchroniseren...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Alleen lokaal",
             "showRemote": "Externe weergeven",
             "showSystemMenu": "Systeemmenubalk weergeven"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Sluit andere tabbladen",
+            "closeAll": "Sluit alle tabbladen"
         }
     }
 }

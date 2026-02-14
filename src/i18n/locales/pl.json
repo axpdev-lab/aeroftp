@@ -1042,8 +1042,9 @@
             "s3Tooltip": "Pamiec kompatybilna z S3 - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP przez SSH - bezpieczny transfer plikow, obsluguje uwierzytelnianie kluczem",
             "webdavTooltip": "Protokol WebDAV - kompatybilny z Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Ostrzeżenie: zamierzasz zaakceptować nieprawidłowe/samopodpisane certyfikaty. To osłabia bezpieczeństwo połączenia. Kontynuować?",
-            "insecureCertConfirmSecond": "Ostateczne potwierdzenie: kontynuować w trybie niebezpiecznych certyfikatów?"
+            "insecureCertConfirmFirst": "Akceptacja nieprawidlowych lub samopodpisanych certyfikatow oslabia bezpieczenstwo polaczenia. Wlacz to tylko, jesli ufasz serwerowi i rozumiesz ryzyko.",
+            "insecureCertTitle": "Ostrzezenie bezpieczenstwa",
+            "insecureCertAccept": "Akceptuj ryzyko"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Utworzonych folderów",
             "indexAvailable": "Indeks w pamięci podręcznej",
-            "indexAvailableTooltip": "Dostępny indeks z poprzedniej synchronizacji — wykrywanie konfliktów jest ulepszone"
+            "indexAvailableTooltip": "Dostępny indeks z poprzedniej synchronizacji — wykrywanie konfliktów jest ulepszone",
+            "journalFound": "Wykryto przerwaną synchronizację",
+            "journalDescription": "{completed}/{total} plików ukończonych (ostatnia aktualizacja: {date})",
+            "resumeSync": "Wznów",
+            "dismissJournal": "Odrzuć",
+            "reportRetried": "Ponowione",
+            "reportVerifyFailed": "Weryfikacja nieudana",
+            "errorBreakdown": "Szczegóły błędów",
+            "retryable": "można ponowić",
+            "verifyNone": "Brak weryfikacji",
+            "verifySize": "Weryfikuj rozmiar",
+            "verifySizeMtime": "Weryfikuj rozmiar + czas",
+            "verifyFull": "Pełna weryfikacja",
+            "retries": "{count} ponowień",
+            "errorKind": {
+                "network": "Sieć",
+                "auth": "Uwierzytelnianie",
+                "path_not_found": "Nie znaleziono",
+                "permission_denied": "Odmowa dostępu",
+                "quota_exceeded": "Przekroczono limit",
+                "rate_limit": "Limit szybkości",
+                "timeout": "Timeout",
+                "file_locked": "Plik zablokowany",
+                "disk_error": "Błąd dysku",
+                "unknown": "Nieznany"
+            }
         },
         "ui": {
             "syncing": "Synchronizacja...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Laczenie...",
                 "disconnected": "Rozlaczono",
                 "newConnection": "Nowe polaczenie",
-                "syncing": "Synchronizacja..."
+                "syncing": "Synchronizacja...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Tylko lokalnie",
             "showRemote": "Pokaż zdalne",
             "showSystemMenu": "Pokaż menu systemowe"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Zamknij inne karty",
+            "closeAll": "Zamknij wszystkie karty"
         }
     }
 }

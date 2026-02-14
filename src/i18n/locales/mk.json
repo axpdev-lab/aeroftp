@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-компатибилно складирање — AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP преку SSH — безбеден пренос на датотеки преку школка, поддржува автентикација со клуч",
             "webdavTooltip": "WebDAV протокол — компатибилен со Nextcloud, CloudMe, Koofr, Synology NAS",
-            "insecureCertConfirmFirst": "Предупредување: ќе прифатите неважечки/самопотпишани сертификати. Ова ја слабее безбедноста на врската. Продолжувате?",
-            "insecureCertConfirmSecond": "Конечна потврда: продолжувате во режим на несигурни сертификати?"
+            "insecureCertConfirmFirst": "Прифаќањето на неважечки или самопотпишани сертификати ја ослабува безбедноста на врската. Овозможете го ова само ако му верувате на серверот и ги разбирате ризиците.",
+            "insecureCertTitle": "Предупредување за безбедност",
+            "insecureCertAccept": "Прифати ризик"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Папки создадени",
             "indexAvailable": "Индексот е кеширан",
-            "indexAvailableTooltip": "Достапен е индекс од претходна синхронизација — детектирањето на конфликти е подобрено"
+            "indexAvailableTooltip": "Достапен е индекс од претходна синхронизација — детектирањето на конфликти е подобрено",
+            "journalFound": "Детектирана прекината синхронизација",
+            "journalDescription": "{completed}/{total} датотеки завршени (последно ажурирано: {date})",
+            "resumeSync": "Продолжи",
+            "dismissJournal": "Отфрли",
+            "reportRetried": "Повторено",
+            "reportVerifyFailed": "Верификацијата не успеа",
+            "errorBreakdown": "Детали за грешки",
+            "retryable": "може да се повтори",
+            "verifyNone": "Без верификација",
+            "verifySize": "Верификувај големина",
+            "verifySizeMtime": "Верификувај големина + време",
+            "verifyFull": "Целосна верификација",
+            "retries": "{count} повторувања",
+            "errorKind": {
+                "network": "Мрежа",
+                "auth": "Автентикација",
+                "path_not_found": "Не е пронајдено",
+                "permission_denied": "Пристап одбиен",
+                "quota_exceeded": "Квота надмината",
+                "rate_limit": "Ограничување на стапка",
+                "timeout": "Timeout",
+                "file_locked": "Датотеката е заклучена",
+                "disk_error": "Грешка на дискот",
+                "unknown": "Непознато"
+            }
         },
         "ui": {
             "syncing": "Синхронизирање...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Поврзување...",
                 "disconnected": "Исклучено",
                 "newConnection": "Ново поврзување",
-                "syncing": "Синхронизација..."
+                "syncing": "Синхронизација...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Само локално",
             "showRemote": "Прикажи оддалечено",
             "showSystemMenu": "Прикажи системско мени"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Затвори други јазичиња",
+            "closeAll": "Затвори сите јазичиња"
         }
     }
 }

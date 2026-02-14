@@ -1042,8 +1042,9 @@
             "s3Tooltip": "S3-ühilduv salvestusruum - AWS S3, MinIO, Cloudflare R2, Backblaze B2",
             "sftpTooltip": "SFTP üle SSH - turvaline kestafailiedastus, toetab võtmeautentimist",
             "webdavTooltip": "WebDAV-protokoll - ühilduv Nextcloud, CloudMe, Koofr, Synology NAS-iga",
-            "insecureCertConfirmFirst": "Hoiatus: olete vastuvõtmas kehtetu/isesigneeritud serte. See nõrgendab ühenduse turvalisust. Jätkata?",
-            "insecureCertConfirmSecond": "Lõplik kinnitus: jätkata ebaturvalise serdi režiimis?"
+            "insecureCertConfirmFirst": "Vigade v6i iseallkirjastatud sertifikaatide aktsepteerimine n6rgendab uhenduse turvalisust. Lubage see ainult siis, kui usaldate serverit ja m6istate riske.",
+            "insecureCertTitle": "Turval hoiatus",
+            "insecureCertAccept": "Aktsepteeri risk"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -1213,7 +1214,32 @@
             },
             "reportDirsCreated": "Kausta loodud",
             "indexAvailable": "Indeks vahemälus",
-            "indexAvailableTooltip": "Eelmisest sünkroniseerimisest on saadaval indeks — konfliktide tuvastamine on täiustatud"
+            "indexAvailableTooltip": "Eelmisest sünkroniseerimisest on saadaval indeks — konfliktide tuvastamine on täiustatud",
+            "journalFound": "Tuvastati katkestatud sünkroniseerimine",
+            "journalDescription": "{completed}/{total} faili lõpetatud (viimati uuendatud: {date})",
+            "resumeSync": "Jätka",
+            "dismissJournal": "Loobu",
+            "reportRetried": "Kordatud",
+            "reportVerifyFailed": "Kontrollimine ebaõnnestus",
+            "errorBreakdown": "Vigade jaotus",
+            "retryable": "korratav",
+            "verifyNone": "Kontroll puudub",
+            "verifySize": "Kontrolli suurust",
+            "verifySizeMtime": "Kontrolli suurust + aega",
+            "verifyFull": "Täielik kontroll",
+            "retries": "{count} kordust",
+            "errorKind": {
+                "network": "Võrk",
+                "auth": "Autentimine",
+                "path_not_found": "Ei leitud",
+                "permission_denied": "Ligipääs keelatud",
+                "quota_exceeded": "Kvoot ületatud",
+                "rate_limit": "Kiiruspiirang",
+                "timeout": "Timeout",
+                "file_locked": "Fail lukustatud",
+                "disk_error": "Kettaviga",
+                "unknown": "Tundmatu"
+            }
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -1263,7 +1289,9 @@
                 "connecting": "Ühendamine...",
                 "disconnected": "Ühendus katkestatud",
                 "newConnection": "Uus ühendus",
-                "syncing": "Sünkroniseerimine..."
+                "syncing": "Sünkroniseerimine...",
+                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
+                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
             }
         },
         "update": {
@@ -2422,6 +2450,12 @@
             "localOnly": "Ainult lokaalne",
             "showRemote": "Näita kauget",
             "showSystemMenu": "Näita süsteemi menüüriba"
+        }
+    },
+    "ui": {
+        "session": {
+            "closeOthers": "Sulge teised kaardid",
+            "closeAll": "Sulge koik kaardid"
         }
     }
 }
