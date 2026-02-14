@@ -6,7 +6,6 @@
  */
 
 import React, { useCallback, useRef } from 'react';
-import { Folder, FolderUp } from 'lucide-react';
 import { ImageThumbnail } from './ImageThumbnail';
 import type { LocalFile } from '../types';
 
@@ -21,6 +20,7 @@ interface LargeIconsGridProps {
   onNavigateUp: () => void;
   isAtRoot: boolean;
   getFileIcon: (fileName: string, isDirectory: boolean) => { icon: React.ReactNode; color: string };
+  getFolderUpIcon?: () => { icon: React.ReactNode; color: string };
   onContextMenu: (event: React.MouseEvent, file?: LocalFile) => void;
   // Drag and drop
   onDragStart?: (e: React.DragEvent, file: LocalFile) => void;
@@ -136,7 +136,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   // Render the icon/thumbnail area
   const renderIcon = () => {
     if (file.is_dir) {
-      return <Folder size={64} className="text-blue-400" />;
+      return getFileIcon(file.name, true).icon;
     }
     if (isImage) {
       const imagePath = currentPath === '/'
@@ -152,6 +152,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
             </div>
           }
           isRemote={false}
+          className="w-24 h-24 object-cover rounded-lg"
         />
       );
     }
@@ -223,6 +224,7 @@ export function LargeIconsGrid({
   onNavigateUp,
   isAtRoot,
   getFileIcon,
+  getFolderUpIcon,
   onContextMenu,
   onDragStart,
   onDragOver,
@@ -252,7 +254,7 @@ export function LargeIconsGrid({
         title="Go up"
       >
         <div className="flex items-center justify-center w-16 h-16">
-          <FolderUp size={64} className="text-gray-400" />
+          {getFolderUpIcon ? getFolderUpIcon().icon : getFileIcon('..', true).icon}
         </div>
         <span className="text-xs text-center leading-tight mt-1.5 italic text-gray-500">..</span>
       </div>

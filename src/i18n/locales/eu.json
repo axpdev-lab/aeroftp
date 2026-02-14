@@ -224,7 +224,8 @@
             "localPathMismatch": "Tokiko bidea ez dator bat konektatutako zerbitzariarekin",
             "locked": "Blokeatuta",
             "notConnected": "Konektatu gabe",
-            "permsHeader": "Baim."
+            "permsHeader": "Baim.",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Ireki",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Argia",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Gaia",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Garatzaileen tresnak",
+            "title": "AeroTools",
             "preview": "Aurrebista",
             "editor": "Editorea",
             "terminal": "Terminala",
@@ -656,7 +665,7 @@
             "minimap": "Minimapa",
             "duplicatesSkipped": "bikoiztuak saltatu dira",
             "invalidPassword": "Pasahitz okerra",
-            "closeDevTools": "Itxi DevTools",
+            "closeDevTools": "Itxi AeroTools",
             "maximize": "Maximizatu",
             "noFileOpen": "Ez dago fitxategirik irekita",
             "noPanelsActive": "Ez dago panel aktiborik. Egin klik goiko botoietan Editorea, Terminala edo AI Txata erakusteko.",
@@ -740,7 +749,7 @@
             "notConnected": "Ez konektatuta",
             "syncing": "Sinkronizatzen...",
             "syncFiles": "Sinkronizatu fitxategiak",
-            "devTools": "Garatzaile tresnak",
+            "devTools": "AeroTools",
             "updateAvailable": "Eguneraketa eskuragarri",
             "transferQueue": "Transferentzia ilara",
             "queue": "Ilara",
@@ -1160,7 +1169,7 @@
             "unlock": "Desblokeatu fitxategia"
         },
         "syncPanel": {
-            "title": "Sinkronizazio Panela",
+            "title": "AeroSync",
             "local": "Tokikoa",
             "remote": "Urrunekoa",
             "direction": "Norabidea",
@@ -2164,7 +2173,7 @@
             "delete": "Ezabatu",
             "refresh": "Freskatu",
             "toggleTheme": "Aldatu gaia",
-            "devtools": "Garatzaile tresnak",
+            "devtools": "AeroTools",
             "toggleDevtools": "Txandakatu DevTools",
             "toggleEditor": "Txandakatu Editorea",
             "toggleTerminal": "Txandakatu Terminala",

@@ -58,7 +58,7 @@
       <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-2.png</image>
     </screenshot>
     <screenshot>
-      <caption>Integrated DevTools with code editor and AI assistant</caption>
+      <caption>AeroTools with code editor, terminal and AI assistant</caption>
       <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-3.png</image>
     </screenshot>
   </screenshots>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.1.1" date="2026-02-14">
+      <description>
+        <p>UX Polish, Icon Themes and Sync Reliability: 3-style icon theme system (Outline, Filled, Minimal) with per-theme defaults and auto-sync. Unified TransferProgressBar (7 bars into 1 reusable component with SpeedGraph). Aero Family branding complete. Fixed sync navigation false folder creation, AeroCloud CWD corruption on shared FTP connection, and session path restoration. Transfer toast theme/flicker fixes and splash screen removed for instant startup.</p>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-02-14">
       <description>
         <p>AeroSync Phase 2 — Operational Reliability: Transfer journal with checkpoint/resume for interrupted syncs, SHA-256 streaming checksum during file scan, structured error taxonomy (10 categories with retryability hints), post-transfer verification (4 policies: none/size/size+time/full), configurable retry with exponential backoff. Session tab context menu, insecure certificate confirmation modal, Filen 2FA compatibility fix, and 23 new i18n keys across 47 languages.</p>

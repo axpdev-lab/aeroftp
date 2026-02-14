@@ -224,7 +224,8 @@
             "localPathMismatch": "स्थानीय पथ कनेक्टेड सर्वर से मेल नहीं खाता",
             "locked": "लॉक किया गया",
             "notConnected": "कनेक्ट नहीं है",
-            "permsHeader": "अनुमतियाँ"
+            "permsHeader": "अनुमतियाँ",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "खोलें",
@@ -637,10 +638,18 @@
             "themeLightLabel": "हल्का",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "थीम",
-            "themeAutoLabel": "स्वचालित"
+            "themeAutoLabel": "स्वचालित",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "डेवटूल्स",
+            "title": "AeroTools",
             "preview": "पूर्वावलोकन",
             "editor": "संपादक",
             "terminal": "टर्मिनल",
@@ -656,7 +665,7 @@
             "minimap": "मिनीमैप",
             "duplicatesSkipped": "डुप्लिकेट छोड़े गए",
             "invalidPassword": "अमान्य पासवर्ड",
-            "closeDevTools": "DevTools बंद करें",
+            "closeDevTools": "AeroTools बंद करें",
             "maximize": "अधिकतम करें",
             "noFileOpen": "कोई फ़ाइल खुली नहीं है",
             "noPanelsActive": "कोई पैनल सक्रिय नहीं है। एडिटर, टर्मिनल या AI चैट दिखाने के लिए ऊपर के बटन पर क्लिक करें।",
@@ -740,7 +749,7 @@
             "notConnected": "कनेक्ट नहीं है",
             "syncing": "सिंक हो रहा है...",
             "syncFiles": "फ़ाइलें सिंक करें",
-            "devTools": "डेवटूल्स",
+            "devTools": "AeroTools",
             "updateAvailable": "अपडेट उपलब्ध है",
             "transferQueue": "ट्रांसफर कतार",
             "queue": "कतार",
@@ -1160,7 +1169,7 @@
             "unlock": "फ़ाइल अनलॉक करें"
         },
         "syncPanel": {
-            "title": "फ़ाइलें सिंक्रनाइज़ करें",
+            "title": "AeroSync",
             "local": "स्थानीय",
             "remote": "दूरस्थ",
             "direction": "दिशा",
@@ -2164,7 +2173,7 @@
             "delete": "हटाएं",
             "refresh": "ताज़ा करें",
             "toggleTheme": "थीम टॉगल करें",
-            "devtools": "डेवटूल्स",
+            "devtools": "AeroTools",
             "toggleDevtools": "डेवटूल्स टॉगल करें",
             "toggleEditor": "संपादक टॉगल करें",
             "toggleTerminal": "टर्मिनल टॉगल करें",

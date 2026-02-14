@@ -224,7 +224,8 @@
             "localPathMismatch": "Lokalna putanja ne odgovara povezanom poslužitelju",
             "locked": "Zaključano",
             "notConnected": "Nije povezano",
-            "permsHeader": "Dozvole"
+            "permsHeader": "Dozvole",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Otvori",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Svijetla",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Alati za razvoj",
+            "title": "AeroTools",
             "preview": "Pregled",
             "editor": "Uređivač",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minijaturna karta",
             "duplicatesSkipped": "duplikati preskočeni",
             "invalidPassword": "Neispravna lozinka",
-            "closeDevTools": "Zatvori DevTools",
+            "closeDevTools": "Zatvori AeroTools",
             "maximize": "Maksimiziraj",
             "noFileOpen": "Nema otvorene datoteke",
             "noPanelsActive": "Nema aktivnih panela. Kliknite gumbe iznad za prikaz uređivača, terminala ili AI chata.",
@@ -740,7 +749,7 @@
             "notConnected": "Nije povezano",
             "syncing": "Sinkronizacija...",
             "syncFiles": "Sinkroniziraj datoteke",
-            "devTools": "Alati za razvoj",
+            "devTools": "AeroTools",
             "updateAvailable": "Ažuriranje dostupno",
             "transferQueue": "Red čekanja prijenosa",
             "queue": "Red čekanja",
@@ -1160,7 +1169,7 @@
             "unlock": "Otključaj datoteku"
         },
         "syncPanel": {
-            "title": "Sinkronizacija",
+            "title": "AeroSync",
             "local": "Lokalno",
             "remote": "Udaljeno",
             "direction": "Smjer",
@@ -2164,7 +2173,7 @@
             "delete": "Izbriši",
             "refresh": "Osvježi",
             "toggleTheme": "Promijeni temu",
-            "devtools": "Alati za razvoj",
+            "devtools": "AeroTools",
             "toggleDevtools": "Uključi/isključi alate za razvoj",
             "toggleEditor": "Uključi/isključi uređivač",
             "toggleTerminal": "Uključi/isključi terminal",

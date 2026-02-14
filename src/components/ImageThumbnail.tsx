@@ -10,13 +10,15 @@ interface ImageThumbnailProps {
     name: string;
     fallbackIcon: React.ReactNode;
     isRemote?: boolean;
+    className?: string;
 }
 
 export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     path,
     name,
     fallbackIcon,
-    isRemote = false
+    isRemote = false,
+    className
 }) => {
     const [src, setSrc] = useState<string | null>(null);
     const [error, setError] = useState(false);
@@ -47,7 +49,7 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     if (error || !src) {
         return <div className="file-grid-icon">{fallbackIcon}</div>;
     }
-    return <img src={src} alt={name} className="file-grid-thumbnail" />;
+    return <img src={src} alt={name} className={className || "file-grid-thumbnail"} />;
 };
 
 export default ImageThumbnail;

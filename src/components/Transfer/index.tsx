@@ -5,6 +5,8 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, Folder, X } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
+import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
+import { TransferProgressBar } from '../TransferProgressBar';
 
 /**
  * Truncate a path smartly: always show the last 2 segments with ellipsis prefix.
@@ -53,10 +55,8 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
 
         const interval = setInterval(() => {
             frame++;
-            // Create glitchy effect by replacing some chars with random ones
-            const glitched = targetText.split('').map((char, i) => {
+            const glitched = targetText.split('').map((char) => {
                 if (char === ' ' || char === '.' || char === '/') return char;
-                // More glitch at start, stabilize over time
                 if (frame < 3 || (Math.random() > 0.7 && frame < 8)) {
                     return chars[Math.floor(Math.random() * chars.length)];
                 }
@@ -75,16 +75,53 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
     return <span className={isAnimated ? 'font-mono text-green-400' : ''}>{displayText}</span>;
 };
 
-// ============ Progress Bar (Apple-style) ============
-interface TransferProgressBarProps {
+// ============ Transfer Toast (floating notification) ============
+interface TransferToastProps {
     transfer: TransferProgress;
     onCancel: () => void;
 }
 
-export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({ transfer, onCancel }) => {
+/** Theme-specific styles for the transfer toast */
+function getToastStyles(theme: string) {
+    switch (theme) {
+        case 'cyber':
+            return {
+                container: 'bg-[#0a0e17]/95 border-cyan-900/50 shadow-[0_0_30px_rgba(34,211,238,0.15)]',
+                title: 'text-cyan-100',
+                subtitle: 'text-cyan-400/70',
+                cancel: 'text-cyan-700 hover:text-red-400 hover:bg-red-900/30',
+            };
+        case 'tokyo':
+            return {
+                container: 'bg-[#1a1b2e]/95 border-purple-800/50 shadow-[0_0_30px_rgba(168,85,247,0.15)]',
+                title: 'text-purple-100',
+                subtitle: 'text-purple-300/70',
+                cancel: 'text-purple-600 hover:text-red-400 hover:bg-red-900/30',
+            };
+        case 'light':
+            return {
+                container: 'bg-white/95 border-gray-200 shadow-2xl',
+                title: 'text-gray-900',
+                subtitle: 'text-gray-500',
+                cancel: 'text-gray-400 hover:text-red-500 hover:bg-red-50',
+            };
+        default: // dark
+            return {
+                container: 'bg-gray-900/95 border-gray-700 shadow-2xl',
+                title: 'text-gray-100',
+                subtitle: 'text-gray-400',
+                cancel: 'text-gray-500 hover:text-red-400 hover:bg-red-900/30',
+            };
+    }
+}
+
+export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel }) => {
+    const { theme, isDark } = useTheme();
+    const effectiveTheme = getEffectiveTheme(theme, isDark);
     const isUpload = transfer.direction === 'upload';
     const isFolderTransfer = transfer.total_files != null && transfer.total_files > 0;
     const isIndeterminate = isUpload && transfer.percentage < 5 && !isFolderTransfer;
+    const styles = getToastStyles(effectiveTheme);
 
     // Display name: use truncated path if available, otherwise just filename
     const displayName = transfer.path
@@ -100,7 +137,10 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({ transf
     }, [transfer.percentage, onCancel]);
 
     return (
-        <div className="fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-96">
+        <div
+            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 backdrop-blur-xl rounded-2xl border p-4 min-w-96 ${styles.container}`}
+            style={{ isolation: 'isolate', contain: 'layout paint' }}
+        >
             <div className="flex items-center gap-4">
                 <div className={`text-2xl ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
                     {isFolderTransfer ? (
@@ -114,46 +154,35 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({ transf
                 <div className="flex-1">
                     <div className="flex justify-between items-center mb-2">
                         <span
-                            className="font-medium text-gray-900 dark:text-gray-100 truncate max-w-64"
+                            className={`font-medium truncate max-w-64 ${styles.title}`}
                             title={transfer.path || transfer.filename}
                         >
                             {displayName}
                         </span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                        <span className={`text-sm ${styles.subtitle}`}>
                             {isIndeterminate ? '...' : `${transfer.percentage}%`}
                         </span>
                     </div>
-                    <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        {isIndeterminate ? (
-                            <div
-                                className="h-full w-1/3 bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"
-                                style={{ animation: 'indeterminate 1.5s ease-in-out infinite' }}
-                            />
-                        ) : (
-                            <div
-                                className={`h-full rounded-full transition-all duration-300 ${
-                                    isFolderTransfer
-                                        ? 'bg-gradient-to-r from-amber-500 to-orange-400'
-                                        : 'bg-gradient-to-r from-blue-500 to-cyan-400'
-                                }`}
-                                style={{ width: `${Math.max(transfer.percentage, 2)}%` }}
-                            />
-                        )}
-                    </div>
-                    <div className="flex justify-between mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <TransferProgressBar
+                        percentage={transfer.percentage}
+                        speedBps={transfer.speed_bps}
+                        etaSeconds={transfer.eta_seconds}
+                        transferredBytes={isFolderTransfer ? undefined : transfer.transferred}
+                        totalBytes={isFolderTransfer ? undefined : transfer.total}
+                        currentFile={isFolderTransfer ? transfer.transferred : undefined}
+                        totalFiles={isFolderTransfer ? transfer.total : undefined}
+                        size="lg"
+                        variant={isIndeterminate ? 'indeterminate' : 'gradient'}
+                        animated={!isIndeterminate}
+                    />
+                    <div className={`flex justify-between mt-1.5 text-xs ${styles.subtitle}`}>
                         <span>
                             {isFolderTransfer ? (
-                                <>
-                                    {transfer.transferred} / {transfer.total} files
-                                </>
+                                <>{transfer.transferred} / {transfer.total} files</>
                             ) : isIndeterminate ? (
                                 formatBytes(transfer.total)
                             ) : (
-                                <>
-                                    {formatBytes(transfer.transferred)}
-                                    {' / '}
-                                    {formatBytes(transfer.total)}
-                                </>
+                                <>{formatBytes(transfer.transferred)} / {formatBytes(transfer.total)}</>
                             )}
                         </span>
                         <span>
@@ -176,7 +205,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({ transf
                 </div>
                 <button
                     onClick={onCancel}
-                    className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                    className={`p-2 rounded-lg transition-colors ${styles.cancel}`}
                 >
                     <X size={18} />
                 </button>

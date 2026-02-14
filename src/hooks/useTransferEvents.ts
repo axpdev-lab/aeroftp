@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TransferEvent, TransferProgress } from '../types';
+import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface UseTransferEventsOptions {
@@ -35,6 +36,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const completedTransferIds = useRef<Set<string>>(new Set());
   // Track last known file-level speed for display in folder transfer toast
   const lastFileSpeedRef = useRef<number>(0);
+  // Debounce timer for clearing activeTransfer — prevents flicker between consecutive files
+  const clearToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const joinPath = (base: string, name: string): string => {
@@ -153,17 +156,24 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const skipQueueId = transferQueue.addItem(data.filename, '', 0, skipDirection);
         transferQueue.completeTransfer(skipQueueId);
       } else if (data.event_type === 'progress' && data.progress) {
+        // Cancel any pending toast-clear timer (prevents flicker between consecutive files)
+        if (clearToastTimer.current) {
+          clearTimeout(clearToastTimer.current);
+          clearToastTimer.current = null;
+        }
         // Ignore late progress events for already-completed transfers (race condition fix)
         if (!completedTransferIds.current.has(data.transfer_id)) {
+          // Track file-level speed regardless of throttle
+          if (!data.progress.total_files && data.progress.speed_bps > 0) {
+            lastFileSpeedRef.current = data.progress.speed_bps;
+          }
+          // Signal App that a transfer is active (boolean only — no frequent re-renders)
+          setActiveTransfer(data.progress);
+          // Dispatch progress to isolated TransferToastContainer (no App re-render)
           if (data.progress.total_files) {
-            // Folder-level progress: merge in last known file speed for display
-            setActiveTransfer({ ...data.progress, speed_bps: lastFileSpeedRef.current });
+            dispatchTransferToast({ ...data.progress, speed_bps: lastFileSpeedRef.current });
           } else {
-            // File-level progress: track speed for folder toast display
-            if (data.progress.speed_bps > 0) {
-              lastFileSpeedRef.current = data.progress.speed_bps;
-            }
-            setActiveTransfer(data.progress);
+            dispatchTransferToast(data.progress);
           }
         }
 
@@ -175,7 +185,15 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       } else if (data.event_type === 'complete') {
         completedTransferIds.current.add(data.transfer_id);
-        setActiveTransfer(null);
+        // Debounce toast dismiss: wait 500ms before clearing to prevent flicker
+        // between consecutive file transfers. If a new progress event arrives first,
+        // the timer is cancelled and the toast stays visible.
+        if (clearToastTimer.current) clearTimeout(clearToastTimer.current);
+        clearToastTimer.current = setTimeout(() => {
+          setActiveTransfer(null);
+          dispatchTransferToast(null);
+          clearToastTimer.current = null;
+        }, 500);
 
         let size = '';
         let time = '';
@@ -217,6 +235,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         else if (data.direction === 'download') optRef.current.loadLocalFiles(optRef.current.currentLocalPath);
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
+        dispatchTransferToast(null);
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
@@ -242,6 +261,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         notify.error('Transfer Failed', data.message);
       } else if (data.event_type === 'cancelled') {
         setActiveTransfer(null);
+        dispatchTransferToast(null);
 
         // Update activity log for this transfer
         const logId = transferIdToLogId.current.get(data.transfer_id);

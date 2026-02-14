@@ -224,7 +224,8 @@
             "localPathMismatch": "로컬 경로가 연결된 서버와 일치하지 않습니다",
             "locked": "잠김",
             "notConnected": "연결 안 됨",
-            "permsHeader": "권한"
+            "permsHeader": "권한",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "열기",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Light",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "테마",
-            "themeAutoLabel": "자동"
+            "themeAutoLabel": "자동",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "개발자 도구",
+            "title": "AeroTools",
             "preview": "미리보기",
             "editor": "에디터",
             "terminal": "터미널",
@@ -656,7 +665,7 @@
             "minimap": "미니맵",
             "duplicatesSkipped": "중복 항목 건너뜀",
             "invalidPassword": "잘못된 비밀번호",
-            "closeDevTools": "DevTools 닫기",
+            "closeDevTools": "AeroTools 닫기",
             "maximize": "최대화",
             "noFileOpen": "열린 파일 없음",
             "noPanelsActive": "활성화된 패널이 없습니다. 위의 버튼을 클릭하여 편집기, 터미널 또는 AI 채팅을 표시하세요.",
@@ -740,7 +749,7 @@
             "notConnected": "연결되지 않음",
             "syncing": "동기화 중...",
             "syncFiles": "파일 동기화",
-            "devTools": "개발자 도구",
+            "devTools": "AeroTools",
             "updateAvailable": "업데이트 가능",
             "transferQueue": "전송 대기열",
             "queue": "대기열",
@@ -1160,7 +1169,7 @@
             "unlock": "파일 잠금 해제"
         },
         "syncPanel": {
-            "title": "파일 동기화",
+            "title": "AeroSync",
             "local": "로컬",
             "remote": "원격",
             "direction": "방향",
@@ -2164,7 +2173,7 @@
             "delete": "삭제",
             "refresh": "새로고침",
             "toggleTheme": "테마 전환",
-            "devtools": "개발자 도구",
+            "devtools": "AeroTools",
             "toggleDevtools": "개발자 도구 전환",
             "toggleEditor": "편집기 전환",
             "toggleTerminal": "터미널 전환",

@@ -224,7 +224,8 @@
             "localPathMismatch": "Kohalik tee ei vasta ühendatud serverile",
             "locked": "Lukustatud",
             "notConnected": "Pole ühendatud",
-            "permsHeader": "Õigused"
+            "permsHeader": "Õigused",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Ava",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Hele",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Teema",
-            "themeAutoLabel": "Automaatne"
+            "themeAutoLabel": "Automaatne",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Arendustööriistad",
+            "title": "AeroTools",
             "preview": "Eelvaade",
             "editor": "Redaktor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minikaart",
             "duplicatesSkipped": "duplikaadid vahele jäetud",
             "invalidPassword": "Vigane parool",
-            "closeDevTools": "Sulge DevTools",
+            "closeDevTools": "Sulge AeroTools",
             "maximize": "Maksimeeri",
             "noFileOpen": "Ühtegi faili pole avatud",
             "noPanelsActive": "Ükski paneel pole aktiivne. Klõpsa ülaltoodud nuppudel, et kuvada redaktor, terminal või AI vestlus.",
@@ -740,7 +749,7 @@
             "notConnected": "Pole ühendatud",
             "syncing": "Sünkroniseerimine...",
             "syncFiles": "Sünkroniseeri failid",
-            "devTools": "Arendustööriistad",
+            "devTools": "AeroTools",
             "updateAvailable": "Uuendus saadaval",
             "transferQueue": "Edastuse järjekord",
             "queue": "Järjekord",
@@ -1160,7 +1169,7 @@
             "unlock": "Ava faili lukk"
         },
         "syncPanel": {
-            "title": "Sünkroniseeri failid",
+            "title": "AeroSync",
             "local": "Kohalik",
             "remote": "Kaug",
             "direction": "Suund",
@@ -2164,7 +2173,7 @@
             "delete": "Kustuta",
             "refresh": "Värskenda",
             "toggleTheme": "Vaheta teemat",
-            "devtools": "Arendustööriistad",
+            "devtools": "AeroTools",
             "toggleDevtools": "Lülita arendustööriistu",
             "toggleEditor": "Lülita redaktorit",
             "toggleTerminal": "Lülita terminali",

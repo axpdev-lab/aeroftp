@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 14 protocols, 4 integrated tools, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 14 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <p align="center">
@@ -28,11 +28,24 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 14 protocols and a complete file management platform through four integrated tools.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 14 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
-## The Four Pillars
+## The Aero Family
+
+```
+AeroFTP
+├── AeroCloud    — Personal cloud (14 protocols, sync, share)
+├── AeroFile     — Professional file manager
+├── AeroSync     — Bidirectional sync engine
+├── AeroVault    — Military-grade encryption
+├── AeroTools    — Code editor + Terminal + AI chat
+│   └── AeroAgent    — AI-powered assistant (28 tools, 10 providers)
+└── AeroPlayer   — Media player with visualizers
+```
+
+---
 
 ### AeroCloud — Your Personal Cloud
 
@@ -57,7 +70,7 @@ Turn **any FTP server** into a private personal cloud. Connect to 14 protocols t
 
 **Cloud features**: Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
-**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows. Competing feature-for-feature with Dropbox, OneDrive, and Google Drive overlay icons.
+**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
 ---
 
@@ -75,7 +88,6 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 - **Trash Browser**: Soft delete to system trash by default. Browse trash contents, restore individual files, or empty trash. Full trash lifecycle management
 - **Duplicate File Finder**: Content-aware duplicate detection (size grouping + MD5 hash). Interactive dialog with KEEP/DELETE/SKIP per file and batch delete
 - **Disk Usage Treemap**: Visual disk space analysis with squarified treemap algorithm. Click to drill down into directories, breadcrumb navigation, hover details
-- **Smart Sync**: Intelligent conflict resolution — overwrite if newer, overwrite if different, skip if identical
 - **Batch Rename**: Find/Replace, Prefix, Suffix, Sequential numbering with live preview and conflict detection
 - **Inline Rename**: Click filename or press F2 to rename directly in file list
 - **File Clipboard**: Cut/Copy/Paste with cross-panel transfers (local-to-remote and vice versa)
@@ -83,6 +95,22 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 - **CompressDialog**: Unified compression UI with format selection, levels, and password protection
 - **Resizable Preview Panel**: Image thumbnails, file info, dimensions, path display
 - **20+ Keyboard Shortcuts**: Space preview, F2 rename, Delete, Ctrl+C/V, Ctrl+B sidebar, Ctrl+L edit path, Alt+Enter properties, and more
+
+---
+
+### AeroSync — Bidirectional Sync Engine
+
+Enterprise-grade file synchronization with operational reliability features built for real-world use.
+
+- **Smart Sync**: 3 intelligent conflict resolution modes — overwrite if newer, overwrite if different, skip if identical
+- **Transfer journal with checkpoint/resume**: Persistent journal tracks every sync operation. Interrupted syncs resume from where they left off
+- **SHA-256 checksum verification**: Content-based comparison with streaming 64KB-chunk hashing during scan phase
+- **Post-transfer verification**: 4 policies (None, Size, Size+Time, Full) confirm transfer integrity after each download
+- **Configurable retry with exponential backoff**: Per-file retry policy with base delay, max delay cap, backoff multiplier, and per-file timeout
+- **Structured error taxonomy**: 10 error categories (Network, Auth, PathNotFound, PermissionDenied, QuotaExceeded, RateLimit, Timeout, FileLocked, DiskError, Unknown) with retryability hints
+- **Error breakdown in sync report**: Post-sync report groups errors by category with dedicated icons
+- **Navigation boundary warning**: Visual amber warning when browsing outside active sync paths
+- **AeroCloud integration**: Tray background sync, share links, native OS file manager badges
 
 ---
 
@@ -110,7 +138,16 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 ---
 
-### AeroAgent — AI-Powered Assistant
+### AeroTools — Code Editor, Terminal & AI Chat
+
+The integrated development panel combining three tools in a tabbed interface.
+
+- **Monaco Editor** (VS Code engine): Syntax highlighting for 50+ languages, remote file editing, 4 editor themes matching app themes
+- **Integrated Terminal**: SSH remote shell with 8 terminal themes, multiple tabs, auto-sync with app theme
+- **AeroAgent AI Chat**: Full AI assistant panel (see below)
+- **Bidirectional sync**: Editor and AI agent edits flow in both directions in real time
+
+#### AeroAgent — AI-Powered Assistant
 
 An AI assistant with **28 provider-agnostic tools** that work across all 14 protocols. 10 AI providers, vision support, RAG indexing, and a plugin system.
 
@@ -141,6 +178,20 @@ An AI assistant with **28 provider-agnostic tools** that work across all 14 prot
 
 ---
 
+### AeroPlayer — Media Engine
+
+Built-in media player with GPU-accelerated visualizations and professional audio processing.
+
+- **14 visualizer modes**: 8 Canvas 2D + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
+- **10-band graphic EQ**: Real Web Audio BiquadFilterNode per band (32Hz-16kHz) with 10 presets and stereo balance
+- **Beat detection**: Onset energy algorithm driving beat-reactive effects across all modes
+- **WebGL shader engine**: 6 GLSL fragment shaders — GPU-accelerated ray marching, metaballs, fractals, particles
+- **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
+- **Resilient startup buffering**: First Play now queues during prebuffer and auto-starts when ready
+- **Zero dependencies**: Native HTML5 `<audio>` + Web Audio API
+
+---
+
 ## Privacy-Enhanced
 
 AeroFTP incorporates privacy protections that go beyond what traditional file managers offer.
@@ -160,31 +211,11 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 
 ## Additional Features
 
-### AeroPlayer Media Engine
-- **14 visualizer modes**: 8 Canvas 2D + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
-- **10-band graphic EQ**: Real Web Audio BiquadFilterNode per band (32Hz-16kHz) with 10 presets and stereo balance
-- **Beat detection**: Onset energy algorithm driving beat-reactive effects across all modes
-- **WebGL shader engine**: 6 GLSL fragment shaders — GPU-accelerated ray marching, metaballs, fractals, particles
-- **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
-- **Resilient startup buffering**: First Play now queues during prebuffer and auto-starts when ready, with explicit buffering feedback on Linux/WebKit runtimes
-- **Zero dependencies**: Native HTML5 `<audio>` + Web Audio API
+### 4 Themes
+Light, Dark, Tokyo Night, and Cyberpunk — with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
 
-### DevTools Panel
-- **Monaco Editor** (VS Code engine) for remote file editing with syntax highlighting
-- **Integrated terminal** with 8 themes, multiple tabs, SSH remote shell
-- **Bidirectional sync**: Editor and AI agent edits flow in both directions in real time
-
-### Security
-- **Unified Encrypted Keystore**: ALL credentials in AES-256-GCM vault — nothing in localStorage
-- **Vault-first app settings migration**: Core settings moved from plaintext browser storage into encrypted vault entries with idempotent migration
-- **Keystore backup/restore**: Export/import `.aeroftp-keystore` with Argon2id + AES-256-GCM
-- **Universal Vault**: Single `vault.key` + `vault.db` backend — no OS keyring dependency
-- **XSS-hardened AI chat**: Source-level HTML escaping pipeline (`escapeHtml → renderMarkdown → formatToolCallDisplay`)
-- **Fail-closed host-key validation**: SFTP host key mismatch/verification errors now block connection instead of degrading to insecure behavior
-- **WebDAV Digest auth (RFC 2617)**: Auto-detection of HTTP Digest authentication with HMAC-MD5 challenge-response — password never transmitted, replay protection via nonce counting
-- **SFTP host key verification**: Trust On First Use with `~/.ssh/known_hosts`
-- **Ephemeral OAuth2 port**: Random callback port (no fixed port exposure)
-- **FTP insecure warning**: Visual banner on unencrypted FTP connections
+### Security Toolkit (Cyberpunk theme)
+Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCha20-Poly1305 encrypt/decrypt), Password Forge (CSPRNG + BIP39 passphrase generator with entropy display).
 
 ### 47 Languages at 100% Coverage
 
@@ -206,6 +237,7 @@ Quality-audited translations with native script integrity. Automatic browser lan
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA
 - AppImage auto-install with "Install & Restart" button
+- Non-intrusive update toast with auto-dismiss (StatusBar badge for persistent access)
 - Periodic background check every 24 hours
 
 ---

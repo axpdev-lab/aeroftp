@@ -224,7 +224,8 @@
             "localPathMismatch": "Jalur lokal tidak cocok dengan server yang tersambung",
             "locked": "Terkunci",
             "notConnected": "Tidak Tersambung",
-            "permsHeader": "Izin"
+            "permsHeader": "Izin",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Buka",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Terang",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Otomatis"
+            "themeAutoLabel": "Otomatis",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Alat Pengembang",
+            "title": "AeroTools",
             "preview": "Pratinjau",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Peta Mini",
             "duplicatesSkipped": "duplikat dilewati",
             "invalidPassword": "Kata sandi tidak valid",
-            "closeDevTools": "Tutup DevTools",
+            "closeDevTools": "Tutup AeroTools",
             "maximize": "Maksimalkan",
             "noFileOpen": "Tidak ada file terbuka",
             "noPanelsActive": "Tidak ada panel aktif. Klik tombol di atas untuk menampilkan Editor, Terminal, atau AI Chat.",
@@ -740,7 +749,7 @@
             "notConnected": "Tidak terhubung",
             "syncing": "Menyinkronkan...",
             "syncFiles": "Sinkronkan File",
-            "devTools": "Alat Pengembang",
+            "devTools": "AeroTools",
             "updateAvailable": "Pembaruan Tersedia",
             "transferQueue": "Antrean Transfer",
             "queue": "Antrean",
@@ -1160,7 +1169,7 @@
             "unlock": "Buka Kunci File"
         },
         "syncPanel": {
-            "title": "Sinkronkan File",
+            "title": "AeroSync",
             "local": "Lokal",
             "remote": "Jarak Jauh",
             "direction": "Arah",
@@ -2164,7 +2173,7 @@
             "delete": "Hapus",
             "refresh": "Segarkan",
             "toggleTheme": "Ganti Tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Ganti DevTools",
             "toggleEditor": "Ganti Editor",
             "toggleTerminal": "Ganti Terminal",

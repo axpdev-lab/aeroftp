@@ -224,7 +224,8 @@
             "localPathMismatch": "Локальний шлях не відповідає підключеному серверу",
             "locked": "Заблоковано",
             "notConnected": "Не підключено",
-            "permsHeader": "Права"
+            "permsHeader": "Права",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Відкрити",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Світла",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
-            "themeAutoLabel": "Авто"
+            "themeAutoLabel": "Авто",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Інструменти розробника",
+            "title": "AeroTools",
             "preview": "Попередній перегляд",
             "editor": "Редактор",
             "terminal": "Термінал",
@@ -656,7 +665,7 @@
             "minimap": "Мінікарта",
             "duplicatesSkipped": "дублікатів пропущено",
             "invalidPassword": "Невірний пароль",
-            "closeDevTools": "Закрити DevTools",
+            "closeDevTools": "Закрити AeroTools",
             "maximize": "Розгорнути",
             "noFileOpen": "Немає відкритого файлу",
             "noPanelsActive": "Немає активних панелей. Натисніть кнопки вище, щоб показати Редактор, Термінал або AI Чат.",
@@ -740,7 +749,7 @@
             "notConnected": "Не підключено",
             "syncing": "Синхронізація...",
             "syncFiles": "Синхронізація файлів",
-            "devTools": "Інструменти розробника",
+            "devTools": "AeroTools",
             "updateAvailable": "Є оновлення",
             "transferQueue": "Черга",
             "queue": "Черга",
@@ -1160,7 +1169,7 @@
             "unlock": "Розблокувати файл"
         },
         "syncPanel": {
-            "title": "Синхронізація файлів",
+            "title": "AeroSync",
             "local": "Локальний",
             "remote": "Віддалений",
             "direction": "Напрямок",
@@ -2164,7 +2173,7 @@
             "delete": "Видалити",
             "refresh": "Оновити",
             "toggleTheme": "Змінити тему",
-            "devtools": "Інструменти розробника",
+            "devtools": "AeroTools",
             "toggleDevtools": "Інструменти розробника",
             "toggleEditor": "Редактор",
             "toggleTerminal": "Термінал",

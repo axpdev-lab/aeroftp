@@ -1,0 +1,283 @@
+/* ============================================================
+   TransferProgressBar — Unified Transfer Progress Component
+   ============================================================ */
+
+/* Container */
+.tpb-container {
+    padding: 0;
+}
+
+/* Slide animation */
+.tpb-slide-initial {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease-out;
+}
+
+.tpb-slide-enter {
+    max-height: 200px; /* enough for bar + graph */
+    opacity: 1;
+    overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease-in;
+}
+
+/* Track (background) */
+.tpb-track {
+    width: 100%;
+    border-radius: 9999px;
+    overflow: hidden;
+}
+
+.tpb-light .tpb-track { background: #e5e7eb; }
+.tpb-dark .tpb-track { background: #374151; }
+.tpb-tokyo .tpb-track { background: #2d2250; }
+.tpb-cyber .tpb-track { background: #0d1520; }
+
+/* Fill — shimmer animation */
+.tpb-fill {
+    border-radius: 9999px;
+    position: relative;
+}
+
+.tpb-shimmer {
+    background-size: 200% 100%;
+    animation: tpb-shimmer 2s linear infinite;
+    /* Promote to GPU compositor layer — prevents repaint cascade to parent/sibling elements in WebKitGTK */
+    will-change: background-position;
+    contain: layout style;
+}
+
+@keyframes tpb-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* Shimmer overlay (adds the bright streak effect) */
+.tpb-shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 9999px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.25) 45%,
+        rgba(255, 255, 255, 0.4) 50%,
+        rgba(255, 255, 255, 0.25) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
+@keyframes tpb-shimmer-overlay {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Cyber theme: neon glow on shimmer */
+.tpb-cyber .tpb-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(34, 211, 238, 0.3) 45%,
+        rgba(16, 185, 129, 0.5) 50%,
+        rgba(34, 211, 238, 0.3) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
+/* Tokyo theme: warm shimmer */
+.tpb-tokyo .tpb-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(168, 85, 247, 0.3) 45%,
+        rgba(236, 72, 153, 0.5) 50%,
+        rgba(168, 85, 247, 0.3) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
+/* Indeterminate animation */
+.tpb-fill-indeterminate {
+    border-radius: 9999px;
+    animation: tpb-indeterminate 1.5s ease-in-out infinite;
+    will-change: transform;
+    contain: layout style;
+}
+
+.tpb-light .tpb-fill-indeterminate { background: linear-gradient(90deg, #10b981, #34d399); }
+.tpb-dark .tpb-fill-indeterminate { background: linear-gradient(90deg, #10b981, #34d399); }
+.tpb-tokyo .tpb-fill-indeterminate { background: linear-gradient(90deg, #a855f7, #ec4899); }
+.tpb-cyber .tpb-fill-indeterminate { background: linear-gradient(90deg, #22d3ee, #10b981); }
+
+@keyframes tpb-indeterminate {
+    0%   { transform: translateX(-100%); }
+    50%  { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
+}
+
+/* Text styles */
+.tpb-filename {
+    font-weight: 500;
+}
+
+.tpb-light .tpb-filename { color: #374151; }
+.tpb-dark .tpb-filename { color: #d1d5db; }
+.tpb-tokyo .tpb-filename { color: #c4b5fd; }
+.tpb-cyber .tpb-filename { color: #67e8f9; }
+
+.tpb-stats {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.tpb-light .tpb-stats { color: #6b7280; }
+.tpb-dark .tpb-stats { color: #9ca3af; }
+.tpb-tokyo .tpb-stats { color: #a78bfa; }
+.tpb-cyber .tpb-stats { color: #22d3ee; }
+
+.tpb-batch {
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.tpb-batch-label,
+.tpb-pct-label {
+    font-weight: 500;
+}
+
+.tpb-light .tpb-batch-label { color: #6b7280; }
+.tpb-dark .tpb-batch-label { color: #9ca3af; }
+.tpb-tokyo .tpb-batch-label { color: #a78bfa; }
+.tpb-cyber .tpb-batch-label { color: #67e8f9; }
+
+.tpb-light .tpb-pct-label { color: #374151; }
+.tpb-dark .tpb-pct-label { color: #d1d5db; }
+.tpb-tokyo .tpb-pct-label { color: #c4b5fd; }
+.tpb-cyber .tpb-pct-label { color: #22d3ee; }
+
+/* Graph toggle button */
+.tpb-graph-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+}
+
+.tpb-light .tpb-graph-toggle {
+    color: #6b7280;
+    background: transparent;
+}
+.tpb-light .tpb-graph-toggle:hover {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.tpb-dark .tpb-graph-toggle {
+    color: #6b7280;
+    background: transparent;
+}
+.tpb-dark .tpb-graph-toggle:hover {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.08);
+}
+
+.tpb-tokyo .tpb-graph-toggle {
+    color: #7c3aed;
+    background: transparent;
+}
+.tpb-tokyo .tpb-graph-toggle:hover {
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.1);
+}
+
+.tpb-cyber .tpb-graph-toggle {
+    color: #0e7490;
+    background: transparent;
+}
+.tpb-cyber .tpb-graph-toggle:hover {
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.08);
+}
+
+/* Graph wrapper — slide animation */
+.tpb-graph-wrapper {
+    overflow: hidden;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.25s ease;
+}
+
+.tpb-graph-closed {
+    max-height: 0;
+    opacity: 0;
+}
+
+.tpb-graph-open {
+    max-height: 120px;
+    opacity: 1;
+}
+
+/* Graph container */
+.tpb-graph {
+    position: relative;
+    margin-top: 6px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tpb-light .tpb-graph { background: rgba(249, 250, 251, 0.8); border: 1px solid #e5e7eb; }
+.tpb-dark .tpb-graph { background: rgba(15, 23, 42, 0.5); border: 1px solid #1e293b; }
+.tpb-tokyo .tpb-graph { background: rgba(30, 25, 50, 0.5); border: 1px solid #2d2250; }
+.tpb-cyber .tpb-graph { background: rgba(10, 14, 23, 0.5); border: 1px solid #0d1520; }
+
+.tpb-graph-canvas {
+    display: block;
+    width: 100%;
+}
+
+/* Stats overlay inside graph */
+.tpb-graph-stats {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px 2px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tpb-shimmer,
+    .tpb-shimmer::after,
+    .tpb-fill-indeterminate {
+        animation: none !important;
+    }
+
+    .tpb-fill,
+    .tpb-slide-initial,
+    .tpb-slide-enter,
+    .tpb-graph-wrapper {
+        transition: none !important;
+    }
+}

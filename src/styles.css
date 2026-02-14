@@ -339,6 +339,30 @@ table::-webkit-scrollbar-thumb:hover {
   }
 }
 
+/* Update toast: fast flash + long pause, 2 iterations then auto-dismiss */
+@keyframes update-flash {
+
+  0%,
+  15%,
+  100% {
+    opacity: 1;
+  }
+
+  6% {
+    opacity: 0.35;
+  }
+}
+
+.animate-update-flash {
+  animation: update-flash 4s ease-in-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-update-flash {
+    animation: none;
+  }
+}
+
 @keyframes pulse-glow {
 
   0%,

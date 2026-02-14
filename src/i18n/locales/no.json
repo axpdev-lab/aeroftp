@@ -224,7 +224,8 @@
             "localPathMismatch": "Lokal bane samsvarer ikke med den tilkoblede serveren",
             "locked": "Låst",
             "notConnected": "Ikke tilkoblet",
-            "permsHeader": "Tillatelser"
+            "permsHeader": "Tillatelser",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Åpne",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Lys",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Utviklerverktøy",
+            "title": "AeroTools",
             "preview": "Forhåndsvisning",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minikart",
             "duplicatesSkipped": "duplikater hoppet over",
             "invalidPassword": "Ugyldig passord",
-            "closeDevTools": "Lukk DevTools",
+            "closeDevTools": "Lukk AeroTools",
             "maximize": "Maksimer",
             "noFileOpen": "Ingen fil åpnet",
             "noPanelsActive": "Ingen aktive paneler. Klikk på knappene ovenfor for å vise Editor, Terminal eller AI-chat.",
@@ -740,7 +749,7 @@
             "notConnected": "Ikke tilkoblet",
             "syncing": "Synkroniserer...",
             "syncFiles": "Synkroniser filer",
-            "devTools": "Utviklerverktøy",
+            "devTools": "AeroTools",
             "updateAvailable": "Oppdatering tilgjengelig",
             "transferQueue": "Overføringskø",
             "queue": "Kø",
@@ -1160,7 +1169,7 @@
             "unlock": "Lås opp fil"
         },
         "syncPanel": {
-            "title": "Synkroniser filer",
+            "title": "AeroSync",
             "local": "Lokal",
             "remote": "Ekstern",
             "direction": "Retning",
@@ -2164,7 +2173,7 @@
             "delete": "Slett",
             "refresh": "Oppdater",
             "toggleTheme": "Bytt tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Vis/skjul DevTools",
             "toggleEditor": "Vis/skjul redigerer",
             "toggleTerminal": "Vis/skjul terminal",

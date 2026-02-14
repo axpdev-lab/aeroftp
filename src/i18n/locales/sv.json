@@ -224,7 +224,8 @@
             "localPathMismatch": "Lokal sökväg matchar inte den anslutna servern",
             "locked": "Låst",
             "notConnected": "Inte ansluten",
-            "permsHeader": "Rättigheter"
+            "permsHeader": "Rättigheter",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Öppna",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Ljus",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Utvecklarverktyg",
+            "title": "AeroTools",
             "preview": "Förhandsgranska",
             "editor": "Redigerare",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minikarta",
             "duplicatesSkipped": "dubbletter hoppades över",
             "invalidPassword": "Ogiltigt lösenord",
-            "closeDevTools": "Stang DevTools",
+            "closeDevTools": "Stang AeroTools",
             "maximize": "Maximera",
             "noFileOpen": "Ingen fil oppen",
             "noPanelsActive": "Inga paneler aktiva. Klicka pa knapparna ovan for att visa redigerare, terminal eller AI-chatt.",
@@ -740,7 +749,7 @@
             "notConnected": "Ej ansluten",
             "syncing": "Synkroniserar...",
             "syncFiles": "Synkronisera filer",
-            "devTools": "Utvecklarverktyg",
+            "devTools": "AeroTools",
             "insecureConnection": "Osäker anslutning",
             "insecureConnectionTitle": "Certifikatverifiering är inaktiverad",
             "updateAvailable": "Uppdatering tillgänglig",
@@ -1160,7 +1169,7 @@
             "unlock": "Lås upp fil"
         },
         "syncPanel": {
-            "title": "Synkronisera filer",
+            "title": "AeroSync",
             "local": "Lokal",
             "remote": "Fjärr",
             "direction": "Riktning",
@@ -2164,7 +2173,7 @@
             "delete": "Ta bort",
             "refresh": "Uppdatera",
             "toggleTheme": "Byt tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Växla DevTools",
             "toggleEditor": "Växla redigerare",
             "toggleTerminal": "Växla terminal",

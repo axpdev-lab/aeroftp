@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, State, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::sync::Mutex;
 use tracing::{info, warn, error};
 use semver::Version;
@@ -3684,11 +3684,6 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         .map_err(|e| e.to_string())?;
     app.set_menu(menu).map_err(|e| e.to_string())?;
 
-    // app.set_menu applies to ALL windows — remove from splash if still open
-    if let Some(splash) = app.get_webview_window("splashscreen") {
-        let _ = splash.remove_menu();
-    }
-
     Ok(())
 }
 
@@ -4405,24 +4400,28 @@ fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
 #[tauri::command]
 async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
-    
+
     info!("AeroCloud sync triggered");
-    info!("Config - enabled: {}, local: {:?}, remote: {}", 
+    info!("Config - enabled: {}, local: {:?}, remote: {}",
         config.enabled, config.local_folder, config.remote_folder);
-    
+
     if !config.enabled {
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
     }
-    
+
     // Get FTP manager and perform sync
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
+
     if !ftp_manager.is_connected() {
         return Err("Not connected to FTP server. Please connect first.".to_string());
     }
-    
+
     info!("FTP connected, starting sync...");
-    
+
+    // Save current working directory before sync — restore after to avoid
+    // corrupting the UI session's CWD (the ftp_manager is shared with the UI)
+    let saved_cwd = ftp_manager.current_path();
+
     // First, ensure remote folder exists and navigate to it
     if let Err(_e) = ftp_manager.change_dir(&config.remote_folder).await {
         info!("Remote folder {} doesn't exist, creating it...", config.remote_folder);
@@ -4431,12 +4430,19 @@ async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String,
             warn!("Could not create remote folder: {}", e);
         }
     }
-    
+
     // Create cloud service and run sync
     let cloud_service = cloud_service::CloudService::new();
     cloud_service.init(config.clone()).await;
-    
-    match cloud_service.perform_full_sync(&mut ftp_manager).await {
+
+    let sync_result = cloud_service.perform_full_sync(&mut ftp_manager).await;
+
+    // Restore CWD to prevent UI state corruption
+    if let Err(e) = ftp_manager.change_dir(&saved_cwd).await {
+        warn!("Failed to restore CWD after cloud sync: {}", e);
+    }
+
+    match sync_result {
         Ok(result) => {
             let summary = format!(
                 "Sync complete: {} uploaded, {} downloaded, {} conflicts, {} skipped, {} errors",
@@ -4451,6 +4457,7 @@ async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String,
             Ok(summary)
         }
         Err(e) => {
+            // Still try to restore CWD on error (already attempted above after sync)
             error!("Sync failed: {}", e);
             Err(format!("Sync failed: {}", e))
         }
@@ -5035,25 +5042,6 @@ async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::Ke
         .map_err(|e| e.to_string())
 }
 
-// ============ Splash Screen ============
-
-/// Called by the frontend when React has finished initializing.
-/// Closes the splash screen and shows the main window.
-#[tauri::command]
-async fn app_ready(app: AppHandle) {
-    if let Some(splash) = app.get_webview_window("splashscreen") {
-        let _ = splash.close();
-        info!("Splash screen closed");
-    }
-    if let Some(main_window) = app.get_webview_window("main") {
-        // Ensure menu is hidden before showing (GTK may re-apply app menu on show)
-        let _ = main_window.remove_menu();
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
-        info!("Main window shown");
-    }
-}
-
 // ============ App Entry Point ============
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -5109,45 +5097,6 @@ pub fn run() {
                     .expect("valid localhost URL");
                 let _ = window.navigate(url);
             }
-
-            // === Splash Screen ===
-            // Create a small, centered, borderless splash window that shows immediately.
-            // The main window is hidden (visible: false in tauri.conf.json) until
-            // the frontend signals readiness via the `app_ready` command.
-            let splash_url = {
-                #[cfg(dev)]
-                { WebviewUrl::External(url::Url::parse("http://localhost:5173/splash.html").unwrap()) }
-                #[cfg(not(dev))]
-                { WebviewUrl::External(url::Url::parse(&format!("http://localhost:{}/splash.html", port)).unwrap()) }
-            };
-
-            let _splash = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
-                .title("AeroFTP")
-                .inner_size(420.0, 340.0)
-                .resizable(false)
-                .decorations(false)
-                .center()
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .build()?;
-
-            info!("Splash screen created");
-
-            // Safety timeout: if frontend doesn't signal app_ready within 10 seconds,
-            // force-close splash and show main window to prevent stuck state.
-            let app_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                if let Some(splash) = app_handle.get_webview_window("splashscreen") {
-                    warn!("Splash screen safety timeout reached, force-closing");
-                    let _ = splash.close();
-                }
-                if let Some(main) = app_handle.get_webview_window("main") {
-                    let _ = main.remove_menu();
-                    let _ = main.show();
-                    let _ = main.set_focus();
-                }
-            });
 
             let accel = |shortcut: &'static str| -> Option<&'static str> {
                 #[cfg(target_os = "linux")]
@@ -5250,10 +5199,6 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &help_menu])?;
             app.set_menu(menu)?;
 
-            // Remove menu from splash screen (decorations:false doesn't hide GTK app menu)
-            if let Some(splash) = app.get_webview_window("splashscreen") {
-                let _ = splash.remove_menu();
-            }
             // Remove menu from main window by default (frontend will restore it via toggle_menu_bar if needed)
             if let Some(main_win) = app.get_webview_window("main") {
                 let _ = main_win.remove_menu();
@@ -5342,7 +5287,7 @@ pub fn run() {
             let _ = app.emit("menu-event", id);
         })
         .on_window_event(|window, event| {
-            // Only handle close events for the main window (not splash)
+            // Only handle close events for the main window
             if window.label() != "main" {
                 return;
             }
@@ -5372,7 +5317,6 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
-            app_ready,
             copy_to_clipboard,
             resolve_hostname,
             connect_ftp,

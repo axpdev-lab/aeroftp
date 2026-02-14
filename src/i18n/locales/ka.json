@@ -224,7 +224,8 @@
             "localPathMismatch": "ლოკალური ბილიკი არ ემთხვევა დაკავშირებულ სერვერს",
             "locked": "დაბლოკილი",
             "notConnected": "არ არის დაკავშირებული",
-            "permsHeader": "ნებართვები"
+            "permsHeader": "ნებართვები",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "გახსნა",
@@ -637,10 +638,18 @@
             "themeLightLabel": "ღია",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "თემა",
-            "themeAutoLabel": "ავტომატური"
+            "themeAutoLabel": "ავტომატური",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "დეველოპერის ინსტრუმენტები",
+            "title": "AeroTools",
             "preview": "გადახედვა",
             "editor": "რედაქტორი",
             "terminal": "ტერმინალი",
@@ -656,7 +665,7 @@
             "minimap": "მინიატურა",
             "duplicatesSkipped": "დუბლიკატები გამოტოვებულია",
             "invalidPassword": "არასწორი პაროლი",
-            "closeDevTools": "DevTools-ის დახურვა",
+            "closeDevTools": "AeroTools-ის დახურვა",
             "maximize": "გადიდება",
             "noFileOpen": "ფაილი არ არის გახსნილი",
             "noPanelsActive": "აქტიური პანელები არ არის. დააჭირეთ ზემოთ ღილაკებს რედაქტორის, ტერმინალის ან AI ჩატის საჩვენებლად.",
@@ -740,7 +749,7 @@
             "notConnected": "არ არის დაკავშირებული",
             "syncing": "სინქრონიზაცია...",
             "syncFiles": "ფაილების სინქრონიზაცია",
-            "devTools": "დეველოპერის ინსტრუმენტები",
+            "devTools": "AeroTools",
             "updateAvailable": "განახლება ხელმისაწვდომია",
             "transferQueue": "გადაცემის რიგი",
             "queue": "რიგი",
@@ -1160,7 +1169,7 @@
             "unlock": "ფაილის განბლოკვა"
         },
         "syncPanel": {
-            "title": "ფაილების სინქრონიზაცია",
+            "title": "AeroSync",
             "local": "ლოკალური",
             "remote": "დისტანციური",
             "direction": "მიმართულება",
@@ -2164,7 +2173,7 @@
             "delete": "წაშლა",
             "refresh": "განახლება",
             "toggleTheme": "თემის შეცვლა",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "DevTools-ის ჩართვა/გამორთვა",
             "toggleEditor": "რედაქტორის ჩართვა/გამორთვა",
             "toggleTerminal": "ტერმინალის ჩართვა/გამორთვა",

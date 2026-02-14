@@ -257,7 +257,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.syncFiles')}
                     >
                         <FolderSync size={12} />
-                        <span>{t('statusBar.syncFiles')}</span>
+                        <span>{t('syncPanel.title')}</span>
                     </button>
                 )}
 

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+import { TransferProgressBar } from './TransferProgressBar';
 import {
     Cloud, CloudOff, CloudUpload, CloudDownload, RefreshCw,
     Folder, FolderOpen, Settings, Play, Pause, Check, X,
@@ -398,14 +399,14 @@ const CloudDashboard: React.FC<{
             </div>
 
             {status.type === 'syncing' && (
-                <div className="sync-progress">
-                    <div
-                        className="progress-bar"
-                        style={{ width: `${status.progress || 0}%` }}
+                <div className="px-3 py-1">
+                    <TransferProgressBar
+                        percentage={status.progress || 0}
+                        currentFile={status.files_done || 0}
+                        totalFiles={status.files_total || 0}
+                        size="sm"
+                        variant="gradient"
                     />
-                    <span className="progress-text">
-                        {status.files_done || 0} / {status.files_total || 0} files
-                    </span>
                 </div>
             )}
 

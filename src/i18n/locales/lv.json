@@ -224,7 +224,8 @@
             "localPathMismatch": "Vietējais ceļš neatbilst savienotajam serverim",
             "locked": "Bloķēts",
             "notConnected": "Nav savienots",
-            "permsHeader": "Atļaujas"
+            "permsHeader": "Atļaujas",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Atvērt",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Gaišs",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Motīvs",
-            "themeAutoLabel": "Automātisks"
+            "themeAutoLabel": "Automātisks",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Izstrādātāja rīki",
+            "title": "AeroTools",
             "preview": "Priekšskatījums",
             "editor": "Redaktors",
             "terminal": "Terminālis",
@@ -656,7 +665,7 @@
             "minimap": "Minikarte",
             "duplicatesSkipped": "dublikāti izlaisti",
             "invalidPassword": "Nederīga parole",
-            "closeDevTools": "Aizvērt DevTools",
+            "closeDevTools": "Aizvērt AeroTools",
             "maximize": "Maksimizēt",
             "noFileOpen": "Nav atvērts neviens fails",
             "noPanelsActive": "Nav aktīvu paneļu. Noklikšķiniet uz pogām augšā, lai parādītu redaktoru, termināli vai AI tērzēšanu.",
@@ -740,7 +749,7 @@
             "notConnected": "Nav savienots",
             "syncing": "Sinhronizē...",
             "syncFiles": "Sinhronizēt failus",
-            "devTools": "Izstrādātāja rīki",
+            "devTools": "AeroTools",
             "updateAvailable": "Pieejams atjauninājums",
             "transferQueue": "Pārsūtīšanas rinda",
             "queue": "Rinda",
@@ -1160,7 +1169,7 @@
             "unlock": "Atbloķēt failu"
         },
         "syncPanel": {
-            "title": "Sinhronizēt failus",
+            "title": "AeroSync",
             "local": "Lokālais",
             "remote": "Attālais",
             "direction": "Virziens",
@@ -2164,7 +2173,7 @@
             "delete": "Dzēst",
             "refresh": "Atsvaidzināt",
             "toggleTheme": "Pārslēgt motīvu",
-            "devtools": "Izstrādātāja rīki",
+            "devtools": "AeroTools",
             "toggleDevtools": "Pārslēgt izstrādātāja rīkus",
             "toggleEditor": "Pārslēgt redaktoru",
             "toggleTerminal": "Pārslēgt termināli",

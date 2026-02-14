@@ -224,7 +224,8 @@
             "localPathMismatch": "Локальный путь не соответствует подключенному серверу",
             "locked": "Заблокировано",
             "notConnected": "Не подключено",
-            "permsHeader": "Права"
+            "permsHeader": "Права",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Открыть",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Светлая",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
-            "themeAutoLabel": "Авто"
+            "themeAutoLabel": "Авто",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Инструменты разработчика",
+            "title": "AeroTools",
             "preview": "Предпросмотр",
             "editor": "Редактор",
             "terminal": "Терминал",
@@ -656,7 +665,7 @@
             "minimap": "Миникарта",
             "duplicatesSkipped": "дубликатов пропущено",
             "invalidPassword": "Неверный пароль",
-            "closeDevTools": "Закрыть DevTools",
+            "closeDevTools": "Закрыть AeroTools",
             "maximize": "Развернуть",
             "noFileOpen": "Нет открытых файлов",
             "noPanelsActive": "Нет активных панелей. Нажмите кнопки выше, чтобы показать Редактор, Терминал или ИИ-чат.",
@@ -740,7 +749,7 @@
             "notConnected": "Не подключено",
             "syncing": "Синхронизация...",
             "syncFiles": "Синхронизация файлов",
-            "devTools": "Инструменты разработчика",
+            "devTools": "AeroTools",
             "updateAvailable": "Есть обновление",
             "transferQueue": "Очередь",
             "queue": "Очередь",
@@ -1160,7 +1169,7 @@
             "unlock": "Разблокировать файл"
         },
         "syncPanel": {
-            "title": "Синхронизация файлов",
+            "title": "AeroSync",
             "local": "Локальный",
             "remote": "Удалённый",
             "direction": "Направление",
@@ -2164,7 +2173,7 @@
             "delete": "Удалить",
             "refresh": "Обновить",
             "toggleTheme": "Сменить тему",
-            "devtools": "Инструменты разработчика",
+            "devtools": "AeroTools",
             "toggleDevtools": "Инструменты разработчика",
             "toggleEditor": "Редактор",
             "toggleTerminal": "Терминал",

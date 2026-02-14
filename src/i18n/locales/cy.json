@@ -224,7 +224,8 @@
             "localPathMismatch": "Nid yw'r llwybr lleol yn cyd-fynd â'r gweinydd sydd wedi'i gysylltu",
             "locked": "Wedi'i gloi",
             "notConnected": "Heb gysylltu",
-            "permsHeader": "Hawl."
+            "permsHeader": "Hawl.",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Agor",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Golau",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Thema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Offer Datblygu",
+            "title": "AeroTools",
             "preview": "Rhagolwg",
             "editor": "Golygydd",
             "terminal": "Terfynell",
@@ -656,7 +665,7 @@
             "minimap": "Map bach",
             "duplicatesSkipped": "dyblygu wedi'u hepgor",
             "invalidPassword": "Cyfrinair annilys",
-            "closeDevTools": "Cau DevTools",
+            "closeDevTools": "Cau AeroTools",
             "maximize": "Mwyafu",
             "noFileOpen": "Dim ffeil ar agor",
             "noPanelsActive": "Dim paneli gweithredol. Cliciwch y botymau uchod i ddangos y Golygydd, y Terminal, neu'r Sgwrs AI.",
@@ -740,7 +749,7 @@
             "notConnected": "Heb gysylltu",
             "syncing": "Yn cysoni...",
             "syncFiles": "Cysoni Ffeiliau",
-            "devTools": "Offer Datblygu",
+            "devTools": "AeroTools",
             "updateAvailable": "Diweddariad ar gael",
             "transferQueue": "Ciwt Trosglwyddo",
             "queue": "Ciw",
@@ -1160,7 +1169,7 @@
             "unlock": "Datgloi Ffeil"
         },
         "syncPanel": {
-            "title": "Cysoni Ffeiliau",
+            "title": "AeroSync",
             "local": "Lleol",
             "remote": "Pell",
             "direction": "Cyfeiriad",
@@ -2164,7 +2173,7 @@
             "delete": "Dileu",
             "refresh": "Adnewyddu",
             "toggleTheme": "Toglo Thema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Toglo DevTools",
             "toggleEditor": "Toglo Golygydd",
             "toggleTerminal": "Toglo Terfynell",

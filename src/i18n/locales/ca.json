@@ -224,7 +224,8 @@
             "localPathMismatch": "El camí local no coincideix amb el servidor connectat",
             "locked": "Bloquejat",
             "notConnected": "No connectat",
-            "permsHeader": "Perms"
+            "permsHeader": "Perms",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Obrir",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Clar",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Eines de Desenvolupament",
+            "title": "AeroTools",
             "preview": "Previsualitzar",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minimapa",
             "duplicatesSkipped": "duplicats omesos",
             "invalidPassword": "Contrasenya no vàlida",
-            "closeDevTools": "Tancar DevTools",
+            "closeDevTools": "Tancar AeroTools",
             "maximize": "Maximitzar",
             "noFileOpen": "Cap fitxer obert",
             "noPanelsActive": "Cap panell actiu. Feu clic als botons de dalt per mostrar l'Editor, el Terminal o el Xat IA.",
@@ -740,7 +749,7 @@
             "notConnected": "No connectat",
             "syncing": "Sincronitzant...",
             "syncFiles": "Sincronitzar Fitxers",
-            "devTools": "Eines de Desenvolupament",
+            "devTools": "AeroTools",
             "updateAvailable": "Actualització disponible",
             "transferQueue": "Cua de Transferència",
             "queue": "Cua",
@@ -1160,7 +1169,7 @@
             "unlock": "Desbloquejar fitxer"
         },
         "syncPanel": {
-            "title": "Sincronitzar fitxers",
+            "title": "AeroSync",
             "local": "Local",
             "remote": "Remot",
             "direction": "Direcció",
@@ -2164,7 +2173,7 @@
             "delete": "Eliminar",
             "refresh": "Actualitzar",
             "toggleTheme": "Canviar tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Alternar DevTools",
             "toggleEditor": "Alternar editor",
             "toggleTerminal": "Alternar terminal",

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Upload, Check, X, Clock, Loader2 } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
+import { TransferProgressBar } from './TransferProgressBar';
 
 export type UploadStatus = 'pending' | 'uploading' | 'completed' | 'error';
 
@@ -170,14 +171,12 @@ export const UploadQueue: React.FC<UploadQueueProps> = ({
 
             {/* Footer Progress Bar */}
             {uploadingCount > 0 && (
-                <div className="h-1 bg-gray-800">
-                    <div
-                        className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
-                        style={{
-                            width: `${(completedCount / items.length) * 100}%`
-                        }}
-                    />
-                </div>
+                <TransferProgressBar
+                    percentage={(completedCount / items.length) * 100}
+                    size="sm"
+                    variant="gradient"
+                    animated={false}
+                />
             )}
         </div>
     );

@@ -224,7 +224,8 @@
             "localPathMismatch": "A helyi útvonal nem egyezik a csatlakozott szerverrel",
             "locked": "Zárolt",
             "notConnected": "Nincs Csatlakozva",
-            "permsHeader": "Jogosultságok"
+            "permsHeader": "Jogosultságok",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Megnyitás",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Világos",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Téma",
-            "themeAutoLabel": "Automatikus"
+            "themeAutoLabel": "Automatikus",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Fejlesztői eszközök",
+            "title": "AeroTools",
             "preview": "Előnézet",
             "editor": "Szerkesztő",
             "terminal": "Terminál",
@@ -656,7 +665,7 @@
             "minimap": "Minitérkép",
             "duplicatesSkipped": "duplikátumok kihagyva",
             "invalidPassword": "Érvénytelen jelszó",
-            "closeDevTools": "DevTools bezárása",
+            "closeDevTools": "AeroTools bezárása",
             "maximize": "Maximalizálás",
             "noFileOpen": "Nincs megnyitott fájl",
             "noPanelsActive": "Nincsenek aktív panelek. Kattintson a fenti gombokra a Szerkesztő, Terminál vagy AI Chat megjelenítéséhez.",
@@ -740,7 +749,7 @@
             "notConnected": "Nincs csatlakozva",
             "syncing": "Szinkronizálás...",
             "syncFiles": "Fájlok szinkronizálása",
-            "devTools": "Fejlesztői eszközök",
+            "devTools": "AeroTools",
             "updateAvailable": "Frissítés elérhető",
             "transferQueue": "Átviteli sor",
             "queue": "Sor",
@@ -1160,7 +1169,7 @@
             "unlock": "Fájl feloldása"
         },
         "syncPanel": {
-            "title": "Fájlok szinkronizálása",
+            "title": "AeroSync",
             "local": "Helyi",
             "remote": "Távoli",
             "direction": "Irány",
@@ -2164,7 +2173,7 @@
             "delete": "Törlés",
             "refresh": "Frissítés",
             "toggleTheme": "Téma váltása",
-            "devtools": "Fejlesztői eszközök",
+            "devtools": "AeroTools",
             "toggleDevtools": "Fejlesztői eszközök váltása",
             "toggleEditor": "Szerkesztő váltása",
             "toggleTerminal": "Terminál váltása",

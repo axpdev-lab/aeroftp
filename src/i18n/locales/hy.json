@@ -224,7 +224,8 @@
             "localPathMismatch": "Տեղական ուղին չի համապատասխանում միացված սերվերին",
             "locked": "Արգելափակված",
             "notConnected": "Չի միացված",
-            "permsHeader": "Թույլտվություններ"
+            "permsHeader": "Թույլտվություններ",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Բացել",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Լուսավոր",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Թեమա",
-            "themeAutoLabel": "Ավտոմատ"
+            "themeAutoLabel": "Ավտոմատ",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Մշակողի գործիքներ",
+            "title": "AeroTools",
             "preview": "Նախադիտում",
             "editor": "Խմբագրիչ",
             "terminal": "Տերմինալ",
@@ -656,7 +665,7 @@
             "minimap": "Մինի քարտեզ",
             "duplicatesSkipped": "կրկնօրինակները բաց են թողնվել",
             "invalidPassword": "Սխալ գաղտնաբառ",
-            "closeDevTools": "Փակել DevTools",
+            "closeDevTools": "Փակել AeroTools",
             "maximize": "Մեծացնել",
             "noFileOpen": "Բաց ֆայլ չկա",
             "noPanelsActive": "Ակտիվ վահանակներ չկան: Սեղմեք վերևի կոճակները՝ խմբագիրը, տերմինալը կամ AI զրույցը ցուցադրելու համար:",
@@ -740,7 +749,7 @@
             "notConnected": "Միացված չէ",
             "syncing": "Սինքրոնացում...",
             "syncFiles": "Սինքրոնացնել ֆայլերը",
-            "devTools": "Մշակողի գործիքներ",
+            "devTools": "AeroTools",
             "updateAvailable": "Թարմացումը հասանելի է",
             "transferQueue": "Փոխանցման հերթ",
             "queue": "Հերթ",
@@ -1153,7 +1162,7 @@
             "unlock": "Ապակողպել ֆայլը"
         },
         "syncPanel": {
-            "title": "Սինքրոնացման վահանակ",
+            "title": "AeroSync",
             "local": "Տեղական",
             "remote": "Հեռավոր",
             "direction": "Ուղղություն",
@@ -2157,7 +2166,7 @@
             "delete": "Ջնջել",
             "refresh": "Թարմացնել",
             "toggleTheme": "Փոխել թեման",
-            "devtools": "Մշակողի գործիքներ",
+            "devtools": "AeroTools",
             "toggleDevtools": "Փոխել DevTools-ը",
             "toggleEditor": "Փոխել խմբագրիչը",
             "toggleTerminal": "Փոխել տերմինալը",

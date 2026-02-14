@@ -224,7 +224,8 @@
             "localPathMismatch": "Paikallinen polku ei vastaa yhdistettyä palvelinta",
             "locked": "Lukittu",
             "notConnected": "Ei yhdistetty",
-            "permsHeader": "Oikeudet"
+            "permsHeader": "Oikeudet",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Avaa",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Vaalea",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Teema",
-            "themeAutoLabel": "Automaattinen"
+            "themeAutoLabel": "Automaattinen",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Kehitystyökalut",
+            "title": "AeroTools",
             "preview": "Esikatselu",
             "editor": "Editori",
             "terminal": "Terminaali",
@@ -656,7 +665,7 @@
             "minimap": "Pienoiskartta",
             "duplicatesSkipped": "kaksoiskappaleita ohitettu",
             "invalidPassword": "Virheellinen salasana",
-            "closeDevTools": "Sulje DevTools",
+            "closeDevTools": "Sulje AeroTools",
             "maximize": "Suurenna",
             "noFileOpen": "Ei avointa tiedostoa",
             "noPanelsActive": "Ei aktiivisia paneeleja. Napsauta yllä olevia painikkeita näyttääksesi editorin, terminaalin tai AI-keskustelun.",
@@ -740,7 +749,7 @@
             "notConnected": "Ei yhteyttä",
             "syncing": "Synkronoidaan...",
             "syncFiles": "Synkronoi tiedostot",
-            "devTools": "Kehitystyökalut",
+            "devTools": "AeroTools",
             "updateAvailable": "Päivitys saatavilla",
             "transferQueue": "Siirtojono",
             "queue": "Jono",
@@ -1160,7 +1169,7 @@
             "unlock": "Avaa tiedoston lukitus"
         },
         "syncPanel": {
-            "title": "Synkronoi tiedostot",
+            "title": "AeroSync",
             "local": "Paikallinen",
             "remote": "Etä",
             "direction": "Suunta",
@@ -2164,7 +2173,7 @@
             "delete": "Poista",
             "refresh": "Päivitä",
             "toggleTheme": "Vaihda teemaa",
-            "devtools": "Kehitystyökalut",
+            "devtools": "AeroTools",
             "toggleDevtools": "Vaihda kehitystyökalut",
             "toggleEditor": "Vaihda editori",
             "toggleTerminal": "Vaihda pääte",

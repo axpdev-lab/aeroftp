@@ -82,8 +82,8 @@ const SidebarItem: React.FC<SidebarItemProps> = React.memo(({
     <button
       className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
         isActive
-          ? 'bg-blue-600/20 text-blue-400'
-          : 'text-gray-300 hover:bg-gray-700/50'
+          ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+          : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
       }`}
       onClick={() => onNavigate(path)}
       onContextMenu={onContextMenu}
@@ -108,7 +108,7 @@ const DiskUsageBar: React.FC<{ usedPercent: number }> = React.memo(({ usedPercen
     'bg-green-500';
 
   return (
-    <div className="w-full h-1 rounded-full bg-gray-700 mt-0.5">
+    <div className="w-full h-1 rounded-full bg-gray-200 dark:bg-gray-700 mt-0.5">
       <div
         className={`h-full rounded-full ${color} transition-all duration-300`}
         style={{ width: `${Math.min(usedPercent, 100)}%` }}
@@ -392,8 +392,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
           onClick={() => onNavigateTrash ? onNavigateTrash() : undefined}
           className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             isTrashView
-              ? 'bg-blue-600/20 text-blue-400'
-              : 'text-gray-300 hover:bg-gray-700/50'
+              ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+              : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
           }`}
           title={t('sidebar.trash')}
         >
@@ -403,7 +403,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       </div>
 
       {/* Separator */}
-      <div className="border-b border-gray-700 my-1 mx-2" />
+      <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
 
       {/* Custom Locations */}
       {customLocations.length > 0 && (
@@ -425,7 +425,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
       {/* Separator (only if custom locations present) */}
       {customLocations.length > 0 && (
-        <div className="border-b border-gray-700 my-1 mx-2" />
+        <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
       )}
 
       {/* Recent Locations */}
@@ -438,7 +438,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             {onClearRecent && (
               <button
                 onClick={onClearRecent}
-                className="text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+                className="text-[10px] text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                 title={t('sidebar.clear_recent')}
               >
                 <X size={12} />
@@ -457,8 +457,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                   onClick={() => onNavigate(recentPath)}
                   className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                     isActive
-                      ? 'bg-blue-600/20 text-blue-400'
-                      : 'text-gray-300 hover:bg-gray-700/50'
+                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
                   }`}
                   title={recentPath}
                 >
@@ -468,7 +468,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                 {onRemoveRecent && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemoveRecent(recentPath); }}
-                    className="absolute right-4 p-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-gray-500 hover:text-red-400 hover:bg-gray-700/50 transition-all"
+                    className="absolute right-4 p-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-gray-700/50 transition-all"
                     title={t('common.delete')}
                   >
                     <X size={12} />
@@ -477,7 +477,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
               </div>
             );
           })}
-          <div className="border-b border-gray-700 my-1 mx-2" />
+          <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
         </>
       )}
 
@@ -486,8 +486,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         <button
           className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             showVolumes
-              ? 'text-blue-400'
-              : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/50'
+              ? 'text-blue-600 dark:text-blue-400'
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
           }`}
           onClick={() => setShowVolumes((prev) => !prev)}
         >
@@ -522,8 +522,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                 key={vol.mount_point}
                 className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors duration-100 ${
                   currentPath === vol.mount_point
-                    ? 'bg-blue-600/20'
-                    : 'hover:bg-gray-700/50'
+                    ? 'bg-blue-100 dark:bg-blue-600/20'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
                 }`}
                 onClick={() => onNavigate(vol.mount_point)}
               >
@@ -531,7 +531,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                   {renderVolumeIcon(vol.volume_type)}
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm truncate ${
-                      currentPath === vol.mount_point ? 'text-blue-400' : 'text-gray-300'
+                      currentPath === vol.mount_point ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'
                     }`}>
                       {vol.name || vol.mount_point}
                     </div>
@@ -541,7 +541,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                   </div>
                   {vol.is_ejectable && (
                     <button
-                      className="p-0.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-gray-200 flex-shrink-0 transition-colors"
+                      className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
                       onClick={(e) => handleEject(vol.mount_point, e)}
                       title={t('sidebar.eject')}
                       disabled={isEjecting}
@@ -564,20 +564,20 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             return (
               <div
                 key={part.device}
-                className="flex flex-col gap-0.5 px-2 py-1.5 rounded-md transition-colors duration-100 hover:bg-gray-700/50"
+                className="flex flex-col gap-0.5 px-2 py-1.5 rounded-md transition-colors duration-100 hover:bg-gray-100 dark:hover:bg-gray-700/50"
               >
                 <div className="flex items-center gap-2">
                   <HardDrive size={16} className="opacity-40 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate text-gray-500">
+                    <div className="text-sm truncate text-gray-500 dark:text-gray-500">
                       {part.name}
                     </div>
-                    <div className="text-[10px] text-gray-600">
+                    <div className="text-[10px] text-gray-400 dark:text-gray-600">
                       {formatBytes(part.size_bytes)} &middot; {part.fs_type}
                     </div>
                   </div>
                   <button
-                    className="p-0.5 rounded hover:bg-gray-600/50 text-gray-500 hover:text-gray-200 flex-shrink-0 transition-colors"
+                    className="p-0.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
                     onClick={(e) => handleMount(part.device, e)}
                     title={t('sidebar.mount')}
                     disabled={isMounting}
@@ -602,18 +602,18 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // -----------------------------------------------------------------------
 
   return (
-    <div className="w-[200px] h-full bg-gray-900/50 border-r border-gray-700 flex flex-col overflow-hidden select-none">
+    <div className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none">
       {/* Header with mode toggle */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/50">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700/50">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
           {sidebarMode === 'places' ? t('sidebar.places') : t('sidebar.folders')}
         </span>
         <div className="flex items-center gap-0.5">
           <button
             className={`p-1 rounded transition-colors ${
               sidebarMode === 'places'
-                ? 'bg-gray-700 text-blue-400'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+                ? 'bg-blue-100 text-blue-600 dark:bg-gray-700 dark:text-blue-400'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
             }`}
             onClick={() => setSidebarMode('places')}
             title={t('sidebar.places')}
@@ -623,8 +623,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
           <button
             className={`p-1 rounded transition-colors ${
               sidebarMode === 'tree'
-                ? 'bg-gray-700 text-blue-400'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+                ? 'bg-blue-100 text-blue-600 dark:bg-gray-700 dark:text-blue-400'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
             }`}
             onClick={() => setSidebarMode('tree')}
             title={t('sidebar.folders')}
@@ -635,7 +635,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       </div>
 
       {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
         {sidebarMode === 'places'
           ? renderPlacesContent()
           : (
@@ -653,11 +653,11 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {removeMenu.visible && (
         <div
           ref={removeMenuRef}
-          className="fixed z-50 bg-gray-800/95 backdrop-blur-lg rounded-lg shadow-2xl border border-gray-700/50 py-1 min-w-[180px]"
+          className="fixed z-50 bg-white/95 border-gray-200 dark:bg-gray-800/95 backdrop-blur-lg rounded-lg shadow-2xl border dark:border-gray-700/50 py-1 min-w-[180px]"
           style={{ left: removeMenu.x, top: removeMenu.y }}
         >
           <button
-            className="w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2 text-red-400 hover:bg-red-900/40"
+            className="w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2 text-red-500 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40"
             onClick={() => {
               removeCustomLocation(removeMenu.index);
               closeRemoveMenu();

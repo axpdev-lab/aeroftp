@@ -3,8 +3,7 @@
   "identifier": "default",
   "description": "AeroFTP default capabilities",
   "windows": [
-    "main",
-    "splashscreen"
+    "main"
   ],
   "permissions": [
     "core:default",

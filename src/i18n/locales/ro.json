@@ -224,7 +224,8 @@
             "localPathMismatch": "Calea locală nu se potrivește cu serverul conectat",
             "locked": "Blocat",
             "notConnected": "Neconectat",
-            "permsHeader": "Permisiuni"
+            "permsHeader": "Permisiuni",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Deschide",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Luminos",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Temă",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Instrumente dezvoltator",
+            "title": "AeroTools",
             "preview": "Previzualizare",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minihartă",
             "duplicatesSkipped": "duplicate omise",
             "invalidPassword": "Parolă invalidă",
-            "closeDevTools": "Inchide DevTools",
+            "closeDevTools": "Inchide AeroTools",
             "maximize": "Maximizeaza",
             "noFileOpen": "Niciun fisier deschis",
             "noPanelsActive": "Niciun panou activ. Apasa butoanele de mai sus pentru a afisa Editorul, Terminalul sau Chat-ul AI.",
@@ -740,7 +749,7 @@
             "notConnected": "Neconectat",
             "syncing": "Se sincronizează...",
             "syncFiles": "Sincronizează fișiere",
-            "devTools": "Instrumente dezvoltator",
+            "devTools": "AeroTools",
             "updateAvailable": "Actualizare disponibilă",
             "transferQueue": "Coada de transfer",
             "queue": "Coadă",
@@ -1160,7 +1169,7 @@
             "unlock": "Deblochează fișierul"
         },
         "syncPanel": {
-            "title": "Sincronizare fișiere",
+            "title": "AeroSync",
             "local": "Local",
             "remote": "La distanță",
             "direction": "Direcție",
@@ -2164,7 +2173,7 @@
             "delete": "Ștergere",
             "refresh": "Reîmprospătare",
             "toggleTheme": "Comutare temă",
-            "devtools": "Instrumente dezvoltare",
+            "devtools": "AeroTools",
             "toggleDevtools": "Comutare instrumente dezvoltare",
             "toggleEditor": "Comutare editor",
             "toggleTerminal": "Comutare terminal",

@@ -224,7 +224,8 @@
             "localPathMismatch": "Yerel yol bağlı sunucuyla eşleşmiyor",
             "locked": "Kilitli",
             "notConnected": "Bağlı Değil",
-            "permsHeader": "İzinler"
+            "permsHeader": "İzinler",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Aç",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Açık",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Otomatik"
+            "themeAutoLabel": "Otomatik",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Geliştirici Araçları",
+            "title": "AeroTools",
             "preview": "Önizleme",
             "editor": "Düzenleyici",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Küçük Harita",
             "duplicatesSkipped": "yinelenen atlandı",
             "invalidPassword": "Geçersiz parola",
-            "closeDevTools": "DevTools'u Kapat",
+            "closeDevTools": "AeroTools'u Kapat",
             "maximize": "Büyüt",
             "noFileOpen": "Açık dosya yok",
             "noPanelsActive": "Aktif panel yok. Editör, Terminal veya AI Sohbet'i göstermek için yukarıdaki düğmelere tıklayın.",
@@ -740,7 +749,7 @@
             "notConnected": "Bağlı değil",
             "syncing": "Senkronize ediliyor...",
             "syncFiles": "Dosyaları Senkronize Et",
-            "devTools": "Geliştirici Araçları",
+            "devTools": "AeroTools",
             "updateAvailable": "Güncelleme Mevcut",
             "transferQueue": "Transfer Kuyruğu",
             "queue": "Kuyruk",
@@ -1160,7 +1169,7 @@
             "unlock": "Dosya Kilidini Aç"
         },
         "syncPanel": {
-            "title": "Dosyaları Senkronize Et",
+            "title": "AeroSync",
             "local": "Yerel",
             "remote": "Uzak",
             "direction": "Yön",
@@ -2164,7 +2173,7 @@
             "delete": "Sil",
             "refresh": "Yenile",
             "toggleTheme": "Temayı Değiştir",
-            "devtools": "GeliştiriciAraçları",
+            "devtools": "AeroTools",
             "toggleDevtools": "GeliştiriciAraçlarını Aç/Kapat",
             "toggleEditor": "Düzenleyiciyi Aç/Kapat",
             "toggleTerminal": "Terminali Aç/Kapat",

@@ -224,7 +224,8 @@
             "localPathMismatch": "Đường dẫn cục bộ không khớp với máy chủ đang kết nối",
             "locked": "Đã khóa",
             "notConnected": "Chưa kết nối",
-            "permsHeader": "Quyền"
+            "permsHeader": "Quyền",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Mở",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Light",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Giao diện",
-            "themeAutoLabel": "Tự động"
+            "themeAutoLabel": "Tự động",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Công cụ phát triển",
+            "title": "AeroTools",
             "preview": "Xem trước",
             "editor": "Trình soạn thảo",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Bản đồ thu nhỏ",
             "duplicatesSkipped": "bản trùng lặp đã bỏ qua",
             "invalidPassword": "Mật khẩu không hợp lệ",
-            "closeDevTools": "Đóng DevTools",
+            "closeDevTools": "Đóng AeroTools",
             "maximize": "Phóng to",
             "noFileOpen": "Không có tệp nào đang mở",
             "noPanelsActive": "Không có bảng nào đang hoạt động. Nhấn các nút ở trên để hiển thị Trình soạn thảo, Terminal hoặc AI Chat.",
@@ -740,7 +749,7 @@
             "notConnected": "Chưa kết nối",
             "syncing": "Đang đồng bộ...",
             "syncFiles": "Đồng bộ tệp",
-            "devTools": "Công cụ phát triển",
+            "devTools": "AeroTools",
             "updateAvailable": "Có bản cập nhật",
             "transferQueue": "Hàng đợi truyền",
             "queue": "Hàng đợi",
@@ -1160,7 +1169,7 @@
             "unlock": "Mở khóa tệp"
         },
         "syncPanel": {
-            "title": "Đồng bộ hóa tệp",
+            "title": "AeroSync",
             "local": "Cục bộ",
             "remote": "Từ xa",
             "direction": "Hướng",
@@ -2164,7 +2173,7 @@
             "delete": "Xóa",
             "refresh": "Làm mới",
             "toggleTheme": "Chuyển giao diện",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Bật/tắt DevTools",
             "toggleEditor": "Bật/tắt trình soạn thảo",
             "toggleTerminal": "Bật/tắt Terminal",

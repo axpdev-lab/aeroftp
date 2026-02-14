@@ -224,7 +224,8 @@
             "localPathMismatch": "เส้นทางภายในเครื่องไม่ตรงกับเซิร์ฟเวอร์ที่เชื่อมต่อ",
             "locked": "ล็อค",
             "notConnected": "ไม่ได้เชื่อมต่อ",
-            "permsHeader": "สิทธิ์"
+            "permsHeader": "สิทธิ์",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "เปิด",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Light",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "ธีม",
-            "themeAutoLabel": "อัตโนมัติ"
+            "themeAutoLabel": "อัตโนมัติ",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "เครื่องมือนักพัฒนา",
+            "title": "AeroTools",
             "preview": "ดูตัวอย่าง",
             "editor": "ตัวแก้ไข",
             "terminal": "เทอร์มินัล",
@@ -656,7 +665,7 @@
             "minimap": "แผนที่ย่อ",
             "duplicatesSkipped": "ข้ามรายการซ้ำ",
             "invalidPassword": "รหัสผ่านไม่ถูกต้อง",
-            "closeDevTools": "ปิด DevTools",
+            "closeDevTools": "ปิด AeroTools",
             "maximize": "ขยายใหญ่สุด",
             "noFileOpen": "ไม่มีไฟล์เปิดอยู่",
             "noPanelsActive": "ไม่มีแผงที่ใช้งานอยู่ คลิกปุ่มด้านบนเพื่อแสดงตัวแก้ไข, เทอร์มินัล, หรือ AI แชท",
@@ -740,7 +749,7 @@
             "notConnected": "ไม่ได้เชื่อมต่อ",
             "syncing": "กำลังซิงค์...",
             "syncFiles": "ซิงค์ไฟล์",
-            "devTools": "เครื่องมือนักพัฒนา",
+            "devTools": "AeroTools",
             "updateAvailable": "มีอัปเดตใหม่",
             "transferQueue": "คิวการโอนย้าย",
             "queue": "คิว",
@@ -1160,7 +1169,7 @@
             "unlock": "ปลดล็อกไฟล์"
         },
         "syncPanel": {
-            "title": "ซิงโครไนซ์ไฟล์",
+            "title": "AeroSync",
             "local": "ในเครื่อง",
             "remote": "ระยะไกล",
             "direction": "ทิศทาง",
@@ -2164,7 +2173,7 @@
             "delete": "ลบ",
             "refresh": "รีเฟรช",
             "toggleTheme": "สลับธีม",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "สลับ DevTools",
             "toggleEditor": "สลับตัวแก้ไข",
             "toggleTerminal": "สลับเทอร์มินัล",

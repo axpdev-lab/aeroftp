@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { TransferProgressBar } from '../TransferProgressBar';
 import {
     X, Plus, Trash2, Edit2, Check, AlertCircle,
     Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers,
@@ -901,16 +902,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 </div>
                                                                 {pullProgress && (
                                                                     <div className="mt-2">
-                                                                        <div className="flex items-center justify-between text-[10px] mb-1">
-                                                                            <span className="text-gray-400 truncate max-w-[200px]">{pullProgress.status}</span>
-                                                                            <span className="text-cyan-400">{pullProgress.percent}%</span>
-                                                                        </div>
-                                                                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                                                                            <div
-                                                                                className="h-full bg-cyan-500 rounded-full transition-all duration-300"
-                                                                                style={{ width: `${pullProgress.percent}%` }}
-                                                                            />
-                                                                        </div>
+                                                                        <TransferProgressBar
+                                                                            percentage={pullProgress.percent}
+                                                                            filename={pullProgress.status}
+                                                                            size="sm"
+                                                                            variant="gradient"
+                                                                        />
                                                                     </div>
                                                                 )}
                                                             </div>

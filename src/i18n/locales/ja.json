@@ -224,7 +224,8 @@
             "localPathMismatch": "ローカルパスが接続中のサーバーと一致しません",
             "locked": "ロック",
             "notConnected": "未接続",
-            "permsHeader": "権限"
+            "permsHeader": "権限",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "開く",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Light",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "テーマ",
-            "themeAutoLabel": "自動"
+            "themeAutoLabel": "自動",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "開発者ツール",
+            "title": "AeroTools",
             "preview": "プレビュー",
             "editor": "エディタ",
             "terminal": "ターミナル",
@@ -656,7 +665,7 @@
             "minimap": "ミニマップ",
             "duplicatesSkipped": "重複をスキップ",
             "invalidPassword": "無効なパスワード",
-            "closeDevTools": "DevTools を閉じる",
+            "closeDevTools": "AeroTools を閉じる",
             "maximize": "最大化",
             "noFileOpen": "ファイルが開かれていません",
             "noPanelsActive": "アクティブなパネルがありません。上のボタンをクリックして、エディタ、ターミナル、またはAIチャットを表示してください。",
@@ -740,7 +749,7 @@
             "notConnected": "未接続",
             "syncing": "同期中...",
             "syncFiles": "ファイル同期",
-            "devTools": "開発者ツール",
+            "devTools": "AeroTools",
             "updateAvailable": "更新利用可能",
             "transferQueue": "転送キュー",
             "queue": "キュー",
@@ -1125,7 +1134,7 @@
             "unlock": "ファイルのロック解除"
         },
         "syncPanel": {
-            "title": "ファイルを同期",
+            "title": "AeroSync",
             "local": "ローカル",
             "remote": "リモート",
             "direction": "方向",
@@ -2129,7 +2138,7 @@
             "delete": "削除",
             "refresh": "更新",
             "toggleTheme": "テーマを切り替え",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "DevToolsを切り替え",
             "toggleEditor": "エディターを切り替え",
             "toggleTerminal": "ターミナルを切り替え",

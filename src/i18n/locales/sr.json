@@ -224,7 +224,8 @@
             "localPathMismatch": "Локална путања не одговара повезаном серверу",
             "locked": "Закључано",
             "notConnected": "Није повезано",
-            "permsHeader": "Дозволе"
+            "permsHeader": "Дозволе",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Отвори",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Светла",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
-            "themeAutoLabel": "Ауто"
+            "themeAutoLabel": "Ауто",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Развојни алати",
+            "title": "AeroTools",
             "preview": "Преглед",
             "editor": "Уређивач",
             "terminal": "Терминал",
@@ -656,7 +665,7 @@
             "minimap": "Минимапа",
             "duplicatesSkipped": "duplikata preskočeno",
             "invalidPassword": "Неважећа лозинка",
-            "closeDevTools": "Затвори DevTools",
+            "closeDevTools": "Затвори AeroTools",
             "maximize": "Увећај",
             "noFileOpen": "Нема отворене датотеке",
             "noPanelsActive": "Нема активних панела. Кликните на дугмад изнад да прикажете уређивач, терминал или AI ћаскање.",
@@ -740,7 +749,7 @@
             "notConnected": "Није повезано",
             "syncing": "Синхронизација...",
             "syncFiles": "Синхронизуј датотеке",
-            "devTools": "Развојни алати",
+            "devTools": "AeroTools",
             "updateAvailable": "Ažuriranje dostupno",
             "transferQueue": "Red za prenos",
             "queue": "Red",
@@ -1160,7 +1169,7 @@
             "unlock": "Otključaj fajl"
         },
         "syncPanel": {
-            "title": "Sinhronizuj fajlove",
+            "title": "AeroSync",
             "local": "Lokalno",
             "remote": "Udaljeno",
             "direction": "Smer",
@@ -2164,7 +2173,7 @@
             "delete": "Obriši",
             "refresh": "Osveži",
             "toggleTheme": "Promeni temu",
-            "devtools": "Razvojni alati",
+            "devtools": "AeroTools",
             "toggleDevtools": "Prikaži/Sakrij razvojne alate",
             "toggleEditor": "Prikaži/Sakrij editor",
             "toggleTerminal": "Prikaži/Sakrij terminal",

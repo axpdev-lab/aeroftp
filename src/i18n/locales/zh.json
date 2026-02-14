@@ -224,7 +224,8 @@
             "localPathMismatch": "本地路径与连接的服务器不匹配",
             "locked": "已锁定",
             "notConnected": "未连接",
-            "permsHeader": "权限"
+            "permsHeader": "权限",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "打开",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Light",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "主题",
-            "themeAutoLabel": "自动"
+            "themeAutoLabel": "自动",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "开发工具",
+            "title": "AeroTools",
             "preview": "预览",
             "editor": "编辑器",
             "terminal": "终端",
@@ -656,7 +665,7 @@
             "minimap": "小地图",
             "duplicatesSkipped": "已跳过重复项",
             "invalidPassword": "密码无效",
-            "closeDevTools": "关闭 DevTools",
+            "closeDevTools": "关闭 AeroTools",
             "maximize": "最大化",
             "noFileOpen": "没有打开的文件",
             "noPanelsActive": "没有活动的面板。点击上方按钮显示编辑器、终端或 AI 聊天。",
@@ -740,7 +749,7 @@
             "notConnected": "未连接",
             "syncing": "同步中...",
             "syncFiles": "同步文件",
-            "devTools": "开发工具",
+            "devTools": "AeroTools",
             "updateAvailable": "有可用更新",
             "transferQueue": "传输队列",
             "queue": "队列",
@@ -1160,7 +1169,7 @@
             "unlock": "解锁文件"
         },
         "syncPanel": {
-            "title": "同步文件",
+            "title": "AeroSync",
             "local": "本地",
             "remote": "远程",
             "direction": "方向",
@@ -2164,7 +2173,7 @@
             "delete": "删除",
             "refresh": "刷新",
             "toggleTheme": "切换主题",
-            "devtools": "开发工具",
+            "devtools": "AeroTools",
             "toggleDevtools": "切换开发工具",
             "toggleEditor": "切换编辑器",
             "toggleTerminal": "切换终端",

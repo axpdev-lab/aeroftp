@@ -224,7 +224,8 @@
             "localPathMismatch": "ផ្លូវមូលដ្ឋានមិនត្រូវគ្នាជាមួយម៉ាស៊ីនមេដែលបានភ្ជាប់",
             "locked": "ជាប់សោ",
             "notConnected": "មិនបានភ្ជាប់",
-            "permsHeader": "សិទ្ធិ"
+            "permsHeader": "សិទ្ធិ",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "បើក",
@@ -637,10 +638,18 @@
             "themeLightLabel": "ភ្លឺ",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "ស្បែក",
-            "themeAutoLabel": "ស្វ័យប្រវត្តិ"
+            "themeAutoLabel": "ស្វ័យប្រវត្តិ",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "ឧបករណ៍អ្នកអភិវឌ្ឍន៍",
+            "title": "AeroTools",
             "preview": "មើលជាមុន",
             "editor": "កម្មវិធីកែសម្រួល",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "ផែនទីតូច",
             "duplicatesSkipped": "ស្ទួនត្រូវបានរំលង",
             "invalidPassword": "ពាក្យសម្ងាត់មិនត្រឹមត្រូវ",
-            "closeDevTools": "បិទ DevTools",
+            "closeDevTools": "បិទ AeroTools",
             "maximize": "ពង្រីកអតិបរមា",
             "noFileOpen": "គ្មានឯកសារបើក",
             "noPanelsActive": "គ្មានផ្ទាំងសកម្មទេ។ ចុចប៊ូតុងខាងលើដើម្បីបង្ហាញកម្មវិធីកែសម្រួល ស្ថានីយ ឬ AI Chat។",
@@ -740,7 +749,7 @@
             "notConnected": "មិនបានតភ្ជាប់",
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
             "syncFiles": "ធ្វើសមកាលកម្មឯកសារ",
-            "devTools": "ឧបករណ៍អ្នកអភិវឌ្ឍន៍",
+            "devTools": "AeroTools",
             "updateAvailable": "មានបច្ចុប្បន្នភាព",
             "transferQueue": "ជួរផ្ទេរ",
             "queue": "ជួរ",
@@ -1160,7 +1169,7 @@
             "unlock": "ដោះសោឯកសារ"
         },
         "syncPanel": {
-            "title": "ការធ្វើសមកាលកម្មឯកសារ",
+            "title": "AeroSync",
             "local": "មូលដ្ឋាន",
             "remote": "ពីចម្ងាយ",
             "direction": "ទិសដៅ",
@@ -2164,7 +2173,7 @@
             "delete": "លុប",
             "refresh": "ផ្ទុកឡើងវិញ",
             "toggleTheme": "ប្តូររូបរាង",
-            "devtools": "ឧបករណ៍អ្នកអភិវឌ្ឍន៍",
+            "devtools": "AeroTools",
             "toggleDevtools": "ប្តូរ DevTools",
             "toggleEditor": "ប្តូរកម្មវិធីនិពន្ធ",
             "toggleTerminal": "ប្តូរស្ថានីយ",

@@ -14,7 +14,7 @@ const logoSizes = {
     sm: { width: 100, height: 32, file: '150x48' },   // Small header
     md: { width: 150, height: 48, file: '150x48' },   // Default header
     lg: { width: 225, height: 72, file: '300x96' },   // About dialog
-    xl: { width: 300, height: 96, file: '300x96' },   // Splash/Large
+    xl: { width: 300, height: 96, file: '300x96' },   // Large
 };
 
 // Icon-only sizes for places where we need just the symbol

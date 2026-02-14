@@ -224,7 +224,8 @@
             "localPathMismatch": "Η τοπική διαδρομή δεν ταιριάζει με τον συνδεδεμένο διακομιστή",
             "locked": "Κλειδωμένο",
             "notConnected": "Δεν Είστε Συνδεδεμένος",
-            "permsHeader": "Δικαιώματα"
+            "permsHeader": "Δικαιώματα",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Άνοιγμα",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Ανοιχτό",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Θέμα",
-            "themeAutoLabel": "Αυτόματο"
+            "themeAutoLabel": "Αυτόματο",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Εργαλεία ανάπτυξης",
+            "title": "AeroTools",
             "preview": "Προεπισκόπηση",
             "editor": "Επεξεργαστής",
             "terminal": "Τερματικό",
@@ -656,7 +665,7 @@
             "minimap": "Μικρογραφία",
             "duplicatesSkipped": "διπλότυπα παραλείφθηκαν",
             "invalidPassword": "Μη έγκυρος κωδικός",
-            "closeDevTools": "Κλείσιμο DevTools",
+            "closeDevTools": "Κλείσιμο AeroTools",
             "maximize": "Μεγιστοποίηση",
             "noFileOpen": "Κανένα αρχείο ανοιχτό",
             "noPanelsActive": "Κανένα πάνελ ενεργό. Κάντε κλικ στα κουμπιά παραπάνω για να εμφανίσετε τον Επεξεργαστή, το Τερματικό ή τη Συνομιλία AI.",
@@ -740,7 +749,7 @@
             "notConnected": "Μη συνδεδεμένο",
             "syncing": "Συγχρονισμός...",
             "syncFiles": "Συγχρονισμός αρχείων",
-            "devTools": "Εργαλεία ανάπτυξης",
+            "devTools": "AeroTools",
             "updateAvailable": "Διαθέσιμη ενημέρωση",
             "transferQueue": "Ουρά μεταφοράς",
             "queue": "Ουρά",
@@ -1160,7 +1169,7 @@
             "unlock": "Ξεκλείδωμα Αρχείου"
         },
         "syncPanel": {
-            "title": "Συγχρονισμός Αρχείων",
+            "title": "AeroSync",
             "local": "Τοπικά",
             "remote": "Απομακρυσμένα",
             "direction": "Κατεύθυνση",
@@ -2164,7 +2173,7 @@
             "delete": "Διαγραφή",
             "refresh": "Ανανέωση",
             "toggleTheme": "Εναλλαγή Θέματος",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Εναλλαγή DevTools",
             "toggleEditor": "Εναλλαγή Επεξεργαστή",
             "toggleTerminal": "Εναλλαγή Τερματικού",

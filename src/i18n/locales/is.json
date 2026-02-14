@@ -224,7 +224,8 @@
             "localPathMismatch": "Staðbundin slóð passar ekki við tengdan þjón",
             "locked": "Læst",
             "notConnected": "Ekki tengt",
-            "permsHeader": "Heimildir"
+            "permsHeader": "Heimildir",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Opna",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Ljóst",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Þema",
-            "themeAutoLabel": "Sjálfvirkt"
+            "themeAutoLabel": "Sjálfvirkt",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Þróunarverkfæri",
+            "title": "AeroTools",
             "preview": "Forskoðun",
             "editor": "Ritill",
             "terminal": "Skipanalína",
@@ -656,7 +665,7 @@
             "minimap": "Smákort",
             "duplicatesSkipped": "tvíritum sleppt",
             "invalidPassword": "Ógilt lykilorð",
-            "closeDevTools": "Loka DevTools",
+            "closeDevTools": "Loka AeroTools",
             "maximize": "Stækka",
             "noFileOpen": "Engin skrá opin",
             "noPanelsActive": "Engir virkir spjöldin. Smelltu á hnappana hér að ofan til að sýna ritil, útstöð eða AI spjall.",
@@ -740,7 +749,7 @@
             "notConnected": "Ekki tengt",
             "syncing": "Samstillir...",
             "syncFiles": "Samstilla skrár",
-            "devTools": "Þróunarverkfæri",
+            "devTools": "AeroTools",
             "updateAvailable": "Update Available",
             "transferQueue": "Transfer Queue",
             "queue": "Queue",
@@ -1160,7 +1169,7 @@
             "unlock": "Aflæsa skrá"
         },
         "syncPanel": {
-            "title": "Samstilla skrár",
+            "title": "AeroSync",
             "local": "Staðbundið",
             "remote": "Fjarlægt",
             "direction": "Átt",
@@ -2164,7 +2173,7 @@
             "delete": "Eyða",
             "refresh": "Endurhlaða",
             "toggleTheme": "Skipta um Þema",
-            "devtools": "Hönnuðatól",
+            "devtools": "AeroTools",
             "toggleDevtools": "Víxla Hönnuðatólum",
             "toggleEditor": "Víxla Ritli",
             "toggleTerminal": "Víxla Útstöð",

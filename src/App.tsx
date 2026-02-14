@@ -70,14 +70,17 @@ import DiskUsageTreemap from './components/DiskUsageTreemap';
 import type { TrashItem, FolderSizeResult } from './types/aerofile';
 
 // Utilities
-import { formatBytes, formatSpeed, formatETA, formatDate, getFileIcon, getFileIconColor } from './utils';
+import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
+import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
+import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import { useTranslation } from './i18n';
 
 // Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
-import { TransferProgressBar } from './components/Transfer';
+import { TransferToastContainer, dispatchTransferToast } from './components/Transfer/TransferToastContainer';
+import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import ActivityLogPanel from './components/ActivityLogPanel';
@@ -143,22 +146,7 @@ const App: React.FC = () => {
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
-  // === Splash Screen Readiness Tracking ===
-  const vaultInitDone = useRef(false);
-  const localFilesInitDone = useRef(false);
   const localFilesInitStarted = useRef(false);  // Guard against re-running init effect
-  const appReadySignaled = useRef(false);
-
-  const signalAppReady = useCallback(async () => {
-    if (appReadySignaled.current) return;
-    if (!vaultInitDone.current || !localFilesInitDone.current) return;
-    appReadySignaled.current = true;
-    try {
-      await invoke('app_ready');
-    } catch (err) {
-      console.error('Failed to signal app_ready:', err);
-    }
-  }, []);
 
   // === App Background Pattern ===
   const [appBackgroundId, setAppBackgroundId] = useState(() =>
@@ -193,9 +181,18 @@ const App: React.FC = () => {
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
-  const [activeTransfer, setActiveTransfer] = useState<TransferProgress | null>(null);
+  // Transfer progress: ref holds data (no re-renders), boolean state only changes on start/complete
+  const activeTransferRef = useRef<TransferProgress | null>(null);
+  const [hasActiveTransfer, setHasActiveTransfer] = useState(false);
+  const setActiveTransfer = useCallback((transfer: TransferProgress | null) => {
+    const wasActive = activeTransferRef.current !== null;
+    const isActive = transfer !== null;
+    activeTransferRef.current = transfer;
+    // Only trigger App re-render on null↔non-null transitions (start/complete)
+    if (wasActive !== isActive) setHasActiveTransfer(isActive);
+  }, []);
   const [isReconnecting, setIsReconnecting] = useState(false);  // FTP reconnection in progress
-  const hasActivity = activeTransfer !== null;  // Track if upload/download in progress (will be updated below)
+  const hasActivity = hasActiveTransfer;  // Track if upload/download in progress
   const [activePanel, setActivePanel] = useState<'remote' | 'local'>('remote');
   const [remoteSortField, setRemoteSortField] = useState<SortField>('name');
   const [remoteSortOrder, setRemoteSortOrder] = useState<SortOrder>('asc');
@@ -390,6 +387,32 @@ const App: React.FC = () => {
     return true;
   }, [isConnected, connectionParams.server, currentLocalPath]);
 
+  // Sync navigation path mismatch: detect when local/remote paths diverge
+  // Debounced: during sync navigation one panel moves first, the other follows
+  // shortly after — we delay the warning to avoid a flash during the transition.
+  const [isSyncPathMismatch, setIsSyncPathMismatch] = useState(false);
+  useEffect(() => {
+    if (!isSyncNavigation || !syncBasePaths) { setIsSyncPathMismatch(false); return; }
+    const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+
+    // Compare only relative paths under sync base — base folder names may differ
+    // legitimately (e.g., FTP home "/home/user" vs local "/var/www/html/site.com")
+    const localRel = norm(currentLocalPath).startsWith(norm(syncBasePaths.local))
+      ? norm(currentLocalPath).slice(norm(syncBasePaths.local).length)
+      : null;
+    const remoteRel = norm(currentRemotePath).startsWith(norm(syncBasePaths.remote))
+      ? norm(currentRemotePath).slice(norm(syncBasePaths.remote).length)
+      : null;
+    const mismatch = localRel === null || remoteRel === null
+      ? (localRel !== null || remoteRel !== null) // one navigated outside base, other didn't
+      : localRel !== remoteRel;
+
+    // Clear immediately, but delay showing the warning to avoid flash during sync nav
+    if (!mismatch) { setIsSyncPathMismatch(false); return; }
+    const timer = setTimeout(() => setIsSyncPathMismatch(true), 500);
+    return () => clearTimeout(timer);
+  }, [isSyncNavigation, syncBasePaths, currentLocalPath, currentRemotePath]);
+
 
   // === Universal Vault / Auto-Lock ===
   // Initialize credential vault on app load
@@ -414,12 +437,10 @@ const App: React.FC = () => {
         } catch { /* non-critical */ }
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
-        vaultInitDone.current = true;
-        signalAppReady();
       }
     };
     initVault();
-  }, [signalAppReady]);
+  }, []);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -484,6 +505,18 @@ const App: React.FC = () => {
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
+  const { iconTheme, setIconTheme } = useIconTheme();
+  const iconProvider = useMemo(() => getIconThemeProvider(iconTheme, getEffectiveTheme(theme, isDark)), [iconTheme, theme, isDark]);
+
+  // Auto-sync icon theme when app theme changes
+  const prevEffectiveThemeRef = useRef(getEffectiveTheme(theme, isDark));
+  useEffect(() => {
+    const effective = getEffectiveTheme(theme, isDark);
+    if (effective !== prevEffectiveThemeRef.current) {
+      prevEffectiveThemeRef.current = effective;
+      setIconTheme(getDefaultIconTheme(effective));
+    }
+  }, [theme, isDark, setIconTheme]);
   const toast = useToast();
   const contextMenu = useContextMenu();
   const humanLog = useHumanizedLog();
@@ -511,6 +544,7 @@ const App: React.FC = () => {
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
+  const updateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [updateDownload, setUpdateDownload] = useState<{
     downloading: boolean;
     percentage: number;
@@ -522,6 +556,22 @@ const App: React.FC = () => {
     completedPath?: string;
     error?: string;
   } | null>(null);
+
+  // Auto-dismiss update toast after 2 animation cycles (8s) — only when not downloading
+  useEffect(() => {
+    const shouldShow = updateAvailable?.has_update && !updateToastDismissed && !updateDownload;
+    if (shouldShow) {
+      updateToastTimerRef.current = setTimeout(() => {
+        setUpdateToastDismissed(true);
+      }, 8000); // 2 cycles × 4s each
+    }
+    return () => {
+      if (updateToastTimerRef.current) {
+        clearTimeout(updateToastTimerRef.current);
+        updateToastTimerRef.current = null;
+      }
+    };
+  }, [updateAvailable?.has_update, updateToastDismissed, updateDownload]);
 
   // AeroCloud state + event listeners (extracted hook)
   const {
@@ -980,22 +1030,7 @@ const App: React.FC = () => {
     }
   }, [notify, t]);
 
-  // Timeout to auto-hide transfer popup if stuck (30 seconds of no updates)
-  const lastProgressUpdate = React.useRef<number>(Date.now());
-  useEffect(() => {
-    if (!activeTransfer) return;
-
-    lastProgressUpdate.current = Date.now();
-
-    const checkStuck = setInterval(() => {
-      if (Date.now() - lastProgressUpdate.current > 30000) {
-        console.warn('Transfer popup stuck, auto-closing');
-        setActiveTransfer(null);
-      }
-    }, 5000);
-
-    return () => clearInterval(checkStuck);
-  }, [activeTransfer?.percentage]);
+  // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
 
   // Update download progress listener
   useEffect(() => {
@@ -1044,10 +1079,13 @@ const App: React.FC = () => {
           if (isConnected) loadRemoteFiles();
           loadLocalFiles(currentLocalPath);
           break;
-        case 'toggle_theme':
+        case 'toggle_theme': {
           const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
-          setTheme(order[(order.indexOf(theme) + 1) % order.length]);
+          const nextTheme = order[(order.indexOf(theme) + 1) % order.length];
+          setTheme(nextTheme);
+          // Icon theme auto-syncs via useEffect above
           break;
+        }
         case 'new_folder':
           if (isConnected) createFolder(true);
           break;
@@ -1251,11 +1289,8 @@ const App: React.FC = () => {
       // Default: try home directory, then downloads
       try { await loadLocalFiles(await homeDir()); }
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
-    })().finally(() => {
-      localFilesInitDone.current = true;
-      signalAppReady();
-    });
-  }, [loadLocalFiles, signalAppReady]);
+    })();
+  }, [loadLocalFiles]);
 
   // Reload local files when showHiddenFiles setting changes
   const isFirstRender = React.useRef(true);
@@ -1810,7 +1845,7 @@ const App: React.FC = () => {
         }
         await invoke('connect_ftp', { params: targetSession.connectionParams });
 
-        // Only navigate to saved path if it looks like a valid FTP path
+        // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
         const savedPath = targetSession.remotePath;
         const isValidFtpPath = savedPath &&
@@ -1818,12 +1853,12 @@ const App: React.FC = () => {
           !savedPath.includes('webdav') &&
           savedPath.startsWith('/');
 
-        if (isValidFtpPath && savedPath !== '/') {
+        if (isValidFtpPath) {
           try {
             await invoke('change_directory', { path: savedPath });
           } catch (pathError) {
-            console.warn('[switchSession] Could not restore FTP path, using root:', pathError);
-            // Path doesn't exist on this server, stay at root
+            console.warn('[switchSession] Could not restore FTP path, using home:', pathError);
+            // Path doesn't exist on this server, stay at login home directory
           }
         }
         response = await invoke('list_files');
@@ -2289,16 +2324,19 @@ const App: React.FC = () => {
   // Toggle navigation sync and set base paths
   const toggleSyncNavigation = () => {
     if (!isSyncNavigation) {
-      // Enabling sync: save current paths as base
+      // Use current paths as sync base — folder name alignment is NOT forced
+      // because remote FTP home dir name often differs from local folder name.
+      // The mismatch indicator on address bars will warn if paths diverge during navigation.
       setSyncBasePaths({ remote: currentRemotePath, local: currentLocalPath });
+      setIsSyncNavigation(true);
       notify.success(t('toast.navSyncEnabled'), t('toast.syncingPaths', { remote: currentRemotePath, local: currentLocalPath }));
       humanLog.logRaw('activity.nav_sync_enabled', 'NAVIGATE', { remote: currentRemotePath, local: currentLocalPath }, 'success');
     } else {
       setSyncBasePaths(null);
+      setIsSyncNavigation(false);
       notify.info(t('toast.navSyncDisabled'));
       humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, 'success');
     }
-    setIsSyncNavigation(!isSyncNavigation);
   };
 
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
@@ -2342,7 +2380,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles]);
 
-  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number) => {
+  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false) => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -2378,7 +2416,30 @@ const App: React.FC = () => {
       } else {
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
-          const localFilePath = `${downloadPath}/${fileName}`;
+          let targetName = fileName;
+
+          if (!_skipConflictCheck) {
+            // Check file conflict before downloading (single file transfers only)
+            const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
+            const overwriteResult = await checkOverwrite(
+              fileName,
+              fileSize || remoteFileInfo?.size || 0,
+              remoteFileInfo?.modified ? new Date(remoteFileInfo.modified) : undefined,
+              true, // sourceIsRemote = true for download
+              0
+            );
+
+            if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
+              humanLog.updateEntry(logId, { status: 'success', message: `Skipped ${fileName}` });
+              return;
+            }
+
+            if (overwriteResult.newName) {
+              targetName = overwriteResult.newName;
+            }
+          }
+
+          const localFilePath = `${downloadPath}/${targetName}`;
           if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath });
@@ -2402,7 +2463,7 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number) => {
+  const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false) => {
     const logId = humanLog.logStart('UPLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
     const startTime = Date.now();
@@ -2468,7 +2529,30 @@ const App: React.FC = () => {
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         }
       } else {
-        const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
+        let targetName = fileName;
+
+        if (!_skipConflictCheck) {
+          // Check file conflict before uploading (single file transfers only)
+          const localFileInfo = localFiles.find(f => f.name === fileName && !f.is_dir);
+          const overwriteResult = await checkOverwrite(
+            fileName,
+            fileSize || localFileInfo?.size || 0,
+            localFileInfo?.modified ? new Date(localFileInfo.modified) : undefined,
+            false, // sourceIsRemote = false for upload
+            0
+          );
+
+          if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
+            humanLog.updateEntry(logId, { status: 'success', message: `Skipped ${fileName}` });
+            return;
+          }
+
+          if (overwriteResult.newName) {
+            targetName = overwriteResult.newName;
+          }
+        }
+
+        const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${targetName}`;
 
         if (isProvider) {
           await invoke('provider_upload_file', { localPath: localFilePath, remotePath });
@@ -2489,7 +2573,8 @@ const App: React.FC = () => {
   };
 
   const cancelTransfer = async () => {
-    setActiveTransfer(null); // Close popup immediately
+    setActiveTransfer(null);
+    dispatchTransferToast(null); // Close toast immediately (isolated state)
     transferQueue.stopAll(); // Mark all pending queue items as stopped
     try { await invoke('cancel_transfer'); } catch { }
   };
@@ -2712,11 +2797,16 @@ const App: React.FC = () => {
               skippedCount++;
               continue;
             }
+
+            // Use renamed target if rename was chosen
+            if (overwriteResult.newName) {
+              item.fileName = overwriteResult.newName;
+            }
           }
 
           transferQueue.startTransfer(item.id);
           try {
-            await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined);
+            await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true);
             transferQueue.completeTransfer(item.id);
           } catch (error) {
             transferQueue.failTransfer(item.id, String(error));
@@ -2859,11 +2949,16 @@ const App: React.FC = () => {
             skippedCount++;
             continue;
           }
+
+          // Use renamed target if rename was chosen
+          if (overwriteResult.newName) {
+            item.file = { ...item.file, name: overwriteResult.newName };
+          }
         }
 
         transferQueue.startTransfer(item.id);
         try {
-          await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined);
+          await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
           transferQueue.completeTransfer(item.id);
         } catch (error) {
           transferQueue.failTransfer(item.id, String(error));
@@ -3967,7 +4062,7 @@ const App: React.FC = () => {
 
       {/* Update Available Toast with inline download */}
       {updateAvailable?.has_update && !updateToastDismissed && (
-        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[320px] max-w-[380px] ${!updateDownload ? 'animate-pulse' : ''}`}>
+        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[320px] max-w-[380px] ${!updateDownload ? 'animate-update-flash' : ''}`}>
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <span className="font-semibold flex items-center gap-1.5">
@@ -4007,24 +4102,13 @@ const App: React.FC = () => {
 
           {/* State: Downloading */}
           {updateDownload?.downloading && (
-            <div className="flex flex-col gap-1.5">
-              <div className="w-full bg-blue-800 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-white h-full rounded-full transition-all duration-200"
-                  style={{ width: `${updateDownload.percentage}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs opacity-80">
-                <span>{updateDownload.percentage}%</span>
-                <span>
-                  {updateDownload.speed_bps > 0
-                    ? `${(updateDownload.speed_bps / 1024 / 1024).toFixed(1)} MB/s`
-                    : t('update.starting')
-                  }
-                  {updateDownload.eta_seconds > 0 && ` — ${updateDownload.eta_seconds}s`}
-                </span>
-              </div>
-            </div>
+            <TransferProgressBar
+              percentage={updateDownload.percentage}
+              speedBps={updateDownload.speed_bps}
+              etaSeconds={updateDownload.eta_seconds}
+              size="lg"
+              variant="gradient"
+            />
           )}
 
           {/* State: Download complete — Install & Restart */}
@@ -4115,7 +4199,7 @@ const App: React.FC = () => {
         }}
       />
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-      {activeTransfer && <TransferProgressBar transfer={activeTransfer} onCancel={cancelTransfer} />}
+      <TransferToastContainer onCancel={cancelTransfer} />
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
       {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
       {batchRenameDialog && (
@@ -4397,7 +4481,7 @@ const App: React.FC = () => {
               {getEffectiveTheme(theme, isDark) === 'cyber' && (
                 <button
                   onClick={() => setShowCyberTools(true)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="p-2 rounded-lg bg-emerald-900/50 hover:bg-emerald-800/50 transition-colors"
                   title={t('cyberTools.title')}
                 >
                   <svg viewBox="0 0 32 32" width={18} height={18} fill="currentColor" className="text-emerald-400">
@@ -4414,7 +4498,7 @@ const App: React.FC = () => {
               {/* AeroVault */}
               <button
                 onClick={() => setShowVaultPanel(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-800/50 transition-colors"
                 title={t('vault.titleFull')}
               >
                 <VaultIcon size={18} className="text-emerald-500 dark:text-emerald-400" />
@@ -4477,7 +4561,7 @@ const App: React.FC = () => {
         </header>
       )}
 
-      <main className={`flex-1 min-h-0 p-6 overflow-auto ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+      <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
         {!isConnected && showConnectionScreen ? (
           <ConnectionScreen
             connectionParams={connectionParams}
@@ -4702,7 +4786,7 @@ const App: React.FC = () => {
             }}
           />
         ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
             {/* Session Tabs - visible when there are sessions or cloud is enabled */}
             {(sessions.length > 0 || isCloudActive) && (
               <SessionTabs
@@ -4828,9 +4912,9 @@ const App: React.FC = () => {
                   <>
                     <button
                       onClick={cancelTransfer}
-                      disabled={!activeTransfer && !hasQueueActivity}
+                      disabled={!hasActiveTransfer && !hasQueueActivity}
                       className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
-                        activeTransfer || hasQueueActivity
+                        hasActiveTransfer || hasQueueActivity
                           ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
                           : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                       }`}
@@ -4894,7 +4978,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Dual Panel (or single panel when not connected) */}
-            <div className="flex h-[calc(100vh-220px)]">
+            <div className="flex flex-1 min-h-0">
               {/* Remote — hidden when not connected or local-only mode */}
               {isConnected && showRemotePanel && <div
                 className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
@@ -4903,7 +4987,7 @@ const App: React.FC = () => {
                 onDragLeave={handlePanelDragLeave}
               >
                 <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  <div className="flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden">
+                  <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                     {/* Protocol icon inside address bar (like Chrome favicon) */}
                     <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
                         const protocol = connectionParams.protocol || 'ftp';
@@ -4925,7 +5009,8 @@ const App: React.FC = () => {
                       })()}>
                       {(() => {
                         const protocol = connectionParams.protocol || 'ftp';
-                        const iconClass = isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
+                        const iconClass = isSyncPathMismatch ? 'text-amber-500' : isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
+                        if (isSyncPathMismatch) return <AlertTriangle size={14} className={iconClass} />;
                         switch (protocol) {
                           case 's3': return <Cloud size={14} className={iconClass} />;
                           case 'webdav': return <Server size={14} className={iconClass} />;
@@ -4945,8 +5030,8 @@ const App: React.FC = () => {
                       onChange={(e) => setCurrentRemotePath(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
                       disabled={!isConnected}
-                      className="flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900"
-                      title={isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
+                      className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                      title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
                       placeholder="/path/to/directory"
                     />
                     <button
@@ -5068,7 +5153,7 @@ const App: React.FC = () => {
                               onClick={() => canGoUp && changeRemoteDirectory('..')}
                             >
                               <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
-                                <FolderUp size={16} />
+                                {iconProvider.getFolderUpIcon(16).icon}
                                 <span className="italic">{t('browser.parentFolder')}</span>
                               </td>
                               {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
@@ -5127,7 +5212,7 @@ const App: React.FC = () => {
                             } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
-                              {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
+                              {file.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(file.name, 16).icon}
                               {inlineRename?.path === file.path && inlineRename?.isRemote ? (
                                 <input
                                   ref={inlineRenameRef}
@@ -5172,7 +5257,7 @@ const App: React.FC = () => {
                         onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
                       >
                         <div className="file-grid-icon">
-                          <FolderUp size={32} className="text-gray-400" />
+                          {iconProvider.getFolderUpIcon(32).icon}
                         </div>
                         <span className="file-grid-name italic text-gray-500">{t('browser.parentFolder')}</span>
                       </div>
@@ -5221,7 +5306,7 @@ const App: React.FC = () => {
                         >
                           {file.is_dir ? (
                             <div className="file-grid-icon">
-                              <Folder size={32} className="text-yellow-500" />
+                              {iconProvider.getFolderIcon(32).icon}
                             </div>
                           ) : providerCaps.thumbnails && isImageFile(file.name) ? (
                             <div className="file-grid-icon">
@@ -5235,12 +5320,12 @@ const App: React.FC = () => {
                             <ImageThumbnail
                               path={currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`}
                               name={file.name}
-                              fallbackIcon={getFileIcon(file.name).icon}
+                              fallbackIcon={iconProvider.getFileIcon(file.name).icon}
                               isRemote={true}
                             />
                           ) : (
                             <div className="file-grid-icon">
-                              {getFileIcon(file.name).icon}
+                              {iconProvider.getFileIcon(file.name).icon}
                             </div>
                           )}
                           {inlineRename?.path === file.path && inlineRename?.isRemote ? (
@@ -5326,16 +5411,16 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     /* Connected mode: classic input address bar */
-                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${!isLocalPathCoherent ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
+                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${(!isLocalPathCoherent || isSyncPathMismatch) ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                       {/* Local icon inside address bar (like Chrome favicon) */}
                       <div
                         className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
-                        title={isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
+                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
                       >
-                        {isLocalPathCoherent ? (
-                          <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
-                        ) : (
+                        {(!isLocalPathCoherent || isSyncPathMismatch) ? (
                           <AlertTriangle size={14} className="text-amber-500" />
+                        ) : (
+                          <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
                         )}
                       </div>
                       <input
@@ -5343,8 +5428,8 @@ const App: React.FC = () => {
                         value={currentLocalPath}
                         onChange={(e) => setCurrentLocalPath(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
-                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${!isLocalPathCoherent ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                        title={isLocalPathCoherent ? t('browser.editPathHint') : `\u26a0\ufe0f ${t('browser.localPathMismatch')}`}
+                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${(!isLocalPathCoherent || isSyncPathMismatch) ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isLocalPathCoherent ? t('browser.editPathHint') : `\u26a0\ufe0f ${t('browser.localPathMismatch')}`}
                         placeholder="/path/to/local/directory"
                       />
                       <button
@@ -5480,7 +5565,7 @@ const App: React.FC = () => {
                             {trashItems.map((item) => (
                               <tr key={item.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td className="px-4 py-2 flex items-center gap-2">
-                                  {item.is_dir ? <Folder size={16} className="text-yellow-500" /> : <FileText size={16} className="text-blue-500" />}
+                                  {item.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(item.name, 16).icon}
                                   <span className="truncate">{item.name}</span>
                                 </td>
                                 <td className="px-4 py-2 text-gray-500 text-xs truncate max-w-[200px]" title={item.original_path}>
@@ -5523,7 +5608,7 @@ const App: React.FC = () => {
                           onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
                         >
                           <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
-                            <FolderUp size={16} />
+                            {iconProvider.getFolderUpIcon(16).icon}
                             <span className="italic">{t('browser.parentFolder')}</span>
                           </td>
                           {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
@@ -5598,7 +5683,7 @@ const App: React.FC = () => {
                             } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           >
                             <td className="px-4 py-2 flex items-center gap-2">
-                              {file.is_dir ? <Folder size={16} className="text-yellow-500" /> : getFileIcon(file.name).icon}
+                              {file.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(file.name, 16).icon}
                               {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
                                 <input
                                   ref={inlineRenameRef}
@@ -5641,7 +5726,7 @@ const App: React.FC = () => {
                         onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
                       >
                         <div className="file-grid-icon">
-                          <FolderUp size={32} className="text-gray-400" />
+                          {iconProvider.getFolderUpIcon(32).icon}
                         </div>
                         <span className="file-grid-name italic text-gray-500">{t('browser.goUp')}</span>
                       </div>
@@ -5712,17 +5797,17 @@ const App: React.FC = () => {
                         >
                           {file.is_dir ? (
                             <div className="file-grid-icon">
-                              <Folder size={32} className="text-yellow-500" />
+                              {iconProvider.getFolderIcon(32).icon}
                             </div>
                           ) : isImageFile(file.name) ? (
                             <ImageThumbnail
                               path={file.path}
                               name={file.name}
-                              fallbackIcon={getFileIcon(file.name).icon}
+                              fallbackIcon={iconProvider.getFileIcon(file.name).icon}
                             />
                           ) : (
                             <div className="file-grid-icon">
-                              {getFileIcon(file.name).icon}
+                              {iconProvider.getFileIcon(file.name).icon}
                             </div>
                           )}
                           {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
@@ -5811,9 +5896,10 @@ const App: React.FC = () => {
                       onNavigateUp={() => changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
                       isAtRoot={currentLocalPath === '/' || !!(isSyncNavigation && syncBasePaths && (currentLocalPath.endsWith('/') && currentLocalPath.length > 1 ? currentLocalPath.slice(0, -1) : currentLocalPath) === (syncBasePaths.local.endsWith('/') && syncBasePaths.local.length > 1 ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local))}
                       getFileIcon={(name, isDir) => {
-                        if (isDir) return { icon: <Folder size={64} className="text-yellow-500" />, color: 'text-yellow-500' };
-                        return getFileIcon(name, 48);
+                        if (isDir) return iconProvider.getFolderIcon(64);
+                        return iconProvider.getFileIcon(name, 48);
                       }}
+                      getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
                       onContextMenu={(e, file) => file ? showLocalContextMenu(e, file) : showLocalEmptyContextMenu(e)}
                       onDragStart={(e, file) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
                       onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, false)}
@@ -5876,20 +5962,10 @@ const App: React.FC = () => {
                               <Image size={32} className="text-blue-400 mb-1" />
                               <span className="text-xs">{t('common.loading')}</span>
                             </div>
-                          ) : /\.(mp4|webm|mov|avi|mkv)$/i.test(previewFile.name) ? (
-                            <Video size={48} className="text-purple-500" />
-                          ) : /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(previewFile.name) ? (
-                            <Music size={48} className="text-green-500" />
-                          ) : /\.pdf$/i.test(previewFile.name) ? (
-                            <FileText size={48} className="text-red-500" />
-                          ) : /\.(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash)$/i.test(previewFile.name) ? (
-                            <Code size={48} className="text-cyan-400" />
-                          ) : /\.(zip|tar|gz|rar|7z)$/i.test(previewFile.name) ? (
-                            <Archive size={48} className="text-yellow-500" />
                           ) : previewFile.is_dir ? (
-                            <Folder size={48} className="text-yellow-400" />
+                            iconProvider.getFolderIcon(48).icon
                           ) : (
-                            <FileText size={48} className="text-gray-400" />
+                            iconProvider.getFileIcon(previewFile.name, 48).icon
                           )}
                         </div>
 

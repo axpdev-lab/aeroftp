@@ -61,7 +61,7 @@ const GL_MODES: { name: string; shader: WebGLShaderName }[] = [
 
 // EQ frequency values matching AudioMixer bands
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const MIN_START_BUFFER_SECONDS = 4.0;
+const MIN_START_BUFFER_SECONDS = 6.0;
 
 // Global map to track audio elements already connected to MediaElementSource
 // Once connected, an audio element cannot be reconnected to a new source node

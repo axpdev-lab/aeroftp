@@ -299,7 +299,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             {/* Toolbar */}
             <div className={`flex items-center justify-between px-3 py-1.5 ${theme.toolbar} border-b flex-shrink-0`}>
                 <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${theme.text}`}>DevTools</span>
+                    <span className={`text-xs font-medium ${theme.text}`}>{t('devtools.title')}</span>
                     <div className={`w-px h-4 ${theme.divider}`} />
 
                     {/* Panel toggles */}

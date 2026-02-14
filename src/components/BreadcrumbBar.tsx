@@ -242,7 +242,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     return (
       <div
         ref={containerRef}
-        className="flex items-center h-8 bg-gray-800/50 rounded-md border border-blue-500 px-1 gap-1 w-full"
+        className="flex items-center h-8 bg-white border-blue-500 dark:bg-gray-800/50 rounded-md border px-1 gap-1 w-full"
       >
         <input
           ref={inputRef}
@@ -254,7 +254,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             if (e.key === 'Escape') cancelEdit();
           }}
           onBlur={cancelEdit}
-          className="w-full bg-transparent text-white text-sm px-2 py-1 outline-none"
+          className="w-full bg-transparent text-gray-900 dark:text-white text-sm px-2 py-1 outline-none"
           spellCheck={false}
         />
         <button
@@ -263,7 +263,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             e.preventDefault();
             confirmEdit();
           }}
-          className="flex-shrink-0 p-1 rounded hover:bg-gray-700/50 text-green-400 hover:text-green-300 transition-colors"
+          className="flex-shrink-0 p-1 rounded hover:bg-green-50 text-green-600 hover:text-green-500 dark:hover:bg-gray-700/50 dark:text-green-400 dark:hover:text-green-300 transition-colors"
           title={t('breadcrumb.confirm') || 'Confirm'}
         >
           <Check size={14} />
@@ -276,7 +276,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   return (
     <nav
       ref={containerRef}
-      className="flex items-center h-8 bg-gray-800/50 rounded-md border border-gray-700 px-2 gap-0.5 overflow-hidden w-full relative"
+      className="flex items-center h-8 bg-white border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 rounded-md border px-2 gap-0.5 overflow-hidden w-full relative"
       role="navigation"
       aria-label="Breadcrumb"
     >
@@ -296,8 +296,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             isAboveMinPath(segments[0].fullPath)
               ? 'text-gray-600 cursor-not-allowed'
               : segments.length === 1
-                ? 'text-white'
-                : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700/50'
+                ? 'text-gray-900 dark:text-white'
+                : 'text-gray-500 hover:text-blue-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-blue-400 dark:hover:bg-gray-700/50'
           }`}
           title={segments[0].fullPath}
           disabled={isAboveMinPath(segments[0].fullPath)}
@@ -312,7 +312,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             <div className="relative flex-shrink-0" ref={overflowDropdownRef}>
               <button
                 onClick={() => setOverflowDropdownOpen((prev) => !prev)}
-                className="text-sm px-1 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 transition-colors"
+                className="text-sm px-1 py-0.5 rounded text-gray-500 hover:text-blue-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-blue-400 dark:hover:bg-gray-700/50 transition-colors"
                 title={t('breadcrumb.showAll') || 'Show collapsed segments'}
               >
                 <MoreHorizontal size={14} />
@@ -320,14 +320,14 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
 
               {/* Overflow dropdown */}
               {overflowDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-md shadow-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-md py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
                   {collapsedSegments.map((seg) => {
                     const locked = isAboveMinPath(seg.fullPath);
                     return <button
                       key={seg.fullPath}
                       onClick={() => !locked && handleDropdownNavigate(seg.fullPath)}
                       className={`flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left transition-colors ${
-                        locked ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
+                        locked ? 'text-gray-600 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 cursor-pointer'
                       }`}
                       disabled={locked}
                     >
@@ -355,7 +355,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
               <div className="relative flex-shrink-0">
                 <button
                   onClick={(e) => handleChevronClick(e, realIndex - 1)}
-                  className="flex items-center p-0.5 rounded hover:bg-gray-700/30 transition-colors group"
+                  className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
                   title={t('breadcrumb.browseSiblings') || 'Browse sibling directories'}
                 >
                   <ChevronRight
@@ -368,7 +368,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 {chevronDropdown?.segmentIndex === realIndex - 1 && (
                   <div
                     ref={chevronDropdownRef}
-                    className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-md shadow-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
+                    className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-md py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
                   >
                     {chevronDropdown.loading ? (
                       <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
@@ -387,8 +387,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                             onClick={() => handleDropdownNavigate(dir.path)}
                             className={`flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left transition-colors ${
                               isCurrent
-                                ? 'text-blue-400 bg-gray-700/50 font-medium'
-                                : 'text-gray-300 hover:bg-gray-700 cursor-pointer'
+                                ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-gray-700/50 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 cursor-pointer'
                             }`}
                           >
                             <Folder size={14} className={`flex-shrink-0 ${isCurrent ? 'text-blue-400' : 'text-amber-400'}`} />
@@ -410,8 +410,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                     locked
                       ? 'text-gray-600 cursor-not-allowed'
                       : isLast
-                        ? 'text-white font-medium cursor-default'
-                        : 'text-gray-300 hover:text-blue-400 hover:underline hover:bg-gray-700/50'
+                        ? 'text-gray-900 font-medium dark:text-white cursor-default'
+                        : 'text-gray-600 hover:text-blue-500 hover:underline hover:bg-gray-100 dark:text-gray-300 dark:hover:text-blue-400 dark:hover:bg-gray-700/50'
                   }`}
                   title={locked ? `${seg.fullPath} (sync boundary)` : seg.fullPath}
                   disabled={locked}
@@ -428,7 +428,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
       {/* Edit button */}
       <button
         onClick={enterEditMode}
-        className="flex-shrink-0 p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors ml-1"
+        className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-colors ml-1"
         title={t('breadcrumb.editPath') || 'Edit path'}
       >
         <Pencil size={12} />

@@ -8,6 +8,7 @@ import {
     SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus
 } from '../types';
 import { useTranslation } from '../i18n';
+import { TransferProgressBar } from './TransferProgressBar';
 import {
     Loader2, Search, RefreshCw, Zap, X, FolderSync,
     Folder, Globe, File, AlertTriangle, Check,
@@ -123,6 +124,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     });
     const unlistenRef = useRef<UnlistenFn | null>(null);
     const cancelledRef = useRef(false);
+    const speedHistoryRef = useRef<number[]>([]);
 
     // Sync paths from props when panel opens
     useEffect(() => {
@@ -268,11 +270,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setSelectedPaths(newSelection);
     };
 
-    const formatSpeed = (bps: number): string => {
-        if (bps < 1024) return `${bps} B/s`;
-        if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
-        return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
-    };
+    // formatSpeed is provided by the TransferProgressBar component
 
     const formatDuration = (ms: number): string => {
         const secs = Math.floor(ms / 1000);
@@ -435,12 +433,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             }
         });
         setFileResults(initialResults);
+        speedHistoryRef.current = [];
 
         // Listen for transfer progress events
         const unlisten = await listen<TransferEvent>('transfer_event', (event) => {
-            // TransferEvent has a nested 'progress' field
             if (event.payload?.progress && event.payload.progress.percentage !== undefined) {
                 setCurrentFileProgress(event.payload.progress);
+                // Accumulate speed samples for graph (cap at 120 = ~60s at 500ms)
+                if (event.payload.progress.speed_bps > 0) {
+                    const history = speedHistoryRef.current;
+                    history.push(event.payload.progress.speed_bps);
+                    if (history.length > 120) history.shift();
+                }
             }
         });
         unlistenRef.current = unlisten;
@@ -732,7 +736,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
             completed++;
             setSyncProgress({ current: completed, total: selectedComparisons.length });
-            setCurrentFileProgress(null);
 
             // Save journal checkpoint every 10 files
             if (completed % 10 === 0) {
@@ -887,7 +890,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         <div className="sync-panel-overlay">
             <div className="sync-panel">
                 <div className="sync-panel-header">
-                    <h2><FolderSync size={20} className="inline mr-2" /> {t('syncPanel.title')}</h2>
+                    <h2><FolderSync size={20} className="inline mr-2" /> {t('syncPanel.title')} <span style={{ fontWeight: 400, opacity: 0.5, fontSize: '0.8em' }}>— {t('statusBar.syncFiles')}</span></h2>
                     <button className="sync-close-btn" onClick={handleClose}><X size={18} /></button>
                 </div>
 
@@ -1166,22 +1169,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     </div>
                 )}
 
-                {/* Progress bar during sync */}
-                {isSyncing && currentFileProgress && (
-                    <div className="mx-4 mb-2">
-                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            <span className="truncate max-w-[60%]">{currentFileProgress.filename}</span>
-                            <span>{currentFileProgress.percentage}% &middot; {formatSpeed(currentFileProgress.speed_bps)}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                                style={{ width: `${currentFileProgress.percentage}%` }}
-                            />
-                        </div>
-                    </div>
-                )}
-
                 <div className="sync-results">
                     {isComparing && (
                         <div className="sync-loading">
@@ -1277,6 +1264,24 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         </>
                     )}
                 </div>
+
+                {/* Transfer progress — positioned at bottom to avoid layout shift */}
+                {isSyncing && (
+                    <div className="sync-progress-wrapper">
+                        <TransferProgressBar
+                            percentage={currentFileProgress?.percentage ?? 0}
+                            filename={currentFileProgress?.filename}
+                            speedBps={currentFileProgress?.speed_bps}
+                            currentFile={syncProgress?.current}
+                            totalFiles={syncProgress?.total}
+                            size="md"
+                            variant="gradient"
+                            slideAnimation
+                            showGraph
+                            speedHistory={[...speedHistoryRef.current]}
+                        />
+                    </div>
+                )}
 
                 <div className="sync-panel-footer">
                     <div className="sync-summary">

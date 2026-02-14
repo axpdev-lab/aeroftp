@@ -224,7 +224,8 @@
             "localPathMismatch": "Njia ya ndani hailingani na seva iliyounganishwa",
             "locked": "Imefungwa",
             "notConnected": "Haijaunganishwa",
-            "permsHeader": "Ruhusa"
+            "permsHeader": "Ruhusa",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Fungua",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Mwanga",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Mandhari",
-            "themeAutoLabel": "Otomatiki"
+            "themeAutoLabel": "Otomatiki",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Zana za Msanidi",
+            "title": "AeroTools",
             "preview": "Hakiki",
             "editor": "Mhariri",
             "terminal": "Terminali",
@@ -656,7 +665,7 @@
             "minimap": "Ramani ndogo",
             "duplicatesSkipped": "nakala zilimerukwa",
             "invalidPassword": "Nywila si sahihi",
-            "closeDevTools": "Funga DevTools",
+            "closeDevTools": "Funga AeroTools",
             "maximize": "Panua",
             "noFileOpen": "Hakuna faili iliyofunguliwa",
             "noPanelsActive": "Hakuna paneli zinazotumika. Bonyeza vitufe hapo juu kuonyesha Kihariri, Terminali, au Mazungumzo ya AI.",
@@ -740,7 +749,7 @@
             "notConnected": "Haijaunganishwa",
             "syncing": "Inasawazisha...",
             "syncFiles": "Sawazisha Faili",
-            "devTools": "Zana za Msanidi",
+            "devTools": "AeroTools",
             "updateAvailable": "Sasisho Inapatikana",
             "transferQueue": "Foleni ya Uhamisho",
             "queue": "Foleni",
@@ -1160,7 +1169,7 @@
             "unlock": "Fungua Faili"
         },
         "syncPanel": {
-            "title": "Sawazisha Faili",
+            "title": "AeroSync",
             "local": "Ndani",
             "remote": "Mbali",
             "direction": "Mwelekeo",
@@ -2164,7 +2173,7 @@
             "delete": "Futa",
             "refresh": "Onyesha Upya",
             "toggleTheme": "Badilisha Mandhari",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Badilisha DevTools",
             "toggleEditor": "Badilisha Kihariri",
             "toggleTerminal": "Badilisha Terminal",

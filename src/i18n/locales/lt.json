@@ -224,7 +224,8 @@
             "localPathMismatch": "Vietinis kelias neatitinka prijungto serverio",
             "locked": "Užrakinta",
             "notConnected": "Neprisijungta",
-            "permsHeader": "Leidimai"
+            "permsHeader": "Leidimai",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Atidaryti",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Šviesi",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Automatinė"
+            "themeAutoLabel": "Automatinė",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Kureju irankiai",
+            "title": "AeroTools",
             "preview": "Perziura",
             "editor": "Redaktorius",
             "terminal": "Terminalas",
@@ -656,7 +665,7 @@
             "minimap": "Minemape",
             "duplicatesSkipped": "dublikatų praleista",
             "invalidPassword": "Neteisingas slaptažodis",
-            "closeDevTools": "Uždaryti DevTools",
+            "closeDevTools": "Uždaryti AeroTools",
             "maximize": "Padidinti",
             "noFileOpen": "Nėra atidaryto failo",
             "noPanelsActive": "Nėra aktyvių skydelių. Spustelėkite aukščiau esančius mygtukus, kad būtų rodomas redaktorius, terminalas arba AI pokalbis.",
@@ -740,7 +749,7 @@
             "notConnected": "Neprisijungta",
             "syncing": "Sinchronizuojama...",
             "syncFiles": "Sinchronizuoti failus",
-            "devTools": "Kureju irankiai",
+            "devTools": "AeroTools",
             "updateAvailable": "Yra atnaujinimas",
             "transferQueue": "Perdavimo eilė",
             "queue": "Eilė",
@@ -1160,7 +1169,7 @@
             "unlock": "Atrakinti failą"
         },
         "syncPanel": {
-            "title": "Sinchronizuoti failus",
+            "title": "AeroSync",
             "local": "Vietinis",
             "remote": "Nuotolinis",
             "direction": "Kryptis",
@@ -2164,7 +2173,7 @@
             "delete": "Ištrinti",
             "refresh": "Atnaujinti",
             "toggleTheme": "Perjungti temą",
-            "devtools": "Kūrėjo įrankiai",
+            "devtools": "AeroTools",
             "toggleDevtools": "Perjungti kūrėjo įrankius",
             "toggleEditor": "Perjungti redaktorių",
             "toggleTerminal": "Perjungti terminalą",

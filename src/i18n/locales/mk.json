@@ -224,7 +224,8 @@
             "localPathMismatch": "Локалната патека не одговара на поврзаниот сервер",
             "locked": "Заклучено",
             "notConnected": "Не е поврзано",
-            "permsHeader": "Дозволи"
+            "permsHeader": "Дозволи",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Отвори",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Светла",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
-            "themeAutoLabel": "Авто"
+            "themeAutoLabel": "Авто",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Развојни алатки",
+            "title": "AeroTools",
             "preview": "Преглед",
             "editor": "Уредник",
             "terminal": "Терминал",
@@ -656,7 +665,7 @@
             "minimap": "Минимапа",
             "duplicatesSkipped": "дупликати прескокнати",
             "invalidPassword": "Невалидна лозинка",
-            "closeDevTools": "Затвори DevTools",
+            "closeDevTools": "Затвори AeroTools",
             "maximize": "Максимизирај",
             "noFileOpen": "Нема отворена датотека",
             "noPanelsActive": "Нема активни панели. Кликнете на копчињата горе за да прикажете Уредник, Терминал или AI Чат.",
@@ -740,7 +749,7 @@
             "notConnected": "Не е поврзано",
             "syncing": "Синхронизирање...",
             "syncFiles": "Синхронизирај датотеки",
-            "devTools": "Развојни алатки",
+            "devTools": "AeroTools",
             "updateAvailable": "Достапно ажурирање",
             "transferQueue": "Ред за пренос",
             "queue": "Ред",
@@ -1160,7 +1169,7 @@
             "unlock": "Отклучи датотека"
         },
         "syncPanel": {
-            "title": "Синхронизирај датотеки",
+            "title": "AeroSync",
             "local": "Локално",
             "remote": "Далечински",
             "direction": "Насока",
@@ -2164,7 +2173,7 @@
             "delete": "Избриши",
             "refresh": "Освежи",
             "toggleTheme": "Промени тема",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Вклучи/исклучи DevTools",
             "toggleEditor": "Вклучи/исклучи уредувач",
             "toggleTerminal": "Вклучи/исклучи терминал",

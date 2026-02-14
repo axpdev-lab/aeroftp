@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-02-14
+
+### UX Polish, Aero Rebrand & Transfer Stability
+
+Post-release improvements focusing on transfer UX, visual consistency across all 4 themes, completing the Aero product family branding, and refining update notification behavior.
+
+#### Added
+
+- **Unified TransferProgressBar component**: Consolidated 7 separate transfer progress bars into a single reusable component with 4 feature levels (base, details, batch, graph), theme-aware shimmer animation, and optional SpeedGraph canvas chart
+- **SpeedGraph canvas component**: Real-time transfer speed visualization with quadratic bezier smoothing, auto-scale Y axis, and stats overlay (current/avg/peak speed)
+- **TransferToastContainer**: Isolated state management for transfer toast — progress events update only the toast component via DOM events, eliminating full App re-renders
+- **prefers-reduced-motion support**: TransferProgressBar respects user accessibility preference, disabling all shimmer and slide animations when reduced motion is requested
+- **Cyberpunk Anonymous mask icon**: Replaced shield icon with detailed Anonymous mask SVG for theme toggle button and Settings appearance selector
+- **Security toolbar visual grouping**: AeroVault and CyberTools buttons now share emerald background styling, visually identifying security-related tools as a cohesive group
+- **Icon theme system**: 3 selectable icon styles in Settings > Appearance > Icons — Outline (stroke), Filled (colored document shapes with type badges), and Minimal (monochrome accent). Defaults: light/dark use Filled, tokyo/cyber use Minimal (neon accent effect). Auto-syncs when changing app theme, user can customize after
+- **Icon theme Settings panel**: Visual preview grid showing 6 sample file icons per theme, with one-click selection and save animation feedback
+
+#### Fixed
+
+- **Transfer toast theme consistency**: Toast now correctly resolves the effective theme for all 4 themes (light, dark, tokyo, cyber) including `auto` mode. Previously used `dark:` Tailwind prefix only, causing wrong colors in Cyber and Tokyo themes
+- **Transfer toast flicker between files**: Added 500ms debounce on toast dismiss during batch transfers — new file progress cancels the dismiss timer, keeping the toast visible without flicker
+- **File list theme flash during transfers**: Isolated `activeTransfer` state from App.tsx (5000+ line component) using ref + boolean + custom DOM event pattern. Progress events no longer trigger expensive full-app re-renders that caused WebKitGTK to briefly flash unstyled content
+- **Theme initialization race**: `isDark` now initializes synchronously from saved theme + `prefers-color-scheme` media query, eliminating a startup frame where dark mode class was temporarily absent
+- **TransferProgressBar theme independence**: Removed `useTheme()` hook dependency — component reads theme passively from DOM classes via `resolveThemeFromDom()`, preventing mount/unmount from triggering global theme mutations
+- **SyncPanel progress bar dancing**: Progress bar moved to persistent bottom position in modal (no longer appears/disappears per file), with slide-down animation on sync start
+- **Update toast auto-dismiss**: Toast now flashes twice with a fast pulse (0.6s) and long pause (3.4s), then auto-closes after 8 seconds. Reappears on next app launch if not yet updated. StatusBar badge remains visible for manual access
+- **Sync navigation boundary warning**: Debounced 500ms mismatch detection prevents false warning flash during panel sync transition. Compares only relative paths (ignores base folder name differences between FTP home and local folder)
+- **Sync navigation false folder creation**: Removed forced folder-name alignment from sync activation. Previously, enabling sync nav when FTP home dir name differed from local folder name (e.g., `/home/user` vs `/var/www/html/site.com`) triggered a "create missing folder" dialog. Now uses current paths as-is
+- **AeroCloud CWD corruption**: `trigger_cloud_sync` now saves and restores the FTP working directory before/after sync, preventing the shared connection's CWD from being left in the cloud folder after sync operations
+- **Session switch path restoration**: FTP reconnection now navigates to the saved path including `/` (root). Previously skipped root navigation, causing the session to land at the FTP home directory instead of the saved position
+
+#### Changed
+
+- **AeroPlayer prebuffer increased**: Minimum start buffer raised from 4.0s to 6.0s for improved playback reliability on slower connections and large files
+- **AeroSync rebrand**: Sync panel title changed from "Synchronize Files" to "AeroSync" across all 47 languages
+- **AeroTools rebrand**: DevTools renamed to AeroTools in all user-facing strings (4 i18n values across 47 languages). Aero product family now complete: AeroSync, AeroVault, AeroPlayer, AeroAgent, AeroTools
+- **CSP Phase 1A baseline**: Content Security Policy active in `tauri.conf.json` with `dangerousDisableAssetCspModification: true` and explicit permissive directives for all resource types
+
+#### Removed
+
+- **Splash screen**: Removed `public/splash.html` and all related code (app_ready command, splash WebviewWindow, readiness tracking). Production builds start instantly — splash was a dev-mode-only benefit
+
+---
+
 ## [2.1.0] - 2026-02-14
 
 ### AeroSync Phase 2 — Operational Reliability

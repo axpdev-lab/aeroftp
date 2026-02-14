@@ -224,7 +224,8 @@
             "localPathMismatch": "স্থানীয় পথ সংযুক্ত সার্ভারের সাথে মিলছে না",
             "locked": "লক করা",
             "notConnected": "সংযুক্ত নয়",
-            "permsHeader": "অনুমতি"
+            "permsHeader": "অনুমতি",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "খুলুন",
@@ -637,10 +638,18 @@
             "themeLightLabel": "আলো",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "থিম",
-            "themeAutoLabel": "স্বয়ংক্রিয়"
+            "themeAutoLabel": "স্বয়ংক্রিয়",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "ডেভ টুলস",
+            "title": "AeroTools",
             "preview": "প্রিভিউ",
             "editor": "এডিটর",
             "terminal": "টার্মিনাল",
@@ -656,7 +665,7 @@
             "minimap": "মিনিম্যাপ",
             "duplicatesSkipped": "ডুপ্লিকেট এড়িয়ে যাওয়া হয়েছে",
             "invalidPassword": "অবৈধ পাসওয়ার্ড",
-            "closeDevTools": "DevTools বন্ধ করুন",
+            "closeDevTools": "AeroTools বন্ধ করুন",
             "maximize": "বড় করুন",
             "noFileOpen": "কোনো ফাইল খোলা নেই",
             "noPanelsActive": "কোনো প্যানেল সক্রিয় নেই। এডিটর, টার্মিনাল বা AI চ্যাট দেখাতে উপরের বোতামে ক্লিক করুন।",
@@ -740,7 +749,7 @@
             "notConnected": "সংযুক্ত নয়",
             "syncing": "সিঙ্ক হচ্ছে...",
             "syncFiles": "ফাইল সিঙ্ক",
-            "devTools": "ডেভ টুলস",
+            "devTools": "AeroTools",
             "updateAvailable": "আপডেট উপলব্ধ",
             "transferQueue": "ট্রান্সফার কিউ",
             "queue": "কিউ",
@@ -1160,7 +1169,7 @@
             "unlock": "ফাইল আনলক করুন"
         },
         "syncPanel": {
-            "title": "ফাইল সিঙ্ক্রোনাইজেশন",
+            "title": "AeroSync",
             "local": "লোকাল",
             "remote": "রিমোট",
             "direction": "দিক",
@@ -2164,7 +2173,7 @@
             "delete": "মুছুন",
             "refresh": "রিফ্রেশ",
             "toggleTheme": "থিম টগল করুন",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "DevTools টগল করুন",
             "toggleEditor": "এডিটর টগল করুন",
             "toggleTerminal": "টার্মিনাল টগল করুন",

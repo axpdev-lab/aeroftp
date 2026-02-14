@@ -1,5 +1,5 @@
 name: aeroftp
-version: '2.0.11'
+version: '2.1.1'
 summary: Multi-Protocol File Transfer & Cloud Client — 14 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -27,22 +27,33 @@ description: |
   AeroCloud - Personal Cloud:
   Turn any FTP server into your private cloud with bidirectional sync and background service.
 
-  Pro Features:
+  AeroTools — Developer Suite:
   - Monaco Editor (VS Code engine) for remote file editing
-  - Integrated terminal with 8 themes
-  - AeroAgent AI assistant (7 providers supported)
+  - Integrated SSH terminal with theme sync
+  - AeroAgent AI assistant (7 providers: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Custom)
+  - 28 AI tools: file ops, code editing, RAG search, terminal commands
+  - Autonomous multi-step tool execution with approval controls
+
+  AeroSync — Reliable Synchronization:
+  - Bidirectional sync with journal checkpoint/resume
+  - SHA-256 checksum verification during scan
+  - Configurable retry with exponential backoff
+  - Post-transfer verification (size, mtime, hash)
+  - Structured error taxonomy with retryability hints
+
+  More Features:
+  - 4 app themes (Light, Dark, Tokyo Night, Cyberpunk) with 3 icon styles
   - Archive browser (ZIP, 7z, TAR, RAR) with selective extraction
-  - Built-in media player and image preview
-  - Dual-pane browser with drag & drop
-  - Smart Sync and Batch Rename
-  - 51 languages supported
+  - AeroPlayer media player with 14 visualizers and 10-band EQ
+  - Dual-pane browser with drag & drop and batch rename
+  - 47 languages supported
 
   Note: Snap version can access ~/home and removable media. For system-wide
   access, use .deb or .AppImage from GitHub releases.
 
   https://github.com/axpnet/aeroftp/releases
 
-  Built with Rust (Tauri 2) + React 18. MIT license.
+  Built with Rust (Tauri 2) + React 18. GPL-3.0 license.
 
 base: core22
 grade: stable

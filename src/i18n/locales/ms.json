@@ -224,7 +224,8 @@
             "localPathMismatch": "Laluan tempatan tidak sepadan dengan pelayan yang disambungkan",
             "locked": "Dikunci",
             "notConnected": "Tidak Disambung",
-            "permsHeader": "Kebenaran"
+            "permsHeader": "Kebenaran",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Buka",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Terang",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Alat Pembangun",
+            "title": "AeroTools",
             "preview": "Pratonton",
             "editor": "Penyunting",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Peta Mini",
             "duplicatesSkipped": "pendua dilangkau",
             "invalidPassword": "Kata laluan tidak sah",
-            "closeDevTools": "Tutup DevTools",
+            "closeDevTools": "Tutup AeroTools",
             "maximize": "Maksimumkan",
             "noFileOpen": "Tiada fail dibuka",
             "noPanelsActive": "Tiada panel aktif. Klik butang di atas untuk memaparkan Editor, Terminal, atau Sembang AI.",
@@ -740,7 +749,7 @@
             "notConnected": "Tidak disambung",
             "syncing": "Menyegerakkan...",
             "syncFiles": "Segerakkan Fail",
-            "devTools": "Alat Pembangun",
+            "devTools": "AeroTools",
             "updateAvailable": "Kemas Kini Tersedia",
             "transferQueue": "Giliran Pemindahan",
             "queue": "Giliran",
@@ -1160,7 +1169,7 @@
             "unlock": "Buka Kunci Fail"
         },
         "syncPanel": {
-            "title": "Segerakkan Fail",
+            "title": "AeroSync",
             "local": "Setempat",
             "remote": "Jauh",
             "direction": "Arah",
@@ -2164,7 +2173,7 @@
             "delete": "Padam",
             "refresh": "Muat Semula",
             "toggleTheme": "Togol Tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Togol DevTools",
             "toggleEditor": "Togol Editor",
             "toggleTerminal": "Togol Terminal",

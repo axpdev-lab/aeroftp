@@ -224,7 +224,8 @@
             "localPathMismatch": "O caminho local não corresponde ao servidor ligado",
             "locked": "Bloqueado",
             "notConnected": "Não ligado",
-            "permsHeader": "Perms"
+            "permsHeader": "Perms",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Abrir",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Claro",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Ferramentas de Desenvolvimento",
+            "title": "AeroTools",
             "preview": "Visualização",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minimapa",
             "duplicatesSkipped": "duplicatas ignoradas",
             "invalidPassword": "Palavra-passe inválida",
-            "closeDevTools": "Fechar DevTools",
+            "closeDevTools": "Fechar AeroTools",
             "maximize": "Maximizar",
             "noFileOpen": "Nenhum arquivo aberto",
             "noPanelsActive": "Nenhum painel ativo. Clique nos botoes acima para exibir o Editor, Terminal ou Chat IA.",
@@ -740,7 +749,7 @@
             "notConnected": "Não conectado",
             "syncing": "Sincronizando...",
             "syncFiles": "Sincronizar Arquivos",
-            "devTools": "Ferramentas de Desenvolvimento",
+            "devTools": "AeroTools",
             "updateAvailable": "Atualização Disponível",
             "transferQueue": "Fila de Transferência",
             "queue": "Fila",
@@ -1160,7 +1169,7 @@
             "unlock": "Desbloquear Arquivo"
         },
         "syncPanel": {
-            "title": "Sincronizar Arquivos",
+            "title": "AeroSync",
             "local": "Local",
             "remote": "Remoto",
             "direction": "Direção",
@@ -2164,7 +2173,7 @@
             "delete": "Excluir",
             "refresh": "Atualizar",
             "toggleTheme": "Alternar Tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "Alternar DevTools",
             "toggleEditor": "Alternar Editor",
             "toggleTerminal": "Alternar Terminal",

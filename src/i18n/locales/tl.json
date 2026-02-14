@@ -224,7 +224,8 @@
             "localPathMismatch": "Ang lokal na path ay hindi tumutugma sa nakakonektang server",
             "locked": "Nakakandado",
             "notConnected": "Hindi Nakakonekta",
-            "permsHeader": "Pahintulot"
+            "permsHeader": "Pahintulot",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Buksan",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Maliwanag",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "DevTools",
+            "title": "AeroTools",
             "preview": "Preview",
             "editor": "Editor",
             "terminal": "Terminal",
@@ -656,7 +665,7 @@
             "minimap": "Minimap",
             "duplicatesSkipped": "mga duplikadong nilaktawan",
             "invalidPassword": "Hindi valid na password",
-            "closeDevTools": "Isara ang DevTools",
+            "closeDevTools": "Isara ang AeroTools",
             "maximize": "I-maximize",
             "noFileOpen": "Walang bukas na file",
             "noPanelsActive": "Walang aktibong panel. I-click ang mga button sa itaas para ipakita ang Editor, Terminal, o AI Chat.",
@@ -740,7 +749,7 @@
             "notConnected": "Hindi nakakonekta",
             "syncing": "Nagsi-sync...",
             "syncFiles": "I-sync ang mga File",
-            "devTools": "DevTools",
+            "devTools": "AeroTools",
             "updateAvailable": "May Update",
             "transferQueue": "Transfer Queue",
             "queue": "Pila",
@@ -1160,7 +1169,7 @@
             "unlock": "I-unlock ang File"
         },
         "syncPanel": {
-            "title": "I-synchronize ang mga File",
+            "title": "AeroSync",
             "local": "Lokal",
             "remote": "Remote",
             "direction": "Direksyon",
@@ -2164,7 +2173,7 @@
             "delete": "Tanggalin",
             "refresh": "I-refresh",
             "toggleTheme": "Palitan ang Tema",
-            "devtools": "DevTools",
+            "devtools": "AeroTools",
             "toggleDevtools": "I-toggle ang DevTools",
             "toggleEditor": "I-toggle ang Editor",
             "toggleTerminal": "I-toggle ang Terminal",

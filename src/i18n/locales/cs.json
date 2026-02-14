@@ -224,7 +224,8 @@
             "localPathMismatch": "Místní cesta neodpovídá připojenému serveru",
             "locked": "Uzamčeno",
             "notConnected": "Nepřipojeno",
-            "permsHeader": "Práva"
+            "permsHeader": "Práva",
+            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
         },
         "contextMenu": {
             "open": "Otevřít",
@@ -637,10 +638,18 @@
             "themeLightLabel": "Světlý",
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Motiv",
-            "themeAutoLabel": "Auto"
+            "themeAutoLabel": "Auto",
+            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
+            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
+            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
+            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
+            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
+            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
+            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
+            "iconsTab": "[NEEDS TRANSLATION] Icons"
         },
         "devtools": {
-            "title": "Vývojářské nástroje",
+            "title": "AeroTools",
             "preview": "Náhled",
             "editor": "Editor",
             "terminal": "Terminál",
@@ -656,7 +665,7 @@
             "minimap": "Minimapa",
             "duplicatesSkipped": "duplikatu preskoceno",
             "invalidPassword": "Neplatné heslo",
-            "closeDevTools": "Zavřít DevTools",
+            "closeDevTools": "Zavřít AeroTools",
             "maximize": "Maximalizovat",
             "noFileOpen": "Žádný soubor není otevřen",
             "noPanelsActive": "Žádné aktivní panely. Klikněte na tlačítka výše pro zobrazení Editoru, Terminálu nebo AI chatu.",
@@ -740,7 +749,7 @@
             "notConnected": "Nepřipojeno",
             "syncing": "Synchronizace...",
             "syncFiles": "Synchronizovat soubory",
-            "devTools": "Vývojářské nástroje",
+            "devTools": "AeroTools",
             "updateAvailable": "Dostupná aktualizace",
             "transferQueue": "Fronta přenosů",
             "queue": "Fronta",
@@ -1160,7 +1169,7 @@
             "unlock": "Odemknout soubor"
         },
         "syncPanel": {
-            "title": "Synchronizace souboru",
+            "title": "AeroSync",
             "local": "Lokalni",
             "remote": "Vzdaleny",
             "direction": "Smer",
@@ -2164,7 +2173,7 @@
             "delete": "Smazat",
             "refresh": "Obnovit",
             "toggleTheme": "Zmenit motiv",
-            "devtools": "Vyvojarske nastroje",
+            "devtools": "AeroTools",
             "toggleDevtools": "Vyvojarske nastroje",
             "toggleEditor": "Editor",
             "toggleTerminal": "Terminal",
