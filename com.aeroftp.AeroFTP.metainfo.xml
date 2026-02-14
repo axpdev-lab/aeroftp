@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.1.0" date="2026-02-14">
+      <description>
+        <p>AeroSync Phase 2 — Operational Reliability: Transfer journal with checkpoint/resume for interrupted syncs, SHA-256 streaming checksum during file scan, structured error taxonomy (10 categories with retryability hints), post-transfer verification (4 policies: none/size/size+time/full), configurable retry with exponential backoff. Session tab context menu, insecure certificate confirmation modal, Filen 2FA compatibility fix, and 23 new i18n keys across 47 languages.</p>
+      </description>
+    </release>
     <release version="2.0.11" date="2026-02-13">
       <description>
         <p>Complete i18n for Connection Intelligence: All 14 new connection logging and security badge keys translated across 45 languages with native quality. 360 placeholder corrections applied automatically.</p>
