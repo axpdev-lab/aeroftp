@@ -3684,18 +3684,34 @@ async fn save_remote_file(state: State<'_, AppState>, path: String, content: Str
 
 // ============ Splash Screen ============
 
+/// Global flag: set to true once app_ready has run, so the safety timeout
+/// does not re-show the main window after the user has already closed it.
+static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Called by the frontend when React has finished initializing.
 /// Closes the splash screen, sets the app menu (deferred from setup to
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 #[tauri::command]
 async fn app_ready(app: AppHandle) {
-    // 1. Close splash first — must be gone before setting global menu
+    APP_READY_DONE.store(true, Ordering::SeqCst);
+
+    // 1. Close splash first
     if let Some(splash) = app.get_webview_window("splashscreen") {
         let _ = splash.close();
         info!("Splash screen closed");
     }
 
-    // 2. Now set the global app menu (deferred from setup)
+    // 2. Show main window immediately (no menu yet — frontend controls visibility)
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+        info!("Main window shown");
+    }
+
+    // 3. Wait for GTK to fully destroy the splash before setting global menu
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // 4. Now safe to set the global app menu (splash is fully gone)
     if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
         if let Ok(mut guard) = deferred.lock() {
             if let Some(menu) = guard.take() {
@@ -3705,12 +3721,9 @@ async fn app_ready(app: AppHandle) {
         }
     }
 
-    // 3. Show main window without menu (frontend controls menu visibility)
+    // 5. Remove menu from main window (frontend restores via toggle_menu_bar)
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
-        info!("Main window shown");
     }
 }
 
@@ -3844,7 +3857,18 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 
     let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
         .map_err(|e| e.to_string())?;
-    app.set_menu(menu).map_err(|e| e.to_string())?;
+
+    // If splash is still open, store menu for later — don't set globally
+    // (GTK applies global menus to ALL windows, causing flash on splash)
+    if !APP_READY_DONE.load(Ordering::SeqCst) {
+        if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
+            if let Ok(mut guard) = deferred.lock() {
+                *guard = Some(menu);
+            }
+        }
+    } else {
+        app.set_menu(menu).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
@@ -6222,11 +6246,15 @@ pub fn run() {
 
             // Safety timeout: if frontend doesn't signal app_ready within 10 seconds,
             // force-close splash, set deferred menu, and show main window.
+            // Skipped entirely if app_ready already ran (prevents window re-show).
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(10));
+                if APP_READY_DONE.load(Ordering::SeqCst) {
+                    return; // app_ready already handled everything
+                }
+                warn!("Splash screen safety timeout reached, force-closing");
                 if let Some(splash) = app_handle.get_webview_window("splashscreen") {
-                    warn!("Splash screen safety timeout reached, force-closing");
                     let _ = splash.close();
                 }
                 // Set deferred menu
