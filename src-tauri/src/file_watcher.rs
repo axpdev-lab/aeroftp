@@ -7,7 +7,7 @@ use notify::event::{ModifyKind, RenameMode};
 use notify::event::{CreateKind, RemoveKind};
 use notify::{Config, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_full::{
-    new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, NoCache,
+    new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -255,7 +255,7 @@ pub struct FileWatcher {
     /// Sender to push watcher events to the async sync engine
     event_tx: mpsc::Sender<WatcherEvent>,
     /// Native debounced watcher (if using native mode)
-    native_watcher: Option<Debouncer<RecommendedWatcher, NoCache>>,
+    native_watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     /// Poll-based watcher (if using poll mode)
     poll_watcher: Option<PollWatcher>,
     /// Currently watched path
