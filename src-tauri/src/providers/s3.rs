@@ -1310,6 +1310,18 @@ impl StorageProvider for S3Provider {
             }
         }
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: Self::MULTIPART_THRESHOLD as u64,
+            multipart_part_size: Self::MULTIPART_PART_SIZE as u64,
+            multipart_max_parallel: 4,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("ETag".to_string()),
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]

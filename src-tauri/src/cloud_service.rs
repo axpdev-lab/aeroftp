@@ -12,7 +12,7 @@ use crate::sync::{
     build_comparison_results, CompareOptions, FileComparison, FileInfo, SyncAction, SyncDirection,
     SyncStatus,
 };
-use crate::watcher::{CloudWatcher, WatchEvent};
+// file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -76,6 +76,26 @@ pub struct CloudService {
     conflicts: Arc<RwLock<Vec<FileConflict>>>,
     task_tx: Option<mpsc::Sender<SyncTask>>,
     app_handle: Option<AppHandle>,
+}
+
+/// Validate relative_path against traversal attacks (CF-004)
+fn validate_relative_path(relative_path: &str) -> Result<(), String> {
+    if relative_path.contains('\0') {
+        return Err("Path contains null bytes".to_string());
+    }
+    if relative_path.starts_with('/') || relative_path.starts_with('\\') {
+        return Err("Absolute path not allowed in relative context".to_string());
+    }
+    // Check for Windows drive letters (e.g., C:)
+    if relative_path.len() >= 2 && relative_path.as_bytes()[1] == b':' {
+        return Err("Drive letter paths not allowed".to_string());
+    }
+    for component in std::path::Path::new(relative_path).components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err("Path traversal (..) not allowed".to_string());
+        }
+    }
+    Ok(())
 }
 
 impl CloudService {
@@ -422,6 +442,18 @@ impl CloudService {
 
             for entry in entries.flatten() {
                 let path = entry.path();
+
+                // Use symlink_metadata to avoid following symlinks (CF-007)
+                let metadata = match path.symlink_metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                // Skip symlinks entirely to prevent symlink-following attacks
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
+
                 let relative = path
                     .strip_prefix(base)
                     .map_err(|e| e.to_string())?
@@ -433,16 +465,13 @@ impl CloudService {
                     continue;
                 }
 
-                let metadata = entry.metadata().ok();
-                let modified = metadata.as_ref().and_then(|m| {
-                    m.modified().ok().map(|t| DateTime::<Utc>::from(t))
-                });
+                let modified = metadata.modified().ok().map(|t| DateTime::<Utc>::from(t));
 
-                let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                let is_dir = metadata.is_dir();
                 let size = if is_dir {
                     0
                 } else {
-                    metadata.as_ref().map(|m| m.len()).unwrap_or(0)
+                    metadata.len()
                 };
 
                 files.insert(
@@ -538,6 +567,9 @@ impl CloudService {
         config: &CloudConfig,
         comparison: &FileComparison,
     ) -> Result<SyncAction, String> {
+        // Validate relative_path against traversal attacks (CF-004)
+        validate_relative_path(&comparison.relative_path)?;
+
         // Determine action based on status and conflict strategy
         let action = match &comparison.status {
             SyncStatus::Identical => SyncAction::Skip,
@@ -602,11 +634,15 @@ impl CloudService {
 
                 if comparison.is_dir {
                     // Create local directory
-                    std::fs::create_dir_all(&local_path).ok();
+                    if let Err(e) = std::fs::create_dir_all(&local_path) {
+                        tracing::warn!("Failed to create directory {}: {}", local_path.display(), e);
+                    }
                 } else if let Some(remote_info) = &comparison.remote_info {
                     // Ensure parent directory exists
                     if let Some(parent) = local_path.parent() {
-                        std::fs::create_dir_all(parent).ok();
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            tracing::warn!("Failed to create directory {}: {}", parent.display(), e);
+                        }
                     }
 
                     ftp_manager
@@ -629,12 +665,15 @@ impl CloudService {
                         let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
                         let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
                         let conflict_path = local_path.with_file_name(&conflict_name);
-                        std::fs::rename(&local_path, &conflict_path).ok();
+                        std::fs::rename(&local_path, &conflict_path)
+                            .map_err(|e| format!("Failed to preserve local copy before download: {}", e))?;
                     }
                     // Download remote version to original path
                     if let Some(remote_info) = &comparison.remote_info {
                         if let Some(parent) = local_path.parent() {
-                            std::fs::create_dir_all(parent).ok();
+                            if let Err(e) = std::fs::create_dir_all(parent) {
+                                tracing::warn!("Failed to create directory {}: {}", parent.display(), e);
+                            }
                         }
                         ftp_manager
                             .download_file_with_progress(
@@ -722,6 +761,9 @@ impl CloudService {
         config: &CloudConfig,
         comparison: &FileComparison,
     ) -> Result<SyncAction, String> {
+        // Validate relative_path against traversal attacks (CF-004)
+        validate_relative_path(&comparison.relative_path)?;
+
         // Determine action based on status and conflict strategy
         let action = match &comparison.status {
             SyncStatus::Identical => SyncAction::Skip,
@@ -786,11 +828,15 @@ impl CloudService {
 
                 if comparison.is_dir {
                     // Create local directory
-                    std::fs::create_dir_all(&local_path).ok();
+                    if let Err(e) = std::fs::create_dir_all(&local_path) {
+                        tracing::warn!("Failed to create directory {}: {}", local_path.display(), e);
+                    }
                 } else if let Some(remote_info) = &comparison.remote_info {
                     // Ensure parent directory exists
                     if let Some(parent) = local_path.parent() {
-                        std::fs::create_dir_all(parent).ok();
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            tracing::warn!("Failed to create directory {}: {}", parent.display(), e);
+                        }
                     }
 
                     provider
@@ -809,12 +855,15 @@ impl CloudService {
                         let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
                         let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
                         let conflict_path = local_path.with_file_name(&conflict_name);
-                        std::fs::rename(&local_path, &conflict_path).ok();
+                        std::fs::rename(&local_path, &conflict_path)
+                            .map_err(|e| format!("Failed to preserve local copy before download: {}", e))?;
                     }
                     // Download remote version to original path
                     if let Some(remote_info) = &comparison.remote_info {
                         if let Some(parent) = local_path.parent() {
-                            std::fs::create_dir_all(parent).ok();
+                            if let Err(e) = std::fs::create_dir_all(parent) {
+                                tracing::warn!("Failed to create directory {}: {}", parent.display(), e);
+                            }
                         }
                         provider
                             .download(&remote_info.path, &local_path.to_string_lossy(), None)

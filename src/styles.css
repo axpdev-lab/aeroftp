@@ -995,6 +995,14 @@ html[dir="rtl"] .file-grid-item {
   direction: rtl;
 }
 
+/* Modal open — hide all background scrollbars (WebKitGTK paints them above CSS z-index overlays) */
+html.modal-open *:not(.sync-panel):not(.sync-panel *)::-webkit-scrollbar {
+  display: none !important;
+}
+html.modal-open *:not(.sync-panel):not(.sync-panel *) {
+  scrollbar-width: none !important;
+}
+
 /* Dialogs and modals */
 html[dir="rtl"] .dialog-header {
   flex-direction: row-reverse;

@@ -6,7 +6,7 @@ import {
     isFtpProtocol, TransferProgress, TransferEvent, SyncIndex,
     RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry,
     SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus,
-    SyncProfile
+    CompressionMode, SyncTransferEntry, ParallelSyncResult
 } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -14,13 +14,24 @@ import {
     Loader2, Search, RefreshCw, Zap, X, FolderSync,
     Folder, Globe, File, AlertTriangle, Check,
     ArrowUp, ArrowDown, Plus, Minus, ArrowLeftRight,
-    ArrowDownToLine, ArrowUpFromLine, CheckCircle2, XCircle,
+    CheckCircle2, XCircle,
     Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
-    Wifi, WifiOff, KeyRound, HardDrive, Timer, Ban,
-    Trash2, Gauge
+    WifiOff, KeyRound, HardDrive, Timer, Ban
 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
+import { SyncQuickMode } from './Sync/SyncQuickMode';
+import { SyncAdvancedConfig } from './Sync/SyncAdvancedConfig';
+import { useSyncProfiles } from './Sync/useSyncProfiles';
+import { useSyncOptimization } from './Sync/useSyncOptimization';
+import {
+    SpeedMode, SPEED_PRESETS, MANIAC_OVERRIDES,
+    DEFAULT_RETRY_POLICY, DEFAULT_VERIFY_POLICY, VIRTUAL_ROW_HEIGHT, VIRTUAL_OVERSCAN,
+    VIRTUAL_VIEWPORT, FTP_TRANSFER_DELAY_MS, isCyberTheme
+} from './Sync/syncConstants';
+import { MultiPathEditor } from './Sync/MultiPathEditor';
+import { SyncTemplateDialog } from './Sync/SyncTemplateDialog';
+import { RollbackDialog } from './Sync/RollbackDialog';
 
 interface SyncPanelProps {
     isOpen: boolean;
@@ -72,22 +83,7 @@ const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
     unknown: AlertTriangle,
 };
 
-// FTP transfer settings to avoid "Data connection already open"
-const FTP_TRANSFER_DELAY_MS = 350;
-
-// Virtual scrolling constants — only render visible rows in comparison list
-const VIRTUAL_ROW_HEIGHT = 45; // px — matches sync-row padding (12+12) + content (~20) + border (1)
-const VIRTUAL_OVERSCAN = 10; // extra rows above/below viewport
-const VIRTUAL_VIEWPORT = 350; // px — matches .sync-table-body max-height
-
-// Default retry/verify policies
-const DEFAULT_RETRY_POLICY: RetryPolicy = {
-    max_retries: 3,
-    base_delay_ms: 500,
-    max_delay_ms: 10_000,
-    timeout_ms: 120_000,
-    backoff_multiplier: 2.0,
-};
+// Constants imported from ./Sync/syncConstants
 
 export const SyncPanel: React.FC<SyncPanelProps> = ({
     isOpen,
@@ -99,6 +95,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     onSyncComplete,
 }) => {
     const t = useTranslation();
+
+    // --- Tab & Speed Mode State ---
+    const [syncTab, setSyncTab] = useState<'quick' | 'advanced'>('quick');
+    const [speedMode, setSpeedMode] = useState<SpeedMode>('normal');
+    const [maniacConfirmed, setManiacConfirmed] = useState(false);
+
+    // --- Dialog State ---
+    const [showMultiPath, setShowMultiPath] = useState(false);
+    const [showTemplate, setShowTemplate] = useState(false);
+    const [showRollback, setShowRollback] = useState(false);
+
+    // --- Core State ---
     const [editLocalPath, setEditLocalPath] = useState(localPath);
     const [editRemotePath, setEditRemotePath] = useState(remotePath);
     const [comparisons, setComparisons] = useState<FileComparison[]>([]);
@@ -125,9 +133,17 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [downloadLimit, setDownloadLimit] = useState(0);
     const [uploadLimit, setUploadLimit] = useState(0);
 
-    // Sync Profiles
-    const [profiles, setProfiles] = useState<SyncProfile[]>([]);
-    const [activeProfileId, setActiveProfileId] = useState<string>('custom');
+    // Phase 3A+: Parallel streams (1 = sequential/legacy, 2-8 = turbo)
+    const [parallelStreams, setParallelStreamsRaw] = useState(1);
+    const setParallelStreams = (n: number) => setParallelStreamsRaw(Math.max(1, Math.min(8, n)));
+    const [compressionMode, setCompressionMode] = useState<CompressionMode>('off');
+    const [deltaSyncEnabled, setDeltaSyncEnabled] = useState(false);
+
+    // Sync Profiles (extracted to hook)
+    const { profiles, activeProfileId, setActiveProfileId, applyProfile: getProfileResult } = useSyncProfiles(isOpen);
+
+    // Provider optimization hints
+    const { hints: optimizationHints } = useSyncOptimization(protocol);
 
     // Conflict resolution: maps relative_path → resolution action
     type ConflictResolution = 'upload' | 'download' | 'skip';
@@ -196,6 +212,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }, []);
 
     // Sync paths from props when panel opens
+    // Hide all scrollbars while modal is open — WebKitGTK paints native scrollbars above CSS z-index
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
+
     useEffect(() => {
         if (isOpen) {
             setEditLocalPath(localPath);
@@ -226,10 +250,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             invoke<[number, number]>(loadCmd)
                 .then(([dl, ul]) => { setDownloadLimit(dl); setUploadLimit(ul); })
                 .catch(() => {});
-            // Load sync profiles
-            invoke<SyncProfile[]>('load_sync_profiles_cmd')
-                .then(p => setProfiles(p))
-                .catch(() => {});
+            // Sync profiles loaded by useSyncProfiles hook
         }
     }, [isOpen, localPath, remotePath, isFtp]);
 
@@ -250,12 +271,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         loadDefaults();
     }, [isProvider]);
 
-    // Cleanup event listener on unmount
+    // Cleanup event listener and timers on unmount
     useEffect(() => {
         return () => {
             if (unlistenRef.current) {
                 unlistenRef.current();
             }
+            if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+            if (progressFlushTimerRef.current) clearTimeout(progressFlushTimerRef.current);
         };
     }, []);
 
@@ -387,9 +410,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         return `${mins}m ${remSecs}s`;
     };
 
-    const handleDirectionChange = (direction: SyncDirection) => {
-        setOptions(prev => ({ ...prev, direction }));
-    };
+    // handleDirectionChange moved to SyncAdvancedConfig
 
     // Count directories that would be synced (empty dirs not in selectedPaths)
     const syncableDirs = comparisons.filter(c => c.is_dir &&
@@ -410,7 +431,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setScrollTop(0);
         setConflictResolutions(new Map());
         setShowConflictPanel(false);
-        cancelledRef.current = false;
     };
 
     const handleClose = async () => {
@@ -471,19 +491,34 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     };
 
     const applyProfile = (profileId: string) => {
-        setActiveProfileId(profileId);
-        if (profileId === 'custom') return;
-        const profile = profiles.find(p => p.id === profileId);
-        if (!profile) return;
-        setOptions({
-            compare_timestamp: profile.compare_timestamp,
-            compare_size: profile.compare_size,
-            compare_checksum: profile.compare_checksum,
-            exclude_patterns: [...profile.exclude_patterns],
-            direction: profile.direction,
-        });
-        setRetryPolicy({ ...profile.retry_policy });
-        setVerifyPolicy(profile.verify_policy);
+        const result = getProfileResult(profileId);
+        if (!result) return;
+        setOptions(result.options);
+        setRetryPolicy(result.retryPolicy);
+        setVerifyPolicy(result.verifyPolicy);
+        setParallelStreams(result.parallelStreams);
+        setCompressionMode(result.compressionMode);
+    };
+
+    // Speed mode change handler — applies preset values
+    const handleSpeedModeChange = (mode: SpeedMode) => {
+        setSpeedMode(mode);
+        if (mode !== 'maniac') {
+            setManiacConfirmed(false);
+            // Restore safe defaults when downgrading from maniac
+            setVerifyPolicy(DEFAULT_VERIFY_POLICY);
+            setRetryPolicy(DEFAULT_RETRY_POLICY);
+        }
+        const preset = SPEED_PRESETS[mode];
+        setParallelStreams(preset.parallelStreams);
+        setCompressionMode(preset.compressionMode);
+        setDeltaSyncEnabled(preset.deltaSyncEnabled);
+
+        // Maniac overrides are NOT applied here — they are gated behind maniacConfirmed
+        // See handleManiacConfirm below
+
+        // Mark active profile as custom when speed mode changes
+        setActiveProfileId('custom');
     };
 
     // Conflict resolution helpers
@@ -557,7 +592,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         args: Record<string, any>,
         filePath: string,
     ): Promise<{ success: boolean; attempts: number; error?: SyncErrorInfo }> => {
-        const maxAttempts = retryPolicy.max_retries;
+        const maxAttempts = Math.max(1, retryPolicy.max_retries);
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -819,9 +854,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             }
         }
 
+        // Build path-based lookup for journal entries (SP-004: avoid fragile index access)
+        const journalEntryMap = new Map<string, number>();
+        journal.entries.forEach((entry, idx) => {
+            journalEntryMap.set(entry.relative_path, idx);
+        });
+
         for (let i = 0; i < selectedComparisons.length; i++) {
             const item = selectedComparisons[i];
-            const journalEntry = journal.entries[i];
+            const entryIdx = journalEntryMap.get(item.relative_path);
+            const journalEntry = entryIdx !== undefined ? journal.entries[entryIdx] : undefined;
 
             // Skip already completed entries (for resume)
             if (resumeJournal && (journalEntry?.status === 'completed' || journalEntry?.status === 'skipped')) {
@@ -841,8 +883,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             if (cancelledRef.current) {
                 // Mark remaining as skipped in journal
                 for (let j = i; j < selectedComparisons.length; j++) {
-                    if (journal.entries[j] && journal.entries[j].status === 'pending') {
-                        journal.entries[j].status = 'skipped';
+                    const jIdx = journalEntryMap.get(selectedComparisons[j].relative_path);
+                    if (jIdx !== undefined && journal.entries[jIdx] && journal.entries[jIdx].status === 'pending') {
+                        journal.entries[jIdx].status = 'skipped';
                     }
                 }
                 // Flush pending results then mark remaining as skipped
@@ -876,7 +919,17 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             const remoteFilePath = `${editRemotePath.replace(/\/+$/, '')}/${item.relative_path}`;
 
             // Determine transfer direction — use conflict resolution if available
+            // Conflicts without explicit resolution are safely skipped (falls through to else branch below)
             const conflictRes = item.status === 'conflict' ? conflictResolutions.get(item.relative_path) : undefined;
+            if (item.status === 'conflict' && !conflictRes) {
+                skipped++;
+                if (journalEntry) journalEntry.status = 'skipped';
+                updateFileResult(item.relative_path, 'skipped');
+                completed++;
+                setSyncProgress({ current: completed, total: selectedComparisons.length });
+                continue;
+            }
+
             const shouldUpload = conflictRes === 'upload' ||
                 (!conflictRes && (item.status === 'local_newer' || item.status === 'local_only') &&
                 (options.direction === 'local_to_remote' || options.direction === 'bidirectional'));
@@ -1131,16 +1184,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
-    const getDirectionDescription = (direction: SyncDirection): { Icon: typeof ArrowDownToLine; text: string } => {
-        switch (direction) {
-            case 'remote_to_local':
-                return { Icon: ArrowDownToLine, text: t('syncPanel.descRemoteToLocal') };
-            case 'local_to_remote':
-                return { Icon: ArrowUpFromLine, text: t('syncPanel.descLocalToRemote') };
-            case 'bidirectional':
-                return { Icon: ArrowLeftRight, text: t('syncPanel.descBidirectional') };
-        }
-    };
+    // getDirectionDescription moved to SyncAdvancedConfig
 
     const getErrorKindLabel = (kind: SyncErrorKind): string => {
         const key = `syncPanel.errorKind.${kind}`;
@@ -1173,8 +1217,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         return grouped;
     };
 
-    const dirDesc = getDirectionDescription(options.direction);
-
     // Virtual scroll: compute which rows are visible in the viewport
     const visibleRowCount = Math.ceil(VIRTUAL_VIEWPORT / VIRTUAL_ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
     const virtualStart = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN);
@@ -1188,23 +1230,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 <div className="sync-panel-header">
                     <div className="flex items-center gap-3">
                         <h2><FolderSync size={20} className="inline mr-2" /> {t('syncPanel.title')}</h2>
-                        {profiles.length > 0 && (
-                            <select
-                                className="text-xs bg-gray-800 dark:bg-gray-800 text-gray-300 border border-gray-600 rounded px-2 py-1"
-                                value={activeProfileId}
-                                onChange={e => applyProfile(e.target.value)}
-                                disabled={isSyncing}
-                            >
-                                <option value="custom">{t('syncPanel.profileCustom')}</option>
-                                {profiles.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.id === 'mirror' ? t('syncPanel.profileMirror')
-                                            : p.id === 'two_way' ? t('syncPanel.profileTwoWay')
-                                            : p.id === 'backup' ? t('syncPanel.profileBackup')
-                                            : p.name}
-                                    </option>
-                                ))}
-                            </select>
+                        {speedMode !== 'normal' && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                speedMode === 'maniac' ? 'bg-red-500/20 text-red-400' :
+                                speedMode === 'extreme' ? 'bg-orange-500/20 text-orange-400' :
+                                speedMode === 'turbo' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-blue-500/20 text-blue-400'
+                            }`}>
+                                {speedMode.toUpperCase()}
+                            </span>
                         )}
                     </div>
                     <button className="sync-close-btn" onClick={handleClose}><X size={18} /></button>
@@ -1454,155 +1488,80 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     </div>
                 )}
 
-                {/* Options (hidden during sync report) */}
+                {/* Tab Bar + Options (hidden during sync report) */}
                 {!syncReport && (
                     <div className="sync-panel-options">
-                        <div className="sync-direction-selector">
-                            <label><strong>{t('syncPanel.direction')}:</strong></label>
-                            <div className="direction-buttons">
-                                <button
-                                    className={options.direction === 'remote_to_local' ? 'active' : ''}
-                                    onClick={() => handleDirectionChange('remote_to_local')}
-                                    disabled={isSyncing}
-                                >
-                                    <ArrowDown size={14} className="inline mr-1" /> {t('syncPanel.dirRemoteToLocal')}
-                                </button>
-                                <button
-                                    className={options.direction === 'local_to_remote' ? 'active' : ''}
-                                    onClick={() => handleDirectionChange('local_to_remote')}
-                                    disabled={isSyncing}
-                                >
-                                    <ArrowUp size={14} className="inline mr-1" /> {t('syncPanel.dirLocalToRemote')}
-                                </button>
-                                <button
-                                    className={options.direction === 'bidirectional' ? 'active' : ''}
-                                    onClick={() => handleDirectionChange('bidirectional')}
-                                    disabled={isSyncing}
-                                >
-                                    <ArrowLeftRight size={14} className="inline mr-1" /> {t('syncPanel.dirBoth')}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Action Description */}
-                        <div className="sync-action-description">
-                            <dirDesc.Icon size={16} className="inline mr-1.5 flex-shrink-0" />
-                            {dirDesc.text}
-                        </div>
-
-                        <div className="sync-compare-options">
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={options.compare_timestamp}
-                                    onChange={e => setOptions(prev => ({ ...prev, compare_timestamp: e.target.checked }))}
-                                    disabled={isSyncing}
-                                />
-                                {t('syncPanel.timestamp')}
-                            </label>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={options.compare_size}
-                                    onChange={e => setOptions(prev => ({ ...prev, compare_size: e.target.checked }))}
-                                    disabled={isSyncing}
-                                />
-                                {t('syncPanel.size')}
-                            </label>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={options.compare_checksum}
-                                    onChange={e => setOptions(prev => ({ ...prev, compare_checksum: e.target.checked }))}
-                                    disabled={isSyncing}
-                                />
-                                {t('syncPanel.checksum')}
-                            </label>
-                        </div>
-
-                        {/* Phase 2: Verify & Retry Options */}
-                        <div className="sync-compare-options">
-                            <label className="flex items-center gap-1">
-                                <ShieldCheck size={12} className="text-cyan-500" />
-                                <select
-                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
-                                    value={verifyPolicy}
-                                    onChange={e => setVerifyPolicy(e.target.value as VerifyPolicy)}
-                                    disabled={isSyncing}
-                                >
-                                    <option value="none">{t('syncPanel.verifyNone')}</option>
-                                    <option value="size_only">{t('syncPanel.verifySize')}</option>
-                                    <option value="size_and_mtime">{t('syncPanel.verifySizeMtime')}</option>
-                                    <option value="full">{t('syncPanel.verifyFull')}</option>
-                                </select>
-                            </label>
-                            <label className="flex items-center gap-1">
-                                <RotateCcw size={12} className="text-amber-500" />
-                                <select
-                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
-                                    value={retryPolicy.max_retries}
-                                    onChange={e => setRetryPolicy(prev => ({ ...prev, max_retries: Number(e.target.value) }))}
-                                    disabled={isSyncing}
-                                >
-                                    <option value="1">{t('syncPanel.retries', { count: '1' })}</option>
-                                    <option value="3">{t('syncPanel.retries', { count: '3' })}</option>
-                                    <option value="5">{t('syncPanel.retries', { count: '5' })}</option>
-                                    <option value="10">{t('syncPanel.retries', { count: '10' })}</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        {/* Bandwidth control + Clear History */}
-                        <div className="sync-compare-options">
-                            <label className="flex items-center gap-1">
-                                <Gauge size={12} className="text-purple-400" />
-                                <span className="text-xs text-gray-400">{t('syncPanel.bandwidthDownload')}:</span>
-                                <select
-                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
-                                    value={downloadLimit}
-                                    onChange={e => handleSpeedLimitChange(Number(e.target.value), uploadLimit)}
-                                    disabled={isSyncing}
-                                >
-                                    <option value="0">{t('syncPanel.bandwidthUnlimited')}</option>
-                                    <option value="128">128 KB/s</option>
-                                    <option value="256">256 KB/s</option>
-                                    <option value="512">512 KB/s</option>
-                                    <option value="1024">1 MB/s</option>
-                                    <option value="2048">2 MB/s</option>
-                                    <option value="5120">5 MB/s</option>
-                                    <option value="10240">10 MB/s</option>
-                                </select>
-                            </label>
-                            <label className="flex items-center gap-1">
-                                <Gauge size={12} className="text-purple-400" />
-                                <span className="text-xs text-gray-400">{t('syncPanel.bandwidthUpload')}:</span>
-                                <select
-                                    className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
-                                    value={uploadLimit}
-                                    onChange={e => handleSpeedLimitChange(downloadLimit, Number(e.target.value))}
-                                    disabled={isSyncing}
-                                >
-                                    <option value="0">{t('syncPanel.bandwidthUnlimited')}</option>
-                                    <option value="128">128 KB/s</option>
-                                    <option value="256">256 KB/s</option>
-                                    <option value="512">512 KB/s</option>
-                                    <option value="1024">1 MB/s</option>
-                                    <option value="2048">2 MB/s</option>
-                                    <option value="5120">5 MB/s</option>
-                                    <option value="10240">10 MB/s</option>
-                                </select>
-                            </label>
+                        {/* Tab Bar */}
+                        <div className="sync-tab-bar">
                             <button
-                                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors ml-auto"
-                                onClick={handleClearHistory}
-                                disabled={isSyncing}
-                                title={t('syncPanel.clearHistory')}
+                                className={`sync-tab ${syncTab === 'quick' ? 'active' : ''}`}
+                                onClick={() => setSyncTab('quick')}
                             >
-                                <Trash2 size={12} /> {t('syncPanel.clearHistory')}
+                                {t('syncPanel.quickSyncTab')}
+                            </button>
+                            <button
+                                className={`sync-tab ${syncTab === 'advanced' ? 'active' : ''}`}
+                                onClick={() => setSyncTab('advanced')}
+                            >
+                                {t('syncPanel.advancedTab')}
                             </button>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        {/* Quick Sync Tab */}
+                        {syncTab === 'quick' && (
+                            <SyncQuickMode
+                                profiles={profiles}
+                                activeProfileId={activeProfileId}
+                                onSelectProfile={applyProfile}
+                                speedMode={speedMode}
+                                onSpeedModeChange={handleSpeedModeChange}
+                                showManiac={isCyberTheme()}
+                                maniacConfirmed={maniacConfirmed}
+                                onManiacConfirm={() => {
+                                    setManiacConfirmed(true);
+                                    // Apply maniac overrides ONLY after user confirmation
+                                    setVerifyPolicy(MANIAC_OVERRIDES.verifyPolicy);
+                                    setRetryPolicy(MANIAC_OVERRIDES.retryPolicy);
+                                    setDownloadLimit(MANIAC_OVERRIDES.bandwidthLimit);
+                                    setUploadLimit(MANIAC_OVERRIDES.bandwidthLimit);
+                                    // CF-011: Apply bandwidth to backend immediately
+                                    handleSpeedLimitChange(0, 0);
+                                }}
+                                disabled={isSyncing}
+                            />
+                        )}
+
+                        {/* Advanced Tab */}
+                        {syncTab === 'advanced' && (
+                            <SyncAdvancedConfig
+                                options={options}
+                                onOptionsChange={setOptions}
+                                verifyPolicy={verifyPolicy}
+                                onVerifyPolicyChange={setVerifyPolicy}
+                                retryPolicy={retryPolicy}
+                                onRetryPolicyChange={setRetryPolicy}
+                                downloadLimit={downloadLimit}
+                                uploadLimit={uploadLimit}
+                                onSpeedLimitChange={handleSpeedLimitChange}
+                                parallelStreams={parallelStreams}
+                                onParallelStreamsChange={setParallelStreams}
+                                compressionMode={compressionMode}
+                                onCompressionModeChange={setCompressionMode}
+                                deltaSyncEnabled={deltaSyncEnabled}
+                                onDeltaSyncEnabledChange={setDeltaSyncEnabled}
+                                protocol={protocol}
+                                hints={optimizationHints}
+                                disabled={isSyncing}
+                                localPath={localPath}
+                                onOpenMultiPath={() => setShowMultiPath(true)}
+                                onOpenTemplate={() => setShowTemplate(true)}
+                                onOpenRollback={() => setShowRollback(true)}
+                                onClearHistory={handleClearHistory}
+                            />
+                        )}
+
+                        {/* Compare Button (always visible) */}
+                        <div className="flex items-center gap-3 mt-2">
                             <button
                                 className="sync-compare-btn"
                                 onClick={handleCompare}
@@ -1816,7 +1775,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                             <button
                                 className="sync-execute-btn"
                                 onClick={() => handleSync()}
-                                disabled={!hasSyncableItems || isSyncing}
+                                disabled={!hasSyncableItems || isSyncing || (speedMode === 'maniac' && !maniacConfirmed)}
                             >
                                 {isSyncing ? (
                                     <><Loader2 size={16} className="animate-spin" /> {t('syncPanel.syncing')} ({syncProgress?.current || 0}/{syncProgress?.total || 0})...</>
@@ -1828,6 +1787,28 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Dialogs */}
+            <MultiPathEditor
+                isOpen={showMultiPath}
+                onClose={() => setShowMultiPath(false)}
+                localPath={editLocalPath}
+                remotePath={editRemotePath}
+            />
+            <SyncTemplateDialog
+                isOpen={showTemplate}
+                onClose={() => setShowTemplate(false)}
+                localPath={editLocalPath}
+                remotePath={editRemotePath}
+                profileId={activeProfileId}
+                excludePatterns={options.exclude_patterns}
+            />
+            <RollbackDialog
+                isOpen={showRollback}
+                onClose={() => setShowRollback(false)}
+                localPath={editLocalPath}
+                remotePath={editRemotePath}
+            />
         </div>
     );
 };

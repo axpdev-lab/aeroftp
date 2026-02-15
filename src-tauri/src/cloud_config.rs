@@ -74,7 +74,7 @@ impl Default for CloudConfig {
             local_folder,
             remote_folder: "/cloud/".to_string(),
             server_profile: String::new(),
-            sync_interval_secs: 300, // 5 minutes
+            sync_interval_secs: 86400, // 24 hours (watcher handles real-time, this is safety net)
             sync_on_change: true,
             sync_on_startup: false,
             exclude_patterns: vec![
@@ -233,7 +233,7 @@ mod tests {
     fn test_default_config() {
         let config = CloudConfig::default();
         assert!(!config.enabled);
-        assert_eq!(config.sync_interval_secs, 300);
+        assert_eq!(config.sync_interval_secs, 86400);
         assert!(config.sync_on_change);
         assert!(!config.exclude_patterns.is_empty());
     }

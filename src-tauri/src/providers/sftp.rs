@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use russh::client::{self, Config, Handle, Handler};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
 use russh::client::AuthResult;
+use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::Path;
 use std::sync::Arc;
@@ -94,6 +95,8 @@ pub struct SftpProvider {
     download_limit_bps: u64,
     /// Upload speed limit in bytes/sec (0 = unlimited)
     upload_limit_bps: u64,
+    /// SSH compression enabled (zlib@openssh.com)
+    compression_enabled: bool,
 }
 
 impl SftpProvider {
@@ -106,7 +109,13 @@ impl SftpProvider {
             home_dir: "/".to_string(),
             download_limit_bps: 0,
             upload_limit_bps: 0,
+            compression_enabled: false,
         }
+    }
+
+    /// Enable or disable SSH compression for this provider
+    pub fn set_compression(&mut self, enabled: bool) {
+        self.compression_enabled = enabled;
     }
 
     /// Normalize path (ensure absolute)
@@ -248,10 +257,24 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Connecting to {}:{}", self.config.host, self.config.port);
 
         // Create SSH config with keepalive to prevent server from closing connection
+        let preferred = if self.compression_enabled {
+            tracing::info!("SFTP: SSH compression enabled (zlib@openssh.com)");
+            Preferred {
+                compression: std::borrow::Cow::Borrowed(&[
+                    compression::ZLIB_LEGACY,
+                    compression::ZLIB,
+                    compression::NONE,
+                ]),
+                ..Default::default()
+            }
+        } else {
+            Preferred::default()
+        };
         let config = Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(self.config.timeout_secs * 2)),
             keepalive_interval: Some(std::time::Duration::from_secs(15)), // Send keepalive every 15s
             keepalive_max: 3, // Allow 3 missed keepalives before disconnect
+            preferred,
             ..Default::default()
         };
 
@@ -799,6 +822,46 @@ impl StorageProvider for SftpProvider {
 
     async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
         Ok((self.upload_limit_bps / 1024, self.download_limit_bps / 1024))
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_compression: true,
+            supports_delta_sync: true,
+            ..Default::default()
+        }
+    }
+
+    fn supports_delta_sync(&self) -> bool {
+        true
+    }
+
+    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        let sftp = self.sftp.as_ref()
+            .ok_or_else(|| ProviderError::NotConnected)?;
+        let full_path = self.normalize_path(path);
+
+        let mut file = sftp.open(&full_path).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to open file for range read: {}", e)))?;
+
+        // Seek to offset
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        file.seek(std::io::SeekFrom::Start(offset)).await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to seek: {}", e)))?;
+
+        // Read exact len bytes
+        let mut buf = vec![0u8; len as usize];
+        let mut total_read = 0usize;
+        while total_read < len as usize {
+            let n = file.read(&mut buf[total_read..]).await
+                .map_err(|e| ProviderError::ServerError(format!("Failed to read range: {}", e)))?;
+            if n == 0 { break; }
+            total_read += n;
+        }
+        buf.truncate(total_read);
+        Ok(buf)
     }
 }
 

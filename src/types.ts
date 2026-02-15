@@ -225,7 +225,8 @@ export type SyncAction =
   | 'delete_local'
   | 'delete_remote'
   | 'skip'
-  | 'ask_user';
+  | 'ask_user'
+  | 'keep_both';
 
 export interface FileInfo {
   name: string;
@@ -297,6 +298,8 @@ export interface RetryPolicy {
 
 export type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full';
 
+export type CompressionMode = 'auto' | 'on' | 'off';
+
 export interface SyncProfile {
   id: string;
   name: string;
@@ -309,6 +312,144 @@ export interface SyncProfile {
   retry_policy: RetryPolicy;
   verify_policy: VerifyPolicy;
   delete_orphans: boolean;
+  parallel_streams: number;
+  compression_mode: CompressionMode;
+}
+
+// Phase 3A+: Sync Scheduler
+export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface TimeWindow {
+  start_hour: number;
+  start_minute: number;
+  end_hour: number;
+  end_minute: number;
+  days: Weekday[];
+}
+
+export interface SyncSchedule {
+  enabled: boolean;
+  interval_secs: number;
+  time_window: TimeWindow | null;
+  paused: boolean;
+  last_sync: string | null;
+}
+
+// Phase 3A+: Parallel Transfer
+export type TransferAction = 'upload' | 'download' | 'mkdir' | 'delete';
+
+export interface SyncTransferEntry {
+  relative_path: string;
+  action: TransferAction;
+  local_path: string;
+  remote_path: string;
+  expected_size: number;
+  is_dir: boolean;
+}
+
+export interface ParallelTransferError {
+  relative_path: string;
+  action: TransferAction;
+  error: string;
+  retryable: boolean;
+}
+
+export interface ParallelSyncResult {
+  uploaded: number;
+  downloaded: number;
+  deleted: number;
+  skipped: number;
+  errors: ParallelTransferError[];
+  duration_ms: number;
+  streams_used: number;
+}
+
+// Phase 3A+: Watcher Status
+export interface WatcherStatus {
+  available: boolean;
+  native_backend: string;
+  inotify_capacity: {
+    subdirectory_count: number;
+    should_warn: boolean;
+    should_fallback_to_poll: boolean;
+  } | null;
+}
+
+// Transfer optimization hints (per-provider capabilities)
+export interface TransferOptimizationHints {
+  supports_multipart: boolean;
+  multipart_threshold: number;
+  multipart_part_size: number;
+  multipart_max_parallel: number;
+  supports_resume_download: boolean;
+  supports_resume_upload: boolean;
+  supports_server_checksum: boolean;
+  preferred_checksum_algo: string | null;
+  supports_compression: boolean;
+  supports_delta_sync: boolean;
+}
+
+// Multi-Path Sync (#52)
+export interface PathPair {
+  id: string;
+  name: string;
+  local_path: string;
+  remote_path: string;
+  enabled: boolean;
+  exclude_overrides: string[];
+}
+
+export interface MultiPathConfig {
+  pairs: PathPair[];
+  parallel_pairs: boolean;
+}
+
+// Sync Templates (#153)
+export interface SyncTemplate {
+  schema_version: number;
+  name: string;
+  description: string;
+  created_by: string;
+  path_patterns: { local: string; remote: string }[];
+  profile: {
+    direction: SyncDirection;
+    compare_timestamp: boolean;
+    compare_size: boolean;
+    compare_checksum: boolean;
+    delete_orphans: boolean;
+    parallel_streams: number;
+    compression_mode: CompressionMode;
+  };
+  exclude_patterns: string[];
+  schedule: SyncSchedule | null;
+}
+
+// Rollback Snapshots (#154)
+export interface SyncSnapshot {
+  id: string;
+  created_at: string;
+  local_path: string;
+  remote_path: string;
+  files: Record<string, FileSnapshotEntry>;
+}
+
+export interface FileSnapshotEntry {
+  size: number;
+  modified: string | null;
+  checksum: string | null;
+  action_taken: string;
+}
+
+// Delta Sync (#155)
+export interface DeltaResult {
+  block_size: number;
+  source_size: number;
+  dest_size: number;
+  copy_blocks: number;
+  literal_bytes: number;
+  total_delta_bytes: number;
+  savings_ratio: number;
+  should_use_delta: boolean;
 }
 
 export interface VerifyResult {

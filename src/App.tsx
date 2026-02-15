@@ -148,6 +148,18 @@ const App: React.FC = () => {
 
   const localFilesInitStarted = useRef(false);  // Guard against re-running init effect
 
+  // === Splash Screen Readiness ===
+  const vaultInitDone = useRef(false);
+  const localFilesInitDone = useRef(false);
+  const appReadySignaled = useRef(false);
+  const signalAppReady = useCallback(() => {
+    if (appReadySignaled.current) return;
+    if (vaultInitDone.current && localFilesInitDone.current) {
+      appReadySignaled.current = true;
+      invoke('app_ready').catch(() => {});
+    }
+  }, []);
+
   // === App Background Pattern ===
   const [appBackgroundId, setAppBackgroundId] = useState(() =>
     localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND
@@ -441,10 +453,12 @@ const App: React.FC = () => {
         } catch { /* non-critical */ }
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
+        vaultInitDone.current = true;
+        signalAppReady();
       }
     };
     initVault();
-  }, []);
+  }, [signalAppReady]);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -1295,8 +1309,11 @@ const App: React.FC = () => {
       // Default: try home directory, then downloads
       try { await loadLocalFiles(await homeDir()); }
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
-    })();
-  }, [loadLocalFiles]);
+    })().finally(() => {
+      localFilesInitDone.current = true;
+      signalAppReady();
+    });
+  }, [loadLocalFiles, signalAppReady]);
 
   // Reload local files when showHiddenFiles setting changes
   const isFirstRender = React.useRef(true);

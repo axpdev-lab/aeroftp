@@ -11,11 +11,8 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (14 protocols) |
-| **[COMPETITOR-ANALYSIS.md](./dev/COMPETITOR-ANALYSIS.md)** | Market and competitor analysis (internal) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
-| **[UBUNTU-COMPATIBILITY.md](./UBUNTU-COMPATIBILITY.md)** | Ubuntu 22.04/24.04 LTS compatibility audit |
-| **[WINDOWS-COMPATIBILITY.md](./WINDOWS-COMPATIBILITY.md)** | Windows 10/11 compatibility audit |
 
 ---
 
@@ -83,8 +80,8 @@ AeroAgent now features **27 tools** (up from 25), including **RAG integration** 
 
 ---
 
-- **Documentation Version**: 2.0.9
-- **Last Update**: 2026-02-13
+- **Documentation Version**: 2.2.0
+- **Last Update**: 2026-02-15
 
 ---
 

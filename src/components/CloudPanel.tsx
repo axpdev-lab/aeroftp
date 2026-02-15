@@ -13,6 +13,8 @@ import {
     Loader2, Zap, Shield, History, Radio
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
+import { SyncScheduler } from './SyncScheduler';
+import { WatcherStatus } from './WatcherStatus';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback } from '../utils/secureStorage';
@@ -782,6 +784,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                             <p className="text-xs text-gray-400 mt-1">
                                 {t('cloud.publicUrlDesc')}
                             </p>
+                        </div>
+
+                        {/* Sync Scheduler (Phase 3A+) */}
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <SyncScheduler />
+                        </div>
+
+                        {/* Watcher Status (Phase 3A+) */}
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <WatcherStatus watchPath={config?.local_folder} />
                         </div>
 
                         <div className="flex gap-3 pt-4">

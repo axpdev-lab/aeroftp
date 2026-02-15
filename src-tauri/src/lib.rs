@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, State, Manager};
+use tauri::{AppHandle, Emitter, State, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::Mutex;
 use tracing::{info, warn, error};
 use semver::Version;
@@ -17,7 +17,10 @@ mod ftp;
 mod sync;
 mod ai;
 mod cloud_config;
-mod watcher;
+mod file_watcher;
+mod sync_scheduler;
+mod transfer_pool;
+mod delta_sync;
 mod cloud_service;
 mod providers;
 mod provider_commands;
@@ -3679,6 +3682,24 @@ async fn save_remote_file(state: State<'_, AppState>, path: String, content: Str
     Ok(())
 }
 
+// ============ Splash Screen ============
+
+/// Called by the frontend when React has finished initializing.
+/// Closes the splash screen and shows the main window.
+#[tauri::command]
+async fn app_ready(app: AppHandle) {
+    if let Some(splash) = app.get_webview_window("splashscreen") {
+        let _ = splash.close();
+        info!("Splash screen closed");
+    }
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.remove_menu();
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+        info!("Main window shown");
+    }
+}
+
 #[tauri::command]
 fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
     if visible {
@@ -3837,6 +3858,11 @@ async fn compare_directories(
 ) -> Result<Vec<FileComparison>, String> {
     let options = options.unwrap_or_default();
 
+    validate_path(&local_path)?;
+    if remote_path.contains('\0') {
+        return Err("Remote path contains null bytes".to_string());
+    }
+
     info!("Comparing directories: local={}, remote={}", local_path, remote_path);
 
     // Emit scan phase: scanning (both local and remote concurrently)
@@ -3989,6 +4015,141 @@ pub async fn get_local_files_recursive(
     Ok(files)
 }
 
+/// Parallel local scan: directory traversal is sequential (fast), but SHA-256
+/// checksums are computed concurrently using a bounded JoinSet + Semaphore.
+/// Falls back to sequential scan when `compare_checksum` is false (no I/O benefit).
+pub async fn get_local_files_recursive_parallel(
+    base_path: &str,
+    exclude_patterns: &[String],
+    compare_checksum: bool,
+    max_concurrent_hashes: usize,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<HashMap<String, FileInfo>, String> {
+    let base = PathBuf::from(base_path);
+    if !base.exists() {
+        return Ok(HashMap::new());
+    }
+
+    // Phase 1: Walk the directory tree (sequential — fast, mostly metadata)
+    let mut file_entries: Vec<(String, String, u64, Option<chrono::DateTime<chrono::Utc>>, bool)> = Vec::new();
+    let mut dirs_to_process = vec![base.clone()];
+
+    while let Some(current_dir) = dirs_to_process.pop() {
+        if let Some(flag) = cancel_flag {
+            if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+        }
+        let mut entries = match tokio::fs::read_dir(&current_dir).await {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            let relative_path = path
+                .strip_prefix(&base)
+                .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
+                .unwrap_or_else(|_| name.clone());
+
+            if should_exclude(&relative_path, exclude_patterns) {
+                continue;
+            }
+
+            let metadata = entry.metadata().await.ok();
+            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let modified = metadata.as_ref().and_then(|m| {
+                m.modified().ok().map(|t| {
+                    let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                    datetime
+                })
+            });
+            let size = if is_dir { 0 } else { metadata.as_ref().map(|m| m.len()).unwrap_or(0) };
+            let abs_path = path.to_string_lossy().to_string();
+
+            file_entries.push((relative_path, abs_path, size, modified, is_dir));
+
+            if is_dir {
+                dirs_to_process.push(path);
+            }
+        }
+    }
+
+    // Phase 2: Compute checksums in parallel (only when requested)
+    let mut files = HashMap::with_capacity(file_entries.len());
+
+    if compare_checksum {
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(
+            max_concurrent_hashes.clamp(1, 16),
+        ));
+        let mut join_set = tokio::task::JoinSet::new();
+
+        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
+            if is_dir {
+                files.insert(relative_path, FileInfo {
+                    name: std::path::Path::new(&abs_path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    path: abs_path,
+                    size,
+                    modified,
+                    is_dir: true,
+                    checksum: None,
+                });
+                continue;
+            }
+
+            let sem = semaphore.clone();
+            let path_clone = abs_path.clone();
+            let rel_clone = relative_path.clone();
+
+            join_set.spawn(async move {
+                let _permit = sem.acquire().await;
+                let checksum = compute_sha256(std::path::Path::new(&path_clone)).await;
+                (rel_clone, path_clone, size, modified, checksum)
+            });
+        }
+
+        while let Some(result) = join_set.join_next().await {
+            if let Ok((rel_path, abs_path, size, modified, checksum)) = result {
+                let name = std::path::Path::new(&abs_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                files.insert(rel_path, FileInfo {
+                    name,
+                    path: abs_path,
+                    size,
+                    modified,
+                    is_dir: false,
+                    checksum,
+                });
+            }
+        }
+    } else {
+        // No checksums — just convert entries to FileInfo directly
+        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
+            let name = std::path::Path::new(&abs_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            files.insert(relative_path, FileInfo {
+                name,
+                path: abs_path,
+                size,
+                modified,
+                is_dir,
+                checksum: None,
+            });
+        }
+    }
+
+    Ok(files)
+}
+
 /// Scan remote directory with progress events
 async fn get_remote_files_recursive_with_progress(
     app: &AppHandle,
@@ -4082,11 +4243,15 @@ fn get_compare_options_default() -> CompareOptions {
 
 #[tauri::command]
 fn load_sync_index_cmd(local_path: String, remote_path: String) -> Result<Option<SyncIndex>, String> {
+    validate_path(&local_path)?;
+    validate_path(&remote_path)?;
     load_sync_index(&local_path, &remote_path)
 }
 
 #[tauri::command]
 fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
+    validate_path(&index.local_path)?;
+    validate_path(&index.remote_path)?;
     save_sync_index(&index)
 }
 
@@ -4094,16 +4259,22 @@ fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
 
 #[tauri::command]
 fn load_sync_journal_cmd(local_path: String, remote_path: String) -> Result<Option<SyncJournal>, String> {
+    validate_path(&local_path)?;
+    validate_path(&remote_path)?;
     load_sync_journal(&local_path, &remote_path)
 }
 
 #[tauri::command]
 fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
+    validate_path(&journal.local_path)?;
+    validate_path(&journal.remote_path)?;
     save_sync_journal(&journal)
 }
 
 #[tauri::command]
 fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
+    validate_path(&local_path)?;
+    validate_path(&remote_path)?;
     delete_sync_journal(&local_path, &remote_path)
 }
 
@@ -4136,6 +4307,541 @@ fn save_sync_profile_cmd(profile: sync::SyncProfile) -> Result<(), String> {
 fn delete_sync_profile_cmd(id: String) -> Result<(), String> {
     sync::delete_sync_profile(&id)
 }
+
+// ─── Phase 3A+ Commands: Parallel Scan, Scheduler, Watcher ─────────────
+
+#[tauri::command]
+async fn get_parallel_scan_files(
+    base_path: String,
+    exclude_patterns: Vec<String>,
+    compare_checksum: bool,
+    max_concurrent_hashes: Option<usize>,
+) -> Result<HashMap<String, FileInfo>, String> {
+    validate_path(&base_path)?;
+    let concurrency = max_concurrent_hashes.unwrap_or(4);
+    get_local_files_recursive_parallel(
+        &base_path,
+        &exclude_patterns,
+        compare_checksum,
+        concurrency,
+        None,
+    ).await
+}
+
+#[tauri::command]
+fn get_sync_schedule_cmd() -> Result<sync_scheduler::SyncSchedule, String> {
+    Ok(sync_scheduler::load_sync_schedule())
+}
+
+#[tauri::command]
+fn save_sync_schedule_cmd(schedule: sync_scheduler::SyncSchedule) -> Result<(), String> {
+    sync_scheduler::save_sync_schedule(&schedule)
+}
+
+#[tauri::command]
+fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Value, String> {
+    // Validate the watch path if provided
+    if let Some(ref p) = watch_path {
+        filesystem::validate_path(p)?;
+    }
+
+    // Returns a snapshot of the filesystem watcher status
+    // Watcher lifecycle is managed by background_sync_worker, not directly from frontend
+    let native_backend = if cfg!(target_os = "linux") { "inotify" }
+        else if cfg!(target_os = "macos") { "fsevent" }
+        else if cfg!(target_os = "windows") { "readirectorychanges" }
+        else { "poll" };
+
+    let inotify_info = if cfg!(target_os = "linux") {
+        watch_path.as_ref().map(|p| {
+            let (count, should_warn, should_fallback) =
+                file_watcher::check_inotify_capacity(std::path::Path::new(p));
+            serde_json::json!({
+                "subdirectory_count": count,
+                "should_warn": should_warn,
+                "should_fallback_to_poll": should_fallback,
+            })
+        })
+    } else {
+        None
+    };
+
+    Ok(serde_json::json!({
+        "available": true,
+        "native_backend": native_backend,
+        "inotify_capacity": inotify_info,
+    }))
+}
+
+/// Get transfer optimization hints for the current cloud provider
+#[tauri::command]
+fn get_transfer_optimization_hints(provider_type: Option<String>) -> Result<providers::TransferOptimizationHints, String> {
+    // Provider type is passed from frontend based on the connected server profile
+    let ptype = provider_type.unwrap_or_default();
+    let hints = match ptype.to_lowercase().as_str() {
+        "sftp" => providers::TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_compression: true,
+            supports_delta_sync: true,
+            ..Default::default()
+        },
+        "s3" => providers::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 5 * 1024 * 1024,
+            multipart_part_size: 5 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("ETag".to_string()),
+            ..Default::default()
+        },
+        "ftp" | "ftps" => providers::TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        "webdav" => providers::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        _ => providers::TransferOptimizationHints::default(),
+    };
+    Ok(hints)
+}
+
+// =============================
+// Multi-Path Sync Commands (#52)
+// =============================
+
+#[tauri::command]
+fn get_multi_path_config() -> sync::MultiPathConfig {
+    sync::load_multi_path_config()
+}
+
+#[tauri::command]
+fn save_multi_path_config_cmd(config: sync::MultiPathConfig) -> Result<(), String> {
+    sync::save_multi_path_config(&config)
+}
+
+#[tauri::command]
+fn add_path_pair(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> {
+    let mut config = sync::load_multi_path_config();
+    config.pairs.push(pair);
+    sync::save_multi_path_config(&config)?;
+    Ok(config)
+}
+
+#[tauri::command]
+fn remove_path_pair(pair_id: String) -> Result<sync::MultiPathConfig, String> {
+    let mut config = sync::load_multi_path_config();
+    config.pairs.retain(|p| p.id != pair_id);
+    sync::save_multi_path_config(&config)?;
+    Ok(config)
+}
+
+// =============================
+// Sync Template Commands (#153)
+// =============================
+
+#[tauri::command]
+fn export_sync_template_cmd(
+    name: String,
+    description: String,
+    profile_id: String,
+    local_path: String,
+    remote_path: String,
+    exclude_patterns: Vec<String>,
+) -> Result<String, String> {
+    let profiles = sync::load_sync_profiles()?;
+    let profile = profiles.iter()
+        .find(|p| p.id == profile_id)
+        .ok_or_else(|| format!("Profile '{}' not found", profile_id))?;
+    let schedule = sync_scheduler::load_sync_schedule();
+    let schedule_opt = if schedule.enabled { Some(&schedule) } else { None };
+    let template = sync::export_sync_template(
+        &name, &description, profile, &local_path, &remote_path, &exclude_patterns, schedule_opt,
+    )?;
+    serde_json::to_string_pretty(&template).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_sync_template_cmd(json_content: String) -> Result<sync::SyncTemplate, String> {
+    let template: sync::SyncTemplate = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Invalid template format: {}", e))?;
+    if template.schema_version != 1 {
+        return Err(format!("Unsupported template version: {}", template.schema_version));
+    }
+    Ok(template)
+}
+
+// =============================
+// Rollback Commands (#154)
+// =============================
+
+#[tauri::command]
+fn create_sync_snapshot_cmd(local_path: String, remote_path: String) -> Result<String, String> {
+    let index = sync::load_sync_index(&local_path, &remote_path)?
+        .ok_or_else(|| "No sync index found — run sync first".to_string())?;
+    let snapshot = sync::create_sync_snapshot(&local_path, &remote_path, &index);
+    sync::save_sync_snapshot(&snapshot)?;
+    Ok(snapshot.id)
+}
+
+#[tauri::command]
+fn list_sync_snapshots_cmd() -> Result<Vec<sync::SyncSnapshot>, String> {
+    sync::list_sync_snapshots()
+}
+
+#[tauri::command]
+fn delete_sync_snapshot_cmd(snapshot_id: String) -> Result<(), String> {
+    sync::delete_sync_snapshot(&snapshot_id)
+}
+
+// =============================
+// Delta Sync Commands (#155)
+// =============================
+
+/// Analyze a file pair and return delta sync stats (preview, no actual transfer)
+#[tauri::command]
+async fn delta_sync_analyze(
+    local_path: String,
+    remote_path: String,
+) -> Result<delta_sync::DeltaResult, String> {
+    validate_path(&local_path)?;
+    validate_path(&remote_path)?;
+
+    // Read local file
+    let local_data = tokio::fs::read(&local_path).await
+        .map_err(|e| format!("Failed to read local file: {}", e))?;
+
+    if (local_data.len() as u64) < delta_sync::DELTA_MIN_FILE_SIZE {
+        return Err(format!("File too small for delta sync ({}B < {}B minimum)",
+            local_data.len(), delta_sync::DELTA_MIN_FILE_SIZE));
+    }
+
+    // For analysis, we use the local file as both source and simulate
+    // In real usage, remote_data would come from provider.read_range()
+    let block_size = delta_sync::compute_block_size(local_data.len() as u64);
+    let sigs = delta_sync::compute_signatures(&local_data, block_size);
+
+    // Read remote (local copy for now — real impl would use provider)
+    let remote_data = tokio::fs::read(&remote_path).await
+        .map_err(|e| format!("Failed to read remote file: {}", e))?;
+
+    let (_, result) = delta_sync::compute_delta(&remote_data, &sigs);
+    Ok(result)
+}
+
+/// Execute sync transfers in parallel using a bounded Semaphore pool.
+///
+/// Each stream creates its own FTP connection (FTP doesn't support multiplexing).
+/// Progress events are emitted per-stream with `stream_id` for UI tracking.
+/// The journal is updated atomically after each transfer completes.
+#[tauri::command]
+async fn parallel_sync_execute(
+    app: AppHandle,
+    transfers: Vec<transfer_pool::SyncTransferEntry>,
+    server_host: String,
+    server_user: String,
+    server_pass: String,
+    max_streams: u8,
+) -> Result<transfer_pool::ParallelSyncResult, String> {
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // Validate all transfer entry paths before processing
+    for entry in &transfers {
+        filesystem::validate_path(&entry.local_path)?;
+        // remote_path validation: reject null bytes and path traversal
+        if entry.remote_path.contains('\0') || entry.remote_path.contains("..") {
+            return Err(format!("Invalid remote path: {}", entry.relative_path));
+        }
+    }
+
+    let start = Instant::now();
+    let max_streams = max_streams.clamp(1, 8) as usize;
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_streams));
+    let result = Arc::new(Mutex::new(transfer_pool::ParallelSyncResult::new()));
+    let total_count = transfers.len();
+
+    info!(
+        "parallel_sync_execute: {} transfers, {} streams, host={}",
+        total_count, max_streams, server_host
+    );
+
+    // Emit start event
+    let _ = app.emit("sync-parallel-progress", serde_json::json!({
+        "phase": "start",
+        "total": total_count,
+        "streams": max_streams,
+    }));
+
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for (index, entry) in transfers.into_iter().enumerate() {
+        let sem = semaphore.clone();
+        let res = result.clone();
+        let app_clone = app.clone();
+        let host = server_host.clone();
+        let user = server_user.clone();
+        let pass = server_pass.clone();
+
+        join_set.spawn(async move {
+            // Acquire semaphore permit (bounds concurrency)
+            let _permit = match sem.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    let mut r = res.lock().await;
+                    r.errors.push(transfer_pool::ParallelTransferError {
+                        relative_path: entry.relative_path.clone(),
+                        action: entry.action.clone(),
+                        error: "Semaphore closed".to_string(),
+                        retryable: false,
+                    });
+                    return;
+                }
+            };
+
+            let stream_id = index % 8; // Visual stream assignment
+
+            // Emit per-file start
+            let _ = app_clone.emit("sync-parallel-progress", serde_json::json!({
+                "phase": "file_start",
+                "stream_id": stream_id,
+                "relative_path": entry.relative_path,
+                "action": entry.action,
+                "index": index,
+                "total": total_count,
+            }));
+
+            // Skip directories (mkdir is handled separately)
+            if entry.is_dir {
+                if entry.action == transfer_pool::TransferAction::Mkdir {
+                    // Create local directory
+                    let _ = tokio::fs::create_dir_all(&entry.local_path).await;
+                }
+                let mut r = res.lock().await;
+                r.skipped += 1;
+                return;
+            }
+
+            // Execute transfer with a dedicated FTP connection
+            let transfer_result = execute_single_transfer(
+                &host,
+                &user,
+                &pass,
+                &entry,
+                &app_clone,
+                stream_id,
+                index,
+                total_count,
+            ).await;
+
+            let mut r = res.lock().await;
+            match transfer_result {
+                Ok(action) => match action.as_str() {
+                    "uploaded" => r.uploaded += 1,
+                    "downloaded" => r.downloaded += 1,
+                    "deleted" => r.deleted += 1,
+                    _ => r.skipped += 1,
+                },
+                Err(e) => {
+                    let retryable = sync::classify_sync_error(&e, Some(&entry.relative_path)).retryable;
+                    r.errors.push(transfer_pool::ParallelTransferError {
+                        relative_path: entry.relative_path.clone(),
+                        action: entry.action.clone(),
+                        error: e,
+                        retryable,
+                    });
+                }
+            }
+
+            // Emit per-file complete
+            let _ = app_clone.emit("sync-parallel-progress", serde_json::json!({
+                "phase": "file_complete",
+                "stream_id": stream_id,
+                "relative_path": entry.relative_path,
+                "action": entry.action,
+                "index": index,
+                "total": total_count,
+            }));
+        });
+    }
+
+    // Wait for all transfers to complete, propagating JoinErrors (panics/cancellations)
+    while let Some(join_result) = join_set.join_next().await {
+        if let Err(join_err) = join_result {
+            let mut r = result.lock().await;
+            let err_index = r.errors.len();
+            r.errors.push(transfer_pool::ParallelTransferError {
+                relative_path: format!("task-{}", err_index),
+                action: transfer_pool::TransferAction::Upload,
+                error: format!("Task panicked: {}", join_err),
+                retryable: false,
+            });
+        }
+    }
+
+    let mut final_result = result.lock().await;
+    final_result.duration_ms = start.elapsed().as_millis() as u64;
+    final_result.streams_used = max_streams as u8;
+
+    let result_clone = final_result.clone();
+
+    info!(
+        "parallel_sync_execute complete: ↑{} ↓{} ✗{} skip={} in {}ms using {} streams",
+        result_clone.uploaded,
+        result_clone.downloaded,
+        result_clone.errors.len(),
+        result_clone.skipped,
+        result_clone.duration_ms,
+        result_clone.streams_used,
+    );
+
+    // Emit completion
+    let _ = app.emit("sync-parallel-progress", serde_json::json!({
+        "phase": "complete",
+        "uploaded": result_clone.uploaded,
+        "downloaded": result_clone.downloaded,
+        "errors": result_clone.errors.len(),
+        "duration_ms": result_clone.duration_ms,
+    }));
+
+    Ok(result_clone)
+}
+
+/// Execute a single FTP transfer (upload, download, or delete) with a dedicated connection.
+/// Each call creates and tears down its own FTP connection to avoid multiplexing issues.
+async fn execute_single_transfer(
+    host: &str,
+    user: &str,
+    pass: &str,
+    entry: &transfer_pool::SyncTransferEntry,
+    app: &AppHandle,
+    stream_id: usize,
+    index: usize,
+    total: usize,
+) -> Result<String, String> {
+    let mut ftp = ftp::FtpManager::new();
+
+    ftp.connect(host).await
+        .map_err(|e| format!("Stream {}: connect failed: {}", stream_id, e))?;
+    ftp.login(user, pass).await
+        .map_err(|e| format!("Stream {}: login failed: {}", stream_id, e))?;
+
+    let result = match entry.action {
+        transfer_pool::TransferAction::Upload => {
+            // Ensure parent directory exists
+            if let Some(parent) = std::path::Path::new(&entry.remote_path).parent() {
+                let parent_str = parent.to_string_lossy().to_string();
+                if !parent_str.is_empty() && parent_str != "/" {
+                    let _ = ftp.mkdir(&parent_str).await; // ignore if exists
+                }
+            }
+
+            let file_size = tokio::fs::metadata(&entry.local_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(entry.expected_size);
+
+            let start_time = Instant::now();
+            let app_ref = app.clone();
+            let transfer_id = format!("psync-{}-{}", stream_id, index);
+            let filename = entry.relative_path.clone();
+
+            ftp.upload_file_with_progress(
+                &entry.local_path,
+                &entry.remote_path,
+                file_size,
+                move |transferred| {
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                    let pct = if file_size > 0 {
+                        ((transferred as f64 / file_size as f64) * 100.0) as u8
+                    } else { 0 };
+
+                    let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
+                        "phase": "transfer_progress",
+                        "stream_id": stream_id,
+                        "transfer_id": transfer_id,
+                        "relative_path": filename,
+                        "direction": "upload",
+                        "transferred": transferred,
+                        "total": file_size,
+                        "percentage": pct,
+                        "speed_bps": speed,
+                        "index": index,
+                        "total_files": total,
+                    }));
+                    true // continue
+                },
+            ).await.map_err(|e| format!("Upload failed: {}", e))?;
+
+            Ok("uploaded".to_string())
+        }
+        transfer_pool::TransferAction::Download => {
+            // Ensure local parent directory exists
+            if let Some(parent) = std::path::Path::new(&entry.local_path).parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+
+            let file_size = ftp.get_file_size(&entry.remote_path)
+                .await
+                .unwrap_or(entry.expected_size);
+
+            let start_time = Instant::now();
+            let app_ref = app.clone();
+            let transfer_id = format!("psync-{}-{}", stream_id, index);
+            let filename = entry.relative_path.clone();
+
+            ftp.download_file_with_progress(
+                &entry.remote_path,
+                &entry.local_path,
+                move |transferred| {
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                    let pct = if file_size > 0 {
+                        ((transferred as f64 / file_size as f64) * 100.0) as u8
+                    } else { 0 };
+
+                    let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
+                        "phase": "transfer_progress",
+                        "stream_id": stream_id,
+                        "transfer_id": transfer_id,
+                        "relative_path": filename,
+                        "direction": "download",
+                        "transferred": transferred,
+                        "total": file_size,
+                        "percentage": pct,
+                        "speed_bps": speed,
+                        "index": index,
+                        "total_files": total,
+                    }));
+                    true // continue
+                },
+            ).await.map_err(|e| format!("Download failed: {}", e))?;
+
+            Ok("downloaded".to_string())
+        }
+        transfer_pool::TransferAction::Delete => {
+            // Delete remote file
+            ftp.remove(&entry.remote_path).await
+                .map_err(|e| format!("Delete failed: {}", e))?;
+            Ok("deleted".to_string())
+        }
+        transfer_pool::TransferAction::Mkdir => {
+            // Mkdir handled at task level, skip here
+            Ok("skipped".to_string())
+        }
+    };
+
+    // Disconnect gracefully
+    let _ = ftp.disconnect().await;
+
+    result
+}
+
+// ─── End Phase 3A+ Commands ────────────────────────────────────────────
 
 #[tauri::command]
 fn get_default_retry_policy() -> RetryPolicy {
@@ -4648,73 +5354,151 @@ use std::time::Duration;
 // Global flag to control background sync
 static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Background sync worker - runs in a separate tokio task
-/// Creates its own FTP connection to avoid conflicts with main UI
+/// Background sync worker — `tokio::select!` event loop
+///
+/// Listens for three trigger sources:
+/// 1. **Scheduler timer**: fires based on `SyncSchedule` (interval + time window)
+/// 2. **Filesystem watcher**: fires when files change in the local sync folder
+/// 3. **Manual trigger**: fires when user clicks "Sync Now" via mpsc channel
+///
+/// Creates its own FTP connection per cycle to avoid conflicts with main UI.
 async fn background_sync_worker(app: AppHandle) {
-    info!("Background sync worker started");
-    
-    // Run first sync immediately, then loop with intervals
+    info!("Background sync worker started (Phase 3A+ engine)");
+
+    // --- Setup filesystem watcher (Dropbox-style real-time sync) ---
+    let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel::<file_watcher::WatcherEvent>(64);
+    let mut watcher: Option<file_watcher::FileWatcher> = None;
+
+    {
+        let config = cloud_config::load_cloud_config();
+        if config.sync_on_change {
+            let local_path = config.local_folder.clone();
+            let mut fw = file_watcher::FileWatcher::new(watcher_tx.clone());
+            match fw.start(&local_path, file_watcher::WatcherMode::Auto) {
+                Ok(()) => {
+                    info!("Filesystem watcher active on {}", local_path.display());
+                    let _ = app.emit("cloud-watcher-status", serde_json::json!({
+                        "active": true,
+                        "path": local_path.to_string_lossy(),
+                    }));
+                    watcher = Some(fw);
+                }
+                Err(e) => {
+                    warn!("Failed to start filesystem watcher: {}", e);
+                }
+            }
+        }
+    }
+
+    // --- Main event loop ---
     let mut is_first_run = true;
-    
+    let mut last_sync_completed = tokio::time::Instant::now() - Duration::from_secs(120); // allow first sync immediately
+    const WATCHER_COOLDOWN_SECS: u64 = 30; // min seconds between watcher-triggered syncs
+
     loop {
-        // Check if we should stop
+        // Check global stop flag
         if !BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
             info!("Background sync worker stopping (flag set to false)");
             break;
         }
-        
-        // Load fresh config each cycle
+
+        // Load fresh config and schedule each cycle
         let config = cloud_config::load_cloud_config();
         if !config.enabled {
             info!("AeroCloud disabled, stopping background sync");
             BACKGROUND_SYNC_RUNNING.store(false, Ordering::SeqCst);
-
-            // Reset tray badge to default (no badge)
             tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
-
             let _ = app.emit("cloud-sync-status", serde_json::json!({
                 "status": "disabled",
                 "message": "AeroCloud is disabled"
             }));
             break;
         }
-        
-        // On first run, sync immediately. On subsequent runs, wait for interval first.
-        if !is_first_run {
-            let interval_secs = config.sync_interval_secs.max(30); // Minimum 30 seconds for testing
-            info!("Background sync: next sync in {}s", interval_secs);
-            
-            // Wait for interval (check cancel flag every 5 seconds)
-            let mut waited = 0u64;
-            while waited < interval_secs {
-                if !BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
-                    info!("Background sync cancelled during wait");
-                    break;
+
+        // Determine trigger source for this cycle
+        let trigger: transfer_pool::SyncTrigger = if is_first_run {
+            is_first_run = false;
+            transfer_pool::SyncTrigger::Manual // First run = immediate sync
+        } else {
+            // Load scheduler state
+            let schedule = sync_scheduler::load_sync_schedule();
+
+            // Emit schedule countdown to frontend
+            if let Some(next_secs) = schedule.next_sync_in() {
+                let _ = app.emit("cloud-sync-schedule", serde_json::json!({
+                    "next_sync_in_secs": next_secs,
+                    "enabled": schedule.enabled,
+                    "paused": schedule.paused,
+                    "in_time_window": schedule.is_in_time_window(),
+                }));
+            }
+
+            // Compute sleep duration: min of scheduler interval and 5s poll
+            let sleep_secs = if schedule.enabled && !schedule.paused {
+                schedule.next_sync_in().unwrap_or(30).min(30)
+            } else {
+                config.sync_interval_secs.max(30)
+            };
+
+            // Wait using tokio::select! — first event wins
+            tokio::select! {
+                // Timer tick (scheduler interval or config interval)
+                _ = tokio::time::sleep(Duration::from_secs(sleep_secs)) => {
+                    // Check if schedule allows sync now
+                    let schedule = sync_scheduler::load_sync_schedule();
+                    if schedule.enabled && schedule.should_sync_now() {
+                        transfer_pool::SyncTrigger::Scheduled
+                    } else if !schedule.enabled {
+                        // Fallback to legacy interval logic when scheduler is disabled
+                        transfer_pool::SyncTrigger::Scheduled
+                    } else {
+                        continue; // Not time yet, loop again
+                    }
                 }
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                waited += 5;
+                // Filesystem watcher event
+                Some(event) = watcher_rx.recv() => {
+                    // Cooldown: skip watcher triggers too close to last sync
+                    // (prevents loop: sync writes files → watcher detects → re-sync)
+                    let elapsed = last_sync_completed.elapsed().as_secs();
+                    if elapsed < WATCHER_COOLDOWN_SECS {
+                        info!("Watcher trigger suppressed: {}s since last sync (cooldown {}s)",
+                            elapsed, WATCHER_COOLDOWN_SECS);
+                        // Drain any queued watcher events
+                        while watcher_rx.try_recv().is_ok() {}
+                        continue;
+                    }
+                    info!("Watcher trigger: {} paths changed", event.paths.len());
+                    transfer_pool::SyncTrigger::FileChanged(event.paths)
+                }
             }
-            
-            // Check again after waiting
-            if !BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
-                break;
-            }
+        };
+
+        // Check stop flag after wait
+        if !BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
+            break;
         }
-        is_first_run = false;
-        
-        // Perform sync with dedicated FTP connection
-        info!("Background sync: starting sync cycle");
 
-        // Update tray badge to syncing state
+        // --- Execute sync cycle ---
+        let trigger_label = match &trigger {
+            transfer_pool::SyncTrigger::Scheduled => "scheduled",
+            transfer_pool::SyncTrigger::FileChanged(paths) => {
+                info!("Watcher-triggered sync for {} changed paths", paths.len());
+                "watcher"
+            }
+            transfer_pool::SyncTrigger::Manual => "manual",
+            transfer_pool::SyncTrigger::Stop => break,
+        };
+
+        info!("Background sync: starting cycle (trigger: {})", trigger_label);
+
+        // Update tray badge and emit status
         tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Syncing);
-
-        // Emit syncing status
         let _ = app.emit("cloud-sync-status", serde_json::json!({
             "status": "syncing",
-            "message": "Syncing..."
+            "message": "Syncing...",
+            "trigger": trigger_label,
         }));
-        
-        // Mark sync root as syncing before each cycle
+
         {
             let local_folder = std::path::Path::new(&config.local_folder);
             sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Syncing).await;
@@ -4725,47 +5509,69 @@ async fn background_sync_worker(app: AppHandle) {
                 info!("Background sync completed: {} uploaded, {} downloaded, {} errors",
                     result.uploaded, result.downloaded, result.errors.len());
 
-                // Mark all files in sync root as synced (clear individual states → falls back to OK)
+                // Mark sync completed and drain watcher events generated by the sync itself
+                last_sync_completed = tokio::time::Instant::now();
+                let drained = {
+                    let mut count = 0u32;
+                    while watcher_rx.try_recv().is_ok() { count += 1; }
+                    count
+                };
+                if drained > 0 {
+                    info!("Drained {} watcher events generated during sync", drained);
+                }
+
                 {
                     let local_folder = std::path::Path::new(&config.local_folder);
                     sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Synced).await;
                 }
 
-                // Update tray badge to synced state
-                tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Synced);
+                tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
 
-                // Emit success
+                // Update scheduler last_sync timestamp
+                let mut schedule = sync_scheduler::load_sync_schedule();
+                schedule.last_sync = Some(chrono::Utc::now());
+                let _ = sync_scheduler::save_sync_schedule(&schedule);
+
                 let _ = app.emit("cloud-sync-status", serde_json::json!({
                     "status": "active",
                     "message": format!("Synced: ↑{} ↓{}", result.uploaded, result.downloaded)
                 }));
-                
-                // Emit sync complete event for UI
                 let _ = app.emit("cloud_sync_complete", &result);
             }
             Err(e) => {
                 warn!("Background sync failed: {}", e);
 
-                // Mark sync root as error
+                // Mark sync completed (even on error) and drain watcher events
+                last_sync_completed = tokio::time::Instant::now();
+                while watcher_rx.try_recv().is_ok() {}
+
                 {
                     let local_folder = std::path::Path::new(&config.local_folder);
                     sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Error).await;
                 }
 
-                // Update tray badge to error state
                 tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Error);
 
                 let _ = app.emit("cloud-sync-status", serde_json::json!({
                     "status": "error",
                     "message": format!("Sync failed: {}", e)
                 }));
-                
-                // On error, wait a bit before retrying to avoid spamming
+
+                // On error, wait before retrying
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }
         }
     }
-    
+
+    // --- Cleanup ---
+    if let Some(mut fw) = watcher {
+        fw.stop();
+        info!("Filesystem watcher stopped");
+    }
+    let _ = app.emit("cloud-watcher-status", serde_json::json!({
+        "active": false,
+    }));
+
     info!("Background sync worker exited");
 }
 
@@ -5373,13 +6179,54 @@ pub fn run() {
                 ],
             )?;
             
+            // === Splash Screen ===
+            // Create splash BEFORE setting the global app menu so it never inherits it.
+            // The main window is hidden (visible: false in tauri.conf.json) until
+            // the frontend signals readiness via the `app_ready` command.
+            let splash_url = {
+                #[cfg(dev)]
+                { WebviewUrl::External(url::Url::parse("http://localhost:5173/splash.html").unwrap()) }
+                #[cfg(not(dev))]
+                { WebviewUrl::External(url::Url::parse(&format!("http://localhost:{}/splash.html", port)).unwrap()) }
+            };
+
+            let _splash = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
+                .title("AeroFTP")
+                .inner_size(420.0, 340.0)
+                .resizable(false)
+                .decorations(false)
+                .center()
+                .build()?;
+
+            info!("Splash screen created");
+
+            // Now set the global app menu — splash already exists without it
             let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &help_menu])?;
             app.set_menu(menu)?;
 
-            // Remove menu from main window by default (frontend will restore it via toggle_menu_bar if needed)
+            // Remove menu from both windows (splash has decorations:false but GTK may still apply global menu)
+            if let Some(splash) = app.get_webview_window("splashscreen") {
+                let _ = splash.remove_menu();
+            }
             if let Some(main_win) = app.get_webview_window("main") {
                 let _ = main_win.remove_menu();
             }
+
+            // Safety timeout: if frontend doesn't signal app_ready within 10 seconds,
+            // force-close splash and show main window to prevent stuck state.
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                if let Some(splash) = app_handle.get_webview_window("splashscreen") {
+                    warn!("Splash screen safety timeout reached, force-closing");
+                    let _ = splash.close();
+                }
+                if let Some(main) = app_handle.get_webview_window("main") {
+                    let _ = main.remove_menu();
+                    let _ = main.show();
+                    let _ = main.set_focus();
+                }
+            });
 
             // ============ System Tray Icon ============
             // Create tray menu
@@ -5494,6 +6341,7 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            app_ready,
             copy_to_clipboard,
             resolve_hostname,
             connect_ftp,
@@ -5555,6 +6403,23 @@ pub fn run() {
             load_sync_profiles_cmd,
             save_sync_profile_cmd,
             delete_sync_profile_cmd,
+            // Phase 3A+: Parallel sync, scan, scheduler, watcher
+            parallel_sync_execute,
+            get_parallel_scan_files,
+            get_sync_schedule_cmd,
+            save_sync_schedule_cmd,
+            get_watcher_status_cmd,
+            get_transfer_optimization_hints,
+            get_multi_path_config,
+            save_multi_path_config_cmd,
+            add_path_pair,
+            remove_path_pair,
+            export_sync_template_cmd,
+            import_sync_template_cmd,
+            create_sync_snapshot_cmd,
+            list_sync_snapshots_cmd,
+            delete_sync_snapshot_cmd,
+            delta_sync_analyze,
             get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,

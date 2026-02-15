@@ -320,8 +320,8 @@ pub fn generate_passphrase(
     capitalize: bool,
     count: usize,
 ) -> Result<Vec<String>, String> {
-    if word_count < 3 || word_count > 12 {
-        return Err("Word count must be between 3 and 12".into());
+    if word_count < 3 || word_count > 24 {
+        return Err("Word count must be between 3 and 24".into());
     }
     let count = count.clamp(1, 10);
     let sep = if separator.is_empty() { "-" } else { &separator };

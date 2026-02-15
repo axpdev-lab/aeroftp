@@ -875,6 +875,14 @@ impl StorageProvider for FtpProvider {
         
         Ok(())
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]

@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-02-15
+
+### AeroSync Phase 3A+ — Complete Frontend Integration & UX Maturity
+
+Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based UX with Quick Sync for beginners and Advanced mode for power users. Speed Mode presets, parallel transfer controls, filesystem watcher, sync scheduler, multi-path editor, template import/export, rollback snapshots, and Maniac Mode easter egg. Splash screen restored with professional simulated loading sequence. Accordion UX for Advanced tab. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyberpunk theme icon refresh.
+
+#### Added
+
+- **Tab-based Sync UX**: Two-tab architecture — "Quick Sync" (default, beginner-friendly) and "Advanced" (all granular controls). SyncPanel refactored from 1867 to ~1100 lines with 9 extracted sub-components
+- **Quick Sync preset cards**: 3 visual cards (Mirror, Two-way, Backup) with one-click selection, matching the 3 built-in sync profiles
+- **Speed Mode presets**: 5 speed levels — Normal (1 stream), Fast (3 streams + auto compression), Turbo (6 streams + compression + delta), Extreme (8 streams + compression + delta), Maniac (8 streams + all safety disabled). Each auto-configures parallel streams, compression, and delta sync
+- **Maniac Mode**: Cyber-theme-only easter egg — disables journal, verification, retry, and bandwidth limits for maximum raw speed. Red/neon pulsing animation. Warning card with "I understand, proceed" confirmation. Mandatory full verification scan runs automatically after sync completes with mismatch report
+- **Sync Scheduler UI**: Interval selector (1min to 24h), pause/resume, countdown to next sync, time window with day picker. Integrated in Advanced tab with `SyncScheduler.tsx`
+- **Filesystem Watcher status**: Real-time watcher health indicator showing active/inactive state, native backend type, and inotify capacity warnings. Integrated in Advanced tab with `WatcherStatus.tsx`
+- **Multi-Path Editor dialog**: CRUD interface for managing multiple local↔remote path pairs with independent enable/disable per pair. Tauri backend wired via `get/save_multi_path_config`
+- **Sync Template dialog**: Export current sync configuration as reusable `.aerosync` files, import templates to apply their settings. Uses Tauri file dialog for save/open
+- **Rollback Snapshot dialog**: List existing sync snapshots with file count, create new snapshots before risky operations, delete old snapshots. Preview shows files included in each snapshot
+- **Parallel streams selector**: 1-8 stream selector in Advanced tab with visual "Turbo" indicator when >1 stream selected
+- **Compression toggle**: Auto/On/Off compression mode in Advanced tab (SFTP connections only)
+- **Delta Sync toggle**: Enable/disable rsync-style delta transfers in Advanced tab (SFTP, files >1MB)
+- **Provider optimization badges**: Read-only badges showing per-provider capabilities (multipart upload, resume, compression, delta sync, server checksum)
+- **25 new i18n keys in 47 languages**: Speed mode labels, tooltips, Maniac Mode warning, rollback, compression, delta sync, multi-path, templates. Translated via GLM batch method (3 grouped files + merge script). Armenian translated separately
+- **Splash screen with loading sequence**: Professional startup splash with simulated 21-step module loading sequence (Tauri runtime, protocol handlers, encryption modules, AeroAgent AI, Monaco editor, i18n, IPC bridge). Variable timing with random jitter for realistic appearance. 10-second safety timeout prevents stuck state
+- **Advanced tab accordion**: All 4 sections (Direction, Compare & Verify, Transfer Control, Automation) are collapsible accordion-style with smooth CSS transitions. Only one section open at a time, reducing vertical scroll
+- **Password Forge 24-word passphrases**: Maximum passphrase length increased from 12 to 24 words. Amber BIP-39 disclaimer shown at 12+ words — generated passphrases use EFF Diceware wordlist, not valid as cryptocurrency wallet seeds
+- **Cyberpunk shield icon**: Replaced Anonymous mask with cybersecurity shield+lock icon in theme selector and Settings panel — better alignment with the security toolkit identity
+
+#### Changed
+
+- **SyncPanel architecture**: Extracted ~750 lines of JSX into 9 sub-components in `src/components/Sync/` directory. State remains centralized in SyncPanel, passed as props to sub-components
+- **Speed preset auto-configuration**: Selecting a Speed Mode automatically sets `parallelStreams`, `compressionMode`, and `deltaSyncEnabled` to optimal values for that speed tier
+
+#### Fixed
+
+- **Maniac Mode silent failure (CF-001)**: `max_retries: 0` caused the retry loop to never execute — all transfers silently skipped. Fixed constant to `1` and added `Math.max(1, ...)` safety net in SyncPanel
+- **Template export/import non-functional (CF-002)**: Frontend API was completely mismatched with backend. Rewritten to use `@tauri-apps/plugin-fs` for file I/O and correct Tauri command parameters
+- **Path traversal in 8 sync commands (CF-003)**: Added `validate_path()` to `compare_directories`, `delta_sync_analyze`, `get_parallel_scan_files`, and 5 journal/index commands in `lib.rs`
+- **Remote path traversal (CF-004)**: Added `validate_relative_path()` in `cloud_service.rs` — rejects null bytes, absolute paths, drive letters, and `..` components from remote-supplied paths
+- **Scheduler crash on empty days (CF-005)**: Changed `days: null` to `days: []` with `#[serde(default)]` in Rust struct. Frontend consistently uses empty array instead of null
+- **Provider optimization invoke mismatch (CF-006)**: Fixed `{ protocol }` → `{ providerType: protocol }` matching Tauri's snake_case auto-conversion
+- **Symlink following in local scan (CF-007)**: Changed `metadata()` to `symlink_metadata()` in `scan_local_folder`, symlinks now skipped instead of followed
+- **Non-atomic journal writes (CF-008)**: Added `atomic_write()` helper (temp file + rename) for `save_sync_journal` and `save_sync_index` — crash-safe I/O
+- **JoinSet error silencing (CF-009)**: Parallel scan now collects and logs JoinSet task errors instead of silently dropping them
+- **Maniac Mode bandwidth not reset (CF-011)**: Added `handleSpeedLimitChange(0, 0)` in Maniac confirm handler to remove bandwidth limits
+- **Overnight scheduler window (H-004)**: Added `Weekday::prev()` and `contains_time_and_day()` — correctly checks yesterday's day filter for after-midnight portion of overnight windows. 5 new unit tests
+- **Journal index-based lookup (SP-004)**: Replaced O(n) index scan with `Map<string, number>` keyed by `relative_path` for O(1) journal progress lookup
+- **Timer leak on unmount (SP-009)**: Added `clearTimeout` for `flushTimerRef` and `progressFlushTimerRef` in SyncPanel cleanup
+- **Cancelled state not preserved on reset (SP-010)**: Removed erroneous `cancelledRef.current = false` from `handleReset`
+- **Non-deterministic path hashing (RB-001)**: Replaced `DefaultHasher` (SipHash, seed-randomized) with stable DJB2 algorithm for journal/index filenames
+- **NaN/Infinity in retry delay (RB-003)**: Added `is_finite()` guard in `delay_for_attempt()` — falls back to `max_delay_ms` on overflow
+- **Path substitution over-replacement (RB-007)**: Changed `.replace()` to `.replacen(..., 1)` for `$HOME`/`$DOCUMENTS`/`$DESKTOP` in portable paths
+- **Hidden file blanket exclusion (RB-020)**: Replaced blanket dotfile skip with specific `EXCLUDED_HIDDEN` blacklist (17 non-content dirs) — `.env`, `.htaccess`, `.dockerignore` now sync correctly
+- **rename() error silenced (RB-028)**: Changed `.ok()` to `.map_err()?` on `std::fs::rename` in KeepBoth conflict resolution
+- **create_dir_all() errors silenced (RB-031)**: Changed `.ok()` to `if let Err(e) { tracing::warn!(...) }` in 6 locations in cloud_service.rs
+- **Rolling hash readability (RB-033)**: Decomposed `roll()` method with explicit intermediate variables for clarity
+- **Unbounded delta literal (RB-034)**: Added 64MB `MAX_LITERAL_SIZE` check in `deserialize_delta()` to prevent memory exhaustion
+- **Delta apply panics on invalid range (RB-036)**: Changed `apply_delta()` to return `Result<Vec<u8>, String>` with bounds checking instead of panicking
+- **Escape key missing in dialogs (SC-014/022/029)**: Added Escape key handler to MultiPathEditor, SyncTemplateDialog, and RollbackDialog
+- **State reset on dialog reopen (SC-023)**: SyncTemplateDialog now resets state on `isOpen` change
+- **Restore button enabled without data (SC-028)**: RollbackDialog restore button disabled with tooltip when no snapshot selected
+- **18 hardcoded strings internationalized**: Replaced hardcoded English in SyncScheduler day labels, SyncQuickMode active/stream text, SyncAdvancedConfig turbo label, WatcherStatus poll indicator, and conflict resolution actions
+- **Scrollbar z-index bleed-through**: WebKitGTK paints native scrollbars above CSS z-index overlays. Added `html.modal-open` class that hides all non-modal scrollbars when SyncPanel or transfer toast is active
+- **Splash screen menu flash**: Splash window created before global app menu is set, preventing 1-second GTK menu bar flash on borderless splash
+
+#### Security
+
+- **6-auditor cross-reference**: 4 Claude Opus 4.6 agents + GPT-5.3 Codex + GLM-5 independently audited the entire AeroSync codebase. 31 findings confirmed and fixed, grade improved from B to A-
+- **Defense-in-depth pattern**: Critical fixes (CF-001, CF-003, CF-004) apply dual-layer protection — both the source constant and runtime safety nets
+
+---
+
 ## [2.1.2] - 2026-02-15
 
 ### AeroSync Phase 3A — Professional Sync Engine
@@ -189,7 +260,7 @@ Completed security hardening remediations, finalized all locale keys (including 
 
 #### Added
 
-- **Security regression coverage for settings vault migration**: new `Settings vault migration` check in `scripts/security-regression.cjs`
+- **Security regression coverage for settings vault migration**: new `Settings vault migration` check in `.github/scripts/security-regression.cjs`
 
 #### Verified
 

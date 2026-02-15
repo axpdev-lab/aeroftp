@@ -385,6 +385,17 @@ impl SyncIndex {
     }
 }
 
+/// Atomic write: write to temp file, then rename to target path.
+/// Prevents corruption from crash/power-loss during write.
+fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, data)
+        .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
+    std::fs::rename(&tmp_path, path)
+        .map_err(|e| format!("Failed to rename {} to {}: {}", tmp_path.display(), path.display(), e))?;
+    Ok(())
+}
+
 /// Get the directory where sync indices are stored
 fn sync_index_dir() -> Result<std::path::PathBuf, String> {
     let base = dirs::config_dir()
@@ -395,14 +406,19 @@ fn sync_index_dir() -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
+/// Stable DJB2 hash — deterministic across Rust versions (unlike DefaultHasher)
+fn stable_path_hash(s: &str) -> u64 {
+    let mut hash: u64 = 5381;
+    for byte in s.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
+    }
+    hash
+}
+
 /// Generate a stable filename from a local+remote path pair
 fn index_filename(local_path: &str, remote_path: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    local_path.hash(&mut hasher);
-    remote_path.hash(&mut hasher);
-    format!("{:016x}.json", hasher.finish())
+    let combined = format!("{}|{}", local_path, remote_path);
+    format!("{:016x}.json", stable_path_hash(&combined))
 }
 
 /// Load a sync index for a given path pair (returns None if not found)
@@ -425,8 +441,7 @@ pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
     let path = dir.join(index_filename(&index.local_path, &index.remote_path));
     let data = serde_json::to_string(index)
         .map_err(|e| format!("Failed to serialize sync index: {}", e))?;
-    std::fs::write(&path, data)
-        .map_err(|e| format!("Failed to write sync index: {}", e))?;
+    atomic_write(&path, data.as_bytes())?;
     Ok(())
 }
 
@@ -612,6 +627,9 @@ impl RetryPolicy {
     /// Calculate delay for a given attempt (1-indexed)
     pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
         let delay = (self.base_delay_ms as f64) * self.backoff_multiplier.powi(attempt.saturating_sub(1) as i32);
+        if !delay.is_finite() || delay < 0.0 {
+            return self.max_delay_ms;
+        }
         (delay as u64).min(self.max_delay_ms)
     }
 }
@@ -822,12 +840,8 @@ fn sync_journal_dir() -> Result<PathBuf, String> {
 
 /// Generate a journal filename from path pair
 fn journal_filename(local_path: &str, remote_path: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    local_path.hash(&mut hasher);
-    remote_path.hash(&mut hasher);
-    format!("journal_{:016x}.json", hasher.finish())
+    let combined = format!("{}|{}", local_path, remote_path);
+    format!("journal_{:016x}.json", stable_path_hash(&combined))
 }
 
 /// Load an existing journal for a path pair
@@ -852,8 +866,7 @@ pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
     journal_to_save.updated_at = Utc::now();
     let data = serde_json::to_string(&journal_to_save)
         .map_err(|e| format!("Failed to serialize sync journal: {}", e))?;
-    std::fs::write(&path, data)
-        .map_err(|e| format!("Failed to write sync journal: {}", e))?;
+    atomic_write(&path, data.as_bytes())?;
     Ok(())
 }
 
@@ -970,6 +983,16 @@ pub struct SyncProfile {
     pub retry_policy: RetryPolicy,
     pub verify_policy: VerifyPolicy,
     pub delete_orphans: bool,
+    /// Number of parallel transfer streams (1-8, default: 1 = sequential)
+    #[serde(default = "default_parallel_streams")]
+    pub parallel_streams: u8,
+    /// Compression mode for transfers
+    #[serde(default)]
+    pub compression_mode: crate::transfer_pool::CompressionMode,
+}
+
+fn default_parallel_streams() -> u8 {
+    1
 }
 
 impl SyncProfile {
@@ -990,6 +1013,8 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: true,
+            parallel_streams: 3,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
     }
 
@@ -1010,6 +1035,8 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: false,
+            parallel_streams: 3,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
     }
 
@@ -1033,6 +1060,8 @@ impl SyncProfile {
             },
             verify_policy: VerifyPolicy::Full,
             delete_orphans: false,
+            parallel_streams: 1,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
     }
 
@@ -1073,11 +1102,27 @@ pub fn load_sync_profiles() -> Result<Vec<SyncProfile>, String> {
     Ok(profiles)
 }
 
+/// Validate that an ID is safe for use in filesystem paths (alphanumeric, hyphens, underscores only)
+fn validate_filesystem_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 256 {
+        return Err("Invalid ID length".to_string());
+    }
+    if id.contains('/') || id.contains('\\') || id.contains("..") || id.contains('\0') {
+        return Err("ID contains forbidden characters".to_string());
+    }
+    // Only allow UUID-like chars: alphanumeric, hyphens, underscores
+    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err("ID contains invalid characters".to_string());
+    }
+    Ok(())
+}
+
 /// Save a custom profile
 pub fn save_sync_profile(profile: &SyncProfile) -> Result<(), String> {
     if profile.builtin {
         return Err("Cannot save built-in profiles".to_string());
     }
+    validate_filesystem_id(&profile.id)?;
     let dir = sync_profiles_dir()?;
     let path = dir.join(format!("{}.json", profile.id));
     let data = serde_json::to_string(profile)
@@ -1089,11 +1134,285 @@ pub fn save_sync_profile(profile: &SyncProfile) -> Result<(), String> {
 
 /// Delete a custom profile
 pub fn delete_sync_profile(id: &str) -> Result<(), String> {
+    validate_filesystem_id(id)?;
     let dir = sync_profiles_dir()?;
     let path = dir.join(format!("{}.json", id));
     if path.exists() {
         std::fs::remove_file(&path)
             .map_err(|e| format!("Failed to delete sync profile: {}", e))?;
+    }
+    Ok(())
+}
+
+// =============================
+// Multi-Path Sync (#52)
+// =============================
+
+/// A pair of local and remote paths for multi-path sync
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathPair {
+    pub id: String,
+    pub name: String,
+    pub local_path: PathBuf,
+    pub remote_path: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub exclude_overrides: Vec<String>,
+}
+
+/// Configuration for multi-path sync
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MultiPathConfig {
+    pub pairs: Vec<PathPair>,
+    #[serde(default)]
+    pub parallel_pairs: bool,
+}
+
+/// Load multi-path config from disk
+pub fn load_multi_path_config() -> MultiPathConfig {
+    let dir = dirs::config_dir().unwrap_or_default().join("aeroftp");
+    let path = dir.join("multi_path.json");
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        MultiPathConfig::default()
+    }
+}
+
+/// Save multi-path config to disk
+pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
+    let dir = dirs::config_dir().unwrap_or_default().join("aeroftp");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("multi_path.json"), data).map_err(|e| e.to_string())
+}
+
+// =============================
+// Sync Templates (#153)
+// =============================
+
+/// Shareable sync configuration template (.aerosync format)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncTemplate {
+    pub schema_version: u32,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub created_by: String,
+    /// Path patterns with variables ($HOME, $DOCUMENTS, $DESKTOP)
+    pub path_patterns: Vec<TemplatePathPattern>,
+    /// Embedded profile settings (without id/builtin)
+    pub profile: SyncTemplateProfile,
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub schedule: Option<crate::sync_scheduler::SyncSchedule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplatePathPattern {
+    pub local: String,
+    pub remote: String,
+}
+
+/// Profile settings embedded in a template (no credentials, no id)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncTemplateProfile {
+    pub direction: SyncDirection,
+    pub compare_timestamp: bool,
+    pub compare_size: bool,
+    pub compare_checksum: bool,
+    pub delete_orphans: bool,
+    #[serde(default = "default_parallel_streams")]
+    pub parallel_streams: u8,
+    #[serde(default)]
+    pub compression_mode: crate::transfer_pool::CompressionMode,
+}
+
+/// Export current sync config as a template
+pub fn export_sync_template(
+    name: &str,
+    description: &str,
+    profile: &SyncProfile,
+    local_path: &str,
+    remote_path: &str,
+    exclude_patterns: &[String],
+    schedule: Option<&crate::sync_scheduler::SyncSchedule>,
+) -> Result<SyncTemplate, String> {
+    // Replace absolute paths with portable variables
+    let local_portable = portable_path(local_path);
+
+    Ok(SyncTemplate {
+        schema_version: 1,
+        name: name.to_string(),
+        description: description.to_string(),
+        created_by: format!("AeroFTP v{}", env!("CARGO_PKG_VERSION")),
+        path_patterns: vec![TemplatePathPattern {
+            local: local_portable,
+            remote: remote_path.to_string(),
+        }],
+        profile: SyncTemplateProfile {
+            direction: profile.direction.clone(),
+            compare_timestamp: profile.compare_timestamp,
+            compare_size: profile.compare_size,
+            compare_checksum: profile.compare_checksum,
+            delete_orphans: profile.delete_orphans,
+            parallel_streams: profile.parallel_streams,
+            compression_mode: profile.compression_mode.clone(),
+        },
+        exclude_patterns: exclude_patterns.to_vec(),
+        schedule: schedule.cloned(),
+    })
+}
+
+/// Replace absolute paths with portable variables
+fn portable_path(path: &str) -> String {
+    if let Some(home) = dirs::home_dir() {
+        let home_str = home.to_string_lossy();
+        if let Some(docs) = dirs::document_dir() {
+            let docs_str = docs.to_string_lossy();
+            if path.starts_with(docs_str.as_ref()) {
+                return path.replacen(docs_str.as_ref(), "$DOCUMENTS", 1);
+            }
+        }
+        if let Some(desktop) = dirs::desktop_dir() {
+            let desk_str = desktop.to_string_lossy();
+            if path.starts_with(desk_str.as_ref()) {
+                return path.replacen(desk_str.as_ref(), "$DESKTOP", 1);
+            }
+        }
+        if path.starts_with(home_str.as_ref()) {
+            return path.replacen(home_str.as_ref(), "$HOME", 1);
+        }
+    }
+    path.to_string()
+}
+
+/// Resolve portable path variables to absolute paths
+pub fn resolve_portable_path(path: &str) -> String {
+    let mut result = path.to_string();
+    if let Some(home) = dirs::home_dir() {
+        result = result.replacen("$HOME", &home.to_string_lossy(), 1);
+    }
+    if let Some(docs) = dirs::document_dir() {
+        result = result.replacen("$DOCUMENTS", &docs.to_string_lossy(), 1);
+    }
+    if let Some(desktop) = dirs::desktop_dir() {
+        result = result.replacen("$DESKTOP", &desktop.to_string_lossy(), 1);
+    }
+    result
+}
+
+// =============================
+// Metadata-Aware Rollback (#154)
+// =============================
+
+/// Pre-sync snapshot for rollback capability
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncSnapshot {
+    pub id: String,
+    pub created_at: DateTime<Utc>,
+    pub local_path: String,
+    pub remote_path: String,
+    pub files: HashMap<String, FileSnapshotEntry>,
+}
+
+/// Per-file state captured in a snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSnapshotEntry {
+    pub size: u64,
+    pub modified: Option<DateTime<Utc>>,
+    pub checksum: Option<String>,
+    pub action_taken: String,
+}
+
+/// Create a pre-sync snapshot from the current sync index
+pub fn create_sync_snapshot(
+    local_path: &str,
+    remote_path: &str,
+    index: &SyncIndex,
+) -> SyncSnapshot {
+    let files: HashMap<String, FileSnapshotEntry> = index.files.iter().map(|(path, entry)| {
+        (path.clone(), FileSnapshotEntry {
+            size: entry.size,
+            modified: entry.modified,
+            checksum: None,
+            action_taken: String::new(),
+        })
+    }).collect();
+
+    SyncSnapshot {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: Utc::now(),
+        local_path: local_path.to_string(),
+        remote_path: remote_path.to_string(),
+        files,
+    }
+}
+
+/// Directory where snapshots are stored
+fn snapshots_dir() -> Result<PathBuf, String> {
+    let dir = dirs::config_dir()
+        .unwrap_or_default()
+        .join("aeroftp")
+        .join("sync-snapshots");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Save a snapshot to disk
+pub fn save_sync_snapshot(snapshot: &SyncSnapshot) -> Result<(), String> {
+    let dir = snapshots_dir()?;
+    let data = serde_json::to_string(snapshot).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(format!("{}.json", snapshot.id)), data)
+        .map_err(|e| e.to_string())
+}
+
+/// List all snapshots, sorted by date (newest first), max 10
+pub fn list_sync_snapshots() -> Result<Vec<SyncSnapshot>, String> {
+    let dir = snapshots_dir()?;
+    let mut snapshots: Vec<SyncSnapshot> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| {
+            std::fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+        })
+        .collect();
+    snapshots.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    snapshots.truncate(10);
+
+    // Cleanup: keep only last 5 snapshots on disk
+    let all_files: Vec<_> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    if all_files.len() > 5 {
+        let mut by_time: Vec<_> = all_files.into_iter()
+            .filter_map(|e| e.metadata().ok().map(|m| (e.path(), m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH))))
+            .collect();
+        by_time.sort_by(|a, b| b.1.cmp(&a.1));
+        for (path, _) in by_time.into_iter().skip(5) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    Ok(snapshots)
+}
+
+/// Delete a specific snapshot by ID
+pub fn delete_sync_snapshot(id: &str) -> Result<(), String> {
+    validate_filesystem_id(id)?;
+    let dir = snapshots_dir()?;
+    let path = dir.join(format!("{}.json", id));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1246,5 +1565,87 @@ mod tests {
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Pending), 0);
+    }
+
+    #[test]
+    fn test_path_pair_serialization() {
+        let pair = PathPair {
+            id: "test-1".to_string(),
+            name: "Documents".to_string(),
+            local_path: PathBuf::from("/home/user/docs"),
+            remote_path: "/remote/docs".to_string(),
+            enabled: true,
+            exclude_overrides: vec!["*.tmp".to_string()],
+        };
+        let json = serde_json::to_string(&pair).unwrap();
+        let deserialized: PathPair = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "test-1");
+        assert!(deserialized.enabled);
+        assert_eq!(deserialized.exclude_overrides.len(), 1);
+    }
+
+    #[test]
+    fn test_multi_path_config_default() {
+        let config = MultiPathConfig::default();
+        assert!(config.pairs.is_empty());
+        assert!(!config.parallel_pairs);
+    }
+
+    #[test]
+    fn test_portable_path_home() {
+        if let Some(home) = dirs::home_dir() {
+            let abs = format!("{}/projects/test", home.to_string_lossy());
+            let portable = portable_path(&abs);
+            assert!(portable.starts_with("$HOME") || portable.starts_with("$DOCUMENTS") || portable.starts_with("$DESKTOP"));
+        }
+    }
+
+    #[test]
+    fn test_portable_path_no_match() {
+        let abs = "/tmp/random/path";
+        let portable = portable_path(abs);
+        assert_eq!(portable, abs);
+    }
+
+    #[test]
+    fn test_resolve_portable_path() {
+        let resolved = resolve_portable_path("$HOME/test");
+        assert!(!resolved.contains("$HOME"));
+    }
+
+    #[test]
+    fn test_sync_snapshot_creation() {
+        let mut index = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+        };
+        index.files.insert("file.txt".to_string(), SyncIndexEntry {
+            size: 1024,
+            modified: Some(Utc::now()),
+            is_dir: false,
+        });
+
+        let snapshot = create_sync_snapshot("/local", "/remote", &index);
+        assert_eq!(snapshot.files.len(), 1);
+        assert!(snapshot.files.contains_key("file.txt"));
+        assert_eq!(snapshot.files["file.txt"].size, 1024);
+        assert!(!snapshot.id.is_empty());
+    }
+
+    #[test]
+    fn test_sync_template_export() {
+        let profile = SyncProfile::mirror();
+        let template = export_sync_template(
+            "Test Template", "A test", &profile, "/home/user/docs", "/remote/docs",
+            &["*.tmp".to_string()], None,
+        ).unwrap();
+        assert_eq!(template.schema_version, 1);
+        assert_eq!(template.name, "Test Template");
+        assert_eq!(template.path_patterns.len(), 1);
+        assert!(template.schedule.is_none());
+        assert!(template.created_by.contains("AeroFTP"));
     }
 }

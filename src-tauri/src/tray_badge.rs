@@ -11,20 +11,20 @@ use tracing::{info, warn, error};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TrayBadgeState {
-    Default = 0,   // No badge (AeroCloud not active)
-    Synced = 1,    // Green dot + white checkmark (all synced)
-    Syncing = 2,   // Blue dot + white sync arrows (sync in progress)
-    Error = 3,     // Red dot + white X (error occurred)
+    Default = 0,   // No badge — idle/synced (Dropbox-style: no badge = all good)
+    Syncing = 1,   // Blue dot + white sync arrows (sync in progress)
+    Error = 2,     // Red dot + white X (error occurred)
+    Paused = 3,    // Grey dot + white pause bars (user paused sync)
 }
 
 impl TrayBadgeState {
     /// Parse state from string (for Tauri command)
     pub fn from_str(s: &str) -> Self {
         match s {
-            "synced" => Self::Synced,
             "syncing" => Self::Syncing,
             "error" => Self::Error,
-            "default" => Self::Default,
+            "paused" => Self::Paused,
+            "default" | "synced" => Self::Default, // "synced" mapped to Default (Dropbox-style)
             other => {
                 warn!("Unrecognized tray badge state: {:?}, defaulting to Default", other);
                 Self::Default
@@ -36,9 +36,9 @@ impl TrayBadgeState {
     fn badge_color(&self) -> Option<[u8; 4]> {
         match self {
             Self::Default => None,
-            Self::Synced => Some([76, 175, 80, 255]),    // #4CAF50 - Material Green 500
-            Self::Syncing => Some([33, 150, 243, 255]),  // #2196F3 - Material Blue 500
-            Self::Error => Some([244, 67, 54, 255]),     // #F44336 - Material Red 500
+            Self::Syncing => Some([33, 150, 243, 255]),   // #2196F3 - Material Blue 500
+            Self::Error => Some([244, 67, 54, 255]),      // #F44336 - Material Red 500
+            Self::Paused => Some([158, 158, 158, 255]),   // #9E9E9E - Material Grey 500
         }
     }
 
@@ -46,9 +46,9 @@ impl TrayBadgeState {
     fn tooltip(&self) -> &'static str {
         match self {
             Self::Default => "AeroFTP",
-            Self::Synced => "AeroCloud — All Synced",
-            Self::Syncing => "AeroCloud — Syncing...",
-            Self::Error => "AeroCloud — Sync Error",
+            Self::Syncing => "AeroSync — Syncing...",
+            Self::Error => "AeroSync — Sync Error",
+            Self::Paused => "AeroSync — Paused",
         }
     }
 }
@@ -97,21 +97,27 @@ fn draw_thick_line(
     }
 }
 
-/// Draw a white checkmark (✓) inside the badge — like Ubuntu Livepatch
-fn draw_badge_checkmark(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
+/// Draw white pause bars (‖) inside the badge — two vertical bars
+fn draw_badge_pause(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
     let white = Rgba([255, 255, 255, 255]);
-    let hw = (r * 0.20).max(1.5);
+    let hw = (r * 0.14).max(1.0);
+    let bar_half_h = r * 0.35;
+    let bar_spacing = r * 0.22;
 
-    // Checkmark shape: short leg going down-right, long leg going up-right
-    let ax = cx - r * 0.32;
-    let ay = cy + r * 0.02;
-    let bx = cx - r * 0.05;
-    let by = cy + r * 0.32;
-    let ex = cx + r * 0.38;
-    let ey = cy - r * 0.28;
-
-    draw_thick_line(rgba, ax, ay, bx, by, hw, white);
-    draw_thick_line(rgba, bx, by, ex, ey, hw, white);
+    // Left bar
+    draw_thick_line(
+        rgba,
+        cx - bar_spacing, cy - bar_half_h,
+        cx - bar_spacing, cy + bar_half_h,
+        hw, white,
+    );
+    // Right bar
+    draw_thick_line(
+        rgba,
+        cx + bar_spacing, cy - bar_half_h,
+        cx + bar_spacing, cy + bar_half_h,
+        hw, white,
+    );
 }
 
 /// Draw white sync arrows (↻) inside the badge — two curved arrows forming a cycle
@@ -243,9 +249,9 @@ fn generate_badge_icon(
     let r = badge_radius as f32;
 
     match state {
-        TrayBadgeState::Synced => draw_badge_checkmark(&mut rgba, cx, cy, r),
         TrayBadgeState::Syncing => draw_badge_sync(&mut rgba, cx, cy, r),
         TrayBadgeState::Error => draw_badge_x_mark(&mut rgba, cx, cy, r),
+        TrayBadgeState::Paused => draw_badge_pause(&mut rgba, cx, cy, r),
         TrayBadgeState::Default => {}
     }
 

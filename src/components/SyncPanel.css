@@ -558,3 +558,459 @@
     opacity: 0.5;
     cursor: default;
 }
+
+/* ============ Sprint 7: Tab Bar + Quick Mode + Speed Pills ============ */
+
+/* Tab bar */
+.sync-tab-bar {
+    display: flex;
+    border-bottom: 1px solid #374151;
+    margin-bottom: 12px;
+}
+
+:root:not(.dark) .sync-tab-bar {
+    border-bottom-color: #e5e7eb;
+}
+
+.sync-tab {
+    padding: 8px 16px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #9ca3af;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.sync-tab:hover {
+    color: #d1d5db;
+}
+
+:root:not(.dark) .sync-tab:hover {
+    color: #374151;
+}
+
+.sync-tab.active {
+    border-bottom-color: #3b82f6;
+    color: #3b82f6;
+}
+
+/* Preset cards — grid 3 columns */
+.sync-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.sync-preset-card {
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background: rgba(55, 65, 81, 0.3);
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+:root:not(.dark) .sync-preset-card {
+    background: rgba(243, 244, 246, 0.5);
+}
+
+.sync-preset-card:hover:not(:disabled) {
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.sync-preset-card.selected {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.sync-preset-card:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Speed mode pills — flex row */
+.sync-speed-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.sync-speed-pill {
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #4b5563;
+    background: transparent;
+    color: #9ca3af;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+}
+
+:root:not(.dark) .sync-speed-pill {
+    border-color: #d1d5db;
+    color: #6b7280;
+}
+
+.sync-speed-pill:hover:not(:disabled) {
+    border-color: #6b7280;
+    color: #d1d5db;
+}
+
+:root:not(.dark) .sync-speed-pill:hover:not(:disabled) {
+    border-color: #9ca3af;
+    color: #374151;
+}
+
+.sync-speed-pill.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.sync-speed-pill:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Maniac — Cyber theme only (hidden by default) */
+.sync-speed-pill.maniac {
+    display: none;
+}
+
+html.cyber .sync-speed-pill.maniac {
+    display: inline-flex;
+}
+
+.sync-speed-pill.maniac.active {
+    background: linear-gradient(135deg, #ef4444, #f97316);
+    border-color: #ef4444;
+    animation: maniac-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes maniac-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    50% { box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.6); }
+}
+
+/* Maniac warning card */
+.sync-maniac-warning {
+    border: 1px solid #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 8px;
+    animation: maniac-fade-in 0.3s ease-out;
+}
+
+@keyframes maniac-fade-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Quick mode container */
+.sync-quick-mode {
+    padding: 4px 0;
+}
+
+/* Advanced config container */
+.sync-advanced-config {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+/* ── Advanced Section Cards ── */
+
+.sync-adv-section {
+    border: 1px solid #374151;
+    border-radius: 10px;
+    background: rgba(17, 24, 39, 0.5);
+    overflow: hidden;
+}
+
+:root:not(.dark) .sync-adv-section {
+    border-color: #e5e7eb;
+    background: rgba(249, 250, 251, 0.7);
+}
+
+.sync-adv-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #9ca3af;
+    background: rgba(55, 65, 81, 0.3);
+    border-bottom: 1px solid #374151;
+    user-select: none;
+}
+
+:root:not(.dark) .sync-adv-section-header {
+    color: #6b7280;
+    background: rgba(243, 244, 246, 0.7);
+    border-bottom-color: #e5e7eb;
+}
+
+.sync-adv-section-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ── Accordion: clickable header ── */
+
+.sync-adv-clickable {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.sync-adv-clickable:hover {
+    background: rgba(55, 65, 81, 0.5);
+}
+
+:root:not(.dark) .sync-adv-clickable:hover {
+    background: rgba(229, 231, 235, 0.7);
+}
+
+/* Chevron icon */
+
+.sync-adv-chevron {
+    margin-left: auto;
+    transition: transform 0.25s ease;
+    transform: rotate(-90deg);
+    opacity: 0.5;
+}
+
+.sync-adv-chevron-open {
+    transform: rotate(0deg);
+    opacity: 0.8;
+}
+
+/* Collapsible body animation */
+
+.sync-adv-body-open {
+    max-height: 500px;
+    opacity: 1;
+    padding: 12px 14px;
+    transition: max-height 0.3s ease, opacity 0.2s ease 0.05s, padding 0.3s ease;
+}
+
+.sync-adv-body-closed {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 14px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.15s ease, padding 0.25s ease;
+}
+
+/* Collapsed section: hide bottom border on header */
+
+.sync-adv-collapsed .sync-adv-section-header {
+    border-bottom-color: transparent;
+}
+
+/* ── Section internal rows ── */
+
+.sync-adv-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.sync-adv-divider {
+    height: 1px;
+    background: #374151;
+    margin: 2px 0;
+}
+
+:root:not(.dark) .sync-adv-divider {
+    background: #e5e7eb;
+}
+
+/* ── Unified select style ── */
+
+.sync-adv-select {
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid #4b5563;
+    border-radius: 6px;
+    padding: 3px 6px;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+:root:not(.dark) .sync-adv-select {
+    border-color: #d1d5db;
+}
+
+.sync-adv-select:hover:not(:disabled) {
+    border-color: #6b7280;
+}
+
+.sync-adv-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+/* ── Tool buttons row ── */
+
+.sync-adv-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sync-adv-tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+}
+
+.sync-adv-tool-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sync-adv-tool-blue {
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.25);
+    background: rgba(59, 130, 246, 0.1);
+}
+.sync-adv-tool-blue:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.sync-adv-tool-purple {
+    color: #c084fc;
+    border-color: rgba(168, 85, 247, 0.25);
+    background: rgba(168, 85, 247, 0.1);
+}
+.sync-adv-tool-purple:hover:not(:disabled) {
+    background: rgba(168, 85, 247, 0.2);
+}
+
+.sync-adv-tool-amber {
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.25);
+    background: rgba(245, 158, 11, 0.1);
+}
+.sync-adv-tool-amber:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.2);
+}
+
+.sync-adv-tool-red {
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.08);
+}
+.sync-adv-tool-red:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.18);
+}
+
+:root:not(.dark) .sync-adv-tool-blue {
+    color: #2563eb;
+    background: rgba(59, 130, 246, 0.08);
+}
+:root:not(.dark) .sync-adv-tool-purple {
+    color: #7c3aed;
+    background: rgba(168, 85, 247, 0.08);
+}
+:root:not(.dark) .sync-adv-tool-amber {
+    color: #d97706;
+    background: rgba(245, 158, 11, 0.08);
+}
+:root:not(.dark) .sync-adv-tool-red {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.06);
+}
+
+/* ============ Tokyo Night Theme Overrides ============ */
+
+html.tokyo .sync-tab.active {
+    border-bottom-color: #a855f7;
+    color: #a855f7;
+}
+
+html.tokyo .sync-preset-card.selected {
+    border-color: #a855f7;
+    background: rgba(168, 85, 247, 0.1);
+}
+
+html.tokyo .sync-preset-card:hover:not(:disabled) {
+    border-color: rgba(168, 85, 247, 0.3);
+}
+
+html.tokyo .sync-speed-pill.active {
+    background: #a855f7;
+    border-color: #a855f7;
+}
+
+/* ============ Cyberpunk Theme Overrides ============ */
+
+html.cyber .sync-tab.active {
+    border-bottom-color: #22d3ee;
+    color: #22d3ee;
+}
+
+html.cyber .sync-preset-card.selected {
+    border-color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+}
+
+html.cyber .sync-preset-card:hover:not(:disabled) {
+    border-color: rgba(34, 211, 238, 0.3);
+}
+
+html.cyber .sync-speed-pill.active {
+    background: #22d3ee;
+    border-color: #22d3ee;
+    color: #0a0e17;
+}
+
+html.cyber .sync-speed-pill.maniac.active {
+    background: linear-gradient(135deg, #ef4444, #22d3ee);
+    border-color: #22d3ee;
+    color: white;
+}
+
+html.cyber .sync-maniac-warning {
+    border-color: #22d3ee;
+    background: rgba(34, 211, 238, 0.08);
+    color: #22d3ee;
+}
+
+/* ============ Reduced Motion ============ */
+
+@media (prefers-reduced-motion: reduce) {
+    .sync-speed-pill.maniac.active {
+        animation: none;
+    }
+    .sync-maniac-warning {
+        animation: none;
+    }
+}

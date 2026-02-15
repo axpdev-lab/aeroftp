@@ -530,7 +530,7 @@ const PasswordForgeTab: React.FC = () => {
                             <span className="font-mono">{wordCount}</span>
                         </div>
                         <input
-                            type="range" min={3} max={12} value={wordCount}
+                            type="range" min={3} max={24} value={wordCount}
                             onChange={e => setWordCount(Number(e.target.value))}
                             className="w-full accent-cyan-500"
                         />
@@ -550,6 +550,9 @@ const PasswordForgeTab: React.FC = () => {
                             {t('cyberTools.pwdCapitalize')}
                         </label>
                     </div>
+                    {wordCount >= 12 && (
+                        <p className="text-[10px] text-amber-500/80 mt-1">{t('cyberTools.pwdNotBip39')}</p>
+                    )}
                 </div>
             )}
 

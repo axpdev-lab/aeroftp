@@ -1,8 +1,8 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 12 February 2026
-> Version: v2.0.7
-> Languages: 47 | Keys: 2173 | Coverage: 100%
+> Last Updated: 15 February 2026
+> Version: v2.2.0
+> Languages: 47 | Keys: 2320 | Coverage: 100%
 
 ---
 
@@ -116,9 +116,9 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ---
 
-## Translation Keys (2173)
+## Translation Keys (2320)
 
-Translations are organized by 30+ namespaces:
+Translations are organized by 35+ namespaces:
 
 | Namespace | Description | Keys |
 |-----------|-------------|------|
@@ -159,6 +159,7 @@ Translations are organized by 30+ namespaces:
 | `dependencies` | Dependencies panel | Crate list (v2.0.6) |
 | `properties` | File properties | Metadata, permissions (v2.0.6) |
 | `preview` | File preview | Text, image, PDF (v2.0.6) |
+| `syncPanel` | AeroSync panel | Profiles, compression, delta sync, multi-path, templates, rollback (v2.1.2+) |
 
 ---
 
@@ -170,7 +171,7 @@ src/i18n/
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
 ├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (47)
 └── locales/
-    ├── en.json           # English (base, 2173 keys)
+    ├── en.json           # English (base, 2320 keys)
     ├── it.json           # Italian (manually translated)
     ├── ...               # 44 more languages
     └── zh.json           # Chinese
@@ -389,4 +390,4 @@ const { t, language, setLanguage } = useI18n();
 ---
 
 **Maintainer**: axpdev
-**Last Updated**: 12 February 2026
+**Last Updated**: 15 February 2026

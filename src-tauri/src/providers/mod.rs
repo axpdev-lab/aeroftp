@@ -53,7 +53,40 @@ pub use fourshared::FourSharedProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
+use serde::Serialize;
 use std::collections::HashMap;
+
+/// Transfer optimization hints — per-provider capability advertisement
+#[derive(Debug, Clone, Serialize)]
+pub struct TransferOptimizationHints {
+    pub supports_multipart: bool,
+    pub multipart_threshold: u64,
+    pub multipart_part_size: u64,
+    pub multipart_max_parallel: u8,
+    pub supports_resume_download: bool,
+    pub supports_resume_upload: bool,
+    pub supports_server_checksum: bool,
+    pub preferred_checksum_algo: Option<String>,
+    pub supports_compression: bool,
+    pub supports_delta_sync: bool,
+}
+
+impl Default for TransferOptimizationHints {
+    fn default() -> Self {
+        Self {
+            supports_multipart: false,
+            multipart_threshold: 0,
+            multipart_part_size: 0,
+            multipart_max_parallel: 1,
+            supports_resume_download: false,
+            supports_resume_upload: false,
+            supports_server_checksum: false,
+            preferred_checksum_algo: None,
+            supports_compression: false,
+            supports_delta_sync: false,
+        }
+    }
+}
 
 /// Unified storage provider trait
 ///
@@ -369,6 +402,21 @@ pub trait StorageProvider: Send + Sync {
     /// List changes since the given page token, returns (changes, new_token)
     async fn list_changes(&mut self, _page_token: &str) -> Result<(Vec<ChangeEntry>, String), ProviderError> {
         Err(ProviderError::NotSupported("list_changes".to_string()))
+    }
+
+    /// Get transfer optimization hints for this provider
+    fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
+        TransferOptimizationHints::default()
+    }
+
+    /// Whether this provider supports delta sync (rsync-style block transfer)
+    fn supports_delta_sync(&self) -> bool {
+        false
+    }
+
+    /// Read a byte range from a remote file (needed for delta sync)
+    async fn read_range(&mut self, _path: &str, _offset: u64, _len: u64) -> Result<Vec<u8>, ProviderError> {
+        Err(ProviderError::NotSupported("read_range".to_string()))
     }
 }
 
