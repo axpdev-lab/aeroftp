@@ -225,7 +225,7 @@
             "locked": "დაბლოკილი",
             "notConnected": "არ არის დაკავშირებული",
             "permsHeader": "ნებართვები",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "ბილიკები სინქრონიზებული არ არის — გადაინაცვლეთ შესაბამის საქაღალდეებზე ან გამორთეთ სინქრონიზებული ნავიგაცია"
         },
         "contextMenu": {
             "open": "გახსნა",
@@ -323,7 +323,8 @@
             "remove": "წაშლა",
             "retry": "ხელახლა ცდა",
             "stopAll": "ყველას შეჩერება",
-            "stopAllPending": "მოლოდინში მყოფთა შეჩერება"
+            "stopAllPending": "მოლოდინში მყოფთა შეჩერება",
+            "forceStop": "იძულებითი გაჩერება (მიმდინარე ფაილის შეწყვეტა)"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "თემა",
             "themeAutoLabel": "ავტომატური",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "აირჩიეთ ხატულას სტილი ფაილებისა და საქაღალდეებისთვის",
+            "iconThemeFilled": "შევსებული",
+            "iconThemeFilledDesc": "ფერადი დოკუმენტის ფორმები ტიპის ბეჯებით",
+            "iconThemeMinimal": "მინიმალური",
+            "iconThemeMinimalDesc": "მონოქრომული ხატულები, რომლებიც ადაპტირდება მიმდინარე თემაზე",
+            "iconThemeOutline": "კონტური",
+            "iconThemeOutlineDesc": "სუფთა კონტურის ხატულები ფერით კოდირებული ფაილის ტიპებით",
+            "iconsTab": "ხატულები"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "გათიშულია სერვერიდან",
             "uploadStarted": "ატვირთვა დაიწყო",
             "uploadComplete": "ატვირთვა დასრულდა",
-            "uploadFailed": "ატვირთვა ვერ მოხერხდა: {error}",
+            "uploadFailed": "ატვირთვა ვერ მოხერხდა",
             "downloadStarted": "ჩამოტვირთვა დაიწყო",
             "downloadComplete": "ჩამოტვირთვა დასრულდა",
-            "downloadFailed": "ჩამოტვირთვა ვერ მოხერხდა: {error}",
+            "downloadFailed": "ჩამოტვირთვა ვერ მოხერხდა",
             "deleteSuccess": "{count} ელემენტი წაიშალა",
             "deleteFailed": "წაშლა ვერ მოხერხდა: {error}",
             "renameSuccess": "წარმატებით გადარქმევა",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS კავშირი დამყარდა",
             "auth_success": "ავთენტიფიკაცია წარმატებულია როგორც {username}",
             "auth_method_key": "ავთენტიფიცირებულია SSH გასაღებით ({username})",
-            "listing_complete": "ჩამოთვლილია {count} ელემენტი"
+            "listing_complete": "ჩამოთვლილია {count} ელემენტი",
+            "connected_to": "დაკავშირებულია {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "ფაილი დაბლოკილია",
                 "disk_error": "დისკის შეცდომა",
                 "unknown": "უცნობი"
-            }
+            },
+            "clearHistory": "ისტორიის გასუფთავება",
+            "clearHistoryConfirm": "წაიშალოს ყველა სინქრონიზაციის ჟურნალი?",
+            "journalsCleared": "{count} ჟურნალი წაიშალა",
+            "noJournals": "სინქრონიზაციის ისტორია არ არის",
+            "bandwidthLimit": "სიჩქარის ლიმიტი",
+            "bandwidthUnlimited": "შეუზღუდავი",
+            "bandwidthDownload": "ჩამოტვირთვა",
+            "bandwidthUpload": "ატვირთვა",
+            "profile": "პროფილი",
+            "profileCustom": "მორგებული",
+            "profileMirror": "სარკე",
+            "profileTwoWay": "ორმხრივი",
+            "profileBackup": "სარეზერვო",
+            "profileMirrorDesc": "ლოკალური → დისტანციური, ობოლების წაშლა, ზომის შემოწმება",
+            "profileTwoWayDesc": "ორმხრივი, ახლის შენარჩუნება, წაშლის გარეშე",
+            "profileBackupDesc": "ლოკალური → დისტანციური, საკონტროლო ჯამით შემოწმება, წაშლის გარეშე",
+            "conflictsFound": "{count} კონფლიქტი ნაპოვნია",
+            "resolveConflicts": "კონფლიქტების გადაჭრა",
+            "keepLocal": "ლოკალურის შენარჩუნება",
+            "keepRemote": "დისტანციურის შენარჩუნება",
+            "keepBoth": "ორივეს შენარჩუნება",
+            "keepNewer": "ახლის შენარჩუნება",
+            "keepLocalAll": "ლოკალურის შენარჩუნება ყველასთვის",
+            "keepRemoteAll": "დისტანციურის შენარჩუნება ყველასთვის",
+            "keepNewerAll": "ახლის შენარჩუნება ყველასთვის",
+            "skipAll": "ყველას გამოტოვება",
+            "conflictResolved": "მოგვარებულია"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "გათიშულია",
                 "newConnection": "ახალი კავშირი",
                 "syncing": "სინქრონიზაცია...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "სხვა ჩანართების დახურვა",
+                "closeAll": "ყველა ჩანართის დახურვა"
             }
         },
         "update": {

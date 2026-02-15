@@ -225,7 +225,7 @@
             "locked": "লক করা",
             "notConnected": "সংযুক্ত নয়",
             "permsHeader": "অনুমতি",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "পাথগুলো সিঙ্কে নেই — মিলে যাওয়া ফোল্ডারে যান অথবা সিঙ্ক নেভিগেশন বন্ধ করুন"
         },
         "contextMenu": {
             "open": "খুলুন",
@@ -323,7 +323,8 @@
             "remove": "সরান",
             "retry": "পুনরায় চেষ্টা",
             "stopAll": "সব বন্ধ করুন",
-            "stopAllPending": "সব অপেক্ষমাণ বন্ধ করুন"
+            "stopAllPending": "সব অপেক্ষমাণ বন্ধ করুন",
+            "forceStop": "জোর করে বন্ধ (বর্তমান ফাইল বাধাগ্রস্ত করুন)"
         },
         "settings": {
             "title": "সেটিংস",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "থিম",
             "themeAutoLabel": "স্বয়ংক্রিয়",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "ফাইল এবং ফোল্ডারের জন্য একটি আইকন স্টাইল বেছে নিন",
+            "iconThemeFilled": "ভরাট",
+            "iconThemeFilledDesc": "টাইপ ব্যাজ সহ রঙিন ডকুমেন্ট আকৃতি",
+            "iconThemeMinimal": "ন্যূনতম",
+            "iconThemeMinimalDesc": "বর্তমান থিমের সাথে মানানসই একরঙা আইকন",
+            "iconThemeOutline": "আউটলাইন",
+            "iconThemeOutlineDesc": "রঙ-কোডেড ফাইল টাইপ সহ পরিষ্কার স্ট্রোক আইকন",
+            "iconsTab": "আইকন"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "সার্ভার থেকে সংযোগ বিচ্ছিন্ন",
             "uploadStarted": "আপলোড শুরু হয়েছে",
             "uploadComplete": "আপলোড সম্পন্ন",
-            "uploadFailed": "আপলোড ব্যর্থ: {error}",
+            "uploadFailed": "আপলোড ব্যর্থ",
             "downloadStarted": "ডাউনলোড শুরু হয়েছে",
             "downloadComplete": "ডাউনলোড সম্পন্ন",
-            "downloadFailed": "ডাউনলোড ব্যর্থ: {error}",
+            "downloadFailed": "ডাউনলোড ব্যর্থ",
             "deleteSuccess": "{count}টি আইটেম মুছে ফেলা হয়েছে",
             "deleteFailed": "মুছে ফেলা ব্যর্থ: {error}",
             "renameSuccess": "সফলভাবে নাম পরিবর্তন হয়েছে",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS সংযোগ স্থাপিত",
             "auth_success": "{username} হিসাবে প্রমাণীকরণ সফল",
             "auth_method_key": "SSH কী দিয়ে প্রমাণীকৃত ({username})",
-            "listing_complete": "{count}টি আইটেম তালিকাভুক্ত"
+            "listing_complete": "{count}টি আইটেম তালিকাভুক্ত",
+            "connected_to": "সংযুক্ত হয়েছে {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "ফাইল লক করা",
                 "disk_error": "ডিস্ক ত্রুটি",
                 "unknown": "অজানা"
-            }
+            },
+            "clearHistory": "ইতিহাস মুছুন",
+            "clearHistoryConfirm": "সমস্ত সিঙ্ক জার্নাল মুছে ফেলবেন?",
+            "journalsCleared": "{count}টি জার্নাল মুছে ফেলা হয়েছে",
+            "noJournals": "কোনো সিঙ্ক ইতিহাস নেই",
+            "bandwidthLimit": "গতি সীমা",
+            "bandwidthUnlimited": "সীমাহীন",
+            "bandwidthDownload": "ডাউনলোড",
+            "bandwidthUpload": "আপলোড",
+            "profile": "প্রোফাইল",
+            "profileCustom": "কাস্টম",
+            "profileMirror": "মিরর",
+            "profileTwoWay": "দ্বিমুখী",
+            "profileBackup": "ব্যাকআপ",
+            "profileMirrorDesc": "লোকাল → রিমোট, এতিম মুছুন, সাইজ যাচাই",
+            "profileTwoWayDesc": "দ্বিমুখী, নতুনটি রাখুন, মুছবে না",
+            "profileBackupDesc": "লোকাল → রিমোট, চেকসাম যাচাই, মুছবে না",
+            "conflictsFound": "{count}টি দ্বন্দ্ব পাওয়া গেছে",
+            "resolveConflicts": "দ্বন্দ্ব সমাধান করুন",
+            "keepLocal": "লোকাল রাখুন",
+            "keepRemote": "রিমোট রাখুন",
+            "keepBoth": "উভয় রাখুন",
+            "keepNewer": "নতুনটি রাখুন",
+            "keepLocalAll": "সবার জন্য লোকাল রাখুন",
+            "keepRemoteAll": "সবার জন্য রিমোট রাখুন",
+            "keepNewerAll": "সবার জন্য নতুনটি রাখুন",
+            "skipAll": "সব এড়িয়ে যান",
+            "conflictResolved": "সমাধান হয়েছে"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "সংযোগ বিচ্ছিন্ন",
                 "newConnection": "নতুন সংযোগ",
                 "syncing": "সিঙ্ক হচ্ছে...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "অন্যান্য ট্যাব বন্ধ করুন",
+                "closeAll": "সব ট্যাব বন্ধ করুন"
             }
         },
         "update": {

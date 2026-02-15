@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown } from 'lucide-react';
+import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -34,6 +34,7 @@ interface TransferQueueProps {
     onRetryItem?: (id: string) => void;
     isVisible: boolean;
     onToggle: () => void;
+    forceStopMode?: boolean;
 }
 
 const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
@@ -201,7 +202,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     onRemoveItem,
     onRetryItem,
     isVisible,
-    onToggle
+    onToggle,
+    forceStopMode
 }) => {
     const t = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -243,7 +245,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
     return (
         <>
-            <div className="fixed bottom-12 right-4 z-40 w-[28rem] max-h-[28rem] flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
+            <div className="fixed bottom-12 right-6 z-40 w-[33rem] max-h-[28rem] flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
                 {/* Header - Terminal Style */}
                 <div
                     className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer select-none"
@@ -288,11 +290,17 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             {onStopAll && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onStopAll(); }}
-                                    disabled={transferringCount === 0 && pendingCount === 0}
-                                    className={`p-1 rounded transition-colors ${(transferringCount > 0 || pendingCount > 0) ? 'text-red-400 hover:text-red-300 hover:bg-red-900/30 animate-pulse' : 'text-gray-700 cursor-not-allowed'}`}
-                                    title={t('transfer.stopAll')}
+                                    disabled={!forceStopMode && transferringCount === 0 && pendingCount === 0}
+                                    className={`p-1 rounded transition-colors ${
+                                        forceStopMode
+                                            ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 animate-pulse'
+                                            : (transferringCount > 0 || pendingCount > 0)
+                                                ? 'text-red-400 hover:text-red-300 hover:bg-red-900/30 animate-pulse'
+                                                : 'text-gray-700 cursor-not-allowed'
+                                    }`}
+                                    title={forceStopMode ? t('transfer.forceStop') : t('transfer.stopAll')}
                                 >
-                                    <Square size={13} />
+                                    {forceStopMode ? <Zap size={13} /> : <Square size={13} />}
                                 </button>
                             )}
                             {onClear && (
@@ -458,15 +466,15 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     ))}
                 </div>
 
-                {/* Footer Progress Bar */}
-                {transferringCount > 0 && (
-                    <TransferProgressBar
-                        percentage={(completedCount / items.length) * 100}
-                        size="sm"
-                        variant="gradient"
-                        animated={false}
-                    />
-                )}
+                {/* Footer — always visible, glows during transfers */}
+                <div className={`h-1 transition-all duration-500 ${transferringCount > 0 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-gray-700 opacity-40'}`}>
+                    {transferringCount > 0 && (
+                        <div
+                            className="h-full bg-cyan-400/60 rounded-full transition-all duration-300"
+                            style={{ width: `${items.length > 0 ? (completedCount / items.length) * 100 : 0}%` }}
+                        />
+                    )}
+                </div>
             </div>
 
             {/* Context menu overlay */}
@@ -491,11 +499,11 @@ export const useTransferQueue = () => {
     const [items, setItems] = useState<TransferItem[]>([]);
     const [isVisible, setIsVisible] = useState(true);
     const autoHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const userDismissedRef = useRef(false);
 
     // Auto-hide after all transfers complete (5 seconds)
     useEffect(() => {
         const allCompleted = items.length > 0 && items.every(i => i.status === 'completed' || i.status === 'error');
-        const hasActive = items.some(i => i.status === 'transferring' || i.status === 'pending');
 
         // Clear any existing timeout
         if (autoHideTimeoutRef.current) {
@@ -503,10 +511,9 @@ export const useTransferQueue = () => {
             autoHideTimeoutRef.current = null;
         }
 
-        if (hasActive) {
-            // Show queue when transfers are active
-            setIsVisible(true);
-        } else if (allCompleted) {
+        if (allCompleted) {
+            // Reset dismiss flag when all transfers finish
+            userDismissedRef.current = false;
             // Auto-hide after 5 seconds when all done
             autoHideTimeoutRef.current = setTimeout(() => {
                 setIsVisible(false);
@@ -531,7 +538,8 @@ export const useTransferQueue = () => {
             status: 'pending',
             startTime: Date.now()
         }]);
-        // Show queue when adding items
+        // Show queue when adding new items (reset user dismiss)
+        userDismissedRef.current = false;
         setIsVisible(true);
         return id;
     };
@@ -587,9 +595,19 @@ export const useTransferQueue = () => {
         setItems(prev => prev.filter(item => item.status !== 'completed'));
     };
 
-    const stopAll = () => {
+    // Soft cancel: stop only pending items, let current transfer finish
+    const stopPending = () => {
         setItems(prev => prev.map(item =>
             item.status === 'pending'
+                ? { ...item, status: 'error' as TransferStatus, error: 'Stopped by user', endTime: Date.now() }
+                : item
+        ));
+    };
+
+    // Hard cancel: stop everything including current transfer
+    const stopAll = () => {
+        setItems(prev => prev.map(item =>
+            item.status === 'pending' || item.status === 'transferring'
                 ? { ...item, status: 'error' as TransferStatus, error: 'Stopped by user', endTime: Date.now() }
                 : item
         ));
@@ -614,7 +632,12 @@ export const useTransferQueue = () => {
             clearTimeout(autoHideTimeoutRef.current);
             autoHideTimeoutRef.current = null;
         }
-        setIsVisible(v => !v);
+        setIsVisible(v => {
+            const next = !v;
+            // If user is closing the panel, remember this choice
+            if (!next) userDismissedRef.current = true;
+            return next;
+        });
     };
 
     // Check if there's any active transfer
@@ -633,6 +656,7 @@ export const useTransferQueue = () => {
         markAsFolder,
         clear,
         clearCompleted,
+        stopPending,
         stopAll,
         removeItem,
         retryItem,

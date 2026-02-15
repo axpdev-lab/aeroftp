@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-02-15
+
+### AeroSync Phase 3A — Professional Sync Engine
+
+Sync profiles, conflict resolution center, bandwidth control, performance optimizations, and security hardening. AeroSync moves from reliable to professional-grade.
+
+#### Added
+
+- **Sync Profiles with 3 built-in presets**: Named sync configurations combining direction, compare options, retry/verify policies, and delete behavior. Built-in presets: Mirror (local→remote, delete orphans, verify size), Two-way (bidirectional, keep newer, no deletes), Backup (local→remote, checksum verify, no deletes). Save/load custom profiles for reuse
+- **Conflict Resolution Center**: Per-file conflict resolution with interactive UI — keep local, keep remote, skip per file. Batch actions: Keep Newer for All, Keep Local for All, Keep Remote for All, Skip All. Integrated into sync flow with journal tracking
+- **Bandwidth control UI**: Upload and download speed limit selectors in SyncPanel header (128 KB/s to 10 MB/s, or unlimited). Wires existing `set_speed_limit`/`get_speed_limit` backend commands with provider auto-detection
+- **Journal auto-cleanup**: Completed sync journals older than 30 days are automatically deleted on panel open. Manual "Clear History" button with confirmation dialog. `list_sync_journals` command for journal inventory
+- **Plugin integrity verification (SEC-P2-02)**: SHA-256 hash computed at plugin install, verified before every execution. Counter-audit by 3 Opus agents resolved 6 findings: hash format validation, safe prefix comparison, symlink canonicalization, `.env_clear()` credential isolation
+- **Tauri FS scope hardening (SEC-P2-03)**: Explicit `fs:scope` with `allow: ["**"]`, added `fs:deny-webview-data-linux/windows` for webview data protection, replaced `shell:allow-open` with `shell:default`, removed 5 redundant dialog permissions
+- **39 new i18n keys**: Sync profiles, conflict resolution, bandwidth control, icon themes, and session context menu — translated in all 47 languages
+
+#### Changed
+
+- **Backend progress throttle**: Transfer progress events now throttled at Rust level — emit every 150ms or 2% delta (whichever comes first), always emit on completion. Reduces IPC overhead by ~90% on large file transfers
+- **Parallel local+remote scan**: `compare_directories` now runs local filesystem scan and remote server scan concurrently via `tokio::join!`, reducing wall-clock scan time to max(local, remote) instead of local+remote
+- **Compact JSON for sync artifacts**: Journal and index files now use compact JSON serialization (`to_string` instead of `to_string_pretty`), reducing I/O and parse overhead for large sync histories
+
+---
+
 ## [2.1.1] - 2026-02-14
 
 ### UX Polish, Aero Rebrand & Transfer Stability

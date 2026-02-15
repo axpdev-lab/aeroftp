@@ -58,7 +58,7 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap
 } from 'lucide-react';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { PlacesSidebar } from './components/PlacesSidebar';
@@ -285,6 +285,8 @@ const App: React.FC = () => {
   // Transfer Queue (unified upload + download)
   const transferQueue = useTransferQueue();
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
+  const batchCancelledRef = React.useRef(false);
+  const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
 
   const localSearchRef = React.useRef<HTMLInputElement>(null);
 
@@ -303,6 +305,8 @@ const App: React.FC = () => {
 
   // Track if any transfer is active (for Logo animation)
   const hasQueueActivity = transferQueue.hasActiveTransfers;
+  // Force stop mode: soft cancel was pressed, current file still transferring
+  const isForceStopMode = cancelLevelRef.current === 1 && transferQueue.items.some(i => i.status === 'transferring');
 
   const [localSearchFilter, setLocalSearchFilter] = useState('');
   const [showLocalSearchBar, setShowLocalSearchBar] = useState(false);
@@ -1167,7 +1171,7 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles, notify, t]);
 
-  const loadRemoteFiles = async (overrideProtocol?: string): Promise<FileListResponse | null> => {
+  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -1187,11 +1191,13 @@ const App: React.FC = () => {
           files: response.files?.slice(0, 5) // Log first 5 files
         });
 
-        // Log to activity if we got files
-        if (response.files?.length > 0) {
-          humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: protocol }, 'success');
-        } else {
-          activityLog.log('INFO', `No files returned from ${protocol} provider`, 'running');
+        // Log to activity only on explicit loads (not after mutations like rename/delete)
+        if (!silent) {
+          if (response.files?.length > 0) {
+            humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: protocol }, 'success');
+          } else {
+            activityLog.log('INFO', `No files returned from ${protocol} provider`, 'running');
+          }
         }
       } else {
         // Use FTP API
@@ -1334,19 +1340,19 @@ const App: React.FC = () => {
     server: string,
     port: number,
     protocol: string,
-  ): Promise<string | null> => {
-    if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return null;
-    humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname: server }, 'running');
+  ): Promise<{ resolvedIp: string | null; connectingLogId: string | null }> => {
+    if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return { resolvedIp: null, connectingLogId: null };
+    const dnsLogId = humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname: server }, 'running');
     let resolvedIp: string | null = null;
     try {
       resolvedIp = await invoke<string>('resolve_hostname', { hostname: server, port });
-      humanLog.logRaw('activity.dns_resolved', 'INFO', { hostname: server, ip: resolvedIp }, 'success');
+      humanLog.updateEntry(dnsLogId, { status: 'success', message: t('activity.dns_resolved', { hostname: server, ip: resolvedIp }) });
     } catch (e) {
-      humanLog.logRaw('activity.dns_failed', 'ERROR', { hostname: server, error: String(e) }, 'error');
+      humanLog.updateEntry(dnsLogId, { status: 'error', message: t('activity.dns_failed', { hostname: server, error: String(e) }) });
     }
-    humanLog.logRaw('activity.connecting_to', 'CONNECT',
+    const connectingLogId = humanLog.logRaw('activity.connecting_to', 'CONNECT',
       { ip: resolvedIp || server, port: String(port) }, 'running');
-    return resolvedIp;
+    return { resolvedIp, connectingLogId };
   };
 
   const logConnectionSuccess = (
@@ -1474,8 +1480,9 @@ const App: React.FC = () => {
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
-        await logConnectionSteps(connectionParams.server, connectionParams.port || 21, protocol);
+        const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connectionParams.server, connectionParams.port || 21, protocol);
         await invoke('provider_connect', { params: providerParams });
+        if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connectionParams.server, port: String(connectionParams.port || 21) }) });
 
         logConnectionSuccess(protocol, connectionParams.username, {
           tlsMode: connectionParams.options?.tlsMode,
@@ -1561,8 +1568,9 @@ const App: React.FC = () => {
         // Ignore if not connected to OAuth
       }
       const ftpProto = connectionParams.protocol || 'ftp';
-      await logConnectionSteps(connectionParams.server, connectionParams.port || 21, ftpProto);
+      const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(connectionParams.server, connectionParams.port || 21, ftpProto);
       await invoke('connect_ftp', { params: connectionParams });
+      if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || connectionParams.server, port: String(connectionParams.port || 21) }) });
       logConnectionSuccess(ftpProto, connectionParams.username, {
         tlsMode: connectionParams.options?.tlsMode,
         private_key_path: connectionParams.options?.private_key_path || undefined,
@@ -1769,17 +1777,22 @@ const App: React.FC = () => {
           throw new Error(`OAuth credentials not found for ${protocol}`);
         }
 
-        // Map protocol to OAuth provider name
-        const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
-
-        // Reconnect to the OAuth provider
-        await invoke('oauth2_connect', {
-          params: {
-            provider: oauthProvider,
-            client_id: clientId,
-            client_secret: clientSecret,
-          }
-        });
+        if (isFourSharedProvider(protocol)) {
+          // 4shared uses OAuth 1.0 — needs fourshared_connect, not oauth2_connect
+          await invoke('fourshared_connect', {
+            params: { consumer_key: clientId, consumer_secret: clientSecret }
+          });
+        } else {
+          // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud)
+          const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
+          await invoke('oauth2_connect', {
+            params: {
+              provider: oauthProvider,
+              client_id: clientId,
+              client_secret: clientSecret,
+            }
+          });
+        }
 
         // Now navigate to the session's path
         response = await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
@@ -2459,7 +2472,10 @@ const App: React.FC = () => {
       }
     } catch (error) {
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      notify.error(t('toast.downloadFailed'), String(error));
+      // Don't spam toasts when batch was cancelled — one summary toast is enough
+      if (!batchCancelledRef.current) {
+        notify.error(t('toast.downloadFailed'), String(error));
+      }
     }
   };
 
@@ -2568,15 +2584,28 @@ const App: React.FC = () => {
       }
     } catch (error) {
       humanLog.logError('UPLOAD', { filename: fileName }, logId);
-      notify.error(t('toast.uploadFailed'), String(error));
+      if (!batchCancelledRef.current) {
+        notify.error(t('toast.uploadFailed'), String(error));
+      }
     }
   };
 
+  // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
-    setActiveTransfer(null);
-    dispatchTransferToast(null); // Close toast immediately (isolated state)
-    transferQueue.stopAll(); // Mark all pending queue items as stopped
-    try { await invoke('cancel_transfer'); } catch { }
+    if (cancelLevelRef.current === 0) {
+      // Level 1 — Soft cancel: finish current file, stop queue
+      cancelLevelRef.current = 1;
+      batchCancelledRef.current = true;
+      transferQueue.stopPending(); // Only stop pending items, let current finish
+      dispatchTransferToast(null);
+    } else {
+      // Level 2 — Hard cancel: interrupt current transfer immediately
+      cancelLevelRef.current = 2;
+      setActiveTransfer(null);
+      dispatchTransferToast(null);
+      transferQueue.stopAll(); // Stop everything including current
+      try { await invoke('cancel_transfer'); } catch { }
+    }
   };
 
   // ======== File Clipboard (Cut/Copy/Paste) ========
@@ -2605,9 +2634,12 @@ const App: React.FC = () => {
         // Remote → Local: download each file using stored path (not current listing)
         for (const file of files) {
           try {
+            if (batchCancelledRef.current) break;
             await downloadFile(file.path, file.name, currentLocalPath, file.is_dir);
           } catch (e) {
-            notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
+            }
           }
         }
         loadLocalFiles(currentLocalPath);
@@ -2615,9 +2647,12 @@ const App: React.FC = () => {
         // Local → Remote: upload each file using stored path (not current listing)
         for (const file of files) {
           try {
+            if (batchCancelledRef.current) break;
             await uploadFile(file.path, file.name, file.is_dir);
           } catch (e) {
-            notify.error(t('toast.uploadFailed'), `${file.name}: ${String(e)}`);
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.uploadFailed'), `${file.name}: ${String(e)}`);
+            }
           }
         }
         loadRemoteFiles();
@@ -2641,7 +2676,7 @@ const App: React.FC = () => {
             console.error(`Failed to delete source after cut: ${file.name}`, e);
           }
         }
-        if (sourceIsRemote) loadRemoteFiles();
+        if (sourceIsRemote) loadRemoteFiles(undefined, true);
         else loadLocalFiles(currentLocalPath);
       }
     }
@@ -2670,7 +2705,7 @@ const App: React.FC = () => {
             notify.error(t('toast.renameFailed'), `${file.name}: ${String(e)}`);
           }
         }
-        if (targetIsRemote) loadRemoteFiles();
+        if (targetIsRemote) loadRemoteFiles(undefined, true);
         else loadLocalFiles(currentLocalPath);
       } else {
         // Copy files within same panel
@@ -2752,6 +2787,11 @@ const App: React.FC = () => {
           return { id, filePath, fileName, file };
         });
 
+        // Reset cancel flags before starting batch
+        batchCancelledRef.current = false;
+        cancelLevelRef.current = 0;
+        try { await invoke('reset_cancel_flag'); } catch { }
+
         // Upload sequentially with queue tracking and overwrite checking
         let skippedCount = 0;
         for (let i = 0; i < queueItems.length; i++) {
@@ -2804,6 +2844,12 @@ const App: React.FC = () => {
             }
           }
 
+          // Skip if batch was cancelled
+          if (batchCancelledRef.current) {
+            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            continue;
+          }
+
           transferQueue.startTransfer(item.id);
           try {
             await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true);
@@ -2840,6 +2886,9 @@ const App: React.FC = () => {
     if (files.length > 0) {
       // Reset for dialog-selected files too
       resetOverwriteSettings();
+      batchCancelledRef.current = false;
+      cancelLevelRef.current = 0;
+      try { await invoke('reset_cancel_flag'); } catch { }
       let skippedCount = 0;
 
       for (let i = 0; i < files.length; i++) {
@@ -2866,6 +2915,7 @@ const App: React.FC = () => {
           continue;
         }
 
+        if (batchCancelledRef.current) break;
         await uploadFile(filePath, fileName, false);
       }
 
@@ -2903,6 +2953,11 @@ const App: React.FC = () => {
         });
         return { id, file };
       });
+
+      // Reset cancel flags before starting batch
+      batchCancelledRef.current = false;
+      cancelLevelRef.current = 0;
+      try { await invoke('reset_cancel_flag'); } catch { }
 
       // Download sequentially with queue tracking and overwrite checking
       let skippedCount = 0;
@@ -2956,6 +3011,12 @@ const App: React.FC = () => {
           }
         }
 
+        // Skip if batch was cancelled
+        if (batchCancelledRef.current) {
+          transferQueue.failTransfer(item.id, 'Cancelled by user');
+          continue;
+        }
+
         transferQueue.startTransfer(item.id);
         try {
           await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
@@ -3000,7 +3061,15 @@ const App: React.FC = () => {
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = !!protocol && isNonFtpProvider(protocol);
 
+      // Reset cancel flags before batch delete
+      batchCancelledRef.current = false;
+      cancelLevelRef.current = 0;
+      try { await invoke('reset_cancel_flag'); } catch { }
+
       for (const name of names) {
+        // Check if batch was cancelled
+        if (batchCancelledRef.current) break;
+
         const file = remoteFiles.find(f => f.name === name);
         if (file) {
           try {
@@ -3020,11 +3089,13 @@ const App: React.FC = () => {
               deletedFiles.push(file.path);
             }
           } catch (err) {
+            // If cancelled, don't show error notification for each remaining file
+            if (batchCancelledRef.current) break;
             notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
           }
         }
       }
-      await loadRemoteFiles();
+      await loadRemoteFiles(undefined, true);
       setSelectedRemoteFiles(new Set());
       // Summary message with location and item details
       // Note: For recursive folder deletes, the backend already logs individual files via
@@ -3077,7 +3148,14 @@ const App: React.FC = () => {
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
       const failedFiles: string[] = [];
+
+      // Reset cancel flags before batch delete
+      batchCancelledRef.current = false;
+      cancelLevelRef.current = 0;
+
       for (const name of names) {
+        if (batchCancelledRef.current) break;
+
         const file = localFiles.find(f => f.name === name);
         if (file) {
           try {
@@ -3153,7 +3231,7 @@ const App: React.FC = () => {
         }
         humanLog.logSuccess('DELETE', { filename: path }, logId);
         notify.success(t('toast.deleted'), fileName);
-        await loadRemoteFiles();
+        await loadRemoteFiles(undefined, true);
       }
       catch (error) {
         humanLog.logError('DELETE', { filename: path }, logId);
@@ -3235,7 +3313,7 @@ const App: React.FC = () => {
           return;
         }
 
-        const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName });
+        const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName, isRemote });
         try {
           // Get parent directory from the file's path
           const parentDir = path.substring(0, path.lastIndexOf('/'));
@@ -3252,15 +3330,15 @@ const App: React.FC = () => {
             } else {
               await invoke('rename_remote_file', { from: path, to: newPath });
             }
-            await loadRemoteFiles();
+            await loadRemoteFiles(undefined, true);
           } else {
             await invoke('rename_local_file', { from: path, to: newPath });
             await loadLocalFiles(currentLocalPath);
           }
-          humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName }, logId);
+          humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
           notify.success(t('toast.renamed'), newName);
         } catch (error) {
-          humanLog.logError('RENAME', { oldname: currentName, newname: newName }, logId);
+          humanLog.logError('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
           notify.error(t('toast.renameFail'), String(error));
         }
       }
@@ -3306,7 +3384,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const logId = humanLog.logStart('RENAME', { oldname: name, newname: newName });
+    const logId = humanLog.logStart('RENAME', { oldname: name, newname: newName, isRemote });
     try {
       const parentDir = path.substring(0, path.lastIndexOf('/'));
       const newPath = parentDir + '/' + newName;
@@ -3321,15 +3399,15 @@ const App: React.FC = () => {
         } else {
           await invoke('rename_remote_file', { from: path, to: newPath });
         }
-        await loadRemoteFiles();
+        await loadRemoteFiles(undefined, true);
       } else {
         await invoke('rename_local_file', { from: path, to: newPath });
         await loadLocalFiles(currentLocalPath);
       }
-      humanLog.logSuccess('RENAME', { oldname: name, newname: newName }, logId);
+      humanLog.logSuccess('RENAME', { oldname: name, newname: newName, isRemote }, logId);
       notify.success(t('toast.renamed'), newName);
     } catch (error) {
-      humanLog.logError('RENAME', { oldname: name, newname: newName }, logId);
+      humanLog.logError('RENAME', { oldname: name, newname: newName, isRemote }, logId);
       notify.error(t('toast.renameFail'), String(error));
     }
     setInlineRename(null);
@@ -3356,6 +3434,7 @@ const App: React.FC = () => {
     const isRemote = batchRenameDialog?.isRemote ?? true;
     const logId = humanLog.logStart('RENAME', {
       count: renames.size,
+      isRemote,
       message: `Batch rename (${isRemote ? 'remote' : 'local'})`
     });
 
@@ -3389,20 +3468,20 @@ const App: React.FC = () => {
 
     // Refresh file list
     if (isRemote) {
-      await loadRemoteFiles();
+      await loadRemoteFiles(undefined, true);
     } else {
       await loadLocalFiles(currentLocalPath);
     }
 
     // Log and notify
     if (errorCount === 0) {
-      humanLog.logSuccess('RENAME', { count: successCount }, logId);
+      humanLog.logSuccess('RENAME', { count: successCount, isRemote }, logId);
       notify.success(
         t('toast.batchRenameSuccess') || 'Batch rename complete',
         `${successCount} ${t('browser.files') || 'files'}`
       );
     } else {
-      humanLog.logError('RENAME', { count: successCount, message: `${errorCount} failed` }, logId);
+      humanLog.logError('RENAME', { count: successCount, isRemote, message: `${errorCount} failed` }, logId);
       notify.warning(
         t('toast.batchRenamePartial') || 'Batch rename completed with errors',
         `${successCount} renamed, ${errorCount} failed`
@@ -3434,7 +3513,7 @@ const App: React.FC = () => {
             } else {
               await invoke('create_remote_folder', { path });
             }
-            await loadRemoteFiles();
+            await loadRemoteFiles(undefined, true);
           } else {
             // Create local folder
             const path = currentLocalPath + '/' + name;
@@ -3598,7 +3677,7 @@ const App: React.FC = () => {
             const dest = currentRemotePath || '/';
             await invoke('provider_import_link', { link: link.trim(), dest });
             notify.success(t('contextMenu.linkImported'), t('contextMenu.importedTo', { path: dest }));
-            loadRemoteFiles();
+            loadRemoteFiles(undefined, true);
           } catch (err) {
             notify.error(t('contextMenu.importLinkFailed'), String(err));
           }
@@ -4049,11 +4128,11 @@ const App: React.FC = () => {
         isLightTheme={theme === 'light'}
       />
 
-      <div className={`relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
-      {/* App Background Pattern Overlay */}
+      <div className={`isolate relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
+      {/* App Background Pattern Overlay — behind content (-z-10) but above gradient bg */}
       {appBackgroundPattern?.svg && (
-        <div className="absolute inset-0 pointer-events-none z-0">
-          <div className="absolute inset-0" style={{ backgroundImage: appBackgroundPattern.svg }} />
+        <div className="absolute inset-0 pointer-events-none -z-10">
+          <div className="absolute inset-0 invert dark:invert-0 dark:opacity-50" style={{ backgroundImage: appBackgroundPattern.svg }} />
         </div>
       )}
       {/* Native System Titlebar - CustomTitlebar removed for Linux compatibility */}
@@ -4191,6 +4270,7 @@ const App: React.FC = () => {
         onClear={transferQueue.clear}
         onClearCompleted={transferQueue.clearCompleted}
         onStopAll={cancelTransfer}
+        forceStopMode={isForceStopMode}
         onRemoveItem={transferQueue.removeItem}
         onRetryItem={(id: string) => {
           transferQueue.retryItem(id);
@@ -4309,7 +4389,7 @@ const App: React.FC = () => {
             try {
               await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
               notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
-              await loadRemoteFiles();
+              await loadRemoteFiles(undefined, true);
               setPermissionsDialog(null);
             } catch (e) { notify.error(t('common.failed'), String(e)); }
           }
@@ -4322,7 +4402,7 @@ const App: React.FC = () => {
           filePath={versionsDialog.path}
           fileName={versionsDialog.name}
           onClose={() => setVersionsDialog(null)}
-          onRestore={() => { setVersionsDialog(null); loadRemoteFiles(); }}
+          onRestore={() => { setVersionsDialog(null); loadRemoteFiles(undefined, true); }}
         />
       )}
       {sharePermissionsDialog && (
@@ -4659,8 +4739,9 @@ const App: React.FC = () => {
                   };
 
                   logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
-                  await logConnectionSteps(params.server, params.port || 21, params.protocol || 'ftp');
+                  const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(params.server, params.port || 21, params.protocol || 'ftp');
                   await invoke('provider_connect', { params: providerParams });
+                  if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || params.server, port: String(params.port || 21) }) });
                   logConnectionSuccess(params.protocol || 'ftp', params.username, {
                     tlsMode: params.options?.tlsMode,
                     private_key_path: params.options?.private_key_path || undefined,
@@ -4723,8 +4804,9 @@ const App: React.FC = () => {
                 try { await invoke('provider_disconnect'); } catch { }
 
                 const savedFtpProto = params.protocol || 'ftp';
-                await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
+                const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
                 await invoke('connect_ftp', { params });
+                if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                 logConnectionSuccess(savedFtpProto, params.username, {
                   tlsMode: params.options?.tlsMode,
                   private_key_path: params.options?.private_key_path || undefined,
@@ -4912,15 +4994,17 @@ const App: React.FC = () => {
                   <>
                     <button
                       onClick={cancelTransfer}
-                      disabled={!hasActiveTransfer && !hasQueueActivity}
+                      disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
                       className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
-                        hasActiveTransfer || hasQueueActivity
-                          ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                          : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        isForceStopMode
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                          : (hasActiveTransfer || hasQueueActivity)
+                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                            : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                       }`}
-                      title={t('transfer.cancelAll')}
+                      title={isForceStopMode ? t('transfer.forceStop') : t('transfer.cancelAll')}
                     >
-                      <XCircle size={16} />
+                      {isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
                     </button>
                     <button
                       onClick={toggleSyncNavigation}
@@ -6135,7 +6219,7 @@ const App: React.FC = () => {
         onFileMutation={(target) => {
           setTimeout(() => {
             if (target === 'remote' || target === 'both') {
-              if (isConnected) loadRemoteFiles();
+              if (isConnected) loadRemoteFiles(undefined, true);
             }
             if (target === 'local' || target === 'both') {
               loadLocalFiles(currentLocalPath);
@@ -6149,7 +6233,7 @@ const App: React.FC = () => {
               await invoke('save_remote_file', { path: file.path, content });
               humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
               notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-              await loadRemoteFiles();
+              await loadRemoteFiles(undefined, true);
             } else {
               await invoke('save_local_file', { path: file.path, content });
               humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
@@ -6172,7 +6256,7 @@ const App: React.FC = () => {
             const opts = connectionParams.options ?? activeSession?.connectionParams?.options;
             const verifyCert = opts?.verifyCert ?? true;
             if (protocol === 'ftp') {
-              const tlsMode = opts?.tlsMode ?? 'explicit_if_available';
+              const tlsMode = opts?.tlsMode ?? 'explicit';
               if (tlsMode === 'none') return 'insecure' as const;
               if (tlsMode === 'explicit_if_available') return 'warning' as const;
               // explicit or implicit — TLS is enforced
@@ -6187,7 +6271,7 @@ const App: React.FC = () => {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             if (protocol === 'ftp') {
-              const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit_if_available';
+              const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit';
               if (tlsMode === 'none') return undefined;
               return 'TLS';
             }

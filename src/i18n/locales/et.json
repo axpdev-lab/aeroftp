@@ -225,7 +225,7 @@
             "locked": "Lukustatud",
             "notConnected": "Pole ühendatud",
             "permsHeader": "Õigused",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Teed ei ole sünkroonis — navigeerige vastavatesse kaustadesse või keelake sünkroonitud navigeerimine"
         },
         "contextMenu": {
             "open": "Ava",
@@ -323,7 +323,8 @@
             "remove": "Eemalda",
             "retry": "Proovi uuesti",
             "stopAll": "Peata kõik",
-            "stopAllPending": "Peata kõik ootel olevad"
+            "stopAllPending": "Peata kõik ootel olevad",
+            "forceStop": "Sundpeatamine (katkesta praegune fail)"
         },
         "settings": {
             "title": "Seaded",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Teema",
             "themeAutoLabel": "Automaatne",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Valige failide ja kaustade ikoonistiil",
+            "iconThemeFilled": "Täidetud",
+            "iconThemeFilledDesc": "Värvilised dokumendikujundid tüübimärgistega",
+            "iconThemeMinimal": "Minimaalne",
+            "iconThemeMinimalDesc": "Ühevärvilised ikoonid, mis kohanduvad praeguse teemaga",
+            "iconThemeOutline": "Kontuurne",
+            "iconThemeOutlineDesc": "Puhtad kontuurikoonid värvikooditud failtüüpidega",
+            "iconsTab": "Ikoonid"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Ühendus serveriga katkestatud",
             "uploadStarted": "Üleslaadimine algas",
             "uploadComplete": "Üleslaadimine lõpetatud",
-            "uploadFailed": "Üleslaadimine ebaõnnestus: {error}",
+            "uploadFailed": "Üleslaadimine ebaõnnestus",
             "downloadStarted": "Allalaadimine algas",
             "downloadComplete": "Allalaadimine lõpetatud",
-            "downloadFailed": "Allalaadimine ebaõnnestus: {error}",
+            "downloadFailed": "Allalaadimine ebaõnnestus",
             "deleteSuccess": "{count} üksust kustutatud",
             "deleteFailed": "Kustutamine ebaõnnestus: {error}",
             "renameSuccess": "Edukalt ümber nimetatud",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-ühendus loodud",
             "auth_success": "Autentimine õnnestus kasutajana {username}",
             "auth_method_key": "Autenditud SSH-võtmega ({username})",
-            "listing_complete": "Loetletud {count} üksust"
+            "listing_complete": "Loetletud {count} üksust",
+            "connected_to": "Ühendatud {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fail lukustatud",
                 "disk_error": "Kettaviga",
                 "unknown": "Tundmatu"
-            }
+            },
+            "clearHistory": "Kustuta ajalugu",
+            "clearHistoryConfirm": "Kustutada kõik sünkroonimislogid?",
+            "journalsCleared": "{count} logi kustutatud",
+            "noJournals": "Sünkroonimisajalugu puudub",
+            "bandwidthLimit": "Kiiruspiirang",
+            "bandwidthUnlimited": "Piiramatu",
+            "bandwidthDownload": "Allalaadimine",
+            "bandwidthUpload": "Üleslaadimine",
+            "profile": "Profiil",
+            "profileCustom": "Kohandatud",
+            "profileMirror": "Peegel",
+            "profileTwoWay": "Kahesuunaline",
+            "profileBackup": "Varukoopia",
+            "profileMirrorDesc": "Kohalik → Kaug, kustuta orbud, kontrolli suurust",
+            "profileTwoWayDesc": "Kahesuunaline, säilita uuem, ilma kustutamiseta",
+            "profileBackupDesc": "Kohalik → Kaug, kontrollsumma kontroll, ilma kustutamiseta",
+            "conflictsFound": "{count} konflikti leitud",
+            "resolveConflicts": "Lahenda konfliktid",
+            "keepLocal": "Säilita kohalik",
+            "keepRemote": "Säilita kaug",
+            "keepBoth": "Säilita mõlemad",
+            "keepNewer": "Säilita uuem",
+            "keepLocalAll": "Säilita kohalik kõigile",
+            "keepRemoteAll": "Säilita kaug kõigile",
+            "keepNewerAll": "Säilita uuem kõigile",
+            "skipAll": "Jäta kõik vahele",
+            "conflictResolved": "Lahendatud"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Ühendus katkestatud",
                 "newConnection": "Uus ühendus",
                 "syncing": "Sünkroniseerimine...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Sulge teised vahelehed",
+                "closeAll": "Sulge kõik vahelehed"
             }
         },
         "update": {

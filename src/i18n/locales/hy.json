@@ -225,7 +225,7 @@
             "locked": "Արգելափակված",
             "notConnected": "Չի միացված",
             "permsHeader": "Թույլտվություններ",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Ուղիները համաժամանակեցված չեն — անցեք համապատասխան թղթապանակներ կամ անջատեք համաժամանակեցված նավարկությունը"
         },
         "contextMenu": {
             "open": "Բացել",
@@ -323,7 +323,8 @@
             "remove": "Հեռացնել",
             "retry": "Կրկնել",
             "stopAll": "Կանգնեցնել բոլորը",
-            "stopAllPending": "Կանգնեցնել բոլոր սպասվողները"
+            "stopAllPending": "Կանգնեցնել բոլոր սպասվողները",
+            "forceStop": "Ստիպողական կանգնեցում (ընդհատել ընթացիկ ֆայլը)"
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Թեమա",
             "themeAutoLabel": "Ավտոմատ",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Ընտրեք պատկերակների ոճը ֆայլերի և թղթապանակների համար",
+            "iconThemeFilled": "Լիքը",
+            "iconThemeFilledDesc": "Գունավոր փաստաթղթերի ձևեր՝ տեսակի նշաններով",
+            "iconThemeMinimal": "Մինիմալ",
+            "iconThemeMinimalDesc": "Միագույն պատկերակներ, որոնք հարմարվում են ընթացիկ թեմային",
+            "iconThemeOutline": "Ուրվագիծ",
+            "iconThemeOutlineDesc": "Մաքուր գծային պատկերակներ՝ գունային կոդավորված ֆայլերի տեսակներով",
+            "iconsTab": "Պատկերակներ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -774,10 +775,10 @@
             "disconnectFailed": "Անջատումը ձախողվեց՝ {error}",
             "uploadStarted": "Վերբեռնումը սկսված է",
             "uploadComplete": "Վերբեռնումը ավարտված է",
-            "uploadFailed": "Վերբեռնումը ձախողվեց՝ {error}",
+            "uploadFailed": "Վերբեռնումը ձախողվեց՝",
             "downloadStarted": "Ներբեռնումը սկսված է",
             "downloadComplete": "Ներբեռնումը ավարտված է",
-            "downloadFailed": "Ներբեռնումը ձախողվեց՝ {error}",
+            "downloadFailed": "Ներբեռնումը ձախողվեց՝",
             "deleteSuccess": "Ջնջված է {count} տարր",
             "deleteFailed": "Ջնջելը ձախողվեց՝ {error}",
             "deleted": "Ջնջված է",
@@ -967,7 +968,8 @@
             "https_established": "HTTPS կապը հաստատված է",
             "auth_success": "Նույնականացումը հաջողվեց որպես {username}",
             "auth_method_key": "Նույնականացված է SSH բանալով ({username})",
-            "listing_complete": "Ցուցակագրված է {count} տարր"
+            "listing_complete": "Ցուցակագրված է {count} տարր",
+            "connected_to": "Միացված է {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -1241,7 +1243,34 @@
                 "file_locked": "Ֆայլը կողպված է",
                 "disk_error": "Սկավառակի սխալ",
                 "unknown": "Անհայտ"
-            }
+            },
+            "clearHistory": "Մաքրել պատմությունը",
+            "clearHistoryConfirm": "Ջնջել բոլոր համաժամանակեցման մատյանները՞",
+            "journalsCleared": "{count} մատյան ջնջվեց",
+            "noJournals": "Համաժամանակեցման պատմություն չկա",
+            "bandwidthLimit": "Արագության սահմանաչափ",
+            "bandwidthUnlimited": "Անսահմանափակ",
+            "bandwidthDownload": "Ներբեռնում",
+            "bandwidthUpload": "Վերբեռնում",
+            "profile": "Պրոֆիլ",
+            "profileCustom": "Հատուկ",
+            "profileMirror": "Հայելային",
+            "profileTwoWay": "Երկկողմ",
+            "profileBackup": "Պահուստավորում",
+            "profileMirrorDesc": "Տեղային → Հեռավոր, ջնջել որբերը, ստուգել չափը",
+            "profileTwoWayDesc": "Երկկողմ, պահել ավելի նորը, առանց ջնջելու",
+            "profileBackupDesc": "Տեղային → Հեռավոր, checksum ստուգում, առանց ջնջելու",
+            "conflictsFound": "Գտնվել է {count} կոնֆլիկտ",
+            "resolveConflicts": "Լուծել կոնֆլիկտները",
+            "keepLocal": "Պահել տեղայինը",
+            "keepRemote": "Պահել հեռավորը",
+            "keepBoth": "Պահել երկուսն էլ",
+            "keepNewer": "Պահել ավելի նորը",
+            "keepLocalAll": "Պահել տեղայինը բոլորի համար",
+            "keepRemoteAll": "Պահել հեռավորը բոլորի համար",
+            "keepNewerAll": "Պահել ավելի նորը բոլորի համար",
+            "skipAll": "Բաց թողնել բոլորը",
+            "conflictResolved": "Լուծված"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -1292,8 +1321,8 @@
                 "disconnected": "Անջատված",
                 "newConnection": "Նոր կապակցություն",
                 "syncing": "Համաժամանակում...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Փակել մյուս ներդիրները",
+                "closeAll": "Փակել բոլոր ներդիրները"
             }
         },
         "update": {

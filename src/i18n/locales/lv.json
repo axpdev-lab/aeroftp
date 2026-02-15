@@ -225,7 +225,7 @@
             "locked": "Bloķēts",
             "notConnected": "Nav savienots",
             "permsHeader": "Atļaujas",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Celi nav sinhronizeti — parejiet uz atbilstosam mapem vai atspejojiet sinhronizeto navigaciju"
         },
         "contextMenu": {
             "open": "Atvērt",
@@ -323,7 +323,8 @@
             "remove": "Noņemt",
             "retry": "Mēģināt vēlreiz",
             "stopAll": "Apturēt visu",
-            "stopAllPending": "Apturēt visus gaidošos"
+            "stopAllPending": "Apturēt visus gaidošos",
+            "forceStop": "Piespiedu apstasanas (partraukt pasreizejo failu)"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Motīvs",
             "themeAutoLabel": "Automātisks",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Izvelieties ikonu stilu failiem un mapem",
+            "iconThemeFilled": "Aizpilditas",
+            "iconThemeFilledDesc": "Krasainas dokumentu formas ar veidu zimem",
+            "iconThemeMinimal": "Minimalistiskas",
+            "iconThemeMinimalDesc": "Vienkrasas ikonas, kas pielagojas pasreizejai temai",
+            "iconThemeOutline": "Konturas",
+            "iconThemeOutlineDesc": "Tiras konturu ikonas ar krasas kodetiem failu veidiem",
+            "iconsTab": "Ikonas"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Atvienots no servera",
             "uploadStarted": "Augšupielāde sākta",
             "uploadComplete": "Augšupielāde pabeigta",
-            "uploadFailed": "Augšupielāde neizdevās: {error}",
+            "uploadFailed": "Augšupielāde neizdevās",
             "downloadStarted": "Lejupielāde sākta",
             "downloadComplete": "Lejupielāde pabeigta",
-            "downloadFailed": "Lejupielāde neizdevās: {error}",
+            "downloadFailed": "Lejupielāde neizdevās",
             "deleteSuccess": "{count} vienumi dzēsti",
             "deleteFailed": "Dzēšana neizdevās: {error}",
             "renameSuccess": "Veiksmīgi pārdēvēts",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS savienojums izveidots",
             "auth_success": "Autentifikācija veiksmīga kā {username}",
             "auth_method_key": "Autentificēts ar SSH atslēgu ({username})",
-            "listing_complete": "Uzskaitīti {count} elementi"
+            "listing_complete": "Uzskaitīti {count} elementi",
+            "connected_to": "Savienots ar {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fails bloķēts",
                 "disk_error": "Diska kļūda",
                 "unknown": "Nezināms"
-            }
+            },
+            "clearHistory": "Notirit vesturi",
+            "clearHistoryConfirm": "Dzest visus sinhronizacijas zurnalus?",
+            "journalsCleared": "Dzesti {count} zurnali",
+            "noJournals": "Nav sinhronizacijas vestures",
+            "bandwidthLimit": "Atruma ierobezojums",
+            "bandwidthUnlimited": "Neierobezots",
+            "bandwidthDownload": "Lejupielade",
+            "bandwidthUpload": "Augsuielade",
+            "profile": "Profils",
+            "profileCustom": "Pielâgots",
+            "profileMirror": "Spogulis",
+            "profileTwoWay": "Divvirzienu",
+            "profileBackup": "Rezerves kopija",
+            "profileMirrorDesc": "Vietejais → Attalais, dzest bareniski, parliecinat izmeru",
+            "profileTwoWayDesc": "Divvirzienu, saglabat jaunako, bez dzesanas",
+            "profileBackupDesc": "Vietejais → Attalais, kontrolsummas parbaude, bez dzesanas",
+            "conflictsFound": "Atrasti {count} konflikti",
+            "resolveConflicts": "Atrisinat konfliktus",
+            "keepLocal": "Saglabat vietejo",
+            "keepRemote": "Saglabat attalo",
+            "keepBoth": "Saglabat abus",
+            "keepNewer": "Saglabat jaunako",
+            "keepLocalAll": "Saglabat vietejo visiem",
+            "keepRemoteAll": "Saglabat attalo visiem",
+            "keepNewerAll": "Saglabat jaunako visiem",
+            "skipAll": "Izlaist visus",
+            "conflictResolved": "Atrisinats"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Atvienots",
                 "newConnection": "Jauns savienojums",
                 "syncing": "Sinhronizē...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Aizvirt parijas cilnes",
+                "closeAll": "Aizvirt visas cilnes"
             }
         },
         "update": {

@@ -423,7 +423,7 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
 pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
     let dir = sync_index_dir()?;
     let path = dir.join(index_filename(&index.local_path, &index.remote_path));
-    let data = serde_json::to_string_pretty(index)
+    let data = serde_json::to_string(index)
         .map_err(|e| format!("Failed to serialize sync index: {}", e))?;
     std::fs::write(&path, data)
         .map_err(|e| format!("Failed to write sync index: {}", e))?;
@@ -850,7 +850,7 @@ pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
     let path = dir.join(journal_filename(&journal.local_path, &journal.remote_path));
     let mut journal_to_save = journal.clone();
     journal_to_save.updated_at = Utc::now();
-    let data = serde_json::to_string_pretty(&journal_to_save)
+    let data = serde_json::to_string(&journal_to_save)
         .map_err(|e| format!("Failed to serialize sync journal: {}", e))?;
     std::fs::write(&path, data)
         .map_err(|e| format!("Failed to write sync journal: {}", e))?;
@@ -864,6 +864,236 @@ pub fn delete_sync_journal(local_path: &str, remote_path: &str) -> Result<(), St
     if path.exists() {
         std::fs::remove_file(&path)
             .map_err(|e| format!("Failed to delete sync journal: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Summary info for a stored journal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalSummary {
+    pub local_path: String,
+    pub remote_path: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub total_entries: usize,
+    pub completed_entries: usize,
+    pub completed: bool,
+}
+
+/// List all sync journals with summary info
+pub fn list_sync_journals() -> Result<Vec<JournalSummary>, String> {
+    let dir = sync_journal_dir()?;
+    let mut summaries = Vec::new();
+    let entries = std::fs::read_dir(&dir)
+        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false) {
+            if let Ok(data) = std::fs::read_to_string(&path) {
+                if let Ok(journal) = serde_json::from_str::<SyncJournal>(&data) {
+                    let completed_entries = journal.entries.iter()
+                        .filter(|e| e.status == JournalEntryStatus::Completed)
+                        .count();
+                    summaries.push(JournalSummary {
+                        local_path: journal.local_path,
+                        remote_path: journal.remote_path,
+                        created_at: journal.created_at,
+                        updated_at: journal.updated_at,
+                        total_entries: journal.entries.len(),
+                        completed_entries,
+                        completed: journal.completed,
+                    });
+                }
+            }
+        }
+    }
+    summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(summaries)
+}
+
+/// Delete journals older than the given number of days.
+/// Returns the number of journals deleted.
+pub fn cleanup_old_journals(max_age_days: u32) -> Result<u32, String> {
+    let dir = sync_journal_dir()?;
+    let cutoff = Utc::now() - chrono::Duration::days(max_age_days as i64);
+    let mut deleted = 0u32;
+    let entries = std::fs::read_dir(&dir)
+        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false) {
+            if let Ok(data) = std::fs::read_to_string(&path) {
+                if let Ok(journal) = serde_json::from_str::<SyncJournal>(&data) {
+                    if journal.completed && journal.updated_at < cutoff {
+                        let _ = std::fs::remove_file(&path);
+                        deleted += 1;
+                    }
+                }
+            }
+        }
+    }
+    Ok(deleted)
+}
+
+/// Delete ALL sync journals (clear history).
+/// Returns the number of journals deleted.
+pub fn clear_all_journals() -> Result<u32, String> {
+    let dir = sync_journal_dir()?;
+    let mut deleted = 0u32;
+    let entries = std::fs::read_dir(&dir)
+        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false) {
+            let _ = std::fs::remove_file(&path);
+            deleted += 1;
+        }
+    }
+    Ok(deleted)
+}
+
+// ============================================================================
+// Sync Profiles — Named presets for sync configuration
+// ============================================================================
+
+/// A sync profile combines all sync settings into a named preset
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncProfile {
+    pub id: String,
+    pub name: String,
+    pub builtin: bool,
+    pub direction: SyncDirection,
+    pub compare_timestamp: bool,
+    pub compare_size: bool,
+    pub compare_checksum: bool,
+    pub exclude_patterns: Vec<String>,
+    pub retry_policy: RetryPolicy,
+    pub verify_policy: VerifyPolicy,
+    pub delete_orphans: bool,
+}
+
+impl SyncProfile {
+    /// Mirror: local → remote, delete orphans on remote, verify size
+    pub fn mirror() -> Self {
+        Self {
+            id: "mirror".to_string(),
+            name: "Mirror".to_string(),
+            builtin: true,
+            direction: SyncDirection::LocalToRemote,
+            compare_timestamp: true,
+            compare_size: true,
+            compare_checksum: false,
+            exclude_patterns: vec![
+                "node_modules".into(), ".git".into(), ".DS_Store".into(),
+                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+            ],
+            retry_policy: RetryPolicy::default(),
+            verify_policy: VerifyPolicy::SizeOnly,
+            delete_orphans: true,
+        }
+    }
+
+    /// Two-way: bidirectional, keep newer, no deletes
+    pub fn two_way() -> Self {
+        Self {
+            id: "two_way".to_string(),
+            name: "Two-way".to_string(),
+            builtin: true,
+            direction: SyncDirection::Bidirectional,
+            compare_timestamp: true,
+            compare_size: true,
+            compare_checksum: false,
+            exclude_patterns: vec![
+                "node_modules".into(), ".git".into(), ".DS_Store".into(),
+                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+            ],
+            retry_policy: RetryPolicy::default(),
+            verify_policy: VerifyPolicy::SizeOnly,
+            delete_orphans: false,
+        }
+    }
+
+    /// Backup: local → remote, checksum verify, no deletes
+    pub fn backup() -> Self {
+        Self {
+            id: "backup".to_string(),
+            name: "Backup".to_string(),
+            builtin: true,
+            direction: SyncDirection::LocalToRemote,
+            compare_timestamp: false,
+            compare_size: true,
+            compare_checksum: true,
+            exclude_patterns: vec![
+                "node_modules".into(), ".git".into(), ".DS_Store".into(),
+                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+            ],
+            retry_policy: RetryPolicy {
+                max_retries: 5,
+                ..RetryPolicy::default()
+            },
+            verify_policy: VerifyPolicy::Full,
+            delete_orphans: false,
+        }
+    }
+
+    /// All built-in profiles
+    pub fn builtins() -> Vec<Self> {
+        vec![Self::mirror(), Self::two_way(), Self::backup()]
+    }
+}
+
+/// Directory for custom sync profiles
+fn sync_profiles_dir() -> Result<PathBuf, String> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let dir = base.join("aeroftp").join("sync-profiles");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create sync profiles directory: {}", e))?;
+    Ok(dir)
+}
+
+/// Load all profiles (built-in + custom)
+pub fn load_sync_profiles() -> Result<Vec<SyncProfile>, String> {
+    let mut profiles = SyncProfile::builtins();
+    let dir = sync_profiles_dir()?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if let Ok(data) = std::fs::read_to_string(&path) {
+                    if let Ok(profile) = serde_json::from_str::<SyncProfile>(&data) {
+                        if !profile.builtin {
+                            profiles.push(profile);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(profiles)
+}
+
+/// Save a custom profile
+pub fn save_sync_profile(profile: &SyncProfile) -> Result<(), String> {
+    if profile.builtin {
+        return Err("Cannot save built-in profiles".to_string());
+    }
+    let dir = sync_profiles_dir()?;
+    let path = dir.join(format!("{}.json", profile.id));
+    let data = serde_json::to_string(profile)
+        .map_err(|e| format!("Failed to serialize sync profile: {}", e))?;
+    std::fs::write(&path, data)
+        .map_err(|e| format!("Failed to write sync profile: {}", e))?;
+    Ok(())
+}
+
+/// Delete a custom profile
+pub fn delete_sync_profile(id: &str) -> Result<(), String> {
+    let dir = sync_profiles_dir()?;
+    let path = dir.join(format!("{}.json", id));
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete sync profile: {}", e))?;
     }
     Ok(())
 }

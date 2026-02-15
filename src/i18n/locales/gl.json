@@ -225,7 +225,7 @@
             "locked": "Bloqueado",
             "notConnected": "Non conectado",
             "permsHeader": "Perms",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "As rutas non están sincronizadas — navegue a cartafoles coincidentes ou desactive a navegación sincronizada"
         },
         "contextMenu": {
             "open": "Abrir",
@@ -323,7 +323,8 @@
             "remove": "Eliminar",
             "retry": "Reintentar",
             "stopAll": "Deter todo",
-            "stopAllPending": "Deter os pendentes"
+            "stopAllPending": "Deter os pendentes",
+            "forceStop": "Detención forzada (interromper o ficheiro actual)"
         },
         "settings": {
             "title": "Axustes",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Escolla un estilo de iconas para ficheiros e cartafoles",
+            "iconThemeFilled": "Cheo",
+            "iconThemeFilledDesc": "Formas de documento coloreadas con insignias de tipo",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Iconas monocromáticas que se adaptan ao tema actual",
+            "iconThemeOutline": "Contorno",
+            "iconThemeOutlineDesc": "Iconas de trazo limpo con tipos de ficheiro codificados por cor",
+            "iconsTab": "Iconas"
         },
         "devtools": {
             "title": "AeroTools",
@@ -781,10 +782,10 @@
             "disconnectFailed": "Fallou a desconexión: {error}",
             "uploadStarted": "Subida iniciada",
             "uploadComplete": "Subida completada",
-            "uploadFailed": "Fallou a subida: {error}",
+            "uploadFailed": "Fallou a subida",
             "downloadStarted": "Descarga iniciada",
             "downloadComplete": "Descarga completada",
-            "downloadFailed": "Fallou a descarga: {error}",
+            "downloadFailed": "Fallou a descarga",
             "deleteSuccess": "{count} elementos eliminados",
             "deleteFailed": "Fallou a eliminación: {error}",
             "deleted": "Eliminado",
@@ -974,7 +975,8 @@
             "https_established": "Conexión HTTPS establecida",
             "auth_success": "Autenticación exitosa como {username}",
             "auth_method_key": "Autenticado con clave SSH ({username})",
-            "listing_complete": "Listados {count} elementos"
+            "listing_complete": "Listados {count} elementos",
+            "connected_to": "Conectado a {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Ficheiro bloqueado",
                 "disk_error": "Erro de disco",
                 "unknown": "Descoñecido"
-            }
+            },
+            "clearHistory": "Borrar historial",
+            "clearHistoryConfirm": "Eliminar todos os diarios de sincronización?",
+            "journalsCleared": "{count} diarios eliminados",
+            "noJournals": "Sen historial de sincronización",
+            "bandwidthLimit": "Límite de velocidade",
+            "bandwidthUnlimited": "Sen límite",
+            "bandwidthDownload": "Descarga",
+            "bandwidthUpload": "Subida",
+            "profile": "Perfil",
+            "profileCustom": "Personalizado",
+            "profileMirror": "Espello",
+            "profileTwoWay": "Bidireccional",
+            "profileBackup": "Copia de seguranza",
+            "profileMirrorDesc": "Local → Remoto, eliminar orfos, verificar tamaño",
+            "profileTwoWayDesc": "Bidireccional, conservar o máis recente, sen eliminacións",
+            "profileBackupDesc": "Local → Remoto, verificación de checksum, sen eliminacións",
+            "conflictsFound": "{count} conflitos atopados",
+            "resolveConflicts": "Resolver conflitos",
+            "keepLocal": "Conservar local",
+            "keepRemote": "Conservar remoto",
+            "keepBoth": "Conservar ambos",
+            "keepNewer": "Conservar o máis recente",
+            "keepLocalAll": "Conservar local para todos",
+            "keepRemoteAll": "Conservar remoto para todos",
+            "keepNewerAll": "Conservar o máis recente para todos",
+            "skipAll": "Omitir todos",
+            "conflictResolved": "Resolto"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Desconectado",
                 "newConnection": "Nova conexión",
                 "syncing": "Sincronizando...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Pechar outras lapelas",
+                "closeAll": "Pechar todas as lapelas"
             }
         },
         "update": {

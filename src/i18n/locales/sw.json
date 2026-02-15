@@ -225,7 +225,7 @@
             "locked": "Imefungwa",
             "notConnected": "Haijaunganishwa",
             "permsHeader": "Ruhusa",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Njia haziko sawa — nenda kwenye folda zinazolingana au zima urambazaji uliosawazishwa"
         },
         "contextMenu": {
             "open": "Fungua",
@@ -323,7 +323,8 @@
             "remove": "Ondoa",
             "retry": "Jaribu tena",
             "stopAll": "Simamisha zote",
-            "stopAllPending": "Simamisha zote zinazosubiri"
+            "stopAllPending": "Simamisha zote zinazosubiri",
+            "forceStop": "Simamisha kwa nguvu (katisha faili ya sasa)"
         },
         "settings": {
             "title": "Mipangilio",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Mandhari",
             "themeAutoLabel": "Otomatiki",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Chagua mtindo wa ikoni kwa faili na folda",
+            "iconThemeFilled": "Zilizojazwa",
+            "iconThemeFilledDesc": "Maumbo ya hati yenye rangi na beji za aina",
+            "iconThemeMinimal": "Rahisi",
+            "iconThemeMinimalDesc": "Ikoni za rangi moja zinazobadilika kulingana na mandhari ya sasa",
+            "iconThemeOutline": "Muhtasari",
+            "iconThemeOutlineDesc": "Ikoni safi za mistari na aina za faili zilizotofautishwa kwa rangi",
+            "iconsTab": "Ikoni"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Imetenganishwa na seva",
             "uploadStarted": "Upakiaji umeanza",
             "uploadComplete": "Upakiaji umekamilika",
-            "uploadFailed": "Upakiaji umeshindwa: {error}",
+            "uploadFailed": "Upakiaji umeshindwa",
             "downloadStarted": "Upakuaji umeanza",
             "downloadComplete": "Upakuaji umekamilika",
-            "downloadFailed": "Upakuaji umeshindwa: {error}",
+            "downloadFailed": "Upakuaji umeshindwa",
             "deleteSuccess": "Vipengele {count} vimefutwa",
             "deleteFailed": "Kufuta kumeshindwa: {error}",
             "renameSuccess": "Imebadilishwa jina kwa mafanikio",
@@ -974,7 +975,8 @@
             "https_established": "Muunganisho wa HTTPS umeanzishwa",
             "auth_success": "Uthibitishaji umefanikiwa kama {username}",
             "auth_method_key": "Imethibitishwa kwa ufunguo wa SSH ({username})",
-            "listing_complete": "Vipengee {count} vimeorodheshwa"
+            "listing_complete": "Vipengee {count} vimeorodheshwa",
+            "connected_to": "Imeunganishwa na {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Faili imefungwa",
                 "disk_error": "Hitilafu ya diski",
                 "unknown": "Haijulikani"
-            }
+            },
+            "clearHistory": "Futa Historia",
+            "clearHistoryConfirm": "Futa jarida zote za usawazishaji?",
+            "journalsCleared": "Jarida {count} zimefutwa",
+            "noJournals": "Hakuna historia ya usawazishaji",
+            "bandwidthLimit": "Kikomo cha Kasi",
+            "bandwidthUnlimited": "Bila kikomo",
+            "bandwidthDownload": "Pakua",
+            "bandwidthUpload": "Pakia",
+            "profile": "Wasifu",
+            "profileCustom": "Maalum",
+            "profileMirror": "Kioo",
+            "profileTwoWay": "Pande mbili",
+            "profileBackup": "Nakala rudufu",
+            "profileMirrorDesc": "Ndani → Nje, futa yatima, thibitisha ukubwa",
+            "profileTwoWayDesc": "Pande mbili, weka mpya zaidi, bila kufuta",
+            "profileBackupDesc": "Ndani → Nje, uthibitishaji wa checksum, bila kufuta",
+            "conflictsFound": "Migogoro {count} imepatikana",
+            "resolveConflicts": "Tatua Migogoro",
+            "keepLocal": "Weka ya Ndani",
+            "keepRemote": "Weka ya Nje",
+            "keepBoth": "Weka Zote Mbili",
+            "keepNewer": "Weka Mpya Zaidi",
+            "keepLocalAll": "Weka ya Ndani kwa Zote",
+            "keepRemoteAll": "Weka ya Nje kwa Zote",
+            "keepNewerAll": "Weka Mpya Zaidi kwa Zote",
+            "skipAll": "Ruka Zote",
+            "conflictResolved": "Imetatuliwa"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Imetenganishwa",
                 "newConnection": "Muunganisho mpya",
                 "syncing": "Inasawazisha...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Funga tabo nyingine",
+                "closeAll": "Funga tabo zote"
             }
         },
         "update": {

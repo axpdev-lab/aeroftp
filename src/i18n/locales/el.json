@@ -225,7 +225,7 @@
             "locked": "Κλειδωμένο",
             "notConnected": "Δεν Είστε Συνδεδεμένος",
             "permsHeader": "Δικαιώματα",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Τα μονοπάτια δεν είναι συγχρονισμένα — πλοηγηθείτε σε αντίστοιχους φακέλους ή απενεργοποιήστε τη συγχρονισμένη πλοήγηση"
         },
         "contextMenu": {
             "open": "Άνοιγμα",
@@ -323,7 +323,8 @@
             "remove": "Αφαίρεση",
             "retry": "Επανάληψη",
             "stopAll": "Διακοπή όλων",
-            "stopAllPending": "Διακοπή όλων σε αναμονή"
+            "stopAllPending": "Διακοπή όλων σε αναμονή",
+            "forceStop": "Αναγκαστική διακοπή (διακοπή τρέχοντος αρχείου)"
         },
         "settings": {
             "title": "Ρυθμίσεις",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Θέμα",
             "themeAutoLabel": "Αυτόματο",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Επιλέξτε στυλ εικονιδίων για αρχεία και φακέλους",
+            "iconThemeFilled": "Γεμάτα",
+            "iconThemeFilledDesc": "Χρωματιστά σχήματα εγγράφων με κονκάρδες τύπου",
+            "iconThemeMinimal": "Ελάχιστα",
+            "iconThemeMinimalDesc": "Μονόχρωμα εικονίδια που προσαρμόζονται στο τρέχον θέμα",
+            "iconThemeOutline": "Περιγράμματα",
+            "iconThemeOutlineDesc": "Καθαρά εικονίδια περιγράμματος με χρωματική κωδικοποίηση τύπων αρχείων",
+            "iconsTab": "Εικονίδια"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Αποσυνδέθηκε από τον διακομιστή",
             "uploadStarted": "Η μεταφόρτωση ξεκίνησε",
             "uploadComplete": "Η μεταφόρτωση ολοκληρώθηκε",
-            "uploadFailed": "Η μεταφόρτωση απέτυχε: {error}",
+            "uploadFailed": "Η μεταφόρτωση απέτυχε",
             "downloadStarted": "Η λήψη ξεκίνησε",
             "downloadComplete": "Η λήψη ολοκληρώθηκε",
-            "downloadFailed": "Η λήψη απέτυχε: {error}",
+            "downloadFailed": "Η λήψη απέτυχε",
             "deleteSuccess": "{count} στοιχεία διαγράφηκαν",
             "deleteFailed": "Η διαγραφή απέτυχε: {error}",
             "renameSuccess": "Μετονομάστηκε επιτυχώς",
@@ -974,7 +975,8 @@
             "https_established": "Σύνδεση HTTPS καθιερώθηκε",
             "auth_success": "Επιτυχής αυθεντικοποίηση ως {username}",
             "auth_method_key": "Αυθεντικοποίηση με κλειδί SSH ({username})",
-            "listing_complete": "Καταγράφηκαν {count} στοιχεία"
+            "listing_complete": "Καταγράφηκαν {count} στοιχεία",
+            "connected_to": "Συνδέθηκε στο {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Αρχείο κλειδωμένο",
                 "disk_error": "Σφάλμα δίσκου",
                 "unknown": "Άγνωστο"
-            }
+            },
+            "clearHistory": "Εκκαθάριση ιστορικού",
+            "clearHistoryConfirm": "Διαγραφή όλων των ημερολογίων συγχρονισμού;",
+            "journalsCleared": "{count} ημερολόγια διαγράφηκαν",
+            "noJournals": "Κανένα ιστορικό συγχρονισμού",
+            "bandwidthLimit": "Όριο ταχύτητας",
+            "bandwidthUnlimited": "Απεριόριστο",
+            "bandwidthDownload": "Λήψη",
+            "bandwidthUpload": "Μεταφόρτωση",
+            "profile": "Προφίλ",
+            "profileCustom": "Προσαρμοσμένο",
+            "profileMirror": "Κατοπτρισμός",
+            "profileTwoWay": "Αμφίδρομος",
+            "profileBackup": "Αντίγραφο ασφαλείας",
+            "profileMirrorDesc": "Τοπικό → Απομακρυσμένο, διαγραφή ορφανών, επαλήθευση μεγέθους",
+            "profileTwoWayDesc": "Αμφίδρομος, διατήρηση νεότερου, χωρίς διαγραφές",
+            "profileBackupDesc": "Τοπικό → Απομακρυσμένο, επαλήθευση checksum, χωρίς διαγραφές",
+            "conflictsFound": "{count} συγκρούσεις βρέθηκαν",
+            "resolveConflicts": "Επίλυση συγκρούσεων",
+            "keepLocal": "Διατήρηση τοπικού",
+            "keepRemote": "Διατήρηση απομακρυσμένου",
+            "keepBoth": "Διατήρηση και των δύο",
+            "keepNewer": "Διατήρηση νεότερου",
+            "keepLocalAll": "Διατήρηση τοπικού για όλα",
+            "keepRemoteAll": "Διατήρηση απομακρυσμένου για όλα",
+            "keepNewerAll": "Διατήρηση νεότερου για όλα",
+            "skipAll": "Παράλειψη όλων",
+            "conflictResolved": "Επιλύθηκε"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Αποσυνδεδεμένο",
                 "newConnection": "Νέα σύνδεση",
                 "syncing": "Συγχρονισμός...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Κλείσιμο άλλων καρτελών",
+                "closeAll": "Κλείσιμο όλων των καρτελών"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "ជាប់សោ",
             "notConnected": "មិនបានភ្ជាប់",
             "permsHeader": "សិទ្ធិ",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "ផ្លូវមិនត្រូវគ្នា — រុករកទៅថតដែលត្រូវគ្នា ឬបិទការរុករកសមកាលកម្ម"
         },
         "contextMenu": {
             "open": "បើក",
@@ -323,7 +323,8 @@
             "remove": "លុប",
             "retry": "ព្យាយាមម្ដងទៀត",
             "stopAll": "បញ្ឈប់ទាំងអស់",
-            "stopAllPending": "បញ្ឈប់ទាំងអស់ដែលកំពុងរង់ចាំ"
+            "stopAllPending": "បញ្ឈប់ទាំងអស់ដែលកំពុងរង់ចាំ",
+            "forceStop": "បង្ខំឱ្យឈប់ (ផ្អាកឯកសារបច្ចុប្បន្ន)"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "ស្បែក",
             "themeAutoLabel": "ស្វ័យប្រវត្តិ",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "ជ្រើសរើសរចនាប័ទ្មរូបតំណាងសម្រាប់ឯកសារនិងថត",
+            "iconThemeFilled": "បំពេញ",
+            "iconThemeFilledDesc": "រាងឯកសារពណ៌ជាមួយស្លាកប្រភេទ",
+            "iconThemeMinimal": "តិចបំផុត",
+            "iconThemeMinimalDesc": "រូបតំណាងពណ៌តែមួយដែលសម្របតាមស្បែកបច្ចុប្បន្ន",
+            "iconThemeOutline": "គ្រោង",
+            "iconThemeOutlineDesc": "រូបតំណាងគ្រោងស្អាតជាមួយប្រភេទឯកសារតាមកូដពណ៌",
+            "iconsTab": "រូបតំណាង"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "បានផ្តាច់ពីម៉ាស៊ីនមេ",
             "uploadStarted": "ការបញ្ជូនឡើងបានចាប់ផ្តើម",
             "uploadComplete": "ការបញ្ជូនឡើងបានបញ្ចប់",
-            "uploadFailed": "ការបញ្ជូនឡើងបរាជ័យ៖ {error}",
+            "uploadFailed": "ការបញ្ជូនឡើងបរាជ័យ៖",
             "downloadStarted": "ការទាញយកបានចាប់ផ្តើម",
             "downloadComplete": "ការទាញយកបានបញ្ចប់",
-            "downloadFailed": "ការទាញយកបរាជ័យ៖ {error}",
+            "downloadFailed": "ការទាញយកបរាជ័យ៖",
             "deleteSuccess": "{count} ធាតុបានលុប",
             "deleteFailed": "ការលុបបរាជ័យ៖ {error}",
             "renameSuccess": "បានប្តូរឈ្មោះដោយជោគជ័យ",
@@ -974,7 +975,8 @@
             "https_established": "ការតភ្ជាប់ HTTPS បានបង្កើត",
             "auth_success": "ការផ្ទៀងផ្ទាត់ជោគជ័យជា {username}",
             "auth_method_key": "បានផ្ទៀងផ្ទាត់ដោយកូនសោ SSH ({username})",
-            "listing_complete": "បានរាយបញ្ជី {count} ធាតុ"
+            "listing_complete": "បានរាយបញ្ជី {count} ធាតុ",
+            "connected_to": "បានភ្ជាប់ទៅ {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "ឯកសារត្រូវបានចាក់សោ",
                 "disk_error": "កំហុសថាស",
                 "unknown": "មិនស្គាល់"
-            }
+            },
+            "clearHistory": "សម្អាតប្រវត្តិ",
+            "clearHistoryConfirm": "លុបកំណត់ហេតុសមកាលកម្មទាំងអស់?",
+            "journalsCleared": "បានលុបកំណត់ហេតុ {count}",
+            "noJournals": "គ្មានប្រវត្តិសមកាលកម្ម",
+            "bandwidthLimit": "ដែនកំណត់ល្បឿន",
+            "bandwidthUnlimited": "គ្មានដែនកំណត់",
+            "bandwidthDownload": "ទាញយក",
+            "bandwidthUpload": "ផ្ទុកឡើង",
+            "profile": "ប្រវត្តិរូប",
+            "profileCustom": "ផ្ទាល់ខ្លួន",
+            "profileMirror": "កញ្ចក់",
+            "profileTwoWay": "ពីរទិស",
+            "profileBackup": "បម្រុងទុក",
+            "profileMirrorDesc": "មូលដ្ឋាន → ពីចម្ងាយ, លុបឯកសារកំព្រា, ផ្ទៀងផ្ទាត់ទំហំ",
+            "profileTwoWayDesc": "ពីរទិស, រក្សាថ្មីជាង, គ្មានការលុប",
+            "profileBackupDesc": "មូលដ្ឋាន → ពីចម្ងាយ, ផ្ទៀងផ្ទាត់ checksum, គ្មានការលុប",
+            "conflictsFound": "រកឃើញជម្លោះ {count}",
+            "resolveConflicts": "ដោះស្រាយជម្លោះ",
+            "keepLocal": "រក្សាមូលដ្ឋាន",
+            "keepRemote": "រក្សាពីចម្ងាយ",
+            "keepBoth": "រក្សាទាំងពីរ",
+            "keepNewer": "រក្សាថ្មីជាង",
+            "keepLocalAll": "រក្សាមូលដ្ឋានសម្រាប់ទាំងអស់",
+            "keepRemoteAll": "រក្សាពីចម្ងាយសម្រាប់ទាំងអស់",
+            "keepNewerAll": "រក្សាថ្មីជាងសម្រាប់ទាំងអស់",
+            "skipAll": "រំលងទាំងអស់",
+            "conflictResolved": "បានដោះស្រាយ"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "បានផ្ដាច់",
                 "newConnection": "ការភ្ជាប់ថ្មី",
                 "syncing": "កំពុងធ្វើសមកាលកម្ម...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "បិទផ្ទាំងផ្សេងទៀត",
+                "closeAll": "បិទផ្ទាំងទាំងអស់"
             }
         },
         "update": {

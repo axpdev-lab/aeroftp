@@ -524,6 +524,33 @@ impl S3Provider {
         ).await;
         Ok(())
     }
+
+    /// List all object keys under a given prefix (non-recursive, no delimiter).
+    /// Used by rename (folder) and rmdir_recursive.
+    async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, ProviderError> {
+        let response = self.s3_request(
+            Method::GET,
+            "",
+            Some(&[("list-type", "2"), ("prefix", prefix)]),
+            None,
+        ).await?;
+
+        if response.status() != StatusCode::OK {
+            return Err(ProviderError::ServerError("Failed to list objects by prefix".to_string()));
+        }
+
+        let xml = response.text().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        let key_pattern = regex::Regex::new(r"<Key>([^<]+)</Key>")
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        let keys: Vec<String> = key_pattern.captures_iter(&xml)
+            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+            .collect();
+
+        Ok(keys)
+    }
 }
 
 #[async_trait]
@@ -886,43 +913,57 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        // List all objects with this prefix and delete them
+
         let prefix = format!("{}/", path.trim_matches('/'));
-        
-        let response = self.s3_request(
-            Method::GET,
-            "",
-            Some(&[("list-type", "2"), ("prefix", &prefix)]),
-            None,
-        ).await?;
-        
-        if response.status() != StatusCode::OK {
-            return Err(ProviderError::ServerError("Failed to list objects for deletion".to_string()));
+        let keys = self.list_keys_with_prefix(&prefix).await?;
+
+        for key in &keys {
+            let _ = self.s3_request(Method::DELETE, key, None, None).await;
         }
-        
-        let xml = response.text().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        
-        // Extract all keys and delete them
-        let key_pattern = regex::Regex::new(r"<Key>([^<]+)</Key>")
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        
-        for cap in key_pattern.captures_iter(&xml) {
-            if let Some(key_match) = cap.get(1) {
-                let key = key_match.as_str();
-                let _ = self.s3_request(Method::DELETE, key, None, None).await;
-            }
-        }
-        
+
         Ok(())
     }
     
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        // S3 rename = server_copy + delete
-        self.server_copy(from, to).await?;
-        self.delete(from).await?;
-        info!("Renamed (copy+delete) {} to {}", from, to);
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let from_trimmed = from.trim_matches('/');
+        let to_trimmed = to.trim_matches('/');
+        let prefix = format!("{}/", from_trimmed);
+
+        // Check if this is a directory by listing objects under the prefix
+        let keys = self.list_keys_with_prefix(&prefix).await?;
+
+        if keys.is_empty() {
+            // Single file rename: copy + delete
+            self.server_copy(from, to).await?;
+            self.delete(from).await?;
+            info!("Renamed file (copy+delete) {} to {}", from, to);
+        } else {
+            // Directory rename: copy all objects to new prefix, then delete originals
+            let to_prefix = format!("{}/", to_trimmed);
+
+            for old_key in &keys {
+                let new_key = old_key.replacen(&prefix, &to_prefix, 1);
+                self.server_copy(
+                    &format!("/{}", old_key),
+                    &format!("/{}", new_key),
+                ).await?;
+            }
+
+            // Delete all original objects
+            for old_key in &keys {
+                let _ = self.s3_request(Method::DELETE, old_key, None, None).await;
+            }
+
+            // Also try to delete the old directory marker (if exists)
+            let _ = self.s3_request(Method::DELETE, &prefix, None, None).await;
+
+            info!("Renamed directory (copy+delete {} objects) {} to {}", keys.len(), from, to);
+        }
+
         Ok(())
     }
     

@@ -225,7 +225,7 @@
             "locked": "Užrakinta",
             "notConnected": "Neprisijungta",
             "permsHeader": "Leidimai",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Keliai nesinchronizuoti — pereikite i atitinkamus aplankus arba isijunkite sinchronizuota navigacija"
         },
         "contextMenu": {
             "open": "Atidaryti",
@@ -323,7 +323,8 @@
             "remove": "Pašalinti",
             "retry": "Bandyti dar kartą",
             "stopAll": "Sustabdyti viską",
-            "stopAllPending": "Sustabdyti visus laukiančius"
+            "stopAllPending": "Sustabdyti visus laukiančius",
+            "forceStop": "Priverstinis sustabdymas (nutraukti esama faila)"
         },
         "settings": {
             "title": "Nustatymai",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Automatinė",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Pasirinkite piktogramu stilu failams ir aplankams",
+            "iconThemeFilled": "Uzpildytos",
+            "iconThemeFilledDesc": "Spalvotos dokumento formos su tipo zenklais",
+            "iconThemeMinimal": "Minimalistines",
+            "iconThemeMinimalDesc": "Vienspalves piktogramos, prisitaikancios prie esamos temos",
+            "iconThemeOutline": "Konturas",
+            "iconThemeOutlineDesc": "Svarios konturo piktogramos su spalvomis koduotais failu tipais",
+            "iconsTab": "Piktogramos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Atsijungta nuo serverio",
             "uploadStarted": "Ikelimas pradetas",
             "uploadComplete": "Ikelimas baigtas",
-            "uploadFailed": "Ikelimas nepavyko: {error}",
+            "uploadFailed": "Ikelimas nepavyko",
             "downloadStarted": "Atsisiuntimas pradetas",
             "downloadComplete": "Atsisiuntimas baigtas",
-            "downloadFailed": "Atsisiuntimas nepavyko: {error}",
+            "downloadFailed": "Atsisiuntimas nepavyko",
             "deleteSuccess": "{count} elementu istrintas",
             "deleteFailed": "Istrinimas nepavyko: {error}",
             "renameSuccess": "Sekmingai pervadinta",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS ryšys užmegztas",
             "auth_success": "Autentifikacija sėkminga kaip {username}",
             "auth_method_key": "Autentifikuota su SSH raktu ({username})",
-            "listing_complete": "Išvardyta {count} elementų"
+            "listing_complete": "Išvardyta {count} elementų",
+            "connected_to": "Prisijungta prie {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Failas užrakintas",
                 "disk_error": "Disko klaida",
                 "unknown": "Nežinoma"
-            }
+            },
+            "clearHistory": "Isvalyti istorija",
+            "clearHistoryConfirm": "Istrinti visus sinchronizacijos zurnalus?",
+            "journalsCleared": "Istrinta zurnalu: {count}",
+            "noJournals": "Nera sinchronizacijos istorijos",
+            "bandwidthLimit": "Greicio limitas",
+            "bandwidthUnlimited": "Neribota",
+            "bandwidthDownload": "Atsisiuntimas",
+            "bandwidthUpload": "Ikelimas",
+            "profile": "Profilis",
+            "profileCustom": "Pasirinktinis",
+            "profileMirror": "Veidrodis",
+            "profileTwoWay": "Dvikryptis",
+            "profileBackup": "Atsargine kopija",
+            "profileMirrorDesc": "Vietinis → Nuotolinis, trinti naslaiciams, tikrinti dydi",
+            "profileTwoWayDesc": "Dvikryptis, saugoti naujesni, be trynimo",
+            "profileBackupDesc": "Vietinis → Nuotolinis, kontrolines sumos tikrinimas, be trynimo",
+            "conflictsFound": "Rasta konfliktu: {count}",
+            "resolveConflicts": "Isspresti konfliktus",
+            "keepLocal": "Palikti vietini",
+            "keepRemote": "Palikti nuotolini",
+            "keepBoth": "Palikti abu",
+            "keepNewer": "Palikti naujesni",
+            "keepLocalAll": "Palikti vietini visiems",
+            "keepRemoteAll": "Palikti nuotolini visiems",
+            "keepNewerAll": "Palikti naujesni visiems",
+            "skipAll": "Praleisti visus",
+            "conflictResolved": "Isspresta"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Atjungta",
                 "newConnection": "Naujas ryšys",
                 "syncing": "Sinchronizuojama...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Uzdaryti kitus skirtukus",
+                "closeAll": "Uzdaryti visus skirtukus"
             }
         },
         "update": {

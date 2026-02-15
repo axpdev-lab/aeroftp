@@ -225,7 +225,7 @@
             "locked": "Lukittu",
             "notConnected": "Ei yhdistetty",
             "permsHeader": "Oikeudet",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Polut eivät ole synkronoituja — siirry vastaaviin kansioihin tai poista synkronoitu navigointi käytöstä"
         },
         "contextMenu": {
             "open": "Avaa",
@@ -323,7 +323,8 @@
             "remove": "Poista",
             "retry": "Yritä uudelleen",
             "stopAll": "Pysäytä kaikki",
-            "stopAllPending": "Pysäytä odottavat"
+            "stopAllPending": "Pysäytä odottavat",
+            "forceStop": "Pakota pysäytys (keskeytä nykyinen tiedosto)"
         },
         "settings": {
             "title": "Asetukset",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Teema",
             "themeAutoLabel": "Automaattinen",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Valitse kuvaketyyli tiedostoille ja kansioille",
+            "iconThemeFilled": "Täytetty",
+            "iconThemeFilledDesc": "Värilliset asiakirjamuodot tyyppitunnisteilla",
+            "iconThemeMinimal": "Minimaalinen",
+            "iconThemeMinimalDesc": "Yksiväriset kuvakkeet, jotka mukautuvat nykyiseen teemaan",
+            "iconThemeOutline": "Ääriviiva",
+            "iconThemeOutlineDesc": "Selkeät ääriviivakuvakkeet väriköödatuilla tiedostotyypeillä",
+            "iconsTab": "Kuvakkeet"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Yhteys katkaistu palvelimelta",
             "uploadStarted": "Lähetys aloitettu",
             "uploadComplete": "Lähetys valmis",
-            "uploadFailed": "Lähetys epäonnistui: {error}",
+            "uploadFailed": "Lähetys epäonnistui",
             "downloadStarted": "Lataus aloitettu",
             "downloadComplete": "Lataus valmis",
-            "downloadFailed": "Lataus epäonnistui: {error}",
+            "downloadFailed": "Lataus epäonnistui",
             "deleteSuccess": "{count} kohdetta poistettu",
             "deleteFailed": "Poisto epäonnistui: {error}",
             "renameSuccess": "Nimetty uudelleen",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-yhteys muodostettu",
             "auth_success": "Tunnistautuminen onnistui käyttäjänä {username}",
             "auth_method_key": "Tunnistettu SSH-avaimella ({username})",
-            "listing_complete": "Listattu {count} kohdetta"
+            "listing_complete": "Listattu {count} kohdetta",
+            "connected_to": "Yhdistetty {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Tiedosto lukittu",
                 "disk_error": "Levyvirhe",
                 "unknown": "Tuntematon"
-            }
+            },
+            "clearHistory": "Tyhjennä historia",
+            "clearHistoryConfirm": "Poista kaikki synkronointipäiväkirjat?",
+            "journalsCleared": "{count} päiväkirjaa poistettu",
+            "noJournals": "Ei synkronointihistoriaa",
+            "bandwidthLimit": "Nopeusrajoitus",
+            "bandwidthUnlimited": "Rajoittamaton",
+            "bandwidthDownload": "Lataus",
+            "bandwidthUpload": "Lähetys",
+            "profile": "Profiili",
+            "profileCustom": "Mukautettu",
+            "profileMirror": "Peilaus",
+            "profileTwoWay": "Kaksisuuntainen",
+            "profileBackup": "Varmuuskopio",
+            "profileMirrorDesc": "Paikallinen → Etä, poista orvot, tarkista koko",
+            "profileTwoWayDesc": "Kaksisuuntainen, säilytä uudempi, ei poistoja",
+            "profileBackupDesc": "Paikallinen → Etä, tarkistussumman vahvistus, ei poistoja",
+            "conflictsFound": "{count} ristiriitaa löydetty",
+            "resolveConflicts": "Ratkaise ristiriidat",
+            "keepLocal": "Säilytä paikallinen",
+            "keepRemote": "Säilytä etä",
+            "keepBoth": "Säilytä molemmat",
+            "keepNewer": "Säilytä uudempi",
+            "keepLocalAll": "Säilytä paikallinen kaikille",
+            "keepRemoteAll": "Säilytä etä kaikille",
+            "keepNewerAll": "Säilytä uudempi kaikille",
+            "skipAll": "Ohita kaikki",
+            "conflictResolved": "Ratkaistu"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Yhteys katkaistu",
                 "newConnection": "Uusi yhteys",
                 "syncing": "Synkronoidaan...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Sulje muut välilehdet",
+                "closeAll": "Sulje kaikki välilehdet"
             }
         },
         "update": {

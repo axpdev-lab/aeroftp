@@ -297,6 +297,20 @@ export interface RetryPolicy {
 
 export type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full';
 
+export interface SyncProfile {
+  id: string;
+  name: string;
+  builtin: boolean;
+  direction: SyncDirection;
+  compare_timestamp: boolean;
+  compare_size: boolean;
+  compare_checksum: boolean;
+  exclude_patterns: string[];
+  retry_policy: RetryPolicy;
+  verify_policy: VerifyPolicy;
+  delete_orphans: boolean;
+}
+
 export interface VerifyResult {
   path: string;
   passed: boolean;

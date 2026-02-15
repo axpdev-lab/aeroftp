@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.1.2" date="2026-02-15">
+      <description>
+        <p>AeroSync Phase 3A — Professional Sync Engine: 3 built-in sync profiles (Mirror, Two-way, Backup) with custom save/load. Conflict Resolution Center with per-file and batch strategies. Bandwidth control UI for upload/download speed limits. Journal auto-cleanup (30-day TTL). Backend progress throttle (150ms/2% delta) and parallel local+remote scan via tokio::join!. Plugin SHA-256 integrity verification. 39 new i18n keys across 47 languages.</p>
+      </description>
+    </release>
     <release version="2.1.1" date="2026-02-14">
       <description>
         <p>UX Polish, Icon Themes and Sync Reliability: 3-style icon theme system (Outline, Filled, Minimal) with per-theme defaults and auto-sync. Unified TransferProgressBar (7 bars into 1 reusable component with SpeedGraph). Aero Family branding complete. Fixed sync navigation false folder creation, AeroCloud CWD corruption on shared FTP connection, and session path restoration. Transfer toast theme/flicker fixes and splash screen removed for instant startup.</p>

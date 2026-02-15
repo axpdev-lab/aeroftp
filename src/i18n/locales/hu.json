@@ -225,7 +225,7 @@
             "locked": "Zárolt",
             "notConnected": "Nincs Csatlakozva",
             "permsHeader": "Jogosultságok",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Az utvonalak nincsenek szinkronban — navigaljon egyezo mappakhoz, vagy tiltsa le a szinkron navigaciot"
         },
         "contextMenu": {
             "open": "Megnyitás",
@@ -323,7 +323,8 @@
             "remove": "Eltávolítás",
             "retry": "Újrapróbálás",
             "stopAll": "Összes leállítása",
-            "stopAllPending": "Összes függőben lévő leállítása"
+            "stopAllPending": "Összes függőben lévő leállítása",
+            "forceStop": "Kenyszerleallitas (aktualis fajl megszakitasa)"
         },
         "settings": {
             "title": "Beállítások",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Téma",
             "themeAutoLabel": "Automatikus",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Valasszon ikonstilist fajlokhoz es mappakhoz",
+            "iconThemeFilled": "Kitoltott",
+            "iconThemeFilledDesc": "Szines dokumentum formak tipusjelzovel",
+            "iconThemeMinimal": "Minimalis",
+            "iconThemeMinimalDesc": "Egyszinu ikonok, amelyek alkalmazkodnak az aktualis temahoz",
+            "iconThemeOutline": "Korvonal",
+            "iconThemeOutlineDesc": "Tiszta korvonal ikonok szinkodolt fajltipusokkal",
+            "iconsTab": "Ikonok"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Lecsatlakozva a szerverről",
             "uploadStarted": "Feltöltés elindult",
             "uploadComplete": "Feltöltés befejezve",
-            "uploadFailed": "Feltöltés sikertelen: {error}",
+            "uploadFailed": "Feltöltés sikertelen",
             "downloadStarted": "Letöltés elindult",
             "downloadComplete": "Letöltés befejezve",
-            "downloadFailed": "Letöltés sikertelen: {error}",
+            "downloadFailed": "Letöltés sikertelen",
             "deleteSuccess": "{count} elem törölve",
             "deleteFailed": "Törlés sikertelen: {error}",
             "renameSuccess": "Sikeresen átnevezve",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS kapcsolat létrehozva",
             "auth_success": "Sikeres hitelesítés {username}ként",
             "auth_method_key": "Hitelesítve SSH kulccsal ({username})",
-            "listing_complete": "{count} elem listázva"
+            "listing_complete": "{count} elem listázva",
+            "connected_to": "Csatlakozva: {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fájl zárolva",
                 "disk_error": "Lemezhiba",
                 "unknown": "Ismeretlen"
-            }
+            },
+            "clearHistory": "Elozmeny torlese",
+            "clearHistoryConfirm": "Torli az osszes szinkronizalasi naplot?",
+            "journalsCleared": "{count} naplo torolve",
+            "noJournals": "Nincs szinkronizalasi elozmeny",
+            "bandwidthLimit": "Sebessegkorlatozas",
+            "bandwidthUnlimited": "Korlatlan",
+            "bandwidthDownload": "Letoltes",
+            "bandwidthUpload": "Feloltes",
+            "profile": "Profil",
+            "profileCustom": "Egyeni",
+            "profileMirror": "Tukrozes",
+            "profileTwoWay": "Ketiranyu",
+            "profileBackup": "Biztonsagi mentes",
+            "profileMirrorDesc": "Helyi → Tavoli, arvak torlese, meret ellenorzese",
+            "profileTwoWayDesc": "Ketranyu, ujabb megtartasa, torles nelkul",
+            "profileBackupDesc": "Helyi → Tavoli, ellenorzo osszeg, torles nelkul",
+            "conflictsFound": "{count} utkozest talalva",
+            "resolveConflicts": "Utkozes feloldasa",
+            "keepLocal": "Helyi megtartasa",
+            "keepRemote": "Tavoli megtartasa",
+            "keepBoth": "Mindketto megtartasa",
+            "keepNewer": "Ujabb megtartasa",
+            "keepLocalAll": "Helyi megtartasa mindennel",
+            "keepRemoteAll": "Tavoli megtartasa mindennel",
+            "keepNewerAll": "Ujabb megtartasa mindennel",
+            "skipAll": "Osszes kihagyasa",
+            "conflictResolved": "Feloldva"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Leválasztva",
                 "newConnection": "Új kapcsolat",
                 "syncing": "Szinkronizálás...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Tobbi ful bezarasa",
+                "closeAll": "Osszes ful bezarasa"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "已锁定",
             "notConnected": "未连接",
             "permsHeader": "权限",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "路径不同步 — 请导航到匹配的文件夹或禁用同步导航"
         },
         "contextMenu": {
             "open": "打开",
@@ -323,7 +323,8 @@
             "remove": "移除",
             "retry": "重试",
             "stopAll": "全部停止",
-            "stopAllPending": "停止所有等待项"
+            "stopAllPending": "停止所有等待项",
+            "forceStop": "强制停止（中断当前文件）"
         },
         "settings": {
             "title": "设置",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "主题",
             "themeAutoLabel": "自动",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "选择文件和文件夹的图标样式",
+            "iconThemeFilled": "填充",
+            "iconThemeFilledDesc": "带有类型标记的彩色文档图形",
+            "iconThemeMinimal": "极简",
+            "iconThemeMinimalDesc": "自动适应当前主题的单色图标",
+            "iconThemeOutline": "线框",
+            "iconThemeOutlineDesc": "简洁的线框图标，按文件类型标注颜色",
+            "iconsTab": "图标"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "已断开与服务器的连接",
             "uploadStarted": "开始上传",
             "uploadComplete": "上传完成",
-            "uploadFailed": "上传失败: {error}",
+            "uploadFailed": "上传失败",
             "downloadStarted": "开始下载",
             "downloadComplete": "下载完成",
-            "downloadFailed": "下载失败: {error}",
+            "downloadFailed": "下载失败",
             "deleteSuccess": "已删除 {count} 个项目",
             "deleteFailed": "删除失败: {error}",
             "renameSuccess": "重命名成功",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS 连接已建立",
             "auth_success": "以 {username} 身份验证成功",
             "auth_method_key": "已通过 SSH 密钥验证 ({username})",
-            "listing_complete": "已列出 {count} 个项目"
+            "listing_complete": "已列出 {count} 个项目",
+            "connected_to": "已连接到 {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "文件已锁定",
                 "disk_error": "磁盘错误",
                 "unknown": "未知"
-            }
+            },
+            "clearHistory": "清除历史",
+            "clearHistoryConfirm": "删除所有同步日志？",
+            "journalsCleared": "已删除 {count} 个日志",
+            "noJournals": "无同步历史",
+            "bandwidthLimit": "速度限制",
+            "bandwidthUnlimited": "无限制",
+            "bandwidthDownload": "下载",
+            "bandwidthUpload": "上传",
+            "profile": "配置",
+            "profileCustom": "自定义",
+            "profileMirror": "镜像",
+            "profileTwoWay": "双向",
+            "profileBackup": "备份",
+            "profileMirrorDesc": "本地 → 远程，删除孤立文件，验证大小",
+            "profileTwoWayDesc": "双向同步，保留较新版本，不删除",
+            "profileBackupDesc": "本地 → 远程，校验和验证，不删除",
+            "conflictsFound": "发现 {count} 个冲突",
+            "resolveConflicts": "解决冲突",
+            "keepLocal": "保留本地",
+            "keepRemote": "保留远程",
+            "keepBoth": "保留两者",
+            "keepNewer": "保留较新",
+            "keepLocalAll": "全部保留本地",
+            "keepRemoteAll": "全部保留远程",
+            "keepNewerAll": "全部保留较新",
+            "skipAll": "全部跳过",
+            "conflictResolved": "已解决"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "已断开",
                 "newConnection": "新建连接",
                 "syncing": "同步中...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "关闭其他标签页",
+                "closeAll": "关闭所有标签页"
             }
         },
         "update": {

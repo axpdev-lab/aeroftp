@@ -225,7 +225,7 @@
             "locked": "Blocat",
             "notConnected": "Neconectat",
             "permsHeader": "Permisiuni",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Caile sunt desincronizate — navigati la foldere corespondente sau dezactivati navigarea sincronizata"
         },
         "contextMenu": {
             "open": "Deschide",
@@ -323,7 +323,8 @@
             "remove": "Elimina",
             "retry": "Reincearca",
             "stopAll": "Opreste tot",
-            "stopAllPending": "Opreste toate cele in asteptare"
+            "stopAllPending": "Opreste toate cele in asteptare",
+            "forceStop": "Oprire fortata (intrerupe fisierul curent)"
         },
         "settings": {
             "title": "Setări",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Temă",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Alegeti un stil de pictograma pentru fisiere si foldere",
+            "iconThemeFilled": "Plin",
+            "iconThemeFilledDesc": "Forme de document colorate cu insigne de tip",
+            "iconThemeMinimal": "Minimalist",
+            "iconThemeMinimalDesc": "Pictograme monocrome care se adapteaza la tema curenta",
+            "iconThemeOutline": "Contur",
+            "iconThemeOutlineDesc": "Pictograme cu linii curate si tipuri de fisiere codificate prin culori",
+            "iconsTab": "Pictograme"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Deconectat de la server",
             "uploadStarted": "Încărcarea a început",
             "uploadComplete": "Încărcare finalizată",
-            "uploadFailed": "Încărcarea a eșuat: {error}",
+            "uploadFailed": "Încărcarea a eșuat",
             "downloadStarted": "Descărcarea a început",
             "downloadComplete": "Descărcare finalizată",
-            "downloadFailed": "Descărcarea a eșuat: {error}",
+            "downloadFailed": "Descărcarea a eșuat",
             "deleteSuccess": "{count} element(e) șterse",
             "deleteFailed": "Ștergerea a eșuat: {error}",
             "renameSuccess": "Redenumit cu succes",
@@ -974,7 +975,8 @@
             "https_established": "Conexiune HTTPS stabilită",
             "auth_success": "Autentificare reușită ca {username}",
             "auth_method_key": "Autentificat cu cheie SSH ({username})",
-            "listing_complete": "Listate {count} elemente"
+            "listing_complete": "Listate {count} elemente",
+            "connected_to": "Conectat la {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fișier blocat",
                 "disk_error": "Eroare disc",
                 "unknown": "Necunoscut"
-            }
+            },
+            "clearHistory": "Sterge Istoricul",
+            "clearHistoryConfirm": "Stergeti toate jurnalele de sincronizare?",
+            "journalsCleared": "{count} jurnale sterse",
+            "noJournals": "Niciun istoric de sincronizare",
+            "bandwidthLimit": "Limita de Viteza",
+            "bandwidthUnlimited": "Nelimitat",
+            "bandwidthDownload": "Descarcare",
+            "bandwidthUpload": "Incarcare",
+            "profile": "Profil",
+            "profileCustom": "Personalizat",
+            "profileMirror": "Oglinda",
+            "profileTwoWay": "Bidirectional",
+            "profileBackup": "Copie de siguranta",
+            "profileMirrorDesc": "Local → Distant, sterge orfanii, verifica dimensiunea",
+            "profileTwoWayDesc": "Bidirectional, pastreaza cel mai recent, fara stergeri",
+            "profileBackupDesc": "Local → Distant, verificare checksum, fara stergeri",
+            "conflictsFound": "{count} conflicte gasite",
+            "resolveConflicts": "Rezolva Conflictele",
+            "keepLocal": "Pastreaza Local",
+            "keepRemote": "Pastreaza Distant",
+            "keepBoth": "Pastreaza Ambele",
+            "keepNewer": "Pastreaza Mai Recent",
+            "keepLocalAll": "Pastreaza Local pentru Toate",
+            "keepRemoteAll": "Pastreaza Distant pentru Toate",
+            "keepNewerAll": "Pastreaza Mai Recent pentru Toate",
+            "skipAll": "Omite Toate",
+            "conflictResolved": "Rezolvat"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Deconectat",
                 "newConnection": "Conexiune noua",
                 "syncing": "Se sincronizeaza...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Inchide celelalte file",
+                "closeAll": "Inchide toate filele"
             }
         },
         "update": {

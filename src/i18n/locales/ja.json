@@ -225,7 +225,7 @@
             "locked": "ロック",
             "notConnected": "未接続",
             "permsHeader": "権限",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "パスが同期されていません — 一致するフォルダに移動するか、同期ナビゲーションを無効にしてください"
         },
         "contextMenu": {
             "open": "開く",
@@ -323,7 +323,8 @@
             "remove": "削除",
             "retry": "再試行",
             "stopAll": "すべて停止",
-            "stopAllPending": "保留中をすべて停止"
+            "stopAllPending": "保留中をすべて停止",
+            "forceStop": "強制停止（現在のファイルを中断）"
         },
         "settings": {
             "title": "設定",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "テーマ",
             "themeAutoLabel": "自動",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "ファイルとフォルダのアイコンスタイルを選択",
+            "iconThemeFilled": "塗りつぶし",
+            "iconThemeFilledDesc": "種類バッジ付きのカラードキュメント形状",
+            "iconThemeMinimal": "ミニマル",
+            "iconThemeMinimalDesc": "現在のテーマに適応するモノクロアイコン",
+            "iconThemeOutline": "アウトライン",
+            "iconThemeOutlineDesc": "ファイルタイプ別に色分けされたストロークアイコン",
+            "iconsTab": "アイコン"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "サーバーから切断されました",
             "uploadStarted": "アップロード開始",
             "uploadComplete": "アップロード完了",
-            "uploadFailed": "アップロード失敗: {error}",
+            "uploadFailed": "アップロード失敗",
             "downloadStarted": "ダウンロード開始",
             "downloadComplete": "ダウンロード完了",
-            "downloadFailed": "ダウンロード失敗: {error}",
+            "downloadFailed": "ダウンロード失敗",
             "deleteSuccess": "{count}個のアイテムを削除しました",
             "deleteFailed": "削除失敗: {error}",
             "renameSuccess": "名前を変更しました",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS接続確立",
             "auth_success": "{username}として認証成功",
             "auth_method_key": "SSHキーで認証済み ({username})",
-            "listing_complete": "{count}項目をリスト"
+            "listing_complete": "{count}項目をリスト",
+            "connected_to": "{ip}:{port} に接続しました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -1213,7 +1215,34 @@
                 "file_locked": "ファイルがロック中",
                 "disk_error": "ディスクエラー",
                 "unknown": "不明"
-            }
+            },
+            "clearHistory": "履歴をクリア",
+            "clearHistoryConfirm": "すべての同期ジャーナルを削除しますか？",
+            "journalsCleared": "{count}件のジャーナルを削除しました",
+            "noJournals": "同期履歴なし",
+            "bandwidthLimit": "速度制限",
+            "bandwidthUnlimited": "無制限",
+            "bandwidthDownload": "ダウンロード",
+            "bandwidthUpload": "アップロード",
+            "profile": "プロファイル",
+            "profileCustom": "カスタム",
+            "profileMirror": "ミラー",
+            "profileTwoWay": "双方向",
+            "profileBackup": "バックアップ",
+            "profileMirrorDesc": "ローカル → リモート、孤立ファイル削除、サイズ検証",
+            "profileTwoWayDesc": "双方向、新しい方を保持、削除なし",
+            "profileBackupDesc": "ローカル → リモート、チェックサム検証、削除なし",
+            "conflictsFound": "{count}件の競合が見つかりました",
+            "resolveConflicts": "競合を解決",
+            "keepLocal": "ローカルを保持",
+            "keepRemote": "リモートを保持",
+            "keepBoth": "両方を保持",
+            "keepNewer": "新しい方を保持",
+            "keepLocalAll": "すべてローカルを保持",
+            "keepRemoteAll": "すべてリモートを保持",
+            "keepNewerAll": "すべて新しい方を保持",
+            "skipAll": "すべてスキップ",
+            "conflictResolved": "解決済み"
         },
         "ui": {
             "syncing": "同期中...",
@@ -1264,8 +1293,8 @@
                 "disconnected": "切断済み",
                 "newConnection": "新しい接続",
                 "syncing": "同期中...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "他のタブを閉じる",
+                "closeAll": "すべてのタブを閉じる"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "Заключено",
             "notConnected": "Не е свързано",
             "permsHeader": "Права",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Пътищата не са синхронизирани — отидете до съвпадащи папки или деактивирайте синхронизираната навигация"
         },
         "contextMenu": {
             "open": "Отвори",
@@ -323,7 +323,8 @@
             "remove": "Премахни",
             "retry": "Повтори",
             "stopAll": "Спри всички",
-            "stopAllPending": "Спри всички чакащи"
+            "stopAllPending": "Спри всички чакащи",
+            "forceStop": "Принудително спиране (прекъсване на текущия файл)"
         },
         "settings": {
             "title": "Настройки",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
             "themeAutoLabel": "Авто",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Изберете стил на иконите за файлове и папки",
+            "iconThemeFilled": "Запълнени",
+            "iconThemeFilledDesc": "Цветни форми на документи с означения за тип",
+            "iconThemeMinimal": "Минимални",
+            "iconThemeMinimalDesc": "Монохромни икони, адаптирани към текущата тема",
+            "iconThemeOutline": "Контурни",
+            "iconThemeOutlineDesc": "Чисти контурни икони с цветово кодирани типове файлове",
+            "iconsTab": "Икони"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Прекъсната връзка със сървъра",
             "uploadStarted": "Качването започна",
             "uploadComplete": "Качването завърши",
-            "uploadFailed": "Качването неуспешно: {error}",
+            "uploadFailed": "Качването неуспешно",
             "downloadStarted": "Изтеглянето започна",
             "downloadComplete": "Изтеглянето завърши",
-            "downloadFailed": "Изтеглянето неуспешно: {error}",
+            "downloadFailed": "Изтеглянето неуспешно",
             "deleteSuccess": "{count} елемента изтрити",
             "deleteFailed": "Изтриването неуспешно: {error}",
             "renameSuccess": "Преименувано успешно",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS връзка установена",
             "auth_success": "Удостоверяването успешно като {username}",
             "auth_method_key": "Удостоверено с SSH ключ ({username})",
-            "listing_complete": "Изброени {count} елемента"
+            "listing_complete": "Изброени {count} елемента",
+            "connected_to": "Свързано с {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Файлът е заключен",
                 "disk_error": "Грешка на диска",
                 "unknown": "Неизвестно"
-            }
+            },
+            "clearHistory": "Изчистване на историята",
+            "clearHistoryConfirm": "Изтриване на всички журнали за синхронизация?",
+            "journalsCleared": "{count} журнала изтрити",
+            "noJournals": "Няма история на синхронизацията",
+            "bandwidthLimit": "Ограничение на скоростта",
+            "bandwidthUnlimited": "Без ограничение",
+            "bandwidthDownload": "Изтегляне",
+            "bandwidthUpload": "Качване",
+            "profile": "Профил",
+            "profileCustom": "Персонализиран",
+            "profileMirror": "Огледален",
+            "profileTwoWay": "Двупосочен",
+            "profileBackup": "Резервно копие",
+            "profileMirrorDesc": "Локално → Отдалечено, изтриване на излишни, проверка на размера",
+            "profileTwoWayDesc": "Двупосочен, запазване на по-новия, без изтриване",
+            "profileBackupDesc": "Локално → Отдалечено, проверка на контролна сума, без изтриване",
+            "conflictsFound": "{count} конфликта открити",
+            "resolveConflicts": "Разрешаване на конфликти",
+            "keepLocal": "Запазване на локалния",
+            "keepRemote": "Запазване на отдалечения",
+            "keepBoth": "Запазване на двата",
+            "keepNewer": "Запазване на по-новия",
+            "keepLocalAll": "Запазване на локалния за всички",
+            "keepRemoteAll": "Запазване на отдалечения за всички",
+            "keepNewerAll": "Запазване на по-новия за всички",
+            "skipAll": "Пропускане на всички",
+            "conflictResolved": "Разрешен"
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Прекъсната връзка",
                 "newConnection": "Нова връзка",
                 "syncing": "Синхронизиране...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Затваряне на другите раздели",
+                "closeAll": "Затваряне на всички раздели"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "Læst",
             "notConnected": "Ekki tengt",
             "permsHeader": "Heimildir",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Slodirnar eru ekki samstilltar — fardu i samsvurandi moppur eda slakktu a samstilltri leidsogu"
         },
         "contextMenu": {
             "open": "Opna",
@@ -323,7 +323,8 @@
             "remove": "Fjarlægja",
             "retry": "Reyna aftur",
             "stopAll": "Stöðva allt",
-            "stopAllPending": "Stöðva allt í bið"
+            "stopAllPending": "Stöðva allt í bið",
+            "forceStop": "Thvinga stodvun (truflad a nuverandi skra)"
         },
         "settings": {
             "title": "Stillingar",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Þema",
             "themeAutoLabel": "Sjálfvirkt",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Veldu taknastil fyrir skrar og moppur",
+            "iconThemeFilled": "Fyllt",
+            "iconThemeFilledDesc": "Litadar skjalform med tegundarmerkjum",
+            "iconThemeMinimal": "Einfalt",
+            "iconThemeMinimalDesc": "Einlitar taknir sem alagast ad nuverandi thema",
+            "iconThemeOutline": "Utlinur",
+            "iconThemeOutlineDesc": "Hreinar utlinur med litakodudum skrategundum",
+            "iconsTab": "Taknir"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Aftengt frá þjóni",
             "uploadStarted": "Upphleðsla hafin",
             "uploadComplete": "Upphleðslu lokið",
-            "uploadFailed": "Upphleðsla mistókst: {error}",
+            "uploadFailed": "Upphleðsla mistókst",
             "downloadStarted": "Niðurhal hafið",
             "downloadComplete": "Niðurhali lokið",
-            "downloadFailed": "Niðurhal mistókst: {error}",
+            "downloadFailed": "Niðurhal mistókst",
             "deleteSuccess": "{count} atriðum eytt",
             "deleteFailed": "Eyðing mistókst: {error}",
             "renameSuccess": "Endurnefnt",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS tenging stofnuð",
             "auth_success": "Auðkenning tókst sem {username}",
             "auth_method_key": "Auðkennt með SSH lykli ({username})",
-            "listing_complete": "{count} atriði skráð"
+            "listing_complete": "{count} atriði skráð",
+            "connected_to": "Tengt við {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Skrá læst",
                 "disk_error": "Diskavilla",
                 "unknown": "Óþekkt"
-            }
+            },
+            "clearHistory": "Hreinsa feril",
+            "clearHistoryConfirm": "Eyda ollum samstillingardogbokum?",
+            "journalsCleared": "{count} dogbokum eytt",
+            "noJournals": "Enginn samstillingarferill",
+            "bandwidthLimit": "Hradatakmorkun",
+            "bandwidthUnlimited": "Otakmorkud",
+            "bandwidthDownload": "Nidurhal",
+            "bandwidthUpload": "Upphal",
+            "profile": "Snid",
+            "profileCustom": "Serstillt",
+            "profileMirror": "Spegla",
+            "profileTwoWay": "Tvihlidur",
+            "profileBackup": "Oruggisafrit",
+            "profileMirrorDesc": "Stadvaert → Fjarlaegs, eyda munadarslausum, stadfesta staerd",
+            "profileTwoWayDesc": "Tvihlidur, geyma nyrra, engar eydingar",
+            "profileBackupDesc": "Stadvaert → Fjarlaegs, stadfesta med eftirlitssummu, engar eydingar",
+            "conflictsFound": "{count} arekstur fundust",
+            "resolveConflicts": "Leysa arekstur",
+            "keepLocal": "Geyma stadvaert",
+            "keepRemote": "Geyma fjarlaegs",
+            "keepBoth": "Geyma baedi",
+            "keepNewer": "Geyma nyrra",
+            "keepLocalAll": "Geyma stadvaert fyrir allt",
+            "keepRemoteAll": "Geyma fjarlaegs fyrir allt",
+            "keepNewerAll": "Geyma nyrra fyrir allt",
+            "skipAll": "Sleppa ollu",
+            "conflictResolved": "Leyst"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Aftengt",
                 "newConnection": "Ný tenging",
                 "syncing": "Samstillir...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Loka odrum flipum",
+                "closeAll": "Loka ollum flipum"
             }
         },
         "update": {

@@ -763,7 +763,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     }
 
     if (protocol === 'ftp' || protocol === 'ftps') {
-        const defaultTlsMode = protocol === 'ftps' ? 'implicit' : 'explicit_if_available';
+        const defaultTlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
         const currentTlsMode = options.tlsMode || defaultTlsMode;
         const showInsecureWarning = currentTlsMode === 'none';
 

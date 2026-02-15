@@ -225,7 +225,7 @@
             "locked": "Закључано",
             "notConnected": "Није повезано",
             "permsHeader": "Дозволе",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Путање нису синхронизоване — идите до одговарајућих фасцикли или искључите синхронизовану навигацију"
         },
         "contextMenu": {
             "open": "Отвори",
@@ -323,7 +323,8 @@
             "remove": "Уклони",
             "retry": "Покушај поново",
             "stopAll": "Заустави све",
-            "stopAllPending": "Заустави све на чекању"
+            "stopAllPending": "Заустави све на чекању",
+            "forceStop": "Принудно заустављање (прекини тренутну датотеку)"
         },
         "settings": {
             "title": "Подешавања",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
             "themeAutoLabel": "Ауто",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Изаберите стил иконица за датотеке и фасцикле",
+            "iconThemeFilled": "Испуњене",
+            "iconThemeFilledDesc": "Обојени облици докумената са ознакама типова",
+            "iconThemeMinimal": "Минималне",
+            "iconThemeMinimalDesc": "Једнобојне иконице које се прилагођавају тренутној теми",
+            "iconThemeOutline": "Контурне",
+            "iconThemeOutlineDesc": "Чисте контурне иконице са типовима датотека означеним бојама",
+            "iconsTab": "Иконице"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Прекинута веза са сервером",
             "uploadStarted": "Отпремање започето",
             "uploadComplete": "Отпремање завршено",
-            "uploadFailed": "Отпремање није успело: {error}",
+            "uploadFailed": "Отпремање није успело",
             "downloadStarted": "Преузимање започето",
             "downloadComplete": "Преузимање завршено",
-            "downloadFailed": "Преузимање није успело: {error}",
+            "downloadFailed": "Преузимање није успело",
             "deleteSuccess": "{count} ставки обрисано",
             "deleteFailed": "Брисање није успело: {error}",
             "renameSuccess": "Успешно преименовано",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS веза успостављена",
             "auth_success": "Аутентификација успешна као {username}",
             "auth_method_key": "Аутентификовано SSH кључем ({username})",
-            "listing_complete": "Наведено {count} ставки"
+            "listing_complete": "Наведено {count} ставки",
+            "connected_to": "Повезано са {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Izaberi protokol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fajl zaključan",
                 "disk_error": "Greška diska",
                 "unknown": "Nepoznato"
-            }
+            },
+            "clearHistory": "Обриши историју",
+            "clearHistoryConfirm": "Обрисати све дневнике синхронизације?",
+            "journalsCleared": "Обрисано дневника: {count}",
+            "noJournals": "Нема историје синхронизације",
+            "bandwidthLimit": "Ограничење брзине",
+            "bandwidthUnlimited": "Неограничено",
+            "bandwidthDownload": "Преузимање",
+            "bandwidthUpload": "Отпремање",
+            "profile": "Профил",
+            "profileCustom": "Прилагођени",
+            "profileMirror": "Огледало",
+            "profileTwoWay": "Двосмерно",
+            "profileBackup": "Резервна копија",
+            "profileMirrorDesc": "Локални → Удаљени, обриши сирочад, провери величину",
+            "profileTwoWayDesc": "Двосмерно, задржи новије, без брисања",
+            "profileBackupDesc": "Локални → Удаљени, провера контролног збира, без брисања",
+            "conflictsFound": "Пронађено конфликата: {count}",
+            "resolveConflicts": "Реши конфликте",
+            "keepLocal": "Задржи локални",
+            "keepRemote": "Задржи удаљени",
+            "keepBoth": "Задржи оба",
+            "keepNewer": "Задржи новије",
+            "keepLocalAll": "Задржи локални за све",
+            "keepRemoteAll": "Задржи удаљени за све",
+            "keepNewerAll": "Задржи новије за све",
+            "skipAll": "Прескочи све",
+            "conflictResolved": "Решено"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Прекинуто",
                 "newConnection": "Нова конекција",
                 "syncing": "Синхронизација...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Затвори остале картице",
+                "closeAll": "Затвори све картице"
             }
         },
         "update": {

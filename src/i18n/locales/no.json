@@ -225,7 +225,7 @@
             "locked": "Låst",
             "notConnected": "Ikke tilkoblet",
             "permsHeader": "Tillatelser",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Stier er ikke synkronisert — naviger til samsvarende mapper eller deaktiver synkronisert navigasjon"
         },
         "contextMenu": {
             "open": "Åpne",
@@ -323,7 +323,8 @@
             "remove": "Fjern",
             "retry": "Prøv igjen",
             "stopAll": "Stopp alt",
-            "stopAllPending": "Stopp alle ventende"
+            "stopAllPending": "Stopp alle ventende",
+            "forceStop": "Tving stopp (avbryt gjeldende fil)"
         },
         "settings": {
             "title": "Innstillinger",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Velg en ikonstil for filer og mapper",
+            "iconThemeFilled": "Fylt",
+            "iconThemeFilledDesc": "Fargede dokumentformer med typemerker",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Monokrome ikoner som tilpasser seg gjeldende tema",
+            "iconThemeOutline": "Omriss",
+            "iconThemeOutlineDesc": "Rene strekikoner med fargekodede filtyper",
+            "iconsTab": "Ikoner"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Frakoblet server",
             "uploadStarted": "Opplasting startet",
             "uploadComplete": "Opplasting fullført",
-            "uploadFailed": "Opplasting mislyktes: {error}",
+            "uploadFailed": "Opplasting mislyktes",
             "downloadStarted": "Nedlasting startet",
             "downloadComplete": "Nedlasting fullført",
-            "downloadFailed": "Nedlasting mislyktes: {error}",
+            "downloadFailed": "Nedlasting mislyktes",
             "deleteSuccess": "{count} element(er) slettet",
             "deleteFailed": "Sletting mislyktes: {error}",
             "renameSuccess": "Omdøpt",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-tilkobling opprettet",
             "auth_success": "Autentisering vellykket som {username}",
             "auth_method_key": "Autentisert med SSH-nøkkel ({username})",
-            "listing_complete": "Listet opp {count} elementer"
+            "listing_complete": "Listet opp {count} elementer",
+            "connected_to": "Tilkoblet {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fil låst",
                 "disk_error": "Diskfeil",
                 "unknown": "Ukjent"
-            }
+            },
+            "clearHistory": "Tøm historikk",
+            "clearHistoryConfirm": "Slette alle synkroniseringsjournaler?",
+            "journalsCleared": "{count} journaler slettet",
+            "noJournals": "Ingen synkroniseringshistorikk",
+            "bandwidthLimit": "Hastighetsbegrensning",
+            "bandwidthUnlimited": "Ubegrenset",
+            "bandwidthDownload": "Nedlasting",
+            "bandwidthUpload": "Opplasting",
+            "profile": "Profil",
+            "profileCustom": "Tilpasset",
+            "profileMirror": "Speiling",
+            "profileTwoWay": "Toveis",
+            "profileBackup": "Sikkerhetskopi",
+            "profileMirrorDesc": "Lokal → Ekstern, slett foreldreløse, verifiser størrelse",
+            "profileTwoWayDesc": "Toveis, behold nyere, ingen slettinger",
+            "profileBackupDesc": "Lokal → Ekstern, sjekksumverifisering, ingen slettinger",
+            "conflictsFound": "{count} konflikter funnet",
+            "resolveConflicts": "Løs konflikter",
+            "keepLocal": "Behold lokal",
+            "keepRemote": "Behold ekstern",
+            "keepBoth": "Behold begge",
+            "keepNewer": "Behold nyere",
+            "keepLocalAll": "Behold lokal for alle",
+            "keepRemoteAll": "Behold ekstern for alle",
+            "keepNewerAll": "Behold nyere for alle",
+            "skipAll": "Hopp over alle",
+            "conflictResolved": "Løst"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Frakoblet",
                 "newConnection": "Ny tilkobling",
                 "syncing": "Synkroniserer...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Lukk andre faner",
+                "closeAll": "Lukk alle faner"
             }
         },
         "update": {

@@ -233,16 +233,23 @@ impl FourSharedProvider {
     }
 
     /// Make a signed PUT request with JSON body
-    async fn signed_put_json(
+    async fn signed_put_form(
         &self,
         url: &str,
-        json: &serde_json::Value,
+        form: &[(&str, &str)],
     ) -> Result<reqwest::Response, ProviderError> {
-        let auth = oauth1::authorization_header("PUT", url, &self.credentials(), &[]);
+        let auth = oauth1::authorization_header("PUT", url, &self.credentials(), form);
+
+        let body: String = form.iter()
+            .map(|(k, v)| format!("{}={}", oauth1::percent_encode(k), oauth1::percent_encode(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+
         self.client
             .put(url)
             .header("Authorization", &auth)
-            .json(json)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))
@@ -845,8 +852,8 @@ impl StorageProvider for FourSharedProvider {
         // Try as file first, then as folder
         if let Ok(file_id) = self.resolve_file_id(&old_normalized).await {
             let url = format!("{}/files/{}", API_BASE, file_id);
-            let body = serde_json::json!({ "name": new_name });
-            let resp = self.signed_put_json(&url, &body).await?;
+            let form = [("name", new_name.as_str())];
+            let resp = self.signed_put_form(&url, &form).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -862,8 +869,8 @@ impl StorageProvider for FourSharedProvider {
         } else {
             let folder_id = self.resolve_folder_id(&old_normalized).await?;
             let url = format!("{}/folders/{}", API_BASE, folder_id);
-            let body = serde_json::json!({ "name": new_name });
-            let resp = self.signed_put_json(&url, &body).await?;
+            let form = [("name", new_name.as_str())];
+            let resp = self.signed_put_form(&url, &form).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();

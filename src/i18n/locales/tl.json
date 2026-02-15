@@ -225,7 +225,7 @@
             "locked": "Nakakandado",
             "notConnected": "Hindi Nakakonekta",
             "permsHeader": "Pahintulot",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Hindi magkatugma ang mga path — mag-navigate sa magkatugmang mga folder o i-disable ang sync na pag-navigate"
         },
         "contextMenu": {
             "open": "Buksan",
@@ -323,7 +323,8 @@
             "remove": "Alisin",
             "retry": "Subukan muli",
             "stopAll": "Itigil lahat",
-            "stopAllPending": "Itigil lahat ng naghihintay"
+            "stopAllPending": "Itigil lahat ng naghihintay",
+            "forceStop": "Piliting ihinto (putulin ang kasalukuyang file)"
         },
         "settings": {
             "title": "Mga Setting",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Pumili ng istilo ng icon para sa mga file at folder",
+            "iconThemeFilled": "Puno",
+            "iconThemeFilledDesc": "May kulay na hugis ng dokumento na may mga badge ng uri",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Monochrome na mga icon na umaangkop sa kasalukuyang tema",
+            "iconThemeOutline": "Balangkas",
+            "iconThemeOutlineDesc": "Malinis na balangkas ng mga icon na may kulay ayon sa uri ng file",
+            "iconsTab": "Mga Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Nadiskonekta mula sa server",
             "uploadStarted": "Nagsimula ang upload",
             "uploadComplete": "Tapos na ang upload",
-            "uploadFailed": "Nabigo ang upload: {error}",
+            "uploadFailed": "Nabigo ang upload",
             "downloadStarted": "Nagsimula ang download",
             "downloadComplete": "Tapos na ang download",
-            "downloadFailed": "Nabigo ang download: {error}",
+            "downloadFailed": "Nabigo ang download",
             "deleteSuccess": "{count} (mga) item ang natanggal",
             "deleteFailed": "Nabigo ang pagtanggal: {error}",
             "renameSuccess": "Matagumpay na napalitan ang pangalan",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS koneksyon naikonekta",
             "auth_success": "Matagumpay na pagpapatunay bilang {username}",
             "auth_method_key": "Napatunayan gamit ang SSH key ({username})",
-            "listing_complete": "Nailista ang {count} na item"
+            "listing_complete": "Nailista ang {count} na item",
+            "connected_to": "Nakakonekta sa {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Naka-lock ang file",
                 "disk_error": "Error sa disk",
                 "unknown": "Hindi alam"
-            }
+            },
+            "clearHistory": "Burahin ang Kasaysayan",
+            "clearHistoryConfirm": "Burahin lahat ng sync journal?",
+            "journalsCleared": "{count} na journal ang nabura",
+            "noJournals": "Walang kasaysayan ng pag-sync",
+            "bandwidthLimit": "Limitasyon ng Bilis",
+            "bandwidthUnlimited": "Walang limitasyon",
+            "bandwidthDownload": "Pag-download",
+            "bandwidthUpload": "Pag-upload",
+            "profile": "Profile",
+            "profileCustom": "Pasadya",
+            "profileMirror": "Salamin",
+            "profileTwoWay": "Dalawang-daan",
+            "profileBackup": "Backup",
+            "profileMirrorDesc": "Lokal → Remote, burahin ang mga ulila, i-verify ang laki",
+            "profileTwoWayDesc": "Dalawang-daan, itago ang mas bago, walang pagbubura",
+            "profileBackupDesc": "Lokal → Remote, checksum na pag-verify, walang pagbubura",
+            "conflictsFound": "{count} na salungatan ang natagpuan",
+            "resolveConflicts": "Lutasin ang mga Salungatan",
+            "keepLocal": "Itago ang Lokal",
+            "keepRemote": "Itago ang Remote",
+            "keepBoth": "Itago Pareho",
+            "keepNewer": "Itago ang Mas Bago",
+            "keepLocalAll": "Itago ang Lokal para sa Lahat",
+            "keepRemoteAll": "Itago ang Remote para sa Lahat",
+            "keepNewerAll": "Itago ang Mas Bago para sa Lahat",
+            "skipAll": "Laktawan Lahat",
+            "conflictResolved": "Nalutas"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Nadiskonekta",
                 "newConnection": "Bagong koneksyon",
                 "syncing": "Nagsi-sync...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Isara ang ibang mga tab",
+                "closeAll": "Isara lahat ng mga tab"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "Dikunci",
             "notConnected": "Tidak Disambung",
             "permsHeader": "Kebenaran",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Laluan tidak segerak — navigasi ke folder yang sepadan atau nyahaktifkan navigasi segerak"
         },
         "contextMenu": {
             "open": "Buka",
@@ -323,7 +323,8 @@
             "remove": "Buang",
             "retry": "Cuba semula",
             "stopAll": "Hentikan semua",
-            "stopAllPending": "Hentikan semua yang menunggu"
+            "stopAllPending": "Hentikan semua yang menunggu",
+            "forceStop": "Paksa berhenti (ganggu fail semasa)"
         },
         "settings": {
             "title": "Tetapan",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Pilih gaya ikon untuk fail dan folder",
+            "iconThemeFilled": "Diisi",
+            "iconThemeFilledDesc": "Bentuk dokumen berwarna dengan lencana jenis",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Ikon monokrom yang menyesuaikan dengan tema semasa",
+            "iconThemeOutline": "Garis Luar",
+            "iconThemeOutlineDesc": "Ikon garisan bersih dengan jenis fail berkod warna",
+            "iconsTab": "Ikon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Diputuskan dari pelayan",
             "uploadStarted": "Muat naik dimulakan",
             "uploadComplete": "Muat naik selesai",
-            "uploadFailed": "Muat naik gagal: {error}",
+            "uploadFailed": "Muat naik gagal",
             "downloadStarted": "Muat turun dimulakan",
             "downloadComplete": "Muat turun selesai",
-            "downloadFailed": "Muat turun gagal: {error}",
+            "downloadFailed": "Muat turun gagal",
             "deleteSuccess": "{count} item dipadam",
             "deleteFailed": "Pemadaman gagal: {error}",
             "renameSuccess": "Berjaya dinamakan semula",
@@ -974,7 +975,8 @@
             "https_established": "Sambungan HTTPS dibuat",
             "auth_success": "Pengesahan berjaya sebagai {username}",
             "auth_method_key": "Disahkan dengan kunci SSH ({username})",
-            "listing_complete": "{count} item disenaraikan"
+            "listing_complete": "{count} item disenaraikan",
+            "connected_to": "Disambungkan ke {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fail dikunci",
                 "disk_error": "Ralat cakera",
                 "unknown": "Tidak diketahui"
-            }
+            },
+            "clearHistory": "Kosongkan Sejarah",
+            "clearHistoryConfirm": "Padam semua jurnal penyegerakan?",
+            "journalsCleared": "{count} jurnal dipadam",
+            "noJournals": "Tiada sejarah penyegerakan",
+            "bandwidthLimit": "Had Kelajuan",
+            "bandwidthUnlimited": "Tanpa Had",
+            "bandwidthDownload": "Muat Turun",
+            "bandwidthUpload": "Muat Naik",
+            "profile": "Profil",
+            "profileCustom": "Tersuai",
+            "profileMirror": "Cermin",
+            "profileTwoWay": "Dua Hala",
+            "profileBackup": "Sandaran",
+            "profileMirrorDesc": "Setempat → Jauh, padam anak yatim, sahkan saiz",
+            "profileTwoWayDesc": "Dua hala, simpan yang lebih baharu, tanpa pemadaman",
+            "profileBackupDesc": "Setempat → Jauh, pengesahan checksum, tanpa pemadaman",
+            "conflictsFound": "{count} konflik ditemui",
+            "resolveConflicts": "Selesaikan Konflik",
+            "keepLocal": "Simpan Setempat",
+            "keepRemote": "Simpan Jauh",
+            "keepBoth": "Simpan Kedua-dua",
+            "keepNewer": "Simpan yang Lebih Baharu",
+            "keepLocalAll": "Simpan Setempat untuk Semua",
+            "keepRemoteAll": "Simpan Jauh untuk Semua",
+            "keepNewerAll": "Simpan yang Lebih Baharu untuk Semua",
+            "skipAll": "Langkau Semua",
+            "conflictResolved": "Diselesaikan"
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Terputus",
                 "newConnection": "Sambungan baharu",
                 "syncing": "Menyegerakkan...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Tutup tab lain",
+                "closeAll": "Tutup semua tab"
             }
         },
         "update": {

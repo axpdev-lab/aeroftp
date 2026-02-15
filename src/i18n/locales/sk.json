@@ -225,7 +225,7 @@
             "locked": "Uzamknuté",
             "notConnected": "Nepripojené",
             "permsHeader": "Práva",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Cesty nie su synchronizovane — prejdite do zodpovedajucich priecinkov alebo vypnite synchronizovanu navigaciu"
         },
         "contextMenu": {
             "open": "Otvoriť",
@@ -323,7 +323,8 @@
             "remove": "Odstranit",
             "retry": "Opakovat",
             "stopAll": "Zastavit vsetko",
-            "stopAllPending": "Zastavit vsetky cakajuce"
+            "stopAllPending": "Zastavit vsetky cakajuce",
+            "forceStop": "Vynutene zastavenie (prerusit aktualny subor)"
         },
         "settings": {
             "title": "Nastavenia",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Motív",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Vyberte styl ikon pre subory a priecinky",
+            "iconThemeFilled": "Vyplnene",
+            "iconThemeFilledDesc": "Farebne tvary dokumentov s odznakmi typov",
+            "iconThemeMinimal": "Minimalisticke",
+            "iconThemeMinimalDesc": "Jednofarebne ikony prisposobene aktualnej teme",
+            "iconThemeOutline": "Obrysove",
+            "iconThemeOutlineDesc": "Ciste obrysove ikony s farebne rozlisenymi typmi suborov",
+            "iconsTab": "Ikony"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Odpojený od servera",
             "uploadStarted": "Nahrávanie začalo",
             "uploadComplete": "Nahrávanie dokončené",
-            "uploadFailed": "Nahrávanie zlyhalo: {error}",
+            "uploadFailed": "Nahrávanie zlyhalo",
             "downloadStarted": "Sťahovanie začalo",
             "downloadComplete": "Sťahovanie dokončené",
-            "downloadFailed": "Sťahovanie zlyhalo: {error}",
+            "downloadFailed": "Sťahovanie zlyhalo",
             "deleteSuccess": "{count} položiek odstránených",
             "deleteFailed": "Odstránenie zlyhalo: {error}",
             "renameSuccess": "Úspešne premenované",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS spojenie nadviazané",
             "auth_success": "Úspešné prihlásenie ako {username}",
             "auth_method_key": "Overené pomocou SSH kľúča ({username})",
-            "listing_complete": "Vypísaných {count} položiek"
+            "listing_complete": "Vypísaných {count} položiek",
+            "connected_to": "Pripojené k {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Súbor uzamknutý",
                 "disk_error": "Chyba disku",
                 "unknown": "Neznáme"
-            }
+            },
+            "clearHistory": "Vymazat historiu",
+            "clearHistoryConfirm": "Odstranit vsetky deniky synchronizacie?",
+            "journalsCleared": "{count} dennikov odstranenenych",
+            "noJournals": "Ziadna historia synchronizacie",
+            "bandwidthLimit": "Limit rychlosti",
+            "bandwidthUnlimited": "Neobmedzene",
+            "bandwidthDownload": "Stahovanie",
+            "bandwidthUpload": "Nahravanie",
+            "profile": "Profil",
+            "profileCustom": "Vlastny",
+            "profileMirror": "Zrkadlo",
+            "profileTwoWay": "Obojsmerne",
+            "profileBackup": "Zaloha",
+            "profileMirrorDesc": "Lokalny → Vzdialeny, odstranit osirotene, overit velkost",
+            "profileTwoWayDesc": "Obojsmerne, ponechat novsie, bez mazania",
+            "profileBackupDesc": "Lokalny → Vzdialeny, overenie kontrolnym suctom, bez mazania",
+            "conflictsFound": "Najdenych konfliktov: {count}",
+            "resolveConflicts": "Vyriesit konflikty",
+            "keepLocal": "Ponechat lokalny",
+            "keepRemote": "Ponechat vzdialeny",
+            "keepBoth": "Ponechat oba",
+            "keepNewer": "Ponechat novsie",
+            "keepLocalAll": "Ponechat lokalny pre vsetky",
+            "keepRemoteAll": "Ponechat vzdialeny pre vsetky",
+            "keepNewerAll": "Ponechat novsie pre vsetky",
+            "skipAll": "Preskocit vsetky",
+            "conflictResolved": "Vyriesene"
         },
         "ui": {
             "syncing": "Synchronizacia...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Odpojeny",
                 "newConnection": "Nove pripojenie",
                 "syncing": "Synchronizacia...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Zavriet ostatne karty",
+                "closeAll": "Zavriet vsetky karty"
             }
         },
         "update": {

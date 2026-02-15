@@ -9,7 +9,7 @@ use thiserror::Error;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{debug, info, warn};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use secrecy::{ExposeSecret, SecretString};
 
 #[allow(dead_code)]
@@ -332,40 +332,42 @@ impl FtpManager {
     }
 
     /// Download a file with progress callback
+    /// The callback returns `true` to continue or `false` to cancel the transfer.
     pub async fn download_file_with_progress<F>(
-        &mut self, 
-        remote_path: &str, 
+        &mut self,
+        remote_path: &str,
         local_path: &str,
         mut on_progress: F
-    ) -> Result<()> 
-    where 
-        F: FnMut(u64)
+    ) -> Result<()>
+    where
+        F: FnMut(u64) -> bool
     {
         let stream = self.stream.as_mut()
             .ok_or(FtpManagerError::NotConnected)?;
-        
+
         info!("Downloading with progress: {} -> {}", remote_path, local_path);
-        
+
         // Set binary transfer mode
         stream.transfer_type(FileType::Binary)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        
+
         // Download using retr_as_stream
         let mut data_stream = stream.retr_as_stream(remote_path)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
         // Read in chunks for progress tracking
         let mut buf = Vec::new();
         let mut chunk = [0u8; 8192]; // 8KB chunks
         let mut total_read: u64 = 0;
-        
+        let mut cancelled = false;
+
         loop {
             let n = data_stream.read(&mut chunk).await?;
             if n == 0 {
@@ -373,17 +375,26 @@ impl FtpManager {
             }
             buf.extend_from_slice(&chunk[..n]);
             total_read += n as u64;
-            on_progress(total_read);
+            if !on_progress(total_read) {
+                cancelled = true;
+                info!("Download cancelled by user at {} bytes: {}", total_read, remote_path);
+                break;
+            }
         }
-        
-        // Finalize the stream
-        stream.finalize_retr_stream(data_stream)
-            .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
+        // Finalize the stream (must always finalize to keep FTP connection clean)
+        // On cancel, FTP server sends 426 — ignore that error
+        let finalize_result = stream.finalize_retr_stream(data_stream).await;
+        if cancelled {
+            let _ = finalize_result; // Ignore 426 error on cancel
+            let _ = tokio::fs::remove_file(local_path).await;
+            return Err(FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into());
+        }
+        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+
         // Write to local file
         tokio::fs::write(local_path, buf).await?;
-        
+
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
         Ok(())
     }
@@ -417,50 +428,72 @@ impl FtpManager {
         Ok(())
     }
 
-    /// Upload a file with progress callback
+    /// Upload a file with progress callback (streaming, chunked)
+    /// The callback returns `true` to continue or `false` to cancel the transfer.
     pub async fn upload_file_with_progress<F>(
-        &mut self, 
-        local_path: &str, 
+        &mut self,
+        local_path: &str,
         remote_path: &str,
         _file_size: u64,
         mut on_progress: F
-    ) -> Result<()> 
-    where 
-        F: FnMut(u64)
+    ) -> Result<()>
+    where
+        F: FnMut(u64) -> bool
     {
         let stream = self.stream.as_mut()
             .ok_or(FtpManagerError::NotConnected)?;
-        
+
         info!("Uploading with progress: {} -> {}", local_path, remote_path);
-        
+
         // Set binary transfer mode
         stream.transfer_type(FileType::Binary)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
-        // Read local file
-        let data = tokio::fs::read(local_path).await?;
-        let data_len = data.len() as u64;
-        
+
+        // Open local file for streaming read
+        let mut file = tokio::fs::File::open(local_path).await?;
+        let file_size = file.metadata().await?.len();
+
         // Report initial progress
         on_progress(0);
-        
-        // Create cursor and upload
-        let mut cursor = std::io::Cursor::new(data);
-        
-        // Upload with timeout
-        tokio::time::timeout(
-            Duration::from_secs(600), // 10 minutes for large files
-            stream.put_file(remote_path, &mut cursor)
-        )
-        .await
-        .context("Upload timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
-        // Report completion
-        on_progress(data_len);
-        
-        info!("Upload completed: {} ({} bytes)", remote_path, data_len);
+
+        // Open streaming upload channel
+        let mut data_stream = stream.put_with_stream(remote_path)
+            .await
+            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+
+        // Write in 8KB chunks with progress tracking
+        let mut chunk = [0u8; 8192];
+        let mut total_written: u64 = 0;
+        let mut cancelled = false;
+
+        loop {
+            let n = file.read(&mut chunk).await?;
+            if n == 0 {
+                break;
+            }
+            data_stream.write_all(&chunk[..n])
+                .await
+                .map_err(|e| FtpManagerError::OperationFailed(format!("Write error: {}", e)))?;
+            total_written += n as u64;
+            if !on_progress(total_written) {
+                cancelled = true;
+                info!("Upload cancelled by user at {} of {} bytes: {}", total_written, file_size, remote_path);
+                break;
+            }
+        }
+
+        // Finalize the stream (must always finalize to keep FTP connection clean)
+        let finalize_result = stream.finalize_put_stream(data_stream).await;
+        if cancelled {
+            let _ = finalize_result; // Ignore error on cancel
+            // Try to remove the partial remote file
+            let _ = stream.rm(remote_path).await;
+            return Err(FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into());
+        }
+        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+
+        info!("Upload completed: {} ({} bytes)", remote_path, total_written);
         Ok(())
     }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "AeroFTP default capabilities",
+  "description": "AeroFTP default capabilities — file manager requires full FS access (SEC-P2-03: by design)",
   "windows": [
     "main"
   ],
@@ -16,38 +16,20 @@
     "core:window:allow-set-focus",
     "notification:default",
     "dialog:default",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "dialog:allow-message",
-    "dialog:allow-ask",
-    "dialog:allow-confirm",
-    "fs:default",
-    "fs:allow-read-dir",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-exists",
-    "fs:allow-create",
-    "fs:allow-copy-file",
-    "fs:allow-mkdir",
-    "fs:allow-remove",
-    "fs:allow-rename",
-    "fs:allow-stat",
     "fs:read-all",
     "fs:write-all",
-    "log:default",
-    "core:path:default",
-    "shell:allow-open",
-    "autostart:allow-enable",
-    "autostart:allow-disable",
-    "autostart:allow-is-enabled",
+    "fs:deny-webview-data-linux",
+    "fs:deny-webview-data-windows",
     {
       "identifier": "fs:scope",
-      "allow": [
-        {
-          "path": "**"
-        }
-      ]
-    }
+      "allow": [{ "path": "**" }]
+    },
+    "log:default",
+    "core:path:default",
+    "shell:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ],
   "remote": {
     "urls": [

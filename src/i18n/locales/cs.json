@@ -225,7 +225,7 @@
             "locked": "Uzamčeno",
             "notConnected": "Nepřipojeno",
             "permsHeader": "Práva",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Cesty nejsou synchronizovány — přejděte do odpovídajících složek nebo vypněte synchronizovanou navigaci"
         },
         "contextMenu": {
             "open": "Otevřít",
@@ -323,7 +323,8 @@
             "remove": "Odebrat",
             "retry": "Zkusit znovu",
             "stopAll": "Zastavit vše",
-            "stopAllPending": "Zastavit vše čekající"
+            "stopAllPending": "Zastavit vše čekající",
+            "forceStop": "Vynucené zastavení (přerušit aktuální soubor)"
         },
         "settings": {
             "title": "Nastavení",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Motiv",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Zvolte styl ikon pro soubory a složky",
+            "iconThemeFilled": "Vyplněné",
+            "iconThemeFilledDesc": "Barevné tvary dokumentů s odznaky typu",
+            "iconThemeMinimal": "Minimální",
+            "iconThemeMinimalDesc": "Jednobarevné ikony přizpůsobené aktuálnímu tématu",
+            "iconThemeOutline": "Obrysové",
+            "iconThemeOutlineDesc": "Ikony s čistými obrysy a barevně rozlišenými typy souborů",
+            "iconsTab": "Ikony"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Odpojeno od serveru",
             "uploadStarted": "Nahrávání zahájeno",
             "uploadComplete": "Nahrávání dokončeno",
-            "uploadFailed": "Nahrávání selhalo: {error}",
+            "uploadFailed": "Nahrávání selhalo",
             "downloadStarted": "Stahování zahájeno",
             "downloadComplete": "Stahování dokončeno",
-            "downloadFailed": "Stahování selhalo: {error}",
+            "downloadFailed": "Stahování selhalo",
             "deleteSuccess": "{count} položek smazáno",
             "deleteFailed": "Mazání selhalo: {error}",
             "renameSuccess": "Úspěšně přejmenováno",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS spojení navázáno",
             "auth_success": "Úspěšně přihlášen jako {username}",
             "auth_method_key": "Ověřeno pomocí SSH klíče ({username})",
-            "listing_complete": "Vypsáno {count} položek"
+            "listing_complete": "Vypsáno {count} položek",
+            "connected_to": "Připojeno k {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Soubor zamknut",
                 "disk_error": "Chyba disku",
                 "unknown": "Neznamy"
-            }
+            },
+            "clearHistory": "Vymazat historii",
+            "clearHistoryConfirm": "Smazat všechny synchronizační žurnály?",
+            "journalsCleared": "{count} žurnálů smazáno",
+            "noJournals": "Žádná historie synchronizace",
+            "bandwidthLimit": "Omezení rychlosti",
+            "bandwidthUnlimited": "Bez omezení",
+            "bandwidthDownload": "Stahování",
+            "bandwidthUpload": "Nahrávání",
+            "profile": "Profil",
+            "profileCustom": "Vlastní",
+            "profileMirror": "Zrcadlo",
+            "profileTwoWay": "Obousměrný",
+            "profileBackup": "Záloha",
+            "profileMirrorDesc": "Lokální → Vzdálené, smazat osiřelé, ověřit velikost",
+            "profileTwoWayDesc": "Obousměrný, ponechat novější, bez mazání",
+            "profileBackupDesc": "Lokální → Vzdálené, ověření kontrolního součtu, bez mazání",
+            "conflictsFound": "{count} konfliktů nalezeno",
+            "resolveConflicts": "Vyřešit konflikty",
+            "keepLocal": "Ponechat lokální",
+            "keepRemote": "Ponechat vzdálený",
+            "keepBoth": "Ponechat oba",
+            "keepNewer": "Ponechat novější",
+            "keepLocalAll": "Ponechat lokální pro vše",
+            "keepRemoteAll": "Ponechat vzdálený pro vše",
+            "keepNewerAll": "Ponechat novější pro vše",
+            "skipAll": "Přeskočit vše",
+            "conflictResolved": "Vyřešeno"
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Odpojeno",
                 "newConnection": "Nové připojení",
                 "syncing": "Synchronizace...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Zavřít ostatní karty",
+                "closeAll": "Zavřít všechny karty"
             }
         },
         "update": {

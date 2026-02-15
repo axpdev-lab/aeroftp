@@ -225,7 +225,7 @@
             "locked": "Wedi'i gloi",
             "notConnected": "Heb gysylltu",
             "permsHeader": "Hawl.",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Nid yw'r llwybrau wedi'u cydweddu — ewch i ffolderi cyfatebol neu analluogwch lywio cydweddu"
         },
         "contextMenu": {
             "open": "Agor",
@@ -323,7 +323,8 @@
             "remove": "Tynnu",
             "retry": "Ailgynnig",
             "stopAll": "Stopio'r cyfan",
-            "stopAllPending": "Stopio'r rhai sy'n aros"
+            "stopAllPending": "Stopio'r rhai sy'n aros",
+            "forceStop": "Gorfodi stopio (torri ar draws y ffeil gyfredol)"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Thema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Dewiswch arddull eicon ar gyfer ffeiliau a ffolderi",
+            "iconThemeFilled": "Llawn",
+            "iconThemeFilledDesc": "Siapiau dogfen lliw gyda bathodynnau math",
+            "iconThemeMinimal": "Syml",
+            "iconThemeMinimalDesc": "Eiconau unlliw sy'n addasu i'r thema gyfredol",
+            "iconThemeOutline": "Amlinellol",
+            "iconThemeOutlineDesc": "Eiconau strôc glân gyda mathau ffeil wedi'u codio â lliw",
+            "iconsTab": "Eiconau"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Wedi datgysylltu o'r gweinydd",
             "uploadStarted": "Uwchlwytho wedi dechrau",
             "uploadComplete": "Uwchlwytho wedi'i gwblhau",
-            "uploadFailed": "Uwchlwytho wedi methu: {error}",
+            "uploadFailed": "Uwchlwytho wedi methu",
             "downloadStarted": "Lawrlwytho wedi dechrau",
             "downloadComplete": "Lawrlwytho wedi'i gwblhau",
-            "downloadFailed": "Lawrlwytho wedi methu: {error}",
+            "downloadFailed": "Lawrlwytho wedi methu",
             "deleteSuccess": "{count} eitem wedi'u dileu",
             "deleteFailed": "Dileu wedi methu: {error}",
             "renameSuccess": "Ailenwyd yn llwyddiannus",
@@ -974,7 +975,8 @@
             "https_established": "Cysylltiad HTTPS wedi'i sefydlu",
             "auth_success": "Dilysu'n llwyddiannus fel {username}",
             "auth_method_key": "Wedi'i ddilysu gyda allwedd SSH ({username})",
-            "listing_complete": "Rhestrwyd {count} eitem"
+            "listing_complete": "Rhestrwyd {count} eitem",
+            "connected_to": "Wedi cysylltu i {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Ffeil wedi'i chloi",
                 "disk_error": "Gwall disg",
                 "unknown": "Anhysbys"
-            }
+            },
+            "clearHistory": "Clirio Hanes",
+            "clearHistoryConfirm": "Dileu pob dyddiadur cydweddu?",
+            "journalsCleared": "{count} dyddiadur wedi'u dileu",
+            "noJournals": "Dim hanes cydweddu",
+            "bandwidthLimit": "Terfyn Cyflymder",
+            "bandwidthUnlimited": "Diderfyn",
+            "bandwidthDownload": "Lawrlwytho",
+            "bandwidthUpload": "Uwchlwytho",
+            "profile": "Proffil",
+            "profileCustom": "Personol",
+            "profileMirror": "Drych",
+            "profileTwoWay": "Dwy ffordd",
+            "profileBackup": "Wrth gefn",
+            "profileMirrorDesc": "Lleol → Pell, dileu amddifaid, gwirio maint",
+            "profileTwoWayDesc": "Dwy ffordd, cadw'r diweddaraf, dim dileu",
+            "profileBackupDesc": "Lleol → Pell, gwirio checksum, dim dileu",
+            "conflictsFound": "{count} gwrthdaro wedi'u canfod",
+            "resolveConflicts": "Datrys Gwrthdaro",
+            "keepLocal": "Cadw Lleol",
+            "keepRemote": "Cadw Pell",
+            "keepBoth": "Cadw'r Ddau",
+            "keepNewer": "Cadw'r Diweddaraf",
+            "keepLocalAll": "Cadw Lleol i Bawb",
+            "keepRemoteAll": "Cadw Pell i Bawb",
+            "keepNewerAll": "Cadw'r Diweddaraf i Bawb",
+            "skipAll": "Hepgor y Cyfan",
+            "conflictResolved": "Datrywyd"
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Wedi datgysylltu",
                 "newConnection": "Cysylltiad newydd",
                 "syncing": "Yn cydweddu...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Cau tabiau eraill",
+                "closeAll": "Cau pob tab"
             }
         },
         "update": {

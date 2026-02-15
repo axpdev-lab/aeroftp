@@ -4,15 +4,20 @@
 //! Each plugin is a directory containing a plugin.json manifest
 //! and executable scripts that receive JSON args on stdin
 //! and return JSON results on stdout.
+//!
+//! SEC-P2-02: Plugin integrity verification via SHA-256 hashes.
+//! At install time, command file hashes are computed and stored in the manifest.
+//! At execution time, hashes are verified to detect post-install tampering.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Manager;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{timeout, Duration};
-use tracing::info;
+use tracing::{info, warn};
 
 const PLUGIN_TIMEOUT_SECS: u64 = 30;
 const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1 MB
@@ -35,10 +40,32 @@ pub struct PluginToolDef {
     #[serde(rename = "dangerLevel", default = "default_danger")]
     pub danger_level: String,
     pub command: String,
+    /// SEC-P2-02: SHA-256 hash of the command file, computed at install time.
+    /// If present, verified before each execution to detect tampering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<String>,
 }
 
 fn default_danger() -> String {
     "medium".to_string()
+}
+
+/// Compute SHA-256 hex digest of a file
+fn compute_file_sha256(path: &std::path::Path) -> Result<String, String> {
+    let data =
+        std::fs::read(path).map_err(|e| format!("Failed to read file for integrity hash: {}", e))?;
+    let hash = Sha256::digest(&data);
+    Ok(format!("{:x}", hash))
+}
+
+/// SEC-AUDIT-07: Validate that a hash string is exactly 64 lowercase hex characters
+fn is_valid_sha256_hex(s: &str) -> bool {
+    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// SEC-AUDIT-05: Safe hash prefix for error messages (no panic on short strings)
+fn hash_prefix(h: &str) -> &str {
+    h.get(..12).unwrap_or(h)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,13 +211,64 @@ pub async fn execute_plugin_tool(
         ));
     }
 
-    let mut child = tokio::process::Command::new(program)
-        .args(&argv[1..])
+    // SEC-P2-02: Verify command file integrity if hash is present
+    if let Some(expected_hash) = &tool.integrity {
+        // SEC-AUDIT-07: Validate hash format before comparison
+        if !is_valid_sha256_hex(expected_hash) {
+            return Err(format!(
+                "SEC: Plugin '{}' tool '{}' has malformed integrity hash (expected 64 hex chars, got {} chars)",
+                plugin_id, tool_name, expected_hash.len()
+            ));
+        }
+
+        let command_path = plugin_dir.join(program);
+        if !command_path.exists() {
+            return Err(format!(
+                "Plugin command file not found: {}",
+                program
+            ));
+        }
+
+        // SEC-AUDIT-08: Canonicalize to resolve symlinks, then verify still within plugin_dir
+        let canonical_path = command_path.canonicalize().map_err(|e| {
+            format!("Failed to resolve plugin command path: {}", e)
+        })?;
+        let canonical_plugin_dir = plugin_dir.canonicalize().map_err(|e| {
+            format!("Failed to resolve plugin directory: {}", e)
+        })?;
+        if !canonical_path.starts_with(&canonical_plugin_dir) {
+            return Err(format!(
+                "SEC: Plugin '{}' tool '{}' command resolves outside plugin directory (symlink escape)",
+                plugin_id, tool_name
+            ));
+        }
+
+        let actual_hash = compute_file_sha256(&canonical_path)?;
+        if actual_hash != *expected_hash {
+            return Err(format!(
+                "SEC: Plugin '{}' tool '{}' integrity check failed — command file has been modified after installation (expected {}, got {})",
+                plugin_id, tool_name, hash_prefix(expected_hash), hash_prefix(&actual_hash)
+            ));
+        }
+    }
+
+    // INT-AUDIT-05: Clear inherited environment to prevent credential leakage.
+    // Selectively restore only safe variables needed for subprocess execution.
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(&argv[1..])
         .current_dir(&plugin_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true) // Ensure process is killed on timeout or drop
+        .kill_on_drop(true)
+        .env_clear();
+    // Restore minimal safe environment
+    for key in &["PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR"] {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn plugin process: {}", e))?;
 
@@ -245,13 +323,14 @@ pub async fn execute_plugin_tool(
     }
 }
 
-/// Install a plugin from a manifest JSON string
+/// Install a plugin from a manifest JSON string.
+/// SEC-P2-02: Computes SHA-256 integrity hashes for all command files at install time.
 #[tauri::command]
 pub async fn install_plugin(
     app: tauri::AppHandle,
     manifest_json: String,
 ) -> Result<String, String> {
-    let manifest: PluginManifest =
+    let mut manifest: PluginManifest =
         serde_json::from_str(&manifest_json).map_err(|e| format!("Invalid manifest: {}", e))?;
 
     // Validate id
@@ -267,6 +346,25 @@ pub async fn install_plugin(
     let dir = plugins_dir(&app).join(&manifest.id);
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+
+    // SEC-P2-02: Compute integrity hashes for all command files
+    for tool in &mut manifest.tools {
+        let argv: Vec<&str> = tool.command.split_whitespace().collect();
+        if let Some(program) = argv.first() {
+            let command_path = dir.join(program);
+            if command_path.exists() {
+                match compute_file_sha256(&command_path) {
+                    Ok(hash) => {
+                        info!("Plugin {}: tool {} integrity hash = {}…", manifest.id, tool.name, hash_prefix(&hash));
+                        tool.integrity = Some(hash);
+                    }
+                    Err(e) => {
+                        warn!("Plugin {}: failed to compute integrity for {}: {}", manifest.id, tool.name, e);
+                    }
+                }
+            }
+        }
+    }
 
     let manifest_path = dir.join("plugin.json");
     std::fs::write(

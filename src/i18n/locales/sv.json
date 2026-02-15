@@ -225,7 +225,7 @@
             "locked": "Låst",
             "notConnected": "Inte ansluten",
             "permsHeader": "Rättigheter",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Sokvagarna ar inte synkroniserade — navigera till matchande mappar eller inaktivera synkroniserad navigering"
         },
         "contextMenu": {
             "open": "Öppna",
@@ -323,7 +323,8 @@
             "remove": "Ta bort",
             "retry": "Forsok igen",
             "stopAll": "Stoppa alla",
-            "stopAllPending": "Stoppa alla vantande"
+            "stopAllPending": "Stoppa alla vantande",
+            "forceStop": "Tvangsstopp (avbryt aktuell fil)"
         },
         "settings": {
             "title": "Inställningar",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Valj en ikonstil for filer och mappar",
+            "iconThemeFilled": "Fyllda",
+            "iconThemeFilledDesc": "Fargade dokumentformer med typmarken",
+            "iconThemeMinimal": "Minimala",
+            "iconThemeMinimalDesc": "Monokroma ikoner som anpassar sig till aktuellt tema",
+            "iconThemeOutline": "Kontur",
+            "iconThemeOutlineDesc": "Rena konturikoner med fargkodade filtyper",
+            "iconsTab": "Ikoner"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Frånkopplad från server",
             "uploadStarted": "Uppladdning startad",
             "uploadComplete": "Uppladdning slutförd",
-            "uploadFailed": "Uppladdning misslyckades: {error}",
+            "uploadFailed": "Uppladdning misslyckades",
             "downloadStarted": "Nedladdning startad",
             "downloadComplete": "Nedladdning slutförd",
-            "downloadFailed": "Nedladdning misslyckades: {error}",
+            "downloadFailed": "Nedladdning misslyckades",
             "deleteSuccess": "{count} objekt raderade",
             "deleteFailed": "Radering misslyckades: {error}",
             "renameSuccess": "Namnbyte lyckades",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-anslutning upprättad",
             "auth_success": "Autentisering lyckades som {username}",
             "auth_method_key": "Autentiserad med SSH-nyckel ({username})",
-            "listing_complete": "Listade {count} objekt"
+            "listing_complete": "Listade {count} objekt",
+            "connected_to": "Ansluten till {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fil låst",
                 "disk_error": "Diskfel",
                 "unknown": "Okänt"
-            }
+            },
+            "clearHistory": "Rensa historik",
+            "clearHistoryConfirm": "Ta bort alla synkroniseringsjournaler?",
+            "journalsCleared": "{count} journaler borttagna",
+            "noJournals": "Ingen synkroniseringshistorik",
+            "bandwidthLimit": "Hastighetsbegransning",
+            "bandwidthUnlimited": "Obegransad",
+            "bandwidthDownload": "Nedladdning",
+            "bandwidthUpload": "Uppladdning",
+            "profile": "Profil",
+            "profileCustom": "Anpassad",
+            "profileMirror": "Spegel",
+            "profileTwoWay": "Tvavagssynk",
+            "profileBackup": "Sakerhetskopiering",
+            "profileMirrorDesc": "Lokal → Fjarr, ta bort overgivna, verifiera storlek",
+            "profileTwoWayDesc": "Bidirektionell, behall nyare, inga borttagningar",
+            "profileBackupDesc": "Lokal → Fjarr, checksumverifiering, inga borttagningar",
+            "conflictsFound": "{count} konflikter hittade",
+            "resolveConflicts": "Los konflikter",
+            "keepLocal": "Behall lokal",
+            "keepRemote": "Behall fjarr",
+            "keepBoth": "Behall bada",
+            "keepNewer": "Behall nyare",
+            "keepLocalAll": "Behall lokal for alla",
+            "keepRemoteAll": "Behall fjarr for alla",
+            "keepNewerAll": "Behall nyare for alla",
+            "skipAll": "Hoppa over alla",
+            "conflictResolved": "Lost"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Frankoopplad",
                 "newConnection": "Ny anslutning",
                 "syncing": "Synkroniserar...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Stang ovriga flikar",
+                "closeAll": "Stang alla flikar"
             }
         },
         "update": {

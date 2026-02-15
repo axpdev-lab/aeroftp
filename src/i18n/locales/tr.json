@@ -225,7 +225,7 @@
             "locked": "Kilitli",
             "notConnected": "Bağlı Değil",
             "permsHeader": "İzinler",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Yollar senkronize degil — eslesen klasorlere gidin veya senkronize gezintiyi devre disi birakin"
         },
         "contextMenu": {
             "open": "Aç",
@@ -323,7 +323,8 @@
             "remove": "Kaldır",
             "retry": "Tekrar dene",
             "stopAll": "Tümünü durdur",
-            "stopAllPending": "Tüm bekleyenleri durdur"
+            "stopAllPending": "Tüm bekleyenleri durdur",
+            "forceStop": "Zorla durdur (mevcut dosyayi kesintiye ugrat)"
         },
         "settings": {
             "title": "Ayarlar",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Otomatik",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Dosya ve klasorler icin bir simge stili secin",
+            "iconThemeFilled": "Dolgulu",
+            "iconThemeFilledDesc": "Tur rozetli renkli belge sekilleri",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Mevcut temaya uyum saglayan tek renkli simgeler",
+            "iconThemeOutline": "Cizgisel",
+            "iconThemeOutlineDesc": "Renk kodlu dosya turleriyle temiz cizgisel simgeler",
+            "iconsTab": "Simgeler"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Sunucu bağlantısı kesildi",
             "uploadStarted": "Yükleme başladı",
             "uploadComplete": "Yükleme tamamlandı",
-            "uploadFailed": "Yükleme başarısız: {error}",
+            "uploadFailed": "Yükleme başarısız",
             "downloadStarted": "İndirme başladı",
             "downloadComplete": "İndirme tamamlandı",
-            "downloadFailed": "İndirme başarısız: {error}",
+            "downloadFailed": "İndirme başarısız",
             "deleteSuccess": "{count} öğe silindi",
             "deleteFailed": "Silme başarısız: {error}",
             "renameSuccess": "Başarıyla yeniden adlandırıldı",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS bağlantısı kuruldu",
             "auth_success": "{username} olarak kimlik doğrulama başarılı",
             "auth_method_key": "SSH anahtarı ile doğrulandı ({username})",
-            "listing_complete": "{count} öğe listelendi"
+            "listing_complete": "{count} öğe listelendi",
+            "connected_to": "Bağlandı {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Dosya kilitli",
                 "disk_error": "Disk hatası",
                 "unknown": "Bilinmiyor"
-            }
+            },
+            "clearHistory": "Gecmisi Temizle",
+            "clearHistoryConfirm": "Tum senkronizasyon gunlukleri silinsin mi?",
+            "journalsCleared": "{count} gunluk silindi",
+            "noJournals": "Senkronizasyon gecmisi yok",
+            "bandwidthLimit": "Hiz Siniri",
+            "bandwidthUnlimited": "Sinirsiz",
+            "bandwidthDownload": "Indirme",
+            "bandwidthUpload": "Yukleme",
+            "profile": "Profil",
+            "profileCustom": "Ozel",
+            "profileMirror": "Ayna",
+            "profileTwoWay": "Cift Yonlu",
+            "profileBackup": "Yedekleme",
+            "profileMirrorDesc": "Yerel → Uzak, yetim dosyalari sil, boyut dogrula",
+            "profileTwoWayDesc": "Cift yonlu, yenisini tut, silme yok",
+            "profileBackupDesc": "Yerel → Uzak, checksum dogrulamasi, silme yok",
+            "conflictsFound": "{count} catisma bulundu",
+            "resolveConflicts": "Catismalari Coz",
+            "keepLocal": "Yereli Tut",
+            "keepRemote": "Uzagi Tut",
+            "keepBoth": "Ikisini de Tut",
+            "keepNewer": "Yenisini Tut",
+            "keepLocalAll": "Tumu icin Yereli Tut",
+            "keepRemoteAll": "Tumu icin Uzagi Tut",
+            "keepNewerAll": "Tumu icin Yenisini Tut",
+            "skipAll": "Tumunu Atla",
+            "conflictResolved": "Cozuldu"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Bağlantı kesildi",
                 "newConnection": "Yeni bağlantı",
                 "syncing": "Senkronize ediliyor...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Diger sekmeleri kapat",
+                "closeAll": "Tum sekmeleri kapat"
             }
         },
         "update": {

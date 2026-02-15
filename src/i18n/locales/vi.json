@@ -225,7 +225,7 @@
             "locked": "Đã khóa",
             "notConnected": "Chưa kết nối",
             "permsHeader": "Quyền",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Duong dan khong dong bo — dieu huong den cac thu muc tuong ung hoac tat dieu huong dong bo"
         },
         "contextMenu": {
             "open": "Mở",
@@ -323,7 +323,8 @@
             "remove": "Xóa",
             "retry": "Thử lại",
             "stopAll": "Dừng tất cả",
-            "stopAllPending": "Dừng tất cả đang chờ"
+            "stopAllPending": "Dừng tất cả đang chờ",
+            "forceStop": "Buoc dung (ngat file hien tai)"
         },
         "settings": {
             "title": "Cài đặt",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Giao diện",
             "themeAutoLabel": "Tự động",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Chon kieu bieu tuong cho tep va thu muc",
+            "iconThemeFilled": "Day du",
+            "iconThemeFilledDesc": "Hinh tai lieu mau sac voi huy hieu loai tep",
+            "iconThemeMinimal": "Toi gian",
+            "iconThemeMinimalDesc": "Bieu tuong don sac thich ung voi chu de hien tai",
+            "iconThemeOutline": "Duong vien",
+            "iconThemeOutlineDesc": "Bieu tuong duong net sach se voi ma mau theo loai tep",
+            "iconsTab": "Bieu tuong"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Đã ngắt kết nối khỏi máy chủ",
             "uploadStarted": "Bắt đầu tải lên",
             "uploadComplete": "Tải lên hoàn tất",
-            "uploadFailed": "Tải lên thất bại: {error}",
+            "uploadFailed": "Tải lên thất bại",
             "downloadStarted": "Bắt đầu tải xuống",
             "downloadComplete": "Tải xuống hoàn tất",
-            "downloadFailed": "Tải xuống thất bại: {error}",
+            "downloadFailed": "Tải xuống thất bại",
             "deleteSuccess": "Đã xóa {count} mục",
             "deleteFailed": "Xóa thất bại: {error}",
             "renameSuccess": "Đổi tên thành công",
@@ -974,7 +975,8 @@
             "https_established": "Kết nối HTTPS đã thiết lập",
             "auth_success": "Xác thực thành công với tư cách {username}",
             "auth_method_key": "Đã xác thực bằng khóa SSH ({username})",
-            "listing_complete": "Đã liệt kê {count} mục"
+            "listing_complete": "Đã liệt kê {count} mục",
+            "connected_to": "Đã kết nối tới {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Tệp bị khóa",
                 "disk_error": "Lỗi đĩa",
                 "unknown": "Không xác định"
-            }
+            },
+            "clearHistory": "Xoa Lich su",
+            "clearHistoryConfirm": "Xoa tat ca nhat ky dong bo?",
+            "journalsCleared": "Da xoa {count} nhat ky",
+            "noJournals": "Khong co lich su dong bo",
+            "bandwidthLimit": "Gioi han Toc do",
+            "bandwidthUnlimited": "Khong gioi han",
+            "bandwidthDownload": "Tai xuong",
+            "bandwidthUpload": "Tai len",
+            "profile": "Ho so",
+            "profileCustom": "Tuy chinh",
+            "profileMirror": "Phan chieu",
+            "profileTwoWay": "Hai chieu",
+            "profileBackup": "Sao luu",
+            "profileMirrorDesc": "Cuc bo → Tu xa, xoa tep mo coi, xac minh kich thuoc",
+            "profileTwoWayDesc": "Hai chieu, giu tep moi hon, khong xoa",
+            "profileBackupDesc": "Cuc bo → Tu xa, xac minh checksum, khong xoa",
+            "conflictsFound": "Tim thay {count} xung dot",
+            "resolveConflicts": "Giai quyet Xung dot",
+            "keepLocal": "Giu ban Cuc bo",
+            "keepRemote": "Giu ban Tu xa",
+            "keepBoth": "Giu Ca hai",
+            "keepNewer": "Giu ban Moi hon",
+            "keepLocalAll": "Giu ban Cuc bo cho Tat ca",
+            "keepRemoteAll": "Giu ban Tu xa cho Tat ca",
+            "keepNewerAll": "Giu ban Moi hon cho Tat ca",
+            "skipAll": "Bo qua Tat ca",
+            "conflictResolved": "Da giai quyet"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Đã ngắt kết nối",
                 "newConnection": "Kết nối mới",
                 "syncing": "Đang đồng bộ...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Dong cac tab khac",
+                "closeAll": "Dong tat ca cac tab"
             }
         },
         "update": {

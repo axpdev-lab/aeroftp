@@ -225,7 +225,7 @@
             "locked": "ล็อค",
             "notConnected": "ไม่ได้เชื่อมต่อ",
             "permsHeader": "สิทธิ์",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "เส้นทางไม่ตรงกัน — ไปยังโฟลเดอร์ที่ตรงกันหรือปิดการนำทางแบบซิงค์"
         },
         "contextMenu": {
             "open": "เปิด",
@@ -323,7 +323,8 @@
             "remove": "ลบ",
             "retry": "ลองใหม่",
             "stopAll": "หยุดทั้งหมด",
-            "stopAllPending": "หยุดทั้งหมดที่รอดำเนินการ"
+            "stopAllPending": "หยุดทั้งหมดที่รอดำเนินการ",
+            "forceStop": "บังคับหยุด (ขัดจังหวะไฟล์ปัจจุบัน)"
         },
         "settings": {
             "title": "การตั้งค่า",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "ธีม",
             "themeAutoLabel": "อัตโนมัติ",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "เลือกรูปแบบไอคอนสำหรับไฟล์และโฟลเดอร์",
+            "iconThemeFilled": "แบบทึบ",
+            "iconThemeFilledDesc": "รูปทรงเอกสารสีสันพร้อมป้ายประเภท",
+            "iconThemeMinimal": "เรียบง่าย",
+            "iconThemeMinimalDesc": "ไอคอนสีเดียวที่ปรับตามธีมปัจจุบัน",
+            "iconThemeOutline": "เส้นขอบ",
+            "iconThemeOutlineDesc": "ไอคอนเส้นขอบที่สะอาดพร้อมสีแยกตามประเภทไฟล์",
+            "iconsTab": "ไอคอน"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "ยกเลิกการเชื่อมต่อจากเซิร์ฟเวอร์แล้ว",
             "uploadStarted": "เริ่มอัปโหลด",
             "uploadComplete": "อัปโหลดเสร็จสิ้น",
-            "uploadFailed": "อัปโหลดล้มเหลว: {error}",
+            "uploadFailed": "อัปโหลดล้มเหลว",
             "downloadStarted": "เริ่มดาวน์โหลด",
             "downloadComplete": "ดาวน์โหลดเสร็จสิ้น",
-            "downloadFailed": "ดาวน์โหลดล้มเหลว: {error}",
+            "downloadFailed": "ดาวน์โหลดล้มเหลว",
             "deleteSuccess": "ลบ {count} รายการแล้ว",
             "deleteFailed": "ลบล้มเหลว: {error}",
             "renameSuccess": "เปลี่ยนชื่อสำเร็จ",
@@ -974,7 +975,8 @@
             "https_established": "การเชื่อมต่อ HTTPS สร้างขึ้นแล้ว",
             "auth_success": "การตรวจสอบสิทธิ์สำเร็จในฐานะ {username}",
             "auth_method_key": "ตรวจสอบสิทธิ์ด้วยคีย์ SSH ({username})",
-            "listing_complete": "แสดงรายการ {count} รายการ"
+            "listing_complete": "แสดงรายการ {count} รายการ",
+            "connected_to": "เชื่อมต่อกับ {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "ไฟล์ถูกล็อก",
                 "disk_error": "ข้อผิดพลาดดิสก์",
                 "unknown": "ไม่ทราบ"
-            }
+            },
+            "clearHistory": "ล้างประวัติ",
+            "clearHistoryConfirm": "ลบบันทึกการซิงค์ทั้งหมดหรือไม่?",
+            "journalsCleared": "ลบบันทึกแล้ว {count} รายการ",
+            "noJournals": "ไม่มีประวัติการซิงค์",
+            "bandwidthLimit": "จำกัดความเร็ว",
+            "bandwidthUnlimited": "ไม่จำกัด",
+            "bandwidthDownload": "ดาวน์โหลด",
+            "bandwidthUpload": "อัปโหลด",
+            "profile": "โปรไฟล์",
+            "profileCustom": "กำหนดเอง",
+            "profileMirror": "มิเรอร์",
+            "profileTwoWay": "สองทิศทาง",
+            "profileBackup": "สำรองข้อมูล",
+            "profileMirrorDesc": "โลคอล → รีโมท ลบไฟล์ที่ไม่มีคู่ ตรวจสอบขนาด",
+            "profileTwoWayDesc": "สองทิศทาง เก็บไฟล์ใหม่กว่า ไม่ลบ",
+            "profileBackupDesc": "โลคอล → รีโมท ตรวจสอบ checksum ไม่ลบ",
+            "conflictsFound": "พบข้อขัดแย้ง {count} รายการ",
+            "resolveConflicts": "แก้ไขข้อขัดแย้ง",
+            "keepLocal": "เก็บไฟล์โลคอล",
+            "keepRemote": "เก็บไฟล์รีโมท",
+            "keepBoth": "เก็บทั้งสอง",
+            "keepNewer": "เก็บไฟล์ใหม่กว่า",
+            "keepLocalAll": "เก็บไฟล์โลคอลทั้งหมด",
+            "keepRemoteAll": "เก็บไฟล์รีโมททั้งหมด",
+            "keepNewerAll": "เก็บไฟล์ใหม่กว่าทั้งหมด",
+            "skipAll": "ข้ามทั้งหมด",
+            "conflictResolved": "แก้ไขแล้ว"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "ตัดการเชื่อมต่อ",
                 "newConnection": "การเชื่อมต่อใหม่",
                 "syncing": "กำลังซิงค์...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "ปิดแท็บอื่น",
+                "closeAll": "ปิดแท็บทั้งหมด"
             }
         },
         "update": {

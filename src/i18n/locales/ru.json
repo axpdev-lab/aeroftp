@@ -225,7 +225,7 @@
             "locked": "Заблокировано",
             "notConnected": "Не подключено",
             "permsHeader": "Права",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Пути рассинхронизированы — перейдите к соответствующим папкам или отключите синхронную навигацию"
         },
         "contextMenu": {
             "open": "Открыть",
@@ -323,7 +323,8 @@
             "remove": "Удалить",
             "retry": "Повторить",
             "stopAll": "Остановить все",
-            "stopAllPending": "Остановить все ожидающие"
+            "stopAllPending": "Остановить все ожидающие",
+            "forceStop": "Принудительная остановка (прервать текущий файл)"
         },
         "settings": {
             "title": "Настройки",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
             "themeAutoLabel": "Авто",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Выберите стиль значков для файлов и папок",
+            "iconThemeFilled": "Заполненные",
+            "iconThemeFilledDesc": "Цветные формы документов с метками типов",
+            "iconThemeMinimal": "Минимальные",
+            "iconThemeMinimalDesc": "Монохромные значки, адаптирующиеся к текущей теме",
+            "iconThemeOutline": "Контурные",
+            "iconThemeOutlineDesc": "Чистые контурные значки с цветовой кодировкой типов файлов",
+            "iconsTab": "Значки"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Отключено от сервера",
             "uploadStarted": "Загрузка начата",
             "uploadComplete": "Загрузка завершена",
-            "uploadFailed": "Ошибка загрузки: {error}",
+            "uploadFailed": "Ошибка загрузки",
             "downloadStarted": "Скачивание начато",
             "downloadComplete": "Скачивание завершено",
-            "downloadFailed": "Ошибка скачивания: {error}",
+            "downloadFailed": "Ошибка скачивания",
             "deleteSuccess": "Удалено элементов: {count}",
             "deleteFailed": "Ошибка удаления: {error}",
             "renameSuccess": "Успешно переименовано",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-соединение установлено",
             "auth_success": "Успешная аутентификация как {username}",
             "auth_method_key": "Аутентификация с помощью SSH-ключа ({username})",
-            "listing_complete": "Перечислено {count} элементов"
+            "listing_complete": "Перечислено {count} элементов",
+            "connected_to": "Подключено к {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Файл заблокирован",
                 "disk_error": "Ошибка диска",
                 "unknown": "Неизвестно"
-            }
+            },
+            "clearHistory": "Очистить историю",
+            "clearHistoryConfirm": "Удалить все журналы синхронизации?",
+            "journalsCleared": "Удалено журналов: {count}",
+            "noJournals": "Нет истории синхронизации",
+            "bandwidthLimit": "Ограничение скорости",
+            "bandwidthUnlimited": "Без ограничений",
+            "bandwidthDownload": "Скачивание",
+            "bandwidthUpload": "Загрузка",
+            "profile": "Профиль",
+            "profileCustom": "Пользовательский",
+            "profileMirror": "Зеркало",
+            "profileTwoWay": "Двусторонний",
+            "profileBackup": "Резервное копирование",
+            "profileMirrorDesc": "Локальный → Удалённый, удалить лишние, проверить размер",
+            "profileTwoWayDesc": "Двусторонний, сохранить новейшее, без удалений",
+            "profileBackupDesc": "Локальный → Удалённый, проверка контрольной суммы, без удалений",
+            "conflictsFound": "Найдено конфликтов: {count}",
+            "resolveConflicts": "Разрешить конфликты",
+            "keepLocal": "Оставить локальный",
+            "keepRemote": "Оставить удалённый",
+            "keepBoth": "Оставить оба",
+            "keepNewer": "Оставить новейший",
+            "keepLocalAll": "Оставить локальный для всех",
+            "keepRemoteAll": "Оставить удалённый для всех",
+            "keepNewerAll": "Оставить новейший для всех",
+            "skipAll": "Пропустить все",
+            "conflictResolved": "Разрешено"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Отключено",
                 "newConnection": "Новое подключение",
                 "syncing": "Синхронизация...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Закрыть остальные вкладки",
+                "closeAll": "Закрыть все вкладки"
             }
         },
         "update": {

@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::sync::Mutex;
@@ -79,7 +81,7 @@ pub async fn throttle_transfer(bytes_transferred: u64, elapsed: std::time::Durat
 // Shared application state
 pub(crate) struct AppState {
     ftp_manager: Mutex<FtpManager>,
-    cancel_flag: Mutex<bool>,
+    cancel_flag: Arc<AtomicBool>,
     speed_limits: SpeedLimits,
 }
 
@@ -87,7 +89,7 @@ impl AppState {
     fn new() -> Self {
         Self {
             ftp_manager: Mutex::new(FtpManager::new()),
-            cancel_flag: Mutex::new(false),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
             speed_limits: SpeedLimits::new(),
         }
     }
@@ -728,12 +730,12 @@ async fn download_file(
     state: State<'_, AppState>, 
     params: DownloadParams
 ) -> Result<String, String> {
-    // Reset cancel flag
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = false;
+    // Check if already cancelled (batch stop) — bail immediately
+    if state.cancel_flag.load(Ordering::Relaxed) {
+        return Err("Transfer cancelled by user".to_string());
     }
 
+    let cancel_flag = state.cancel_flag.clone();
     let filename = PathBuf::from(&params.remote_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -760,47 +762,56 @@ async fn download_file(
         .unwrap_or(0);
     
     let start_time = Instant::now();
+    let mut last_emit_time = Instant::now();
+    let mut last_emit_pct = 0u8;
 
-    // Download with progress
+    // Download with progress (throttled: emit every 150ms or 2% delta)
     match ftp_manager.download_file_with_progress(
-        &params.remote_path, 
+        &params.remote_path,
         &params.local_path,
         |transferred| {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
-            let percentage = if file_size > 0 { 
-                ((transferred as f64 / file_size as f64) * 100.0) as u8 
-            } else { 
-                0 
-            };
-            let eta = if speed > 0 && file_size > transferred {
-                ((file_size - transferred) / speed) as u32
+            let percentage = if file_size > 0 {
+                ((transferred as f64 / file_size as f64) * 100.0) as u8
             } else {
                 0
             };
 
-            let progress = TransferProgress {
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                transferred,
-                total: file_size,
-                percentage,
-                speed_bps: speed,
-                eta_seconds: eta,
-                direction: "download".to_string(),
-                    total_files: None,
-                    path: None,
-            };
+            let is_complete = transferred >= file_size && file_size > 0;
+            let time_delta = last_emit_time.elapsed().as_millis() >= 150;
+            let pct_delta = percentage.saturating_sub(last_emit_pct) >= 2;
+            if time_delta || pct_delta || is_complete {
+                last_emit_time = Instant::now();
+                last_emit_pct = percentage;
+                let eta = if speed > 0 && file_size > transferred {
+                    ((file_size - transferred) / speed) as u32
+                } else {
+                    0
+                };
 
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "progress".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "download".to_string(),
-                message: None,
-                progress: Some(progress),
-                path: None,
-            });
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: None,
+                    progress: Some(TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        transferred,
+                        total: file_size,
+                        percentage,
+                        speed_bps: speed,
+                        eta_seconds: eta,
+                        direction: "download".to_string(),
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                });
+            }
+            !cancel_flag.load(Ordering::Relaxed)
         }
     ).await {
         Ok(_) => {
@@ -838,12 +849,12 @@ async fn upload_file(
     state: State<'_, AppState>, 
     params: UploadParams
 ) -> Result<String, String> {
-    // Reset cancel flag
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = false;
+    // Check if already cancelled (batch stop) — bail immediately
+    if state.cancel_flag.load(Ordering::Relaxed) {
+        return Err("Transfer cancelled by user".to_string());
     }
 
+    let cancel_flag_upload = state.cancel_flag.clone();
     let filename = PathBuf::from(&params.local_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -870,48 +881,57 @@ async fn upload_file(
 
     let mut ftp_manager = state.ftp_manager.lock().await;
     let start_time = Instant::now();
+    let mut last_emit_time_ul = Instant::now();
+    let mut last_emit_pct_ul = 0u8;
 
-    // Upload with progress
+    // Upload with progress (throttled: emit every 150ms or 2% delta)
     match ftp_manager.upload_file_with_progress(
-        &params.local_path, 
+        &params.local_path,
         &params.remote_path,
         file_size,
         |transferred| {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
-            let percentage = if file_size > 0 { 
-                ((transferred as f64 / file_size as f64) * 100.0) as u8 
-            } else { 
-                0 
-            };
-            let eta = if speed > 0 && file_size > transferred {
-                ((file_size - transferred) / speed) as u32
+            let percentage = if file_size > 0 {
+                ((transferred as f64 / file_size as f64) * 100.0) as u8
             } else {
                 0
             };
 
-            let progress = TransferProgress {
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                transferred,
-                total: file_size,
-                percentage,
-                speed_bps: speed,
-                eta_seconds: eta,
-                direction: "upload".to_string(),
-                    total_files: None,
-                    path: None,
-            };
+            let is_complete = transferred >= file_size && file_size > 0;
+            let time_delta = last_emit_time_ul.elapsed().as_millis() >= 150;
+            let pct_delta = percentage.saturating_sub(last_emit_pct_ul) >= 2;
+            if time_delta || pct_delta || is_complete {
+                last_emit_time_ul = Instant::now();
+                last_emit_pct_ul = percentage;
+                let eta = if speed > 0 && file_size > transferred {
+                    ((file_size - transferred) / speed) as u32
+                } else {
+                    0
+                };
 
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "progress".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "upload".to_string(),
-                message: None,
-                progress: Some(progress),
-                path: None,
-            });
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: None,
+                    progress: Some(TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        transferred,
+                        total: file_size,
+                        percentage,
+                        speed_bps: speed,
+                        eta_seconds: eta,
+                        direction: "upload".to_string(),
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                });
+            }
+            !cancel_flag_upload.load(Ordering::Relaxed)
         }
     ).await {
         Ok(_) => {
@@ -1028,10 +1048,7 @@ async fn download_folder(
     info!("Downloading folder: {} -> {}", params.remote_path, params.local_path);
 
     // Reset cancel flag
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = false;
-    }
+    state.cancel_flag.store(false, Ordering::Relaxed);
 
     let folder_name = PathBuf::from(&params.remote_path)
         .file_name()
@@ -1195,23 +1212,20 @@ async fn download_folder(
 
     for item in &items_to_download {
         // Check cancel flag before each item
-        {
-            let cancel = state.cancel_flag.lock().await;
-            if *cancel {
-                info!("Folder download cancelled by user after {} files", downloaded_files);
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Download cancelled after {} files", downloaded_files)),
-                    progress: None,
-                    path: None,
-                });
-                // Restore original directory
-                let _ = ftp_manager.change_dir(&original_path).await;
-                return Ok(format!("Download cancelled after {} files", downloaded_files));
-            }
+        if state.cancel_flag.load(Ordering::Relaxed) {
+            info!("Folder download cancelled by user after {} files", downloaded_files);
+            let _ = app.emit("transfer_event", TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!("Download cancelled after {} files", downloaded_files)),
+                progress: None,
+                path: None,
+            });
+            // Restore original directory
+            let _ = ftp_manager.change_dir(&original_path).await;
+            return Ok(format!("Download cancelled after {} files", downloaded_files));
         }
 
         if item.is_dir {
@@ -1273,22 +1287,63 @@ async fn download_folder(
                 path: Some(item.remote_path.clone()),
             });
             
-            // Download the file
+            // Download the file (streaming with real progress)
             let file_name_only = PathBuf::from(&item.remote_path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| item.name.clone());
-                
-            match ftp_manager.download_file(&file_name_only, item.local_path.to_string_lossy().as_ref()).await {
+
+            let dl_app = app.clone();
+            let dl_transfer_id = file_transfer_id.clone();
+            let dl_filename = item.name.clone();
+            let dl_file_size = item.size;
+            let dl_start = Instant::now();
+
+            match ftp_manager.download_file_with_progress(
+                &file_name_only,
+                item.local_path.to_string_lossy().as_ref(),
+                |transferred| {
+                    let elapsed = dl_start.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                    let pct = if dl_file_size > 0 {
+                        ((transferred as f64 / dl_file_size as f64) * 100.0) as u8
+                    } else { 0 };
+                    let eta = if speed > 0 && dl_file_size > transferred {
+                        ((dl_file_size - transferred) / speed) as u32
+                    } else { 0 };
+
+                    let _ = dl_app.emit("transfer_event", TransferEvent {
+                        event_type: "progress".to_string(),
+                        transfer_id: dl_transfer_id.clone(),
+                        filename: dl_filename.clone(),
+                        direction: "download".to_string(),
+                        message: None,
+                        progress: Some(TransferProgress {
+                            transfer_id: dl_transfer_id.clone(),
+                            filename: dl_filename.clone(),
+                            transferred,
+                            total: dl_file_size,
+                            percentage: pct,
+                            speed_bps: speed,
+                            eta_seconds: eta,
+                            direction: "download".to_string(),
+                            total_files: None,
+                            path: None,
+                        }),
+                        path: None,
+                    });
+                    true // no cancel from sync (uses cancel_flag directly)
+                }
+            ).await {
                 Ok(_) => {
                     downloaded_files += 1;
-                    
+
                     let percentage = if total_files > 0 {
                         ((downloaded_files as f64 / total_files as f64) * 100.0) as u8
                     } else {
                         100
                     };
-                    
+
                     // Emit file complete event
                     let _ = app.emit("transfer_event", TransferEvent {
                         event_type: "file_complete".to_string(),
@@ -1394,10 +1449,7 @@ async fn upload_folder(
     info!("Uploading folder recursively: {} -> {}", params.local_path, params.remote_path);
 
     // Reset cancel flag
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = false;
-    }
+    state.cancel_flag.store(false, Ordering::Relaxed);
 
     let folder_name = PathBuf::from(&params.local_path)
         .file_name()
@@ -1611,21 +1663,18 @@ async fn upload_folder(
 
     for item in &files_to_upload {
         // Check cancel flag before each file
-        {
-            let cancel = state.cancel_flag.lock().await;
-            if *cancel {
-                info!("Folder upload cancelled by user after {} files", uploaded_files);
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Upload cancelled after {} files", uploaded_files)),
-                    progress: None,
-                    path: None,
-                });
-                return Ok(format!("Upload cancelled after {} files", uploaded_files));
-            }
+        if state.cancel_flag.load(Ordering::Relaxed) {
+            info!("Folder upload cancelled by user after {} files", uploaded_files);
+            let _ = app.emit("transfer_event", TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "upload".to_string(),
+                message: Some(format!("Upload cancelled after {} files", uploaded_files)),
+                progress: None,
+                path: None,
+            });
+            return Ok(format!("Upload cancelled after {} files", uploaded_files));
         }
 
         // Check if remote file exists and should be skipped
@@ -1673,10 +1722,52 @@ async fn upload_folder(
             path: Some(item.remote_path.clone()),
         });
         
-        info!("Uploading [{}/{}]: {} -> {}", 
+        info!("Uploading [{}/{}]: {} -> {}",
               uploaded_files + 1, total_files, item.local_path.display(), item.remote_path);
-        
-        match ftp_manager.upload_file(item.local_path.to_string_lossy().as_ref(), &item.remote_path).await {
+
+        let ul_app = app.clone();
+        let ul_transfer_id = file_transfer_id.clone();
+        let ul_filename = item.name.clone();
+        let ul_file_size = item.size;
+        let ul_start = Instant::now();
+
+        match ftp_manager.upload_file_with_progress(
+            item.local_path.to_string_lossy().as_ref(),
+            &item.remote_path,
+            item.size,
+            |transferred| {
+                let elapsed = ul_start.elapsed().as_secs_f64();
+                let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                let pct = if ul_file_size > 0 {
+                    ((transferred as f64 / ul_file_size as f64) * 100.0) as u8
+                } else { 0 };
+                let eta = if speed > 0 && ul_file_size > transferred {
+                    ((ul_file_size - transferred) / speed) as u32
+                } else { 0 };
+
+                let _ = ul_app.emit("transfer_event", TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: ul_transfer_id.clone(),
+                    filename: ul_filename.clone(),
+                    direction: "upload".to_string(),
+                    message: None,
+                    progress: Some(TransferProgress {
+                        transfer_id: ul_transfer_id.clone(),
+                        filename: ul_filename.clone(),
+                        transferred,
+                        total: ul_file_size,
+                        percentage: pct,
+                        speed_bps: speed,
+                        eta_seconds: eta,
+                        direction: "upload".to_string(),
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                });
+                true // no cancel from sync
+            }
+        ).await {
             Ok(_) => {
                 uploaded_files += 1;
                 let percentage = if total_files > 0 {
@@ -1684,7 +1775,7 @@ async fn upload_folder(
                 } else {
                     100
                 };
-                
+
                 // Emit file_complete event
                 let _ = app.emit("transfer_event", TransferEvent {
                     event_type: "file_complete".to_string(),
@@ -1732,7 +1823,7 @@ async fn upload_folder(
             Err(e) => {
                 errors += 1;
                 warn!("Failed to upload file {}: {}", item.name, e);
-                
+
                 // Emit file_error event
                 let _ = app.emit("transfer_event", TransferEvent {
                     event_type: "file_error".to_string(),
@@ -1777,15 +1868,25 @@ async fn cancel_transfer(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<(), String> {
     // Set cancel flag on both FTP and provider states
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = true;
-    }
+    state.cancel_flag.store(true, Ordering::Relaxed);
     {
         let mut cancel = provider_state.cancel_flag.lock().await;
         *cancel = true;
     }
     info!("Transfer cancellation requested");
+    Ok(())
+}
+
+#[tauri::command]
+async fn reset_cancel_flag(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    state.cancel_flag.store(false, Ordering::Relaxed);
+    {
+        let mut cancel = provider_state.cancel_flag.lock().await;
+        *cancel = false;
+    }
     Ok(())
 }
 
@@ -2282,11 +2383,18 @@ async fn delete_remote_file(
             path: None,
         });
         
-        // Phase 2: Delete all files with events
+        // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
         let mut errors = 0u64;
-        
+        let mut cancelled = false;
+
         for item in &files_to_delete {
+            // Check cancel flag before each file
+            if state.cancel_flag.load(Ordering::Relaxed) {
+                cancelled = true;
+                info!("Folder deletion cancelled by user after {} files", deleted_files);
+                break;
+            }
             let file_delete_id = format!("{}-file-{}", delete_id, deleted_files);
             
             let _ = app.emit("transfer_event", TransferEvent {
@@ -2330,8 +2438,13 @@ async fn delete_remote_file(
         
         // Phase 3: Delete directories (deepest first - reverse the order!)
         // Directories were added in scan order (parent first), so we need to reverse
+        // Skip if cancelled - partial content may remain
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
+            if state.cancel_flag.load(Ordering::Relaxed) {
+                cancelled = true;
+                break;
+            }
             let dir_name = dir_path.split('/').last().unwrap_or(dir_path);
             match ftp_manager.remove_dir(dir_path).await {
                 Ok(_) => {
@@ -2353,16 +2466,18 @@ async fn delete_remote_file(
         
         // Return to original directory
         let _ = ftp_manager.change_dir(&original_path).await;
-        
+
         // Emit completion
-        let result_message = if errors > 0 {
+        let result_message = if cancelled {
+            format!("Deletion cancelled: {} of {} files deleted", deleted_files, total_files)
+        } else if errors > 0 {
             format!("Deleted {} files ({} errors), {} folders", deleted_files, errors, total_dirs)
         } else {
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
-        
+
         let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_complete".to_string(),
+            event_type: if cancelled { "delete_cancelled" } else { "delete_complete" }.to_string(),
             transfer_id: delete_id.clone(),
             filename: file_name.clone(),
             direction: "remote".to_string(),
@@ -2377,7 +2492,7 @@ async fn delete_remote_file(
 
 /// Delete a local file or folder with detailed event emission for each deleted item.
 #[tauri::command]
-async fn delete_local_file(app: AppHandle, path: String) -> Result<String, String> {
+async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<String, String> {
     validate_path(&path)?;
     let path_buf = std::path::PathBuf::from(&path);
     let file_name = path_buf.file_name()
@@ -2500,12 +2615,18 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
             path: None,
         });
         
-        // Phase 2: Delete all files with events
+        // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
         let mut errors = 0u64;
+        let mut cancelled = false;
         let mut last_emit = std::time::Instant::now();
-        
+
         for item in &files_to_delete {
+            if state.cancel_flag.load(Ordering::Relaxed) {
+                cancelled = true;
+                info!("Local folder deletion cancelled by user after {} files", deleted_files);
+                break;
+            }
             match tokio::fs::remove_file(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
@@ -2544,6 +2665,10 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
         // to delete children before parents
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
+            if state.cancel_flag.load(Ordering::Relaxed) {
+                cancelled = true;
+                break;
+            }
             let dir_name = dir_path.file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "folder".to_string());
@@ -2567,14 +2692,16 @@ async fn delete_local_file(app: AppHandle, path: String) -> Result<String, Strin
         }
         
         // Emit completion
-        let result_message = if errors > 0 {
+        let result_message = if cancelled {
+            format!("Deletion cancelled: {} of {} files deleted", deleted_files, total_files)
+        } else if errors > 0 {
             format!("Deleted {} files ({} errors), {} folders", deleted_files, errors, total_dirs)
         } else {
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
-        
+
         let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_complete".to_string(),
+            event_type: if cancelled { "delete_cancelled" } else { "delete_complete" }.to_string(),
             transfer_id: delete_id.clone(),
             filename: file_name.clone(),
             direction: "local".to_string(),
@@ -3503,7 +3630,7 @@ async fn preview_remote_file(state: State<'_, AppState>, path: String) -> Result
     let temp_path = std::env::temp_dir().join(format!("aeroftp_preview_{}", chrono::Utc::now().timestamp_millis()));
     let temp_path_str = temp_path.to_string_lossy().to_string();
     
-    ftp_manager.download_file_with_progress(&path, &temp_path_str, |_| {})
+    ftp_manager.download_file_with_progress(&path, &temp_path_str, |_| true)
         .await
         .map_err(|e| format!("Failed to download for preview: {}", e))?;
     
@@ -3542,7 +3669,7 @@ async fn save_remote_file(state: State<'_, AppState>, path: String, content: Str
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
     
     // Upload to remote server
-    ftp_manager.upload_file_with_progress(&temp_path_str, &path, content.len() as u64, |_| {})
+    ftp_manager.upload_file_with_progress(&temp_path_str, &path, content.len() as u64, |_| true)
         .await
         .map_err(|e| format!("Failed to upload file: {}", e))?;
     
@@ -3712,27 +3839,33 @@ async fn compare_directories(
 
     info!("Comparing directories: local={}, remote={}", local_path, remote_path);
 
-    // Emit scan phase: local
+    // Emit scan phase: scanning (both local and remote concurrently)
     let _ = app.emit("sync_scan_progress", serde_json::json!({
         "phase": "local",
         "files_found": 0,
     }));
 
-    // Get local files (with optional SHA-256 checksums)
-    let local_files = get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns, options.compare_checksum)
-        .await
+    // Run local and remote scans concurrently (F2 optimization)
+    // Local scan runs on filesystem; remote scan holds FTP lock.
+    // tokio::join! runs both futures on the same task but interleaves their I/O waits.
+    let local_future = get_local_files_recursive(
+        &local_path, &local_path, &options.exclude_patterns,
+        options.compare_checksum, Some(&state.cancel_flag),
+    );
+
+    let remote_future = async {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        get_remote_files_recursive_with_progress(
+            &app, &mut ftp_manager, &remote_path, &remote_path,
+            &options.exclude_patterns, 0,
+            Some(&state.cancel_flag),
+        ).await
+    };
+
+    let (local_result, remote_result) = tokio::join!(local_future, remote_future);
+    let local_files = local_result
         .map_err(|e| format!("Failed to scan local directory: {}", e))?;
-
-    // Emit scan phase: remote (with local count)
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "remote",
-        "files_found": local_files.len(),
-    }));
-
-    // Get remote files with progress
-    let mut ftp_manager = state.ftp_manager.lock().await;
-    let remote_files = get_remote_files_recursive_with_progress(&app, &mut ftp_manager, &remote_path, &remote_path, &options.exclude_patterns, local_files.len())
-        .await
+    let remote_files = remote_result
         .map_err(|e| format!("Failed to scan remote directory: {}", e))?;
 
     // Emit scan phase: comparing
@@ -3773,6 +3906,7 @@ pub async fn get_local_files_recursive(
     _current_path: &str,
     exclude_patterns: &[String],
     compare_checksum: bool,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
     let base = PathBuf::from(base_path);
@@ -3785,6 +3919,12 @@ pub async fn get_local_files_recursive(
     let mut dirs_to_process = vec![base.clone()];
 
     while let Some(current_dir) = dirs_to_process.pop() {
+        // Check cancellation
+        if let Some(flag) = cancel_flag {
+            if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                return Ok(files); // Return partial results
+            }
+        }
         let mut entries = match tokio::fs::read_dir(&current_dir).await {
             Ok(e) => e,
             Err(_) => continue,
@@ -3857,11 +3997,19 @@ async fn get_remote_files_recursive_with_progress(
     _current_path: &str,
     exclude_patterns: &[String],
     local_count: usize,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
     let mut dirs_to_process = vec![base_path.to_string()];
 
     while let Some(current_dir) = dirs_to_process.pop() {
+        // Check cancellation flag — release FTP lock immediately on cancel
+        if let Some(flag) = cancel_flag {
+            if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                info!("Remote scan cancelled by user after {} files", files.len());
+                return Ok(files); // Return partial results (will be discarded by frontend)
+            }
+        }
         if let Err(e) = ftp_manager.change_dir(&current_dir).await {
             info!("Warning: Could not change to directory {}: {}", current_dir, e);
             continue;
@@ -3957,6 +4105,36 @@ fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
 #[tauri::command]
 fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
     delete_sync_journal(&local_path, &remote_path)
+}
+
+#[tauri::command]
+fn list_sync_journals_cmd() -> Result<Vec<sync::JournalSummary>, String> {
+    sync::list_sync_journals()
+}
+
+#[tauri::command]
+fn cleanup_old_journals_cmd(max_age_days: u32) -> Result<u32, String> {
+    sync::cleanup_old_journals(max_age_days)
+}
+
+#[tauri::command]
+fn clear_all_journals_cmd() -> Result<u32, String> {
+    sync::clear_all_journals()
+}
+
+#[tauri::command]
+fn load_sync_profiles_cmd() -> Result<Vec<sync::SyncProfile>, String> {
+    sync::load_sync_profiles()
+}
+
+#[tauri::command]
+fn save_sync_profile_cmd(profile: sync::SyncProfile) -> Result<(), String> {
+    sync::save_sync_profile(&profile)
+}
+
+#[tauri::command]
+fn delete_sync_profile_cmd(id: String) -> Result<(), String> {
+    sync::delete_sync_profile(&id)
 }
 
 #[tauri::command]
@@ -4162,7 +4340,7 @@ async fn ai_execute_tool(
             validate_tool_path(path, "path")?;
 
             if location == "local" {
-                delete_local_file(app.clone(), path.to_string())
+                delete_local_file(app.clone(), state.clone(), path.to_string())
                     .await
                     .map_err(|e| e.to_string())?;
             } else {
@@ -4465,7 +4643,6 @@ async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String,
 }
 // ============ Background Sync & Tray Commands ============
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 // Global flag to control background sync
@@ -5331,6 +5508,7 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            reset_cancel_flag,
             set_speed_limit,
             get_speed_limit,
             is_running_as_snap,
@@ -5371,6 +5549,12 @@ pub fn run() {
             load_sync_journal_cmd,
             save_sync_journal_cmd,
             delete_sync_journal_cmd,
+            list_sync_journals_cmd,
+            cleanup_old_journals_cmd,
+            clear_all_journals_cmd,
+            load_sync_profiles_cmd,
+            save_sync_profile_cmd,
+            delete_sync_profile_cmd,
             get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,

@@ -225,7 +225,7 @@
             "locked": "Blokeatuta",
             "notConnected": "Konektatu gabe",
             "permsHeader": "Baim.",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Bideak ez daude sinkronizatuta — bat datozen karpetetara nabigatu edo desgaitu sinkronizazio-nabigazioa"
         },
         "contextMenu": {
             "open": "Ireki",
@@ -323,7 +323,8 @@
             "remove": "Kendu",
             "retry": "Saiatu berriro",
             "stopAll": "Gelditu dena",
-            "stopAllPending": "Gelditu zain daudenak"
+            "stopAllPending": "Gelditu zain daudenak",
+            "forceStop": "Behartu gelditzea (uneko fitxategia eten)"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Gaia",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Aukeratu ikono-estilo bat fitxategi eta karpetetarako",
+            "iconThemeFilled": "Betea",
+            "iconThemeFilledDesc": "Kolorezko dokumentu-formak mota-txapelekin",
+            "iconThemeMinimal": "Minimala",
+            "iconThemeMinimalDesc": "Ikono monokromoak uneko gaira egokitzen direnak",
+            "iconThemeOutline": "Eskema",
+            "iconThemeOutlineDesc": "Trazu garbiko ikonoak kolore-kodedun fitxategi-motekin",
+            "iconsTab": "Ikonoak"
         },
         "devtools": {
             "title": "AeroTools",
@@ -781,10 +782,10 @@
             "disconnectFailed": "Deskonektatzeak huts egin du: {error}",
             "uploadStarted": "Igoera hasita",
             "uploadComplete": "Igoera osatuta",
-            "uploadFailed": "Igoerak huts egin du: {error}",
+            "uploadFailed": "Igoerak huts egin du",
             "downloadStarted": "Deskarga hasita",
             "downloadComplete": "Deskarga osatuta",
-            "downloadFailed": "Deskargak huts egin du: {error}",
+            "downloadFailed": "Deskargak huts egin du",
             "deleteSuccess": "{count} elementu ezabatuta",
             "deleteFailed": "Ezabatzeak huts egin du: {error}",
             "deleted": "Ezabatuta",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS konexioa ezarrita",
             "auth_success": "Autentifikazio arrakastatsua {username} gisa",
             "auth_method_key": "SSH gakoarekin autentifikatuta ({username})",
-            "listing_complete": "{count} elementu zerrendatuta"
+            "listing_complete": "{count} elementu zerrendatuta",
+            "connected_to": "Konektatuta {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fitxategia blokeatuta",
                 "disk_error": "Disko errorea",
                 "unknown": "Ezezaguna"
-            }
+            },
+            "clearHistory": "Garbitu historiala",
+            "clearHistoryConfirm": "Sinkronizazio-egunkari guztiak ezabatu?",
+            "journalsCleared": "{count} egunkari ezabatu",
+            "noJournals": "Sinkronizazio-historialik ez",
+            "bandwidthLimit": "Abiadura-muga",
+            "bandwidthUnlimited": "Mugagabea",
+            "bandwidthDownload": "Deskarga",
+            "bandwidthUpload": "Igoera",
+            "profile": "Profila",
+            "profileCustom": "Pertsonalizatua",
+            "profileMirror": "Ispilua",
+            "profileTwoWay": "Bi norabidekoa",
+            "profileBackup": "Babeskopia",
+            "profileMirrorDesc": "Lokala → Urrunekoa, umezurtzak ezabatu, tamaina egiaztatu",
+            "profileTwoWayDesc": "Bi norabidekoa, berriena gorde, ezabatu gabe",
+            "profileBackupDesc": "Lokala → Urrunekoa, checksum egiaztapena, ezabatu gabe",
+            "conflictsFound": "{count} gatazka aurkitu",
+            "resolveConflicts": "Gatazkak ebatzi",
+            "keepLocal": "Lokala gorde",
+            "keepRemote": "Urrunekoa gorde",
+            "keepBoth": "Biak gorde",
+            "keepNewer": "Berriena gorde",
+            "keepLocalAll": "Lokala gorde guztientzat",
+            "keepRemoteAll": "Urrunekoa gorde guztientzat",
+            "keepNewerAll": "Berriena gorde guztientzat",
+            "skipAll": "Guztiak saltatu",
+            "conflictResolved": "Ebatzita"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Deskonektatuta",
                 "newConnection": "Konexio berria",
                 "syncing": "Sinkronizatzen...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Itxi beste fitxak",
+                "closeAll": "Itxi fitxa guztiak"
             }
         },
         "update": {

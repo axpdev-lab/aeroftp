@@ -225,7 +225,7 @@
             "locked": "잠김",
             "notConnected": "연결 안 됨",
             "permsHeader": "권한",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "경로가 동기화되지 않았습니다 — 일치하는 폴더로 이동하거나 동기화 탐색을 비활성화하세요"
         },
         "contextMenu": {
             "open": "열기",
@@ -323,7 +323,8 @@
             "remove": "제거",
             "retry": "재시도",
             "stopAll": "모두 중지",
-            "stopAllPending": "대기 중인 항목 모두 중지"
+            "stopAllPending": "대기 중인 항목 모두 중지",
+            "forceStop": "강제 중지 (현재 파일 중단)"
         },
         "settings": {
             "title": "설정",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "테마",
             "themeAutoLabel": "자동",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "파일 및 폴더의 아이콘 스타일을 선택하세요",
+            "iconThemeFilled": "채움",
+            "iconThemeFilledDesc": "유형 배지가 있는 컬러 문서 모양",
+            "iconThemeMinimal": "미니멀",
+            "iconThemeMinimalDesc": "현재 테마에 맞게 조정되는 단색 아이콘",
+            "iconThemeOutline": "윤곽선",
+            "iconThemeOutlineDesc": "파일 유형별 색상 구분이 있는 깔끔한 스트로크 아이콘",
+            "iconsTab": "아이콘"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "서버에서 연결 끊김",
             "uploadStarted": "업로드 시작",
             "uploadComplete": "업로드 완료",
-            "uploadFailed": "업로드 실패: {error}",
+            "uploadFailed": "업로드 실패",
             "downloadStarted": "다운로드 시작",
             "downloadComplete": "다운로드 완료",
-            "downloadFailed": "다운로드 실패: {error}",
+            "downloadFailed": "다운로드 실패",
             "deleteSuccess": "{count}개 항목 삭제됨",
             "deleteFailed": "삭제 실패: {error}",
             "renameSuccess": "이름이 변경됨",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS 연결 설정됨",
             "auth_success": "{username}(으)로 인증 성공",
             "auth_method_key": "SSH 키로 인증됨 ({username})",
-            "listing_complete": "{count}개 항목 나열됨"
+            "listing_complete": "{count}개 항목 나열됨",
+            "connected_to": "{ip}:{port}에 연결됨"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "파일 잠김",
                 "disk_error": "디스크 오류",
                 "unknown": "알 수 없음"
-            }
+            },
+            "clearHistory": "기록 지우기",
+            "clearHistoryConfirm": "모든 동기화 저널을 삭제하시겠습니까?",
+            "journalsCleared": "{count}개의 저널이 삭제되었습니다",
+            "noJournals": "동기화 기록 없음",
+            "bandwidthLimit": "속도 제한",
+            "bandwidthUnlimited": "무제한",
+            "bandwidthDownload": "다운로드",
+            "bandwidthUpload": "업로드",
+            "profile": "프로필",
+            "profileCustom": "사용자 정의",
+            "profileMirror": "미러",
+            "profileTwoWay": "양방향",
+            "profileBackup": "백업",
+            "profileMirrorDesc": "로컬 → 원격, 고아 파일 삭제, 크기 확인",
+            "profileTwoWayDesc": "양방향, 최신 유지, 삭제 없음",
+            "profileBackupDesc": "로컬 → 원격, 체크섬 확인, 삭제 없음",
+            "conflictsFound": "{count}개의 충돌 발견",
+            "resolveConflicts": "충돌 해결",
+            "keepLocal": "로컬 유지",
+            "keepRemote": "원격 유지",
+            "keepBoth": "둘 다 유지",
+            "keepNewer": "최신 유지",
+            "keepLocalAll": "모두 로컬 유지",
+            "keepRemoteAll": "모두 원격 유지",
+            "keepNewerAll": "모두 최신 유지",
+            "skipAll": "모두 건너뛰기",
+            "conflictResolved": "해결됨"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "연결 끊김",
                 "newConnection": "새 연결",
                 "syncing": "동기화 중...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "다른 탭 닫기",
+                "closeAll": "모든 탭 닫기"
             }
         },
         "update": {

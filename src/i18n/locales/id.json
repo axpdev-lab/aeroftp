@@ -225,7 +225,7 @@
             "locked": "Terkunci",
             "notConnected": "Tidak Tersambung",
             "permsHeader": "Izin",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Jalur tidak sinkron — navigasi ke folder yang sesuai atau nonaktifkan navigasi sinkron"
         },
         "contextMenu": {
             "open": "Buka",
@@ -323,7 +323,8 @@
             "remove": "Hapus",
             "retry": "Coba lagi",
             "stopAll": "Hentikan semua",
-            "stopAllPending": "Hentikan semua yang menunggu"
+            "stopAllPending": "Hentikan semua yang menunggu",
+            "forceStop": "Paksa berhenti (interupsi file saat ini)"
         },
         "settings": {
             "title": "Pengaturan",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Otomatis",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Pilih gaya ikon untuk file dan folder",
+            "iconThemeFilled": "Terisi",
+            "iconThemeFilledDesc": "Bentuk dokumen berwarna dengan lencana tipe",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Ikon monokrom yang menyesuaikan dengan tema saat ini",
+            "iconThemeOutline": "Garis Luar",
+            "iconThemeOutlineDesc": "Ikon garis bersih dengan tipe file berkode warna",
+            "iconsTab": "Ikon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Terputus dari server",
             "uploadStarted": "Pengunggahan dimulai",
             "uploadComplete": "Pengunggahan selesai",
-            "uploadFailed": "Pengunggahan gagal: {error}",
+            "uploadFailed": "Pengunggahan gagal",
             "downloadStarted": "Pengunduhan dimulai",
             "downloadComplete": "Pengunduhan selesai",
-            "downloadFailed": "Pengunduhan gagal: {error}",
+            "downloadFailed": "Pengunduhan gagal",
             "deleteSuccess": "{count} item dihapus",
             "deleteFailed": "Penghapusan gagal: {error}",
             "renameSuccess": "Berhasil diganti nama",
@@ -974,7 +975,8 @@
             "https_established": "Koneksi HTTPS terjalin",
             "auth_success": "Autentikasi berhasil sebagai {username}",
             "auth_method_key": "Terautentikasi dengan kunci SSH ({username})",
-            "listing_complete": "{count} item terdaftar"
+            "listing_complete": "{count} item terdaftar",
+            "connected_to": "Terhubung ke {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "File terkunci",
                 "disk_error": "Kesalahan disk",
                 "unknown": "Tidak diketahui"
-            }
+            },
+            "clearHistory": "Hapus Riwayat",
+            "clearHistoryConfirm": "Hapus semua jurnal sinkronisasi?",
+            "journalsCleared": "{count} jurnal dihapus",
+            "noJournals": "Tidak ada riwayat sinkronisasi",
+            "bandwidthLimit": "Batas Kecepatan",
+            "bandwidthUnlimited": "Tidak Terbatas",
+            "bandwidthDownload": "Unduh",
+            "bandwidthUpload": "Unggah",
+            "profile": "Profil",
+            "profileCustom": "Kustom",
+            "profileMirror": "Cermin",
+            "profileTwoWay": "Dua Arah",
+            "profileBackup": "Cadangan",
+            "profileMirrorDesc": "Lokal → Remote, hapus yatim piatu, verifikasi ukuran",
+            "profileTwoWayDesc": "Dua arah, simpan yang lebih baru, tanpa penghapusan",
+            "profileBackupDesc": "Lokal → Remote, verifikasi checksum, tanpa penghapusan",
+            "conflictsFound": "{count} konflik ditemukan",
+            "resolveConflicts": "Selesaikan Konflik",
+            "keepLocal": "Simpan Lokal",
+            "keepRemote": "Simpan Remote",
+            "keepBoth": "Simpan Keduanya",
+            "keepNewer": "Simpan yang Lebih Baru",
+            "keepLocalAll": "Simpan Lokal untuk Semua",
+            "keepRemoteAll": "Simpan Remote untuk Semua",
+            "keepNewerAll": "Simpan yang Lebih Baru untuk Semua",
+            "skipAll": "Lewati Semua",
+            "conflictResolved": "Terselesaikan"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Terputus",
                 "newConnection": "Koneksi baru",
                 "syncing": "Menyinkronkan...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Tutup tab lainnya",
+                "closeAll": "Tutup semua tab"
             }
         },
         "update": {

@@ -225,7 +225,7 @@
             "locked": "Bloquejat",
             "notConnected": "No connectat",
             "permsHeader": "Perms",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Els camins no estan sincronitzats — navegueu a carpetes coincidents o desactiveu la navegació sincronitzada"
         },
         "contextMenu": {
             "open": "Obrir",
@@ -323,7 +323,8 @@
             "remove": "Eliminar",
             "retry": "Reintentar",
             "stopAll": "Aturar tot",
-            "stopAllPending": "Aturar tots els pendents"
+            "stopAllPending": "Aturar tots els pendents",
+            "forceStop": "Aturada forçada (interrompre el fitxer actual)"
         },
         "settings": {
             "title": "Configuracio",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Tema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Trieu un estil d'icones per a fitxers i carpetes",
+            "iconThemeFilled": "Ple",
+            "iconThemeFilledDesc": "Formes de document acolorides amb insignígies de tipus",
+            "iconThemeMinimal": "Minimal",
+            "iconThemeMinimalDesc": "Icones monocromes que s'adapten al tema actual",
+            "iconThemeOutline": "Contorn",
+            "iconThemeOutlineDesc": "Icones de traç net amb tipus de fitxer codificats per color",
+            "iconsTab": "Icones"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Desconnectat del servidor",
             "uploadStarted": "Pujada iniciada",
             "uploadComplete": "Pujada completada",
-            "uploadFailed": "Pujada fallida: {error}",
+            "uploadFailed": "Pujada fallida",
             "downloadStarted": "Descarrega iniciada",
             "downloadComplete": "Descarrega completada",
-            "downloadFailed": "Descarrega fallida: {error}",
+            "downloadFailed": "Descarrega fallida",
             "deleteSuccess": "{count} element(s) eliminats",
             "deleteFailed": "Eliminacio fallida: {error}",
             "renameSuccess": "Reanomenat correctament",
@@ -974,7 +975,8 @@
             "https_established": "Connexió HTTPS establerta",
             "auth_success": "Autenticació correcta com a {username}",
             "auth_method_key": "Autenticat amb clau SSH ({username})",
-            "listing_complete": "Llistats {count} elements"
+            "listing_complete": "Llistats {count} elements",
+            "connected_to": "Connectat a {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Fitxer bloquejat",
                 "disk_error": "Error de disc",
                 "unknown": "Desconegut"
-            }
+            },
+            "clearHistory": "Esborrar historial",
+            "clearHistoryConfirm": "Voleu eliminar tots els diaris de sincronització?",
+            "journalsCleared": "{count} diaris eliminats",
+            "noJournals": "No hi ha historial de sincronització",
+            "bandwidthLimit": "Límit de velocitat",
+            "bandwidthUnlimited": "Il·limitat",
+            "bandwidthDownload": "Descàrrega",
+            "bandwidthUpload": "Pujada",
+            "profile": "Perfil",
+            "profileCustom": "Personalitzat",
+            "profileMirror": "Mirall",
+            "profileTwoWay": "Bidireccional",
+            "profileBackup": "Còpia de seguretat",
+            "profileMirrorDesc": "Local → Remot, eliminar orfes, verificar mida",
+            "profileTwoWayDesc": "Bidireccional, conservar el més recent, sense eliminacions",
+            "profileBackupDesc": "Local → Remot, verificació de checksum, sense eliminacions",
+            "conflictsFound": "{count} conflictes trobats",
+            "resolveConflicts": "Resoldre conflictes",
+            "keepLocal": "Conservar local",
+            "keepRemote": "Conservar remot",
+            "keepBoth": "Conservar ambdós",
+            "keepNewer": "Conservar el més recent",
+            "keepLocalAll": "Conservar local per a tots",
+            "keepRemoteAll": "Conservar remot per a tots",
+            "keepNewerAll": "Conservar el més recent per a tots",
+            "skipAll": "Ometre tots",
+            "conflictResolved": "Resolt"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Desconnectat",
                 "newConnection": "Nova connexió",
                 "syncing": "Sincronitzant...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Tancar les altres pestanyes",
+                "closeAll": "Tancar totes les pestanyes"
             }
         },
         "update": {

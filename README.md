@@ -103,7 +103,10 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 Enterprise-grade file synchronization with operational reliability features built for real-world use.
 
 - **Smart Sync**: 3 intelligent conflict resolution modes — overwrite if newer, overwrite if different, skip if identical
-- **Transfer journal with checkpoint/resume**: Persistent journal tracks every sync operation. Interrupted syncs resume from where they left off
+- **Sync Profiles**: 3 built-in presets (Mirror, Two-way, Backup) plus custom save/load. Each profile bundles direction, compare options, retry/verify policies, and delete behavior
+- **Conflict Resolution Center**: Per-file resolution strategies (keep local, keep remote, skip) with batch actions — Keep Newer for All, Keep Local for All, Keep Remote for All
+- **Bandwidth control**: Upload and download speed limits (128 KB/s to 10 MB/s) directly in the sync panel
+- **Transfer journal with checkpoint/resume**: Persistent journal tracks every sync operation. Interrupted syncs resume from where they left off. Auto-cleanup after 30 days
 - **SHA-256 checksum verification**: Content-based comparison with streaming 64KB-chunk hashing during scan phase
 - **Post-transfer verification**: 4 policies (None, Size, Size+Time, Full) confirm transfer integrity after each download
 - **Configurable retry with exponential backoff**: Per-file retry policy with base delay, max delay cap, backoff multiplier, and per-file timeout

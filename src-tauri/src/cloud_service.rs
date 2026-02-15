@@ -592,7 +592,7 @@ impl CloudService {
                     }
                     
                     ftp_manager
-                        .upload_file_with_progress(&local_info.path, &remote_path, local_info.size, |_| {})
+                        .upload_file_with_progress(&local_info.path, &remote_path, local_info.size, |_| true)
                         .await
                         .map_err(|e| format!("Upload failed: {}", e))?;
                 }
@@ -613,7 +613,7 @@ impl CloudService {
                         .download_file_with_progress(
                             &remote_info.path,
                             &local_path.to_string_lossy(),
-                            |_| {},
+                            |_| true,
                         )
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
@@ -640,7 +640,7 @@ impl CloudService {
                             .download_file_with_progress(
                                 &remote_info.path,
                                 &local_path.to_string_lossy(),
-                                |_| {},
+                                |_| true,
                             )
                             .await
                             .map_err(|e| format!("KeepBoth download failed: {}", e))?;

@@ -225,7 +225,7 @@
             "locked": "लॉक किया गया",
             "notConnected": "कनेक्ट नहीं है",
             "permsHeader": "अनुमतियाँ",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "पथ सिंक में नहीं हैं — मिलते-जुलते फ़ोल्डर पर जाएं या सिंक नेविगेशन अक्षम करें"
         },
         "contextMenu": {
             "open": "खोलें",
@@ -323,7 +323,8 @@
             "remove": "हटाएँ",
             "retry": "पुनः प्रयास",
             "stopAll": "सब रोकें",
-            "stopAllPending": "सभी लंबित रोकें"
+            "stopAllPending": "सभी लंबित रोकें",
+            "forceStop": "बलपूर्वक रोकें (वर्तमान फ़ाइल बाधित करें)"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "थीम",
             "themeAutoLabel": "स्वचालित",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "फ़ाइलों और फ़ोल्डरों के लिए आइकन शैली चुनें",
+            "iconThemeFilled": "भरा हुआ",
+            "iconThemeFilledDesc": "टाइप बैज के साथ रंगीन दस्तावेज़ आकृतियाँ",
+            "iconThemeMinimal": "न्यूनतम",
+            "iconThemeMinimalDesc": "एकरंगी आइकन जो वर्तमान थीम के अनुसार ढलते हैं",
+            "iconThemeOutline": "आउटलाइन",
+            "iconThemeOutlineDesc": "रंग-कोडित फ़ाइल प्रकारों के साथ साफ़ स्ट्रोक आइकन",
+            "iconsTab": "आइकन"
         },
         "devtools": {
             "title": "AeroTools",
@@ -781,10 +782,10 @@
             "disconnectFailed": "डिस्कनेक्शन विफल: {error}",
             "uploadStarted": "अपलोड शुरू हुआ",
             "uploadComplete": "अपलोड पूरा हुआ",
-            "uploadFailed": "अपलोड विफल: {error}",
+            "uploadFailed": "अपलोड विफल",
             "downloadStarted": "डाउनलोड शुरू हुआ",
             "downloadComplete": "डाउनलोड पूरा हुआ",
-            "downloadFailed": "डाउनलोड विफल: {error}",
+            "downloadFailed": "डाउनलोड विफल",
             "deleteSuccess": "{count} आइटम हटाए गए",
             "deleteFailed": "हटाना विफल: {error}",
             "deleted": "हटाया गया",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS कनेक्शन स्थापित",
             "auth_success": "{username} के रूप में प्रमाणीकरण सफल",
             "auth_method_key": "SSH कुंजी से प्रमाणित ({username})",
-            "listing_complete": "{count} आइटम सूचीबद्ध"
+            "listing_complete": "{count} आइटम सूचीबद्ध",
+            "connected_to": "जुड़ा हुआ {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "फ़ाइल लॉक",
                 "disk_error": "डिस्क त्रुटि",
                 "unknown": "अज्ञात"
-            }
+            },
+            "clearHistory": "इतिहास मिटाएं",
+            "clearHistoryConfirm": "सभी सिंक जर्नल हटाएं?",
+            "journalsCleared": "{count} जर्नल हटाए गए",
+            "noJournals": "कोई सिंक इतिहास नहीं",
+            "bandwidthLimit": "गति सीमा",
+            "bandwidthUnlimited": "असीमित",
+            "bandwidthDownload": "डाउनलोड",
+            "bandwidthUpload": "अपलोड",
+            "profile": "प्रोफ़ाइल",
+            "profileCustom": "कस्टम",
+            "profileMirror": "मिरर",
+            "profileTwoWay": "द्विमुखी",
+            "profileBackup": "बैकअप",
+            "profileMirrorDesc": "लोकल → रिमोट, अनाथ हटाएं, आकार सत्यापित करें",
+            "profileTwoWayDesc": "द्विमुखी, नया रखें, कोई हटाना नहीं",
+            "profileBackupDesc": "लोकल → रिमोट, चेकसम सत्यापन, कोई हटाना नहीं",
+            "conflictsFound": "{count} विरोध पाए गए",
+            "resolveConflicts": "विरोध सुलझाएं",
+            "keepLocal": "लोकल रखें",
+            "keepRemote": "रिमोट रखें",
+            "keepBoth": "दोनों रखें",
+            "keepNewer": "नया रखें",
+            "keepLocalAll": "सबके लिए लोकल रखें",
+            "keepRemoteAll": "सबके लिए रिमोट रखें",
+            "keepNewerAll": "सबके लिए नया रखें",
+            "skipAll": "सब छोड़ें",
+            "conflictResolved": "सुलझाया गया"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "डिस्कनेक्टेड",
                 "newConnection": "नया कनेक्शन",
                 "syncing": "सिंक हो रहा है...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "अन्य टैब बंद करें",
+                "closeAll": "सभी टैब बंद करें"
             }
         },
         "update": {

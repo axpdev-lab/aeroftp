@@ -225,7 +225,7 @@
             "locked": "Заблоковано",
             "notConnected": "Не підключено",
             "permsHeader": "Права",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Шляхи розсинхронізовані — перейдіть до відповідних теок або вимкніть синхронну навігацію"
         },
         "contextMenu": {
             "open": "Відкрити",
@@ -323,7 +323,8 @@
             "remove": "Видалити",
             "retry": "Повторити",
             "stopAll": "Зупинити все",
-            "stopAllPending": "Зупинити всі очікувані"
+            "stopAllPending": "Зупинити всі очікувані",
+            "forceStop": "Примусова зупинка (перервати поточний файл)"
         },
         "settings": {
             "title": "Налаштування",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Тема",
             "themeAutoLabel": "Авто",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Оберіть стиль іконок для файлів і теок",
+            "iconThemeFilled": "Заповнені",
+            "iconThemeFilledDesc": "Кольорові форми документів зі значками типів",
+            "iconThemeMinimal": "Мінімальні",
+            "iconThemeMinimalDesc": "Монохромні іконки, що адаптуються до поточної теми",
+            "iconThemeOutline": "Контурні",
+            "iconThemeOutlineDesc": "Чисті контурні іконки з кольоровим кодуванням типів файлів",
+            "iconsTab": "Іконки"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Відключено від сервера",
             "uploadStarted": "Вивантаження розпочато",
             "uploadComplete": "Вивантаження завершено",
-            "uploadFailed": "Помилка вивантаження: {error}",
+            "uploadFailed": "Помилка вивантаження",
             "downloadStarted": "Завантаження розпочато",
             "downloadComplete": "Завантаження завершено",
-            "downloadFailed": "Помилка завантаження: {error}",
+            "downloadFailed": "Помилка завантаження",
             "deleteSuccess": "Видалено елементів: {count}",
             "deleteFailed": "Помилка видалення: {error}",
             "renameSuccess": "Успішно перейменовано",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-з'єднання встановлено",
             "auth_success": "Автентифікація успішна як {username}",
             "auth_method_key": "Автентифіковано за допомогою SSH-ключа ({username})",
-            "listing_complete": "Перераховано {count} елементів"
+            "listing_complete": "Перераховано {count} елементів",
+            "connected_to": "Підключено до {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Файл заблоковано",
                 "disk_error": "Помилка диска",
                 "unknown": "Невідомо"
-            }
+            },
+            "clearHistory": "Очистити історію",
+            "clearHistoryConfirm": "Видалити всі журнали синхронізації?",
+            "journalsCleared": "Видалено журналів: {count}",
+            "noJournals": "Немає історії синхронізації",
+            "bandwidthLimit": "Обмеження швидкості",
+            "bandwidthUnlimited": "Без обмежень",
+            "bandwidthDownload": "Завантаження",
+            "bandwidthUpload": "Вивантаження",
+            "profile": "Профіль",
+            "profileCustom": "Користувацький",
+            "profileMirror": "Дзеркало",
+            "profileTwoWay": "Двосторонній",
+            "profileBackup": "Резервне копіювання",
+            "profileMirrorDesc": "Локальний → Віддалений, видалити зайві, перевірити розмір",
+            "profileTwoWayDesc": "Двосторонній, зберегти новіше, без видалень",
+            "profileBackupDesc": "Локальний → Віддалений, перевірка контрольної суми, без видалень",
+            "conflictsFound": "Знайдено конфліктів: {count}",
+            "resolveConflicts": "Вирішити конфлікти",
+            "keepLocal": "Залишити локальний",
+            "keepRemote": "Залишити віддалений",
+            "keepBoth": "Залишити обидва",
+            "keepNewer": "Залишити новіший",
+            "keepLocalAll": "Залишити локальний для всіх",
+            "keepRemoteAll": "Залишити віддалений для всіх",
+            "keepNewerAll": "Залишити новіший для всіх",
+            "skipAll": "Пропустити всі",
+            "conflictResolved": "Вирішено"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Відключено",
                 "newConnection": "Нове підключення",
                 "syncing": "Синхронізація...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Закрити інші вкладки",
+                "closeAll": "Закрити всі вкладки"
             }
         },
         "update": {

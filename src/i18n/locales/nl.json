@@ -225,7 +225,7 @@
             "locked": "Vergrendeld",
             "notConnected": "Niet verbonden",
             "permsHeader": "Rechten",
-            "syncPathMismatch": "[NEEDS TRANSLATION] Paths are out of sync — navigate to matching folders or disable sync navigation"
+            "syncPathMismatch": "Paden zijn niet gesynchroniseerd — navigeer naar overeenkomende mappen of schakel synchrone navigatie uit"
         },
         "contextMenu": {
             "open": "Openen",
@@ -323,7 +323,8 @@
             "remove": "Verwijderen",
             "retry": "Opnieuw proberen",
             "stopAll": "Alles stoppen",
-            "stopAllPending": "Alle wachtende stoppen"
+            "stopAllPending": "Alle wachtende stoppen",
+            "forceStop": "Geforceerd stoppen (huidig bestand onderbreken)"
         },
         "settings": {
             "title": "Instellingen",
@@ -639,14 +640,14 @@
             "themeTokyoLabel": "Tokyo Night",
             "themeLabel": "Thema",
             "themeAutoLabel": "Auto",
-            "iconThemeDesc": "[NEEDS TRANSLATION] Choose an icon style for files and folders",
-            "iconThemeFilled": "[NEEDS TRANSLATION] Filled",
-            "iconThemeFilledDesc": "[NEEDS TRANSLATION] Colored document shapes with type badges",
-            "iconThemeMinimal": "[NEEDS TRANSLATION] Minimal",
-            "iconThemeMinimalDesc": "[NEEDS TRANSLATION] Monochrome icons that adapt to the current theme",
-            "iconThemeOutline": "[NEEDS TRANSLATION] Outline",
-            "iconThemeOutlineDesc": "[NEEDS TRANSLATION] Clean stroke icons with color-coded file types",
-            "iconsTab": "[NEEDS TRANSLATION] Icons"
+            "iconThemeDesc": "Kies een pictogramstijl voor bestanden en mappen",
+            "iconThemeFilled": "Gevuld",
+            "iconThemeFilledDesc": "Gekleurde documentvormen met typebadges",
+            "iconThemeMinimal": "Minimaal",
+            "iconThemeMinimalDesc": "Monochrome pictogrammen die zich aanpassen aan het huidige thema",
+            "iconThemeOutline": "Omtrek",
+            "iconThemeOutlineDesc": "Strakke lijnpictogrammen met kleurgecodeerde bestandstypen",
+            "iconsTab": "Pictogrammen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -780,10 +781,10 @@
             "disconnected": "Verbinding met server verbroken",
             "uploadStarted": "Upload gestart",
             "uploadComplete": "Upload voltooid",
-            "uploadFailed": "Upload mislukt: {error}",
+            "uploadFailed": "Upload mislukt",
             "downloadStarted": "Download gestart",
             "downloadComplete": "Download voltooid",
-            "downloadFailed": "Download mislukt: {error}",
+            "downloadFailed": "Download mislukt",
             "deleteSuccess": "{count} item(s) verwijderd",
             "deleteFailed": "Verwijderen mislukt: {error}",
             "renameSuccess": "Succesvol hernoemd",
@@ -974,7 +975,8 @@
             "https_established": "HTTPS-verbinding tot stand gebracht",
             "auth_success": "Authenticatie geslaagd als {username}",
             "auth_method_key": "Geauthenticeerd met SSH-sleutel ({username})",
-            "listing_complete": "{count} items weergegeven"
+            "listing_complete": "{count} items weergegeven",
+            "connected_to": "Verbonden met {ip}:{port}"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -1248,7 +1250,34 @@
                 "file_locked": "Bestand vergrendeld",
                 "disk_error": "Schijffout",
                 "unknown": "Onbekend"
-            }
+            },
+            "clearHistory": "Geschiedenis wissen",
+            "clearHistoryConfirm": "Alle synchronisatiejournalen verwijderen?",
+            "journalsCleared": "{count} journalen verwijderd",
+            "noJournals": "Geen synchronisatiegeschiedenis",
+            "bandwidthLimit": "Snelheidslimiet",
+            "bandwidthUnlimited": "Onbeperkt",
+            "bandwidthDownload": "Downloaden",
+            "bandwidthUpload": "Uploaden",
+            "profile": "Profiel",
+            "profileCustom": "Aangepast",
+            "profileMirror": "Spiegel",
+            "profileTwoWay": "Tweerichtings",
+            "profileBackup": "Back-up",
+            "profileMirrorDesc": "Lokaal → Extern, wezen verwijderen, grootte verifiëren",
+            "profileTwoWayDesc": "Tweerichtings, nieuwste behouden, geen verwijderingen",
+            "profileBackupDesc": "Lokaal → Extern, checksum-verificatie, geen verwijderingen",
+            "conflictsFound": "{count} conflicten gevonden",
+            "resolveConflicts": "Conflicten oplossen",
+            "keepLocal": "Lokaal behouden",
+            "keepRemote": "Extern behouden",
+            "keepBoth": "Beide behouden",
+            "keepNewer": "Nieuwste behouden",
+            "keepLocalAll": "Lokaal behouden voor alles",
+            "keepRemoteAll": "Extern behouden voor alles",
+            "keepNewerAll": "Nieuwste behouden voor alles",
+            "skipAll": "Alles overslaan",
+            "conflictResolved": "Opgelost"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -1299,8 +1328,8 @@
                 "disconnected": "Losgekoppeld",
                 "newConnection": "Nieuwe verbinding",
                 "syncing": "Synchroniseren...",
-                "closeOthers": "[NEEDS TRANSLATION] Close other tabs",
-                "closeAll": "[NEEDS TRANSLATION] Close all tabs"
+                "closeOthers": "Andere tabbladen sluiten",
+                "closeAll": "Alle tabbladen sluiten"
             }
         },
         "update": {

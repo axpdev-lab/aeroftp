@@ -2006,16 +2006,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 }`}
                                                                 title={t(pattern.nameKey)}
                                                             >
-                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
                                                                     {pattern.svg && (() => {
                                                                         const lockPattern = LOCK_SCREEN_PATTERNS.find(p => p.id === pattern.id);
                                                                         return lockPattern?.svg ? (
-                                                                            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: lockPattern.svg }} />
+                                                                            <div className="absolute inset-0 opacity-10 invert dark:invert-0" style={{ backgroundImage: lockPattern.svg }} />
                                                                         ) : null;
                                                                     })()}
                                                                 </div>
                                                                 <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                                                    <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                                    <span className="text-[9px] text-gray-600 dark:text-gray-300 font-medium">{t(pattern.nameKey)}</span>
                                                                 </div>
                                                                 {isSelected && (
                                                                     <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
@@ -2058,13 +2058,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 }`}
                                                                 title={t(pattern.nameKey)}
                                                             >
-                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900">
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
                                                                     {pattern.svg && (
-                                                                        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: pattern.svg }} />
+                                                                        <div className="absolute inset-0 opacity-10 invert dark:invert-0" style={{ backgroundImage: pattern.svg }} />
                                                                     )}
                                                                 </div>
                                                                 <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                                                    <span className="text-[9px] text-gray-300 font-medium">{t(pattern.nameKey)}</span>
+                                                                    <span className="text-[9px] text-gray-600 dark:text-gray-300 font-medium">{t(pattern.nameKey)}</span>
                                                                 </div>
                                                                 {isSelected && (
                                                                     <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
