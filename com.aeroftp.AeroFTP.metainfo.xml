@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.2.1" date="2026-02-16">
+      <description>
+        <p>Splash screen menu bar flash fix (race condition in APP_READY_DONE timing). New Security Toolkit lock-and-key icon. New Cyberpunk hacker theme icon. AeroCloud default sync interval set to 24h with inotify active.</p>
+      </description>
+    </release>
     <release version="2.2.0" date="2026-02-15">
       <description>
         <p>AeroSync Phase 3A+ — Complete Frontend Integration and UX Maturity: Tab-based UX (Quick Sync + Advanced), 5 Speed Mode presets, Sync Scheduler, Filesystem Watcher, Multi-Path Editor, Sync Templates, Rollback Snapshots, parallel streams (1-8). Professional splash screen with 21-step simulated loading sequence. Advanced tab accordion for compact navigation. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyberpunk shield icon. WebKitGTK scrollbar z-index fix. 31 security findings fixed across 6 independent auditors. Grade: A-. 47 languages at 100%.</p>

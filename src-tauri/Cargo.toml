@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.2.0"
+version = "2.2.1"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"

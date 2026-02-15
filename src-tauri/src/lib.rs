@@ -3693,25 +3693,22 @@ static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 #[tauri::command]
 async fn app_ready(app: AppHandle) {
-    APP_READY_DONE.store(true, Ordering::SeqCst);
+    // IMPORTANT: Do NOT set APP_READY_DONE here! Setting it early creates a race
+    // condition: rebuild_menu sees the flag, calls app.set_menu() globally, and GTK
+    // applies it to the splash window that hasn't been destroyed yet → menu flash.
+    // The flag is set at the very END, after splash is dead and menu is installed.
 
-    // 1. Close splash first
+    // 1. Close splash — GTK window destruction is async, takes ~500ms
     if let Some(splash) = app.get_webview_window("splashscreen") {
         let _ = splash.close();
         info!("Splash screen closed");
     }
 
-    // 2. Show main window immediately (no menu yet — frontend controls visibility)
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
-        info!("Main window shown");
-    }
+    // 2. Wait for GTK to fully destroy the splash window.
+    // During this wait, rebuild_menu still sees APP_READY_DONE==false and defers.
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
-    // 3. Wait for GTK to fully destroy the splash before setting global menu
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-    // 4. Now safe to set the global app menu (splash is fully gone)
+    // 3. Splash is dead — safe to set the global app menu
     if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
         if let Ok(mut guard) = deferred.lock() {
             if let Some(menu) = guard.take() {
@@ -3721,10 +3718,17 @@ async fn app_ready(app: AppHandle) {
         }
     }
 
-    // 5. Remove menu from main window (frontend restores via toggle_menu_bar)
+    // 4. Show main window without menu (frontend controls visibility via toggle_menu_bar)
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+        info!("Main window shown");
     }
+
+    // 5. LAST: set the flag so rebuild_menu can freely call app.set_menu()
+    // and the safety timeout knows not to fire.
+    APP_READY_DONE.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -3858,8 +3862,8 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
     let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
         .map_err(|e| e.to_string())?;
 
-    // If splash is still open, store menu for later — don't set globally
-    // (GTK applies global menus to ALL windows, causing flash on splash)
+    // If splash is still open (APP_READY_DONE==false), store menu for later —
+    // don't set globally (GTK applies global menus to ALL windows, causing flash).
     if !APP_READY_DONE.load(Ordering::SeqCst) {
         if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
             if let Ok(mut guard) = deferred.lock() {
@@ -3868,6 +3872,11 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         }
     } else {
         app.set_menu(menu).map_err(|e| e.to_string())?;
+    }
+
+    // Defense-in-depth: if splash somehow still exists, strip its menu
+    if let Some(splash) = app.get_webview_window("splashscreen") {
+        let _ = splash.remove_menu();
     }
 
     Ok(())

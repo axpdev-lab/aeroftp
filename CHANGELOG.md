@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-02-16
+
+### Splash Screen & Icon Polish
+
+#### Fixed
+- **Splash screen menu bar flash eliminated**: Root cause identified — `APP_READY_DONE` flag was set before `splash.close()`, allowing `rebuild_menu` to call `app.set_menu()` while the GTK splash window was still alive. Flag now set at the very end of `app_ready()` after 800ms destruction wait, with defense-in-depth `splash.remove_menu()` in `rebuild_menu`
+- **AeroCloud default sync interval**: Changed from 5 minutes to 24 hours when inotify realtime detection is active
+
+#### Changed
+- **Security Toolkit icon**: Replaced shield-in-gear with lock-and-key icon for clearer security identity
+- **Cyberpunk theme icon**: Replaced circuit shield with hacker icon across theme toggle, settings panel, and theme selector
+
 ## [2.2.0] - 2026-02-15
 
 ### AeroSync Phase 3A+ — Complete Frontend Integration & UX Maturity

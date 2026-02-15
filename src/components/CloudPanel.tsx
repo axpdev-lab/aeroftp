@@ -77,7 +77,7 @@ const SetupWizard: React.FC<{
     const [remoteFolder, setRemoteFolder] = useState('/cloud/');
     const [serverProfile, setServerProfile] = useState('');
     const [syncOnChange, setSyncOnChange] = useState(true);
-    const [syncInterval, setSyncInterval] = useState(5); // minutes
+    const [syncInterval, setSyncInterval] = useState(1440); // 24h — inotify handles realtime, interval is safety net
     const [isLoading, setIsLoading] = useState(false);
 
     // Load default folder on mount
