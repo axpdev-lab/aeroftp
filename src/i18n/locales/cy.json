@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Cof",
-                "archive_create": "Creu archif",
-                "archive_extract": "Echdynnu archif",
+                "archive_compress": "Cywasgu",
+                "archive_decompress": "Datgywasgu",
                 "compare_directories": "Cymharu",
                 "download_files": "Llwytho swp",
+                "hash_file": "Hash Ffeil",
+                "local_batch_rename": "Ailenwi Swp",
+                "local_copy_files": "Copïo Swp",
                 "local_delete": "Dileu lleol",
+                "local_disk_usage": "Defnydd Disg",
                 "local_edit": "Golygu lleol",
+                "local_file_info": "Gwybodaeth Ffeil",
+                "local_find_duplicates": "Canfod Dyblygu",
                 "local_list": "Rhestr leol",
                 "local_mkdir": "Ffolder leol",
+                "local_move_files": "Symud Swp",
                 "local_read": "Darllen lleol",
                 "local_rename": "Ailenwi lleol",
                 "local_search": "Chwilio lleol",
+                "local_trash": "Sbwriel",
                 "local_write": "Ysgrifennu lleol",
                 "preview_edit": "Rhagolwg golygu",
                 "rag_index": "Mynegai RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Rhagolwg cydweddu",
                 "terminal_execute": "Terfynell",
                 "upload_files": "Uwchlwytho swp"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Cymeradwyo POB galwad offeryn yn awtomatig heb ddeialogau cadarnhau. Cynyddu'r terfyn aml-gam o 10 i 50. Ar gael yn y thema Cyberpunk yn unig.",
+                "enable": "Galluogi Extreme Mode",
+                "warning": "Bydd pob gweithrediad ffeil yn cael ei weithredu ar unwaith heb gymeradwyaeth. Defnyddiwch ar eich risg eich hun."
             }
         },
         "archive": {

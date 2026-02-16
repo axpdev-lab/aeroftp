@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "मेमोरी",
-                "archive_create": "आर्काइव बनाएँ",
-                "archive_extract": "आर्काइव निकालें",
+                "archive_compress": "संपीड़ित करें",
+                "archive_decompress": "विसंपीड़ित करें",
                 "compare_directories": "तुलना करें",
                 "download_files": "बैच डाउनलोड",
+                "hash_file": "फ़ाइल Hash",
+                "local_batch_rename": "बैच नाम बदलें",
+                "local_copy_files": "बैच कॉपी",
                 "local_delete": "स्थानीय हटाएँ",
+                "local_disk_usage": "डिस्क उपयोग",
                 "local_edit": "स्थानीय संपादन",
+                "local_file_info": "फ़ाइल जानकारी",
+                "local_find_duplicates": "डुप्लिकेट खोजें",
                 "local_list": "स्थानीय सूची",
                 "local_mkdir": "स्थानीय फ़ोल्डर",
+                "local_move_files": "बैच स्थानांतरण",
                 "local_read": "स्थानीय पढ़ें",
                 "local_rename": "स्थानीय नाम बदलें",
                 "local_search": "स्थानीय खोज",
+                "local_trash": "कूड़ेदान",
                 "local_write": "स्थानीय लिखें",
                 "preview_edit": "संपादन पूर्वावलोकन",
                 "rag_index": "RAG इंडेक्स",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "सिंक पूर्वावलोकन",
                 "terminal_execute": "टर्मिनल",
                 "upload_files": "बैच अपलोड"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "पुष्टि संवादों के बिना सभी टूल कॉल को स्वचालित रूप से स्वीकृत करता है। मल्टी-स्टेप सीमा 10 से बढ़ाकर 50 करता है। केवल Cyberpunk थीम में उपलब्ध।",
+                "enable": "Extreme Mode सक्षम करें",
+                "warning": "सभी फ़ाइल ऑपरेशन बिना अनुमोदन के तुरंत निष्पादित होंगे। अपने जोखिम पर उपयोग करें।"
             }
         },
         "archive": {

@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memória",
-                "archive_create": "Archívum létrehozása",
-                "archive_extract": "Archívum kibontása",
+                "archive_compress": "Tömörítés",
+                "archive_decompress": "Kicsomagolás",
                 "compare_directories": "Összehasonlítás",
                 "download_files": "Kötegelt letöltés",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Tömeges átnevezés",
+                "local_copy_files": "Tömeges másolás",
                 "local_delete": "Helyi törlés",
+                "local_disk_usage": "Lemezhasználat",
                 "local_edit": "Helyi szerkesztés",
+                "local_file_info": "Fájl infó",
+                "local_find_duplicates": "Duplikátumok",
                 "local_list": "Helyi lista",
                 "local_mkdir": "Helyi mappa",
+                "local_move_files": "Tömeges áthelyezés",
                 "local_read": "Helyi olvasás",
                 "local_rename": "Helyi átnevezés",
                 "local_search": "Helyi keresés",
+                "local_trash": "Kuka",
                 "local_write": "Helyi írás",
                 "preview_edit": "Szerkesztés előnézete",
                 "rag_index": "RAG index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Szinkronizálás előnézete",
                 "terminal_execute": "Terminál",
                 "upload_files": "Kötegelt feltöltés"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automatikusan jóváhagy MINDEN eszközhívást megerősítő párbeszédpanel nélkül. A többlépéses korlátot 10-ről 50-re emeli. Csak Cyberpunk témában érhető el.",
+                "enable": "Extreme Mode bekapcsolása",
+                "warning": "Minden fájlművelet azonnal végrehajtódik jóváhagyás nélkül. Saját felelősségre használja."
             }
         },
         "archive": {

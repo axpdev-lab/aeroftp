@@ -43,6 +43,8 @@ import { CostBudgetIndicator } from './CostBudgetIndicator';
 
 /** Maximum autonomous tool-call steps before stopping */
 const MAX_AUTO_STEPS = 10;
+/** Maximum steps in extreme mode */
+const MAX_AUTO_STEPS_EXTREME = 50;
 
 /** 3×3 grid-dots animated spinner */
 const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -109,7 +111,7 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
     }
 };
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, onFileMutation, editorFileName, editorFilePath }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath }) => {
     const t = useTranslation();
 
     // Conversation management (hook)
@@ -260,6 +262,26 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return raw ? JSON.parse(raw) : null;
         } catch { return null; }
     });
+    // Extreme mode: auto-approve all tools, increased step limit (Cyber theme only)
+    const [extremeMode, setExtremeMode] = useState(false);
+    const extremeModeRef = useRef(false);
+    useEffect(() => {
+        extremeModeRef.current = extremeMode;
+    }, [extremeMode]);
+    // Load extreme mode setting from localStorage
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('aeroftp_ai_extreme_mode');
+            if (saved === 'true') {
+                // Only enable if current theme is 'cyber'
+                const theme = document.documentElement.getAttribute('data-theme');
+                if (theme === 'cyber') {
+                    setExtremeMode(true);
+                }
+            }
+        } catch { /* ignore */ }
+    }, []);
+
     const autoStopRef = useRef(false);
     const multiStepContextRef = useRef<{
         aiRequest: Record<string, unknown>;
@@ -313,6 +335,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         dangerLevel: t.dangerLevel === 'safe' ? 'medium' as const : t.dangerLevel,
     }));
     const allTools = [...AGENT_TOOLS, ...pluginTools, ...macrosToToolDefinitions(macros)];
+
+    /** In extreme mode, ALL tools are auto-approved (no confirmation dialog) */
+    const isAutoApproved = useCallback((toolName: string) =>
+        extremeModeRef.current || isSafeTool(toolName, allTools),
+    [allTools]);
+
+    /** Effective max steps: 50 in extreme mode, 10 normally */
+    const effectiveMaxSteps = extremeMode ? MAX_AUTO_STEPS_EXTREME : MAX_AUTO_STEPS;
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -483,6 +513,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             invoke('execute_ai_tool', {
                 toolName: 'rag_index',
                 args: { path: indexPath, recursive: true, max_files: 100 },
+                contextLocalPath: localPath || undefined,
             }).then((result: unknown) => {
                 ragIndexRef.current = result as Record<string, unknown>;
                 ragIndexedPathRef.current = indexPath;
@@ -574,7 +605,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 });
             }
         }
-        return await invoke('execute_ai_tool', { toolName, args });
+        return await invoke('execute_ai_tool', { toolName, args, contextLocalPath: localPath || undefined });
     };
 
     // Execute a tool
@@ -874,7 +905,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         autoStopRef.current = false;
 
         try {
-            while (stepCount < MAX_AUTO_STEPS && !autoStopRef.current) {
+            while (stepCount < effectiveMaxSteps && !autoStopRef.current) {
                 // Add tool result to message history for next AI call
                 messageHistory.push({ role: 'assistant', content: `Tool result:\n${lastToolResult}` });
                 messageHistory.push({ role: 'user', content: 'Continue with the next step based on the tool result above. If the task is complete, respond normally without calling a tool.' });
@@ -927,8 +958,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
 
                 // Separate safe vs approval-required
-                const safeMS = allToolsParsedMS.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
-                const approvalMS = allToolsParsedMS.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                const safeMS = allToolsParsedMS.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                const approvalMS = allToolsParsedMS.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
 
                 if (approvalMS.length > 0) {
                     // Pause multi-step for user approval
@@ -970,11 +1001,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 lastToolResult = combinedResult;
             }
 
-            if (stepCount >= MAX_AUTO_STEPS) {
+            if (stepCount >= effectiveMaxSteps) {
                 const maxMsg: Message = {
                     id: crypto.randomUUID(),
                     role: 'assistant',
-                    content: `Multi-step execution completed after ${MAX_AUTO_STEPS} steps (maximum reached).`,
+                    content: `Multi-step execution completed after ${effectiveMaxSteps} steps (maximum reached).`,
                     timestamp: new Date(),
                 };
                 setMessages(prev => [...prev, maxMsg]);
@@ -1119,6 +1150,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             const contextBlock = buildContextBlock({
                 providerType, isConnected, serverHost, serverPort, serverUser,
                 remotePath, localPath, selectedFiles,
+                activeFilePanel, isCloudConnection,
                 editorFileName, editorFilePath,
                 ragIndex: ragIndexRef.current,
                 macros,
@@ -1358,8 +1390,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 if (allToolsParsed.length > 0) {
                     // Separate safe (auto-execute) vs approval-required tools
-                    const safeCalls = allToolsParsed.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
-                    const approvalCalls = allToolsParsed.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                    const safeCalls = allToolsParsed.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                    const approvalCalls = allToolsParsed.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
 
                     // Execute safe tools in parallel
                     if (safeCalls.length > 0) {
@@ -1451,8 +1483,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
 
                 if (allToolsParsedNS.length > 0) {
-                    const safeCalls = allToolsParsedNS.filter(p => isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
-                    const approvalCalls = allToolsParsedNS.filter(p => !isSafeTool(p.tool, allTools) && getToolByNameFromAll(p.tool, allTools));
+                    const safeCalls = allToolsParsedNS.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                    const approvalCalls = allToolsParsedNS.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
 
                     if (safeCalls.length > 0) {
                         const safeToolCalls = safeCalls.map(sc => ({
@@ -1804,7 +1836,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     <GridSpinner size={14} className="text-purple-400" />
                                     {isAutoExecuting ? (
                                         <>
-                                            <span>Step {autoStepCount}/{MAX_AUTO_STEPS}</span>
+                                            {extremeMode && <span className="text-red-400 font-bold animate-pulse mr-1">EXTREME</span>}
+                                            <span>Step {autoStepCount}/{effectiveMaxSteps}</span>
                                             <span className="mx-1">&mdash;</span>
                                             <button
                                                 onClick={() => { autoStopRef.current = true; }}

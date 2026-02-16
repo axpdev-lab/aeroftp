@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Minni",
-                "archive_create": "Búa til safnskrá",
-                "archive_extract": "Afþjappa safnskrá",
+                "archive_compress": "Þjappa",
+                "archive_decompress": "Afþjappa",
                 "compare_directories": "Bera saman",
                 "download_files": "Fjölniðurhal",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Fjöldaendurnefna",
+                "local_copy_files": "Fjöldaafrita",
                 "local_delete": "Staðbundin eyðing",
+                "local_disk_usage": "Disknotkun",
                 "local_edit": "Staðbundin breyting",
+                "local_file_info": "Skráarupplýsingar",
+                "local_find_duplicates": "Finna tvítekningar",
                 "local_list": "Staðbundinn listi",
                 "local_mkdir": "Staðbundin mappa",
+                "local_move_files": "Fjöldaflytja",
                 "local_read": "Staðbundin lestur",
                 "local_rename": "Staðbundin endurnefning",
                 "local_search": "Staðbundin leit",
+                "local_trash": "Rusl",
                 "local_write": "Staðbundin skrif",
                 "preview_edit": "Forskoðun breytingar",
                 "rag_index": "RAG vísir",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Forskoðun samstillingar",
                 "terminal_execute": "Útstöð",
                 "upload_files": "Fjölupphleðsla"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Samþykkja sjálfkrafa ÖLL verkfærakall án staðfestingarglugga. Hækkar fjölþrepa takmörk úr 10 í 50. Aðeins í boði í Cyberpunk þema.",
+                "enable": "Virkja Extreme Mode",
+                "warning": "Allar skráaaðgerðir verða keyrðar strax án samþykkis. Notaðu á eigin ábyrgð."
             }
         },
         "archive": {

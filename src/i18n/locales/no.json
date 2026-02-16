@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",
-                "archive_create": "Opprett arkiv",
-                "archive_extract": "Pakk ut arkiv",
+                "archive_compress": "Komprimer",
+                "archive_decompress": "Dekomprimer",
                 "compare_directories": "Sammenlign",
                 "download_files": "Batch-nedlasting",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Massenavngivning",
+                "local_copy_files": "Massekopiering",
                 "local_delete": "Lokal sletting",
+                "local_disk_usage": "Diskbruk",
                 "local_edit": "Lokal redigering",
+                "local_file_info": "Filinfo",
+                "local_find_duplicates": "Finn duplikater",
                 "local_list": "Lokal liste",
                 "local_mkdir": "Lokal mappe",
+                "local_move_files": "Masseflytting",
                 "local_read": "Lokal lesing",
                 "local_rename": "Lokalt omdøp",
                 "local_search": "Lokalt søk",
+                "local_trash": "Papirkurv",
                 "local_write": "Lokal skriving",
                 "preview_edit": "Forhåndsvis redigering",
                 "rag_index": "RAG-indeks",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Synkroniseringsforhåndsvisning",
                 "terminal_execute": "Terminal",
                 "upload_files": "Batch-opplasting"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Godkjenn automatisk ALLE verktøykall uten bekreftelsesdialoger. Øker flerstegsgrensen fra 10 til 50. Kun tilgjengelig i Cyberpunk-temaet.",
+                "enable": "Aktiver Extreme Mode",
+                "warning": "Alle filoperasjoner vil utføres umiddelbart uten godkjenning. Bruk på eget ansvar."
             }
         },
         "archive": {

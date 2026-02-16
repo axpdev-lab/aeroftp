@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memòria",
-                "archive_create": "Crear arxiu",
-                "archive_extract": "Extreure arxiu",
+                "archive_compress": "Comprimir",
+                "archive_decompress": "Descomprimir",
                 "compare_directories": "Comparar",
                 "download_files": "Descàrrega en lot",
+                "hash_file": "Hash del fitxer",
+                "local_batch_rename": "Canvi de nom massiu",
+                "local_copy_files": "Copia massiva",
                 "local_delete": "Eliminar local",
+                "local_disk_usage": "Ús del disc",
                 "local_edit": "Editar local",
+                "local_file_info": "Info del fitxer",
+                "local_find_duplicates": "Trobar duplicats",
                 "local_list": "Llistar local",
                 "local_mkdir": "Crear carpeta local",
+                "local_move_files": "Moure massiu",
                 "local_read": "Llegir local",
                 "local_rename": "Reanomenar local",
                 "local_search": "Cercar local",
+                "local_trash": "Paperera",
                 "local_write": "Escriure local",
                 "preview_edit": "Previsualitzar edició",
                 "rag_index": "Índex RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Previsualització de sincronització",
                 "terminal_execute": "Terminal",
                 "upload_files": "Pujada en lot"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Aprova automàticament TOTES les crides d'eines sense diàlegs de confirmació. Augmenta el límit de passos múltiples de 10 a 50. Disponible només al tema Cyberpunk.",
+                "enable": "Activar Extreme Mode",
+                "warning": "Totes les operacions de fitxers s'executaran immediatament sense aprovació. Utilitzeu-ho sota la vostra responsabilitat."
             }
         },
         "archive": {

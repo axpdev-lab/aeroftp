@@ -129,6 +129,15 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'medium',
     },
     {
+        name: 'local_move_files',
+        description: 'Move multiple local files into a destination directory in one batch operation',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of source file absolute paths to move (relative names auto-resolved to local path)', required: true },
+            { name: 'destination', type: 'string', description: 'Destination directory absolute path (relative names auto-resolved to local path)', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
         name: 'local_edit',
         description: 'Find and replace text in a local file (literal match, not regex)',
         parameters: [
@@ -211,6 +220,103 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'remote_path', type: 'string', description: 'Remote directory', required: true },
         ],
         dangerLevel: 'medium',
+    },
+
+    // Batch file operations
+    {
+        name: 'local_batch_rename',
+        description: 'Rename multiple files using patterns: find/replace, add prefix, add suffix, or sequential numbering',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of file absolute paths to rename (relative names auto-resolved to local path)', required: true },
+            { name: 'mode', type: 'string', description: 'Rename mode: find_replace, add_prefix, add_suffix, or sequential', required: true },
+            { name: 'find', type: 'string', description: 'Text to find (find_replace mode only)', required: false },
+            { name: 'replace', type: 'string', description: 'Replacement text (find_replace mode only)', required: false },
+            { name: 'prefix', type: 'string', description: 'Prefix to add (add_prefix mode only)', required: false },
+            { name: 'suffix', type: 'string', description: 'Suffix to add before extension (add_suffix mode only)', required: false },
+            { name: 'base_name', type: 'string', description: 'Base name for sequential mode (default: file)', required: false },
+            { name: 'start_number', type: 'number', description: 'Starting number for sequential mode (default: 1)', required: false },
+            { name: 'padding', type: 'number', description: 'Digit padding for sequential mode (default: 2)', required: false },
+            { name: 'case_sensitive', type: 'boolean', description: 'Case-sensitive find/replace (default: false)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_copy_files',
+        description: 'Copy multiple local files or folders into a destination directory',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of source file/folder absolute paths to copy (relative names auto-resolved to local path)', required: true },
+            { name: 'destination', type: 'string', description: 'Destination directory absolute path (relative names auto-resolved to local path)', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_trash',
+        description: 'Move files to system trash/recycle bin (safe alternative to permanent delete)',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of file absolute paths to move to trash (relative names auto-resolved to local path)', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+
+    // Archive operations
+    {
+        name: 'archive_compress',
+        description: 'Compress files into an archive (ZIP, 7z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ) with optional AES-256 encryption',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of file/folder paths to compress', required: true },
+            { name: 'output_path', type: 'string', description: 'Output archive file path', required: true },
+            { name: 'format', type: 'string', description: 'Archive format: zip, 7z, tar, tar.gz, tar.bz2, tar.xz (default: zip)', required: false },
+            { name: 'password', type: 'string', description: 'Encryption password for ZIP (AES-256) or 7z', required: false },
+            { name: 'compression_level', type: 'number', description: 'Compression level 0-9 (default: 6)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'archive_decompress',
+        description: 'Extract an archive (ZIP, 7z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ) with optional password',
+        parameters: [
+            { name: 'archive_path', type: 'string', description: 'Path to the archive file', required: true },
+            { name: 'output_dir', type: 'string', description: 'Output directory for extracted files', required: true },
+            { name: 'password', type: 'string', description: 'Decryption password (if encrypted)', required: false },
+            { name: 'create_subfolder', type: 'boolean', description: 'Create subfolder with archive name (default: true)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+
+    // Read-only analysis tools (safe)
+    {
+        name: 'local_file_info',
+        description: 'Get detailed file properties: size, permissions, timestamps, MIME type, owner (Unix)',
+        parameters: [
+            { name: 'path', type: 'string', description: 'File or directory path', required: true },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'local_disk_usage',
+        description: 'Calculate total size of a directory (recursive): total bytes, file count, directory count',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Directory path', required: true },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'local_find_duplicates',
+        description: 'Find duplicate files in a directory using MD5 hash comparison, sorted by wasted space',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Directory to scan', required: true },
+            { name: 'min_size', type: 'number', description: 'Minimum file size in bytes (default: 1024)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'hash_file',
+        description: 'Compute cryptographic hash of a file (MD5, SHA-1, SHA-256, SHA-512, BLAKE3)',
+        parameters: [
+            { name: 'path', type: 'string', description: 'File path to hash', required: true },
+            { name: 'algorithm', type: 'string', description: 'Hash algorithm: md5, sha1, sha256, sha512, blake3 (default: sha256)', required: false },
+        ],
+        dangerLevel: 'safe',
     },
 
     // High — explicit confirmation

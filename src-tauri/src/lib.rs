@@ -6072,6 +6072,34 @@ async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::Ke
         .map_err(|e| e.to_string())
 }
 
+// ============ Public wrappers for AI tool access ============
+// Cannot make #[tauri::command] functions pub (Tauri 2 macro conflict),
+// so we expose thin wrappers that ai_tools.rs can call via crate::
+
+pub async fn compress_files_core(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+    compress_files(paths, output_path, password, compression_level).await
+}
+
+pub async fn extract_archive_core(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
+    extract_archive(archive_path, output_dir, create_subfolder, password).await
+}
+
+pub async fn compress_7z_core(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+    compress_7z(paths, output_path, password, compression_level).await
+}
+
+pub async fn extract_7z_core(archive_path: String, output_dir: String, password: Option<String>, create_subfolder: bool) -> Result<String, String> {
+    extract_7z(archive_path, output_dir, password, create_subfolder).await
+}
+
+pub async fn compress_tar_core(paths: Vec<String>, output_path: String, format: String, compression_level: Option<i64>) -> Result<String, String> {
+    compress_tar(paths, output_path, format, compression_level).await
+}
+
+pub async fn extract_tar_core(archive_path: String, output_dir: String, create_subfolder: bool) -> Result<String, String> {
+    extract_tar(archive_path, output_dir, create_subfolder).await
+}
+
 // ============ App Entry Point ============
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Muisti",
-                "archive_create": "Luo arkisto",
-                "archive_extract": "Pura arkisto",
+                "archive_compress": "Pakkaa",
+                "archive_decompress": "Pura",
                 "compare_directories": "Vertaa",
                 "download_files": "Erälataus",
+                "hash_file": "Tiedoston Hash",
+                "local_batch_rename": "Joukkouudelleennimeä",
+                "local_copy_files": "Joukkokopioi",
                 "local_delete": "Poista paikallinen",
+                "local_disk_usage": "Levytila",
                 "local_edit": "Muokkaa paikallista",
+                "local_file_info": "Tiedoston tiedot",
+                "local_find_duplicates": "Etsi kaksoiskappaleet",
                 "local_list": "Listaa paikallinen",
                 "local_mkdir": "Paikallinen kansio",
+                "local_move_files": "Joukkosiirrä",
                 "local_read": "Lue paikallinen",
                 "local_rename": "Nimeä paikallinen",
                 "local_search": "Hae paikallisesti",
+                "local_trash": "Roskakori",
                 "local_write": "Kirjoita paikallinen",
                 "preview_edit": "Esikatsele muokkausta",
                 "rag_index": "RAG-indeksi",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Synkr. esikatselu",
                 "terminal_execute": "Terminaali",
                 "upload_files": "Erälähetys"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Hyväksyy automaattisesti KAIKKI työkalukutsut ilman vahvistusikkunoita. Nostaa monivaiheisen rajan 10:stä 50:een. Käytettävissä vain Cyberpunk-teemassa.",
+                "enable": "Ota Extreme Mode käyttöön",
+                "warning": "Kaikki tiedostotoiminnot suoritetaan välittömästi ilman hyväksyntää. Käytä omalla vastuullasi."
             }
         },
         "archive": {

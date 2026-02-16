@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Bộ nhớ",
-                "archive_create": "Tạo lưu trữ",
-                "archive_extract": "Giải nén lưu trữ",
+                "archive_compress": "Nen",
+                "archive_decompress": "Giai nen",
                 "compare_directories": "So sánh",
                 "download_files": "Tải hàng loạt",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Doi Ten Hang Loat",
+                "local_copy_files": "Sao Chep Loat",
                 "local_delete": "Xóa cục bộ",
+                "local_disk_usage": "Dung Luong Dia",
                 "local_edit": "Sửa cục bộ",
+                "local_file_info": "Thong Tin File",
+                "local_find_duplicates": "Tim Trung Lap",
                 "local_list": "Danh sách cục bộ",
                 "local_mkdir": "Tạo thư mục cục bộ",
+                "local_move_files": "Di Chuyen Loat",
                 "local_read": "Đọc cục bộ",
                 "local_rename": "Đổi tên cục bộ",
                 "local_search": "Tìm kiếm cục bộ",
+                "local_trash": "Thung Rac",
                 "local_write": "Ghi cục bộ",
                 "preview_edit": "Xem trước chỉnh sửa",
                 "rag_index": "RAG Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Xem trước đồng bộ",
                 "terminal_execute": "Terminal",
                 "upload_files": "Tải lên hàng loạt"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Tu dong phe duyet TAT CA cac lenh goi cong cu ma khong can hop thoai xac nhan. Tang gioi han da buoc tu 10 len 50. Chi kha dung trong giao dien Cyberpunk.",
+                "enable": "Bat Extreme Mode",
+                "warning": "Tat ca cac thao tac tep se duoc thuc hien ngay lap tuc ma khong can phe duyet. Su dung tu chiu rui ro."
             }
         },
         "archive": {

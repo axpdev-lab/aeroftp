@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",
-                "archive_create": "Skapa arkiv",
-                "archive_extract": "Extrahera arkiv",
+                "archive_compress": "Komprimera",
+                "archive_decompress": "Dekomprimera",
                 "compare_directories": "Jamfor",
                 "download_files": "Batchnedladdning",
+                "hash_file": "Hash Fil",
+                "local_batch_rename": "Byt Namn Batch",
+                "local_copy_files": "Kopiera Batch",
                 "local_delete": "Lokal borttagning",
+                "local_disk_usage": "Diskanvandning",
                 "local_edit": "Lokal redigering",
+                "local_file_info": "Filinfo",
+                "local_find_duplicates": "Dubbletter",
                 "local_list": "Lokal lista",
                 "local_mkdir": "Lokal mapp",
+                "local_move_files": "Flytta Batch",
                 "local_read": "Lokal lasning",
                 "local_rename": "Lokalt namnbyte",
                 "local_search": "Lokal sokning",
+                "local_trash": "Papperskorg",
                 "local_write": "Lokal skrivning",
                 "preview_edit": "Forhandsgranska redigering",
                 "rag_index": "RAG-index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Synkforhandsvisning",
                 "terminal_execute": "Terminal",
                 "upload_files": "Batchuppladdning"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Godkanner automatiskt ALLA verktygsanrop utan bekraftelsedialoger. Okar flerstegsgränsen fran 10 till 50. Tillgangligt endast i Cyberpunk-temat.",
+                "enable": "Aktivera Extreme Mode",
+                "warning": "Alla filoperationer kommer att utforas omedelbart utan godkannande. Anvand pa egen risk."
             }
         },
         "archive": {

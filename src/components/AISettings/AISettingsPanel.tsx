@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TransferProgressBar } from '../TransferProgressBar';
 import {
-    X, Plus, Trash2, Edit2, Check, AlertCircle,
+    X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert,
     Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers,
     Eye, EyeOff, List
 } from 'lucide-react';
@@ -1460,6 +1460,33 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     {t('ai.streamingTimeout.hint')}
                                 </p>
                             </div>
+
+                            {/* Extreme Mode — Cyber theme only */}
+                            {document.documentElement.getAttribute('data-theme') === 'cyber' && (
+                                <div className="bg-red-950/30 border border-red-800/50 rounded-lg p-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <ShieldAlert size={16} className="text-red-400" />
+                                        <h4 className="text-sm font-medium text-red-400">{t('ai.extremeMode.title')}</h4>
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 mb-3">
+                                        {t('ai.extremeMode.description')}
+                                    </p>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={localStorage.getItem('aeroftp_ai_extreme_mode') === 'true'}
+                                            onChange={(e) => {
+                                                localStorage.setItem('aeroftp_ai_extreme_mode', e.target.checked ? 'true' : 'false');
+                                            }}
+                                            className="rounded border-red-600 bg-gray-900 text-red-500 focus:ring-red-500"
+                                        />
+                                        <span className="text-red-300 font-medium">{t('ai.extremeMode.enable')}</span>
+                                    </label>
+                                    <p className="text-[10px] text-red-400/60 mt-2 italic">
+                                        {t('ai.extremeMode.warning')}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 

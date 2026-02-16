@@ -1859,17 +1859,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Հիշողություն",
-                "archive_create": "Ստեղծել արխիվ",
-                "archive_extract": "Հանել արխիվ",
+                "archive_compress": "[NEEDS TRANSLATION]",
+                "archive_decompress": "[NEEDS TRANSLATION]",
                 "compare_directories": "Համեմատել",
                 "download_files": "Խմբաքային ներբեռնում",
+                "hash_file": "[NEEDS TRANSLATION]",
+                "local_batch_rename": "[NEEDS TRANSLATION]",
+                "local_copy_files": "[NEEDS TRANSLATION]",
                 "local_delete": "Տեղական ջնջում",
+                "local_disk_usage": "[NEEDS TRANSLATION]",
                 "local_edit": "Տեղական խմբագրում",
+                "local_file_info": "[NEEDS TRANSLATION]",
+                "local_find_duplicates": "[NEEDS TRANSLATION]",
                 "local_list": "Տեղական ցուցակ",
                 "local_mkdir": "Տեղական թղթապանակ",
+                "local_move_files": "[NEEDS TRANSLATION]",
                 "local_read": "Տեղական ընթերցում",
                 "local_rename": "Տեղական վերանվանում",
                 "local_search": "Տեղական որոնում",
+                "local_trash": "[NEEDS TRANSLATION]",
                 "local_write": "Տեղական գրում",
                 "preview_edit": "Խմբագրման նախադիտում",
                 "rag_index": "RAG ինդեքս",
@@ -1890,6 +1898,12 @@
                 "sync_preview": "Համաժամանակման նախադիտում",
                 "terminal_execute": "Տերմինալ",
                 "upload_files": "Խմբաքային վերբեռնում"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "[NEEDS TRANSLATION]",
+                "enable": "[NEEDS TRANSLATION]",
+                "warning": "[NEEDS TRANSLATION]"
             }
         },
         "archive": {

@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Bellek",
-                "archive_create": "Arşiv Oluştur",
-                "archive_extract": "Arşiv Çıkar",
+                "archive_compress": "Sikistir",
+                "archive_decompress": "Ac",
                 "compare_directories": "Karşılaştır",
                 "download_files": "Toplu İndirme",
+                "hash_file": "Hash Dosyasi",
+                "local_batch_rename": "Toplu Adlandir",
+                "local_copy_files": "Toplu Kopyala",
                 "local_delete": "Yerel Sil",
+                "local_disk_usage": "Disk Kullanimi",
                 "local_edit": "Yerel Düzenle",
+                "local_file_info": "Dosya Bilgisi",
+                "local_find_duplicates": "Kopyalar",
                 "local_list": "Yerel Listele",
                 "local_mkdir": "Yerel Mkdir",
+                "local_move_files": "Toplu Tasi",
                 "local_read": "Yerel Oku",
                 "local_rename": "Yerel Yeniden Adlandır",
                 "local_search": "Yerel Ara",
+                "local_trash": "Cop Kutusu",
                 "local_write": "Yerel Yaz",
                 "preview_edit": "Düzenleme Önizleme",
                 "rag_index": "RAG Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Senkronizasyon Önizleme",
                 "terminal_execute": "Terminal",
                 "upload_files": "Toplu Yükleme"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "TUM arac cagrilarini onay dialoglari olmadan otomatik olarak onaylar. Cok adimli limiti 10'dan 50'ye cikarir. Yalnizca Cyberpunk temasinda kullanilabilir.",
+                "enable": "Extreme Mode Etkinlestir",
+                "warning": "Tum dosya islemleri onay olmadan hemen yurutulecektir. Riski size aittir."
             }
         },
         "archive": {

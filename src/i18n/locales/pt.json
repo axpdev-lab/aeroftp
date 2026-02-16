@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",
-                "archive_create": "Criar arquivo",
-                "archive_extract": "Extrair arquivo",
+                "archive_compress": "Comprimir",
+                "archive_decompress": "Descomprimir",
                 "compare_directories": "Comparar",
                 "download_files": "Download em lote",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Renomear Lote",
+                "local_copy_files": "Copiar Lote",
                 "local_delete": "Excluir local",
+                "local_disk_usage": "Uso do Disco",
                 "local_edit": "Editar local",
+                "local_file_info": "Info Ficheiro",
+                "local_find_duplicates": "Duplicados",
                 "local_list": "Listar local",
                 "local_mkdir": "Criar pasta local",
+                "local_move_files": "Mover Lote",
                 "local_read": "Ler local",
                 "local_rename": "Renomear local",
                 "local_search": "Pesquisar local",
+                "local_trash": "Lixeira",
                 "local_write": "Gravar local",
                 "preview_edit": "Pre-visualizar edicao",
                 "rag_index": "Indice RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Pre-visualizar sincronizacao",
                 "terminal_execute": "Terminal",
                 "upload_files": "Upload em lote"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Aprova automaticamente TODAS as chamadas de ferramentas sem dialogos de confirmacao. Aumenta o limite multi-passo de 10 para 50. Disponivel apenas no tema Cyberpunk.",
+                "enable": "Ativar Extreme Mode",
+                "warning": "Todas as operacoes de ficheiros serao executadas imediatamente sem aprovacao. Use por sua conta e risco."
             }
         },
         "archive": {

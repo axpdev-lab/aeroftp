@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memori",
-                "archive_create": "Cipta Arkib",
-                "archive_extract": "Ekstrak Arkib",
+                "archive_compress": "Mampat",
+                "archive_decompress": "Nyahmampat",
                 "compare_directories": "Banding",
                 "download_files": "Muat Turun Kelompok",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Nama Semula Pukal",
+                "local_copy_files": "Salin Pukal",
                 "local_delete": "Padam Tempatan",
+                "local_disk_usage": "Penggunaan Cakera",
                 "local_edit": "Edit Tempatan",
+                "local_file_info": "Info Fail",
+                "local_find_duplicates": "Cari Pendua",
                 "local_list": "Senarai Tempatan",
                 "local_mkdir": "Folder Tempatan",
+                "local_move_files": "Pindah Pukal",
                 "local_read": "Baca Tempatan",
                 "local_rename": "Namakan Semula Tempatan",
                 "local_search": "Cari Tempatan",
+                "local_trash": "Tong Sampah",
                 "local_write": "Tulis Tempatan",
                 "preview_edit": "Pratonton Edit",
                 "rag_index": "Indeks RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Pratonton Segerak",
                 "terminal_execute": "Terminal",
                 "upload_files": "Muat Naik Kelompok"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Luluskan secara automatik SEMUA panggilan alat tanpa dialog pengesahan. Meningkatkan had berbilang langkah dari 10 kepada 50. Hanya tersedia dalam tema Cyberpunk.",
+                "enable": "Aktifkan Extreme Mode",
+                "warning": "Semua operasi fail akan dilaksanakan serta-merta tanpa kelulusan. Gunakan atas risiko anda sendiri."
             }
         },
         "archive": {

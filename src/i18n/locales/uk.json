@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Пам'ять",
-                "archive_create": "Створити архів",
-                "archive_extract": "Розпакувати архів",
+                "archive_compress": "Стиснути",
+                "archive_decompress": "Розпакувати",
                 "compare_directories": "Порівняти",
                 "download_files": "Пакетне завантаження",
+                "hash_file": "Хеш Файлу",
+                "local_batch_rename": "Перейменувати",
+                "local_copy_files": "Копіювати",
                 "local_delete": "Локальне видалення",
+                "local_disk_usage": "Місце на Диску",
                 "local_edit": "Локальне редагування",
+                "local_file_info": "Інфо про Файл",
+                "local_find_duplicates": "Дублікати",
                 "local_list": "Локальний список",
                 "local_mkdir": "Локальний Mkdir",
+                "local_move_files": "Перемістити",
                 "local_read": "Локальне читання",
                 "local_rename": "Локальне перейменування",
                 "local_search": "Локальний пошук",
+                "local_trash": "Кошик",
                 "local_write": "Локальний запис",
                 "preview_edit": "Попередній перегляд",
                 "rag_index": "RAG Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Попередній перегляд синхронізації",
                 "terminal_execute": "Термінал",
                 "upload_files": "Пакетне вивантаження"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Автоматично схвалює ВСІ виклики інструментів без діалогів підтвердження. Збільшує ліміт багатокрокових операцій з 10 до 50. Доступно лише в темі Cyberpunk.",
+                "enable": "Увімкнути Extreme Mode",
+                "warning": "Усі файлові операції будуть виконані негайно без схвалення. Використовуйте на власний ризик."
             }
         },
         "archive": {

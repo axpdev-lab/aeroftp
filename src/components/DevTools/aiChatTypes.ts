@@ -56,6 +56,10 @@ export interface AIChatProps {
     serverPort?: number;
     /** Username for connection context */
     serverUser?: string;
+    /** Which file panel is currently active/focused */
+    activeFilePanel?: 'remote' | 'local';
+    /** Whether the connection is via AeroCloud (vs manual server) */
+    isCloudConnection?: boolean;
     /** Callback to refresh file panels after AI tool mutations */
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
     /** Currently open file name in the code editor */
@@ -79,7 +83,8 @@ export const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
     remote_delete: 'remote', remote_rename: 'remote', remote_mkdir: 'remote',
     remote_upload: 'remote', remote_edit: 'remote', upload_files: 'remote',
     download_files: 'local', remote_download: 'local',
-    local_write: 'local', local_delete: 'local', local_rename: 'local',
+    local_write: 'local', local_delete: 'local', local_rename: 'local', local_move_files: 'local',
+    local_batch_rename: 'local', local_copy_files: 'local', local_trash: 'local',
     local_mkdir: 'local', local_edit: 'local',
-    archive_create: 'both', archive_extract: 'both',
+    archive_compress: 'both', archive_decompress: 'both',
 };

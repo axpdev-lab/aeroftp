@@ -13,6 +13,10 @@ export interface SystemPromptContext {
     remotePath?: string;
     localPath?: string;
     selectedFiles?: string[];
+    /** Which file panel is currently active/focused */
+    activeFilePanel?: 'remote' | 'local';
+    /** Whether the connection is via AeroCloud (vs manual server) */
+    isCloudConnection?: boolean;
     editorFileName?: string;
     editorFilePath?: string;
     ragIndex?: Record<string, unknown> | null;
@@ -28,10 +32,29 @@ export interface SystemPromptContext {
 export function buildContextBlock(ctx: SystemPromptContext): string {
     const contextLines: string[] = [];
 
-    if (ctx.providerType) contextLines.push(`- Protocol: ${ctx.providerType.toUpperCase()} (${ctx.isConnected ? 'connected' : 'disconnected'})`);
-    if (ctx.serverHost) contextLines.push(`- Server: ${ctx.serverHost}${ctx.serverPort ? ':' + ctx.serverPort : ''}`);
-    if (ctx.serverUser) contextLines.push(`- User: ${ctx.serverUser}`);
-    if (ctx.remotePath) contextLines.push(`- Remote path: ${ctx.remotePath}`);
+    // Connection mode — clear distinction between server, AeroCloud, and local-only
+    if (ctx.isConnected && ctx.isCloudConnection) {
+        contextLines.push(`- Mode: AeroCloud connected (background sync service)`);
+        if (ctx.providerType) contextLines.push(`- AeroCloud protocol: ${ctx.providerType.toUpperCase()}`);
+        if (ctx.serverHost) contextLines.push(`- AeroCloud server: ${ctx.serverHost}${ctx.serverPort ? ':' + ctx.serverPort : ''}`);
+        if (ctx.remotePath) contextLines.push(`- AeroCloud remote folder: ${ctx.remotePath}`);
+    } else if (ctx.isConnected) {
+        contextLines.push(`- Mode: Server connected`);
+        if (ctx.providerType) contextLines.push(`- Protocol: ${ctx.providerType.toUpperCase()}`);
+        if (ctx.serverHost) contextLines.push(`- Server: ${ctx.serverHost}${ctx.serverPort ? ':' + ctx.serverPort : ''}`);
+        if (ctx.serverUser) contextLines.push(`- User: ${ctx.serverUser}`);
+        if (ctx.remotePath) contextLines.push(`- Remote path: ${ctx.remotePath}`);
+    } else {
+        contextLines.push(`- Mode: AeroFile (local only, no server connected)`);
+    }
+
+    // Active panel — tells the AI what the user is looking at
+    if (ctx.activeFilePanel === 'local') {
+        contextLines.push(`- Active panel: LOCAL files (user is browsing local filesystem)`);
+    } else if (ctx.activeFilePanel === 'remote' && ctx.isConnected) {
+        contextLines.push(`- Active panel: REMOTE files (user is browsing server files)`);
+    }
+
     if (ctx.localPath) contextLines.push(`- Local path: ${ctx.localPath}`);
     if (ctx.selectedFiles && ctx.selectedFiles.length > 0) contextLines.push(`- Selected files: ${ctx.selectedFiles.slice(0, 10).join(', ')}${ctx.selectedFiles.length > 10 ? ` (+${ctx.selectedFiles.length - 10} more)` : ''}`);
     if (ctx.editorFileName) contextLines.push(`- Editor: currently editing "${ctx.editorFileName}"${ctx.editorFilePath ? ` (${ctx.editorFilePath})` : ''}`);

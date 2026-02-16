@@ -23,9 +23,11 @@ function extractPaths(args: Record<string, unknown>): string[] {
  */
 function isMutatingTool(toolName: string): boolean {
     const mutators = new Set([
-        'local_edit', 'local_write', 'local_delete', 'local_rename', 'local_mkdir',
+        'local_edit', 'local_write', 'local_delete', 'local_rename', 'local_move_files', 'local_mkdir',
+        'local_batch_rename', 'local_copy_files', 'local_trash',
         'remote_edit', 'remote_upload', 'remote_delete', 'remote_rename', 'remote_mkdir',
         'upload_files', 'download_files',
+        'archive_compress', 'archive_decompress',
     ]);
     return mutators.has(toolName);
 }

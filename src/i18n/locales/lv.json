@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Atmiņa",
-                "archive_create": "Izveidot arhīvu",
-                "archive_extract": "Izvilkt arhīvu",
+                "archive_compress": "Saspiest",
+                "archive_decompress": "Atsaspiest",
                 "compare_directories": "Salīdzināt",
                 "download_files": "Pakešu lejupielāde",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Kopēja pārdēvēšana",
+                "local_copy_files": "Kopēja kopēšana",
                 "local_delete": "Lokālā dzēšana",
+                "local_disk_usage": "Diska lietojums",
                 "local_edit": "Lokālā rediģēšana",
+                "local_file_info": "Faila info",
+                "local_find_duplicates": "Atrast dublikātus",
                 "local_list": "Lokālais saraksts",
                 "local_mkdir": "Lokālā mape",
+                "local_move_files": "Kopēja pārvietošana",
                 "local_read": "Lokālā lasīšana",
                 "local_rename": "Lokālā pārdēvēšana",
                 "local_search": "Lokālā meklēšana",
+                "local_trash": "Atkritne",
                 "local_write": "Lokālā rakstīšana",
                 "preview_edit": "Rediģēšanas priekšskatījums",
                 "rag_index": "RAG indekss",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Sinhronizācijas priekšskatījums",
                 "terminal_execute": "Terminālis",
                 "upload_files": "Pakešu augšupielāde"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automātiski apstiprināt VISUS rīku izsaukumus bez apstiprinājuma dialogiem. Palielina daudzsoļu ierobežojumu no 10 līdz 50. Pieejams tikai Cyberpunk tēmā.",
+                "enable": "Iespējot Extreme Mode",
+                "warning": "Visas failu operācijas tiks izpildītas nekavējoties bez apstiprinājuma. Lietojiet uz savu risku."
             }
         },
         "archive": {

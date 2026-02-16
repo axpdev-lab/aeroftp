@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memorie",
-                "archive_create": "Creeaza arhiva",
-                "archive_extract": "Extrage arhiva",
+                "archive_compress": "Comprimare",
+                "archive_decompress": "Decomprimare",
                 "compare_directories": "Compara",
                 "download_files": "Descarcare in lot",
+                "hash_file": "Hash Fisier",
+                "local_batch_rename": "Redenumire Lot",
+                "local_copy_files": "Copiere Lot",
                 "local_delete": "Sterge local",
+                "local_disk_usage": "Utilizare Disc",
                 "local_edit": "Editeaza local",
+                "local_file_info": "Info Fisier",
+                "local_find_duplicates": "Duplicate",
                 "local_list": "Lista locala",
                 "local_mkdir": "Creeaza dosar local",
+                "local_move_files": "Mutare Lot",
                 "local_read": "Citeste local",
                 "local_rename": "Redenumeste local",
                 "local_search": "Cauta local",
+                "local_trash": "Cos de Gunoi",
                 "local_write": "Scrie local",
                 "preview_edit": "Previzualizeaza editarea",
                 "rag_index": "Index RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Previzualizeaza sincronizarea",
                 "terminal_execute": "Terminal",
                 "upload_files": "Incarcare in lot"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Aproba automat TOATE apelurile de instrumente fara dialoguri de confirmare. Creste limita multi-pas de la 10 la 50. Disponibil doar in tema Cyberpunk.",
+                "enable": "Activeaza Extreme Mode",
+                "warning": "Toate operatiile cu fisiere se vor executa imediat fara aprobare. Utilizati pe propriul risc."
             }
         },
         "archive": {

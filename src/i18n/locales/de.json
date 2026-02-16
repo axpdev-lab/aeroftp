@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Speicher",
-                "archive_create": "Archiv erstellen",
-                "archive_extract": "Archiv entpacken",
+                "archive_compress": "Komprimieren",
+                "archive_decompress": "Dekomprimieren",
                 "compare_directories": "Vergleichen",
                 "download_files": "Massendownload",
+                "hash_file": "Datei-Hash",
+                "local_batch_rename": "Stapelumbenennung",
+                "local_copy_files": "Stapelkopie",
                 "local_delete": "Lokal löschen",
+                "local_disk_usage": "Speichernutzung",
                 "local_edit": "Lokal bearbeiten",
+                "local_file_info": "Datei-Info",
+                "local_find_duplicates": "Duplikate finden",
                 "local_list": "Lokal auflisten",
                 "local_mkdir": "Lokaler Ordner",
+                "local_move_files": "Stapelverschiebung",
                 "local_read": "Lokal lesen",
                 "local_rename": "Lokal umbenennen",
                 "local_search": "Lokal suchen",
+                "local_trash": "Papierkorb",
                 "local_write": "Lokal schreiben",
                 "preview_edit": "Bearbeitung vorschau",
                 "rag_index": "RAG-Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Sync-Vorschau",
                 "terminal_execute": "Terminal",
                 "upload_files": "Massenupload"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Genehmigt automatisch ALLE Werkzeugaufrufe ohne Bestätigungsdialoge. Erhöht das Multi-Schritt-Limit von 10 auf 50. Nur im Cyberpunk-Theme verfügbar.",
+                "enable": "Extreme Mode aktivieren",
+                "warning": "Alle Dateioperationen werden sofort ohne Genehmigung ausgeführt. Nutzung auf eigene Gefahr."
             }
         },
         "archive": {

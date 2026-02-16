@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Spomin",
-                "archive_create": "Ustvari arhiv",
-                "archive_extract": "Izvleči arhiv",
+                "archive_compress": "Stisni",
+                "archive_decompress": "Razsiri",
                 "compare_directories": "Primerjaj",
                 "download_files": "Skupinski prenos",
+                "hash_file": "Hash Datoteke",
+                "local_batch_rename": "Preimenuj Paket",
+                "local_copy_files": "Kopiraj Paket",
                 "local_delete": "Lokalno brisanje",
+                "local_disk_usage": "Poraba Diska",
                 "local_edit": "Lokalno urejanje",
+                "local_file_info": "Info Datoteke",
+                "local_find_duplicates": "Duplikati",
                 "local_list": "Lokalni seznam",
                 "local_mkdir": "Lokalna mapa",
+                "local_move_files": "Premakni Paket",
                 "local_read": "Lokalno branje",
                 "local_rename": "Lokalno preimenovanje",
                 "local_search": "Lokalno iskanje",
+                "local_trash": "Kos",
                 "local_write": "Lokalni zapis",
                 "preview_edit": "Predogled urejanja",
                 "rag_index": "RAG indeks",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Predogled sinhronizacije",
                 "terminal_execute": "Terminal",
                 "upload_files": "Skupinsko nalaganje"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Samodejno odobri VSE klice orodij brez potrditvenih pogovornih oken. Poveca omejitev vec korakov z 10 na 50. Na voljo samo v temi Cyberpunk.",
+                "enable": "Vklopi Extreme Mode",
+                "warning": "Vse datotecne operacije se bodo izvedle takoj brez odobritve. Uporabljajte na lastno odgovornost."
             }
         },
         "archive": {

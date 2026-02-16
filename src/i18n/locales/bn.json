@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "মেমরি",
-                "archive_create": "আর্কাইভ তৈরি",
-                "archive_extract": "আর্কাইভ এক্সট্র্যাক্ট",
+                "archive_compress": "সংকুচিত করুন",
+                "archive_decompress": "বিসংকুচিত করুন",
                 "compare_directories": "তুলনা",
                 "download_files": "ব্যাচ ডাউনলোড",
+                "hash_file": "ফাইল Hash",
+                "local_batch_rename": "ব্যাচ নামকরণ",
+                "local_copy_files": "ব্যাচ কপি",
                 "local_delete": "স্থানীয় মুছুন",
+                "local_disk_usage": "ডিস্ক ব্যবহার",
                 "local_edit": "স্থানীয় সম্পাদনা",
+                "local_file_info": "ফাইল তথ্য",
+                "local_find_duplicates": "ডুপ্লিকেট খুঁজুন",
                 "local_list": "স্থানীয় তালিকা",
                 "local_mkdir": "স্থানীয় ফোল্ডার তৈরি",
+                "local_move_files": "ব্যাচ সরানো",
                 "local_read": "স্থানীয় পড়ুন",
                 "local_rename": "স্থানীয় নাম পরিবর্তন",
                 "local_search": "স্থানীয় অনুসন্ধান",
+                "local_trash": "ট্র্যাশ",
                 "local_write": "স্থানীয় লিখুন",
                 "preview_edit": "সম্পাদনা প্রিভিউ",
                 "rag_index": "RAG সূচক",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "সিঙ্ক প্রিভিউ",
                 "terminal_execute": "টার্মিনাল",
                 "upload_files": "ব্যাচ আপলোড"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "নিশ্চিতকরণ ডায়ালগ ছাড়াই সমস্ত টুল কল স্বয়ংক্রিয়ভাবে অনুমোদন করে। মাল্টি-স্টেপ সীমা 10 থেকে 50-এ বাড়ায়। শুধুমাত্র Cyberpunk থিমে উপলব্ধ।",
+                "enable": "Extreme Mode সক্রিয় করুন",
+                "warning": "সমস্ত ফাইল অপারেশন অনুমোদন ছাড়াই অবিলম্বে কার্যকর হবে। নিজের ঝুঁকিতে ব্যবহার করুন।"
             }
         },
         "archive": {

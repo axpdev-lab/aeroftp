@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "მეხსიერება",
-                "archive_create": "არქივის შექმნა",
-                "archive_extract": "არქივის ამოღება",
+                "archive_compress": "შეკუმშვა",
+                "archive_decompress": "გახსნა",
                 "compare_directories": "შედარება",
                 "download_files": "პაკეტური ჩამოტვირთვა",
+                "hash_file": "Hash File",
+                "local_batch_rename": "ჯგუფური გადარქმევა",
+                "local_copy_files": "ჯგუფური კოპირება",
                 "local_delete": "ლოკალური წაშლა",
+                "local_disk_usage": "დისკის გამოყენება",
                 "local_edit": "ლოკალური რედაქტირება",
+                "local_file_info": "ფაილის ინფო",
+                "local_find_duplicates": "დუბლიკატების ძებნა",
                 "local_list": "ლოკალური სია",
                 "local_mkdir": "ლოკალური საქაღალდე",
+                "local_move_files": "ჯგუფური გადატანა",
                 "local_read": "ლოკალური წაკითხვა",
                 "local_rename": "ლოკალური გადარქმევა",
                 "local_search": "ლოკალური ძიება",
+                "local_trash": "კალათა",
                 "local_write": "ლოკალური ჩაწერა",
                 "preview_edit": "რედაქტირების წინასწარ ხედვა",
                 "rag_index": "RAG ინდექსი",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "სინქრონიზაციის წინასწარ ხედვა",
                 "terminal_execute": "ტერმინალი",
                 "upload_files": "პაკეტური ატვირთვა"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "ავტომატურად დაამტკიცეთ ყველა ინსტრუმენტის გამოძახება დადასტურების დიალოგის გარეშე. მრავალსაფეხურიანი ლიმიტი იზრდება 10-დან 50-მდე. ხელმისაწვდომია მხოლოდ Cyberpunk თემაში.",
+                "enable": "Extreme Mode-ის ჩართვა",
+                "warning": "ფაილის ყველა ოპერაცია დაუყოვნებლივ შესრულდება დამტკიცების გარეშე. გამოიყენეთ საკუთარი რისკით."
             }
         },
         "archive": {

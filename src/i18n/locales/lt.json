@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Atmintis",
-                "archive_create": "Sukurti archyvą",
-                "archive_extract": "Išskleisti archyvą",
+                "archive_compress": "Suspausti",
+                "archive_decompress": "Išskleisti",
                 "compare_directories": "Palyginti",
                 "download_files": "Paketinis atsisiuntimas",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Masinis pervardijimas",
+                "local_copy_files": "Masinis kopijavimas",
                 "local_delete": "Vietinis trynimas",
+                "local_disk_usage": "Disko naudojimas",
                 "local_edit": "Vietinis redagavimas",
+                "local_file_info": "Failo informacija",
+                "local_find_duplicates": "Rasti dublikatus",
                 "local_list": "Vietinis sąrašas",
                 "local_mkdir": "Vietinis aplankas",
+                "local_move_files": "Masinis perkėlimas",
                 "local_read": "Vietinis skaitymas",
                 "local_rename": "Vietinis pervardijimas",
                 "local_search": "Vietinė paieška",
+                "local_trash": "Šiukšlinė",
                 "local_write": "Vietinis rašymas",
                 "preview_edit": "Redagavimo peržiūra",
                 "rag_index": "RAG indeksas",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Sinchronizavimo peržiūra",
                 "terminal_execute": "Terminalas",
                 "upload_files": "Paketinis įkėlimas"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automatiškai patvirtinti VISUS įrankių iškvietimus be patvirtinimo dialogų. Padidina daugiažingsnį limitą nuo 10 iki 50. Pasiekiama tik Cyberpunk temoje.",
+                "enable": "Įjungti Extreme Mode",
+                "warning": "Visos failų operacijos bus vykdomos iš karto be patvirtinimo. Naudokite savo rizika."
             }
         },
         "archive": {

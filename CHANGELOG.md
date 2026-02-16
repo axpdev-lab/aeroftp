@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-02-16
+
+### AeroAgent File Management Pro & Theme Consistency
+
+AeroAgent gains 9 new file management tools for batch operations, disk analysis, and archive handling. Extreme Mode unlocks fully autonomous 50-step execution for Cyberpunk users. All local tools now resolve relative filenames against the active local directory. AeroSync modal fully themed across all 4 app themes.
+
+#### Added
+
+- **AeroAgent 9 new tools**: `local_move_files` (batch move), `local_batch_rename` (regex/prefix/suffix/sequential), `local_copy_files` (batch copy), `local_trash` (recycle bin), `local_file_info` (metadata), `local_disk_usage` (recursive size), `local_find_duplicates` (hash-based), `archive_compress` (ZIP/7z/TAR), `archive_decompress` (extract archives)
+- **Extreme Mode**: Cyberpunk-theme-only feature — auto-approves all AI tool calls (including high-danger), raises step limit from 10 to 50, enables fully autonomous multi-step execution. Toggle in AI Settings → Advanced tab
+- **AeroAgent connection context awareness**: System prompt now clearly distinguishes AeroCloud (background sync), manual server connections, and AeroFile (local-only) mode. Active panel (local vs remote) communicated to AI for accurate file operations
+- **13 new i18n keys in 47 languages**: 10 tool labels (toolLabels.local_move_files through archive_decompress) + 3 Extreme Mode keys (extremeMode, extremeModeDesc, extremeModeWarning)
+
+#### Fixed
+
+- **AeroAgent relative path resolution**: All 14 local tools now resolve relative filenames against the user's current local directory via `resolve_local_path()` — fixes "os error 2" when AI models pass bare filenames instead of absolute paths
+- **AeroAgent context confusion in AeroFile mode**: Agent no longer lists AeroCloud remote files when user is in local-only AeroFile mode — connection mode and active panel are now explicit in the system prompt
+- **AeroSync theme support**: SyncPanel modal now follows all 4 themes (Dark, Light, Tokyo Night, Cyberpunk) via 20 CSS custom properties replacing 87+ hardcoded hex values. Tokyo Night uses purple accents, Cyberpunk uses cyan/green neon accents
+
 ## [2.2.1] - 2026-02-16
 
 ### Splash Screen & Icon Polish

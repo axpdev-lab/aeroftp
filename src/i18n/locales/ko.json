@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "메모리",
-                "archive_create": "아카이브 생성",
-                "archive_extract": "아카이브 추출",
+                "archive_compress": "압축",
+                "archive_decompress": "압축 해제",
                 "compare_directories": "비교",
                 "download_files": "일괄 다운로드",
+                "hash_file": "Hash File",
+                "local_batch_rename": "일괄 이름변경",
+                "local_copy_files": "일괄 복사",
                 "local_delete": "로컬 삭제",
+                "local_disk_usage": "디스크 사용량",
                 "local_edit": "로컬 편집",
+                "local_file_info": "파일 정보",
+                "local_find_duplicates": "중복 찾기",
                 "local_list": "로컬 목록",
                 "local_mkdir": "로컬 폴더 생성",
+                "local_move_files": "일괄 이동",
                 "local_read": "로컬 읽기",
                 "local_rename": "로컬 이름 변경",
                 "local_search": "로컬 검색",
+                "local_trash": "휴지통",
                 "local_write": "로컬 쓰기",
                 "preview_edit": "편집 미리보기",
                 "rag_index": "RAG 인덱스",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "동기화 미리보기",
                 "terminal_execute": "터미널",
                 "upload_files": "일괄 업로드"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "확인 대화 상자 없이 모든 도구 호출을 자동 승인합니다. 다단계 제한을 10에서 50으로 증가시킵니다. Cyberpunk 테마에서만 사용 가능합니다.",
+                "enable": "Extreme Mode 활성화",
+                "warning": "모든 파일 작업이 승인 없이 즉시 실행됩니다. 본인 책임하에 사용하십시오."
             }
         },
         "archive": {

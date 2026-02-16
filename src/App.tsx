@@ -6224,6 +6224,8 @@ const App: React.FC = () => {
         serverHost={connectionParams.server}
         serverPort={connectionParams.port}
         serverUser={connectionParams.username}
+        activeFilePanel={activePanel}
+        isCloudConnection={isCloudActive}
         sshConnection={isConnected && connectionParams.protocol === 'sftp' ? {
           host: connectionParams.server.split(':')[0],
           port: connectionParams.port || 22,

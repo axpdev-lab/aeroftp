@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",
-                "archive_create": "Sortu artxiboa",
-                "archive_extract": "Atera artxiboa",
+                "archive_compress": "Konprimitu",
+                "archive_decompress": "Deskonprimitu",
                 "compare_directories": "Konparatu",
                 "download_files": "Deskarga masiboak",
+                "hash_file": "Fitxategi Hash",
+                "local_batch_rename": "Izendatze masiboa",
+                "local_copy_files": "Kopia masiboa",
                 "local_delete": "Ezabatu lokala",
+                "local_disk_usage": "Disko erabilera",
                 "local_edit": "Editatu lokala",
+                "local_file_info": "Fitxategi info",
+                "local_find_duplicates": "Bikoiztuak bilatu",
                 "local_list": "Zerrendatu lokala",
                 "local_mkdir": "Karpeta lokala",
+                "local_move_files": "Mugitze masiboa",
                 "local_read": "Irakurri lokala",
                 "local_rename": "Berrizendatu lokala",
                 "local_search": "Bilatu lokala",
+                "local_trash": "Zakarrontzia",
                 "local_write": "Idatzi lokala",
                 "preview_edit": "Editazioa aurreikusi",
                 "rag_index": "RAG indizea",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Sinkr. aurreikuspena",
                 "terminal_execute": "Terminala",
                 "upload_files": "Igoera masiboak"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automatikoki onartzen ditu tresna-dei GUZTIAK baieztapen-elkarrizketarik gabe. Urrats anitzeko muga 10etik 50era igotzen du. Cyberpunk gaian soilik eskuragarri.",
+                "enable": "Extreme Mode gaitu",
+                "warning": "Fitxategi-eragiketa guztiak berehala exekutatuko dira onartzarik gabe. Erabili zure ardurapean."
             }
         },
         "archive": {

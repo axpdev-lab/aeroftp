@@ -475,6 +475,12 @@
                 "seconds": "seconds",
                 "title": "Streaming Timeout"
             },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Auto-approve ALL tool calls without confirmation dialogs. Increases multi-step limit from 10 to 50. Available in Cyberpunk theme only.",
+                "enable": "Enable Extreme Mode",
+                "warning": "All file operations will execute immediately without approval. Use at your own risk."
+            },
             "templates": {
                 "analyzeUi": "Analyze UI screenshot for layout, accessibility, and UX issues",
                 "code": "Code",
@@ -552,14 +558,22 @@
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {
                 "agent_memory_write": "Memory",
-                "archive_create": "Create Archive",
-                "archive_extract": "Extract Archive",
+                "archive_compress": "Compress",
+                "archive_decompress": "Decompress",
                 "compare_directories": "Compare",
                 "download_files": "Batch Download",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Batch Rename",
+                "local_copy_files": "Batch Copy",
                 "local_delete": "Local Delete",
+                "local_disk_usage": "Disk Usage",
                 "local_edit": "Local Edit",
+                "local_file_info": "File Info",
+                "local_find_duplicates": "Find Duplicates",
                 "local_list": "Local List",
                 "local_mkdir": "Local Mkdir",
+                "local_move_files": "Batch Move",
+                "local_trash": "Trash",
                 "local_read": "Local Read",
                 "local_rename": "Local Rename",
                 "local_search": "Local Search",

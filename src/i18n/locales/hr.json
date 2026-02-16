@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memorija",
-                "archive_create": "Kreiraj arhivu",
-                "archive_extract": "Izdvoji arhivu",
+                "archive_compress": "Komprimiraj",
+                "archive_decompress": "Dekomprimiraj",
                 "compare_directories": "Usporedi",
                 "download_files": "Skupno preuzimanje",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Skupno preimenuj",
+                "local_copy_files": "Skupno kopiraj",
                 "local_delete": "Lokalno brisanje",
+                "local_disk_usage": "Korištenje diska",
                 "local_edit": "Lokalno uređivanje",
+                "local_file_info": "Info o datoteci",
+                "local_find_duplicates": "Nađi duplikate",
                 "local_list": "Lokalni popis",
                 "local_mkdir": "Lokalna mapa",
+                "local_move_files": "Skupno premjesti",
                 "local_read": "Lokalno čitanje",
                 "local_rename": "Lokalno preimenovanje",
                 "local_search": "Lokalna pretraga",
+                "local_trash": "Smeće",
                 "local_write": "Lokalno pisanje",
                 "preview_edit": "Pregled uređivanja",
                 "rag_index": "RAG indeks",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Pregled sinkronizacije",
                 "terminal_execute": "Terminal",
                 "upload_files": "Skupno prenošenje"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automatski odobri SVE pozive alata bez dijaloga za potvrdu. Povećava ograničenje višestrukih koraka s 10 na 50. Dostupno samo u Cyberpunk temi.",
+                "enable": "Omogući Extreme Mode",
+                "warning": "Sve operacije s datotekama izvršit će se odmah bez odobrenja. Koristite na vlastitu odgovornost."
             }
         },
         "archive": {

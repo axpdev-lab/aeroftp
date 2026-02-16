@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memori",
-                "archive_create": "Buat Arsip",
-                "archive_extract": "Ekstrak Arsip",
+                "archive_compress": "Kompres",
+                "archive_decompress": "Dekompres",
                 "compare_directories": "Bandingkan",
                 "download_files": "Unduh Massal",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Rename Massal",
+                "local_copy_files": "Salin Massal",
                 "local_delete": "Hapus Lokal",
+                "local_disk_usage": "Penggunaan Disk",
                 "local_edit": "Edit Lokal",
+                "local_file_info": "Info File",
+                "local_find_duplicates": "Cari Duplikat",
                 "local_list": "Daftar Lokal",
                 "local_mkdir": "Folder Lokal",
+                "local_move_files": "Pindah Massal",
                 "local_read": "Baca Lokal",
                 "local_rename": "Ubah Nama Lokal",
                 "local_search": "Cari Lokal",
+                "local_trash": "Sampah",
                 "local_write": "Tulis Lokal",
                 "preview_edit": "Pratinjau Edit",
                 "rag_index": "Indeks RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Pratinjau Sinkronisasi",
                 "terminal_execute": "Terminal",
                 "upload_files": "Unggah Massal"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Setujui otomatis SEMUA panggilan alat tanpa dialog konfirmasi. Meningkatkan batas multi-langkah dari 10 menjadi 50. Hanya tersedia di tema Cyberpunk.",
+                "enable": "Aktifkan Extreme Mode",
+                "warning": "Semua operasi file akan dijalankan segera tanpa persetujuan. Gunakan dengan risiko Anda sendiri."
             }
         },
         "archive": {

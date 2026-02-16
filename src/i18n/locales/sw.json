@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Kumbukumbu",
-                "archive_create": "Tengeneza Kumbukumbu",
-                "archive_extract": "Toa Kumbukumbu",
+                "archive_compress": "Bana",
+                "archive_decompress": "Fungua",
                 "compare_directories": "Linganisha",
                 "download_files": "Pakua kwa Wingi",
+                "hash_file": "Hash Faili",
+                "local_batch_rename": "Badilisha Majina",
+                "local_copy_files": "Nakili Kundi",
                 "local_delete": "Futa Ndani",
+                "local_disk_usage": "Matumizi ya Diski",
                 "local_edit": "Hariri Ndani",
+                "local_file_info": "Habari za Faili",
+                "local_find_duplicates": "Nakala Pacha",
                 "local_list": "Orodha ya Ndani",
                 "local_mkdir": "Folda ya Ndani",
+                "local_move_files": "Hamisha Kundi",
                 "local_read": "Soma Ndani",
                 "local_rename": "Badilisha Jina Ndani",
                 "local_search": "Tafuta Ndani",
+                "local_trash": "Takataka",
                 "local_write": "Andika Ndani",
                 "preview_edit": "Onyesha Uhariri",
                 "rag_index": "RAG Faharasa",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Onyesha Usawazishaji",
                 "terminal_execute": "Terminali",
                 "upload_files": "Pakia kwa Wingi"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Kubali kiotomatiki simu ZOTE za zana bila mazungumzo ya uthibitisho. Huongeza kikomo cha hatua nyingi kutoka 10 hadi 50. Inapatikana tu katika mandhari ya Cyberpunk.",
+                "enable": "Washa Extreme Mode",
+                "warning": "Shughuli zote za faili zitatekelezwa mara moja bila idhini. Tumia kwa hatari yako mwenyewe."
             }
         },
         "archive": {

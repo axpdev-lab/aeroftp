@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "អង្គចងចាំ",
-                "archive_create": "បង្កើតបណ្ណសារ",
-                "archive_extract": "ស្រង់បណ្ណសារ",
+                "archive_compress": "បង្ហាប់",
+                "archive_decompress": "ពន្លា",
                 "compare_directories": "ប្រៀបធៀប",
                 "download_files": "ទាញយកជាបាច់",
+                "hash_file": "Hash File",
+                "local_batch_rename": "ប្ដូរឈ្មោះជាបាច់",
+                "local_copy_files": "ចម្លងជាបាច់",
                 "local_delete": "លុបមូលដ្ឋាន",
+                "local_disk_usage": "ការប្រើប្រាស់ថាស",
                 "local_edit": "កែសម្រួលមូលដ្ឋាន",
+                "local_file_info": "ព័ត៌មានឯកសារ",
+                "local_find_duplicates": "រកស្ទួន",
                 "local_list": "បញ្ជីមូលដ្ឋាន",
                 "local_mkdir": "ថតមូលដ្ឋាន",
+                "local_move_files": "ផ្លាស់ទីជាបាច់",
                 "local_read": "អានមូលដ្ឋាន",
                 "local_rename": "ប្ដូរឈ្មោះមូលដ្ឋាន",
                 "local_search": "ស្វែងរកមូលដ្ឋាន",
+                "local_trash": "ធុងសំរាម",
                 "local_write": "សរសេរមូលដ្ឋាន",
                 "preview_edit": "មើលមុនការកែ",
                 "rag_index": "RAG សន្ទស្សន៍",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "មើលមុនការសមកាលកម្ម",
                 "terminal_execute": "ស្ថានីយ",
                 "upload_files": "ផ្ទុកឡើងជាបាច់"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "អនុម័តការហៅឧបករណ៍ទាំងអស់ដោយស្វ័យប្រវត្តិដោយមិនមានប្រអប់បញ្ជាក់។ បង្កើនដែនកំណត់ពហុជំហានពី 10 ទៅ 50។ មានតែក្នុងរចនាប័ទ្ម Cyberpunk ប៉ុណ្ណោះ។",
+                "enable": "បើក Extreme Mode",
+                "warning": "ប្រតិបត្តិការឯកសារទាំងអស់នឹងត្រូវប្រតិបត្តិភ្លាមៗដោយមិនមានការអនុម័ត។ ប្រើប្រាស់ដោយទទួលខុសត្រូវខ្លួនឯង។"
             }
         },
         "archive": {

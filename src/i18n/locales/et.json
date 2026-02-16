@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Mälu",
-                "archive_create": "Loo arhiiv",
-                "archive_extract": "Paki lahti arhiiv",
+                "archive_compress": "Tihenda",
+                "archive_decompress": "Paki lahti",
                 "compare_directories": "Võrdle",
                 "download_files": "Hulgiallalaadimine",
+                "hash_file": "Faili Hash",
+                "local_batch_rename": "Hulgi ümbernimetamine",
+                "local_copy_files": "Hulgi kopeerimine",
                 "local_delete": "Kohalik kustutamine",
+                "local_disk_usage": "Kettakasutus",
                 "local_edit": "Kohalik redigeerimine",
+                "local_file_info": "Faili info",
+                "local_find_duplicates": "Leia duplikaadid",
                 "local_list": "Kohalik nimekiri",
                 "local_mkdir": "Kohalik kaust",
+                "local_move_files": "Hulgi teisaldamine",
                 "local_read": "Kohalik lugemine",
                 "local_rename": "Kohalik ümbernimetamine",
                 "local_search": "Kohalik otsing",
+                "local_trash": "Prügikast",
                 "local_write": "Kohalik kirjutamine",
                 "preview_edit": "Redigeerimise eelvaade",
                 "rag_index": "RAG indeks",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Sünkr. eelvaade",
                 "terminal_execute": "Terminal",
                 "upload_files": "Hulgiüleslaadimine"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Kinnitab automaatselt KÕIK tööriistakutsed ilma kinnitusdialoogideta. Suurendab mitmeastmelise piirangu 10-lt 50-le. Saadaval ainult Cyberpunk teemas.",
+                "enable": "Luba Extreme Mode",
+                "warning": "Kõik failitoimingud käivitatakse kohe ilma kinnituseta. Kasutage omal vastutusel."
             }
         },
         "archive": {

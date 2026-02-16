@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Памет",
-                "archive_create": "Създаване на архив",
-                "archive_extract": "Извличане на архив",
+                "archive_compress": "Компресиране",
+                "archive_decompress": "Декомпресиране",
                 "compare_directories": "Сравнение",
                 "download_files": "Пакетно изтегляне",
+                "hash_file": "Hash на файл",
+                "local_batch_rename": "Пакетно преименуване",
+                "local_copy_files": "Пакетно копиране",
                 "local_delete": "Локално изтриване",
+                "local_disk_usage": "Дисково пространство",
                 "local_edit": "Локално редактиране",
+                "local_file_info": "Инфо за файл",
+                "local_find_duplicates": "Търсене на дубликати",
                 "local_list": "Локален списък",
                 "local_mkdir": "Локално създаване на папка",
+                "local_move_files": "Пакетно преместване",
                 "local_read": "Локално четене",
                 "local_rename": "Локално преименуване",
                 "local_search": "Локално търсене",
+                "local_trash": "Кошче",
                 "local_write": "Локален запис",
                 "preview_edit": "Преглед на редакцията",
                 "rag_index": "RAG индекс",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Преглед на синхронизация",
                 "terminal_execute": "Терминал",
                 "upload_files": "Пакетно качване"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Автоматично одобрява ВСИЧКИ извиквания на инструменти без диалози за потвърждение. Увеличава лимита за многостъпкови операции от 10 на 50. Налично само в тема Cyberpunk.",
+                "enable": "Активиране на Extreme Mode",
+                "warning": "Всички файлови операции ще се изпълняват незабавно без одобрение. Използвайте на свой риск."
             }
         },
         "archive": {

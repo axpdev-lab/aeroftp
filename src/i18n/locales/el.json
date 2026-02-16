@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Μνήμη",
-                "archive_create": "Δημιουργία αρχείου",
-                "archive_extract": "Εξαγωγή αρχείου",
+                "archive_compress": "Συμπίεση",
+                "archive_decompress": "Αποσυμπίεση",
                 "compare_directories": "Σύγκριση",
                 "download_files": "Μαζική λήψη",
+                "hash_file": "Hash αρχείου",
+                "local_batch_rename": "Μαζική μετονομασία",
+                "local_copy_files": "Μαζική αντιγραφή",
                 "local_delete": "Τοπική διαγραφή",
+                "local_disk_usage": "Χρήση δίσκου",
                 "local_edit": "Τοπική επεξεργασία",
+                "local_file_info": "Πληροφορίες αρχείου",
+                "local_find_duplicates": "Εύρεση διπλότυπων",
                 "local_list": "Τοπική λίστα",
                 "local_mkdir": "Τοπικός φάκελος",
+                "local_move_files": "Μαζική μετακίνηση",
                 "local_read": "Τοπική ανάγνωση",
                 "local_rename": "Τοπική μετονομασία",
                 "local_search": "Τοπική αναζήτηση",
+                "local_trash": "Κάδος",
                 "local_write": "Τοπική εγγραφή",
                 "preview_edit": "Προεπισκόπηση επεξεργασίας",
                 "rag_index": "RAG ευρετήριο",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Προεπισκόπηση συγχρ.",
                 "terminal_execute": "Τερματικό",
                 "upload_files": "Μαζική μεταφόρτωση"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Εγκρίνει αυτόματα ΟΛΕΣ τις κλήσεις εργαλείων χωρίς διαλόγους επιβεβαίωσης. Αυξάνει το όριο πολλαπλών βημάτων από 10 σε 50. Διαθέσιμο μόνο στο θέμα Cyberpunk.",
+                "enable": "Ενεργοποίηση Extreme Mode",
+                "warning": "Όλες οι λειτουργίες αρχείων θα εκτελούνται αμέσως χωρίς έγκριση. Χρησιμοποιήστε με δική σας ευθύνη."
             }
         },
         "archive": {

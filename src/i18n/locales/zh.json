@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "记忆",
-                "archive_create": "创建归档",
-                "archive_extract": "解压归档",
+                "archive_compress": "压缩",
+                "archive_decompress": "解压",
                 "compare_directories": "比较",
                 "download_files": "批量下载",
+                "hash_file": "哈希文件",
+                "local_batch_rename": "批量重命名",
+                "local_copy_files": "批量复制",
                 "local_delete": "本地删除",
+                "local_disk_usage": "磁盘用量",
                 "local_edit": "本地编辑",
+                "local_file_info": "文件信息",
+                "local_find_duplicates": "查找重复",
                 "local_list": "本地列表",
                 "local_mkdir": "本地创建目录",
+                "local_move_files": "批量移动",
                 "local_read": "本地读取",
                 "local_rename": "本地重命名",
                 "local_search": "本地搜索",
+                "local_trash": "回收站",
                 "local_write": "本地写入",
                 "preview_edit": "预览编辑",
                 "rag_index": "RAG Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "同步预览",
                 "terminal_execute": "终端",
                 "upload_files": "批量上传"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "自动批准所有工具调用，无需确认对话框。将多步骤限制从 10 提高到 50。仅在 Cyberpunk 主题中可用。",
+                "enable": "启用 Extreme Mode",
+                "warning": "所有文件操作将立即执行，无需审批。使用风险自负。"
             }
         },
         "archive": {

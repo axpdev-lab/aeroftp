@@ -15,17 +15,21 @@ const ALLOWED_TOOLS: &[&str] = &[
     "remote_delete", "remote_rename", "remote_mkdir", "remote_search",
     "remote_info", "local_list", "local_read", "local_write",
     "local_mkdir", "local_delete", "local_rename", "local_search", "local_edit",
+    "local_move_files", "local_batch_rename", "local_copy_files", "local_trash",
+    "local_file_info", "local_disk_usage", "local_find_duplicates",
     "remote_edit",
     // Batch transfer tools
     "upload_files", "download_files",
     // Advanced tools
-    "sync_preview", "archive_create", "archive_extract",
+    "sync_preview", "archive_compress", "archive_decompress",
     // RAG tools
     "rag_index", "rag_search",
     // Preview tools
     "preview_edit",
     // Agent memory
     "agent_memory_write",
+    // Cyber tools
+    "hash_file",
 ];
 
 /// Validate a path argument — reject null bytes, traversal, excessive length
@@ -221,6 +225,115 @@ pub async fn validate_tool_args(
                 }
             }
         }
+        "local_move_files" => {
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            } else if let Some(arr) = paths {
+                for p in arr.iter().filter_map(|v| v.as_str()) {
+                    let path = std::path::Path::new(p);
+                    if !path.exists() {
+                        warnings.push(format!("Source file not found: {}", p));
+                    }
+                }
+            }
+            if let Some(dest) = args.get("destination").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(dest, "destination") {
+                    errors.push(e);
+                }
+            }
+        }
+        "local_batch_rename" | "local_copy_files" | "local_trash" => {
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            } else if let Some(arr) = paths {
+                for p in arr.iter().filter_map(|v| v.as_str()) {
+                    let path = std::path::Path::new(p);
+                    if !path.exists() {
+                        warnings.push(format!("Source not found: {}", p));
+                    }
+                }
+            }
+            if tool_name == "local_batch_rename" {
+                if let Some(mode) = args.get("mode").and_then(|v| v.as_str()) {
+                    if !["find_replace", "add_prefix", "add_suffix", "sequential"].contains(&mode) {
+                        errors.push(format!("Invalid rename mode: {}. Use find_replace, add_prefix, add_suffix, or sequential", mode));
+                    }
+                } else {
+                    errors.push("Missing 'mode' parameter".to_string());
+                }
+            }
+            if tool_name == "local_copy_files" {
+                if let Some(dest) = args.get("destination").and_then(|v| v.as_str()) {
+                    if let Err(e) = validate_path(dest, "destination") {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+        "archive_compress" => {
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            }
+            if let Some(output) = args.get("output_path").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(output, "output_path") {
+                    errors.push(e);
+                }
+            } else {
+                errors.push("Missing 'output_path' parameter".to_string());
+            }
+            if let Some(fmt) = args.get("format").and_then(|v| v.as_str()) {
+                if !["zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz"].contains(&fmt) {
+                    errors.push(format!("Unsupported format: {}. Use zip, 7z, tar, tar.gz, tar.bz2, or tar.xz", fmt));
+                }
+            }
+        }
+        "archive_decompress" => {
+            if let Some(path) = args.get("archive_path").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(path, "archive_path") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    errors.push(format!("Archive not found: {}", path));
+                }
+            } else {
+                errors.push("Missing 'archive_path' parameter".to_string());
+            }
+            if let Some(dir) = args.get("output_dir").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(dir, "output_dir") {
+                    errors.push(e);
+                }
+            }
+        }
+        "hash_file" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    errors.push(format!("File not found: {}", path));
+                } else if p.is_dir() {
+                    errors.push(format!("Path is a directory, not a file: {}", path));
+                }
+            }
+            if let Some(algo) = args.get("algorithm").and_then(|v| v.as_str()) {
+                if !["md5", "sha1", "sha256", "sha512", "blake3"].contains(&algo) {
+                    errors.push(format!("Unsupported algorithm: {}. Use md5, sha1, sha256, sha512, or blake3", algo));
+                }
+            }
+        }
+        "local_file_info" | "local_disk_usage" | "local_find_duplicates" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    errors.push(format!("Path not found: {}", path));
+                }
+                if (tool_name == "local_disk_usage" || tool_name == "local_find_duplicates") && !p.is_dir() {
+                    errors.push(format!("Path is not a directory: {}", path));
+                }
+            }
+        }
         _ => {} // Remote tools: path format already validated above
     }
 
@@ -231,6 +344,22 @@ pub async fn validate_tool_args(
     }))
 }
 
+/// Resolve a path against an optional base directory.
+/// If path is already absolute, returns it unchanged.
+/// If path is relative (just a filename) and base is Some, joins them.
+fn resolve_local_path(path: &str, base: Option<&str>) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        return path.to_string();
+    }
+    if let Some(base_dir) = base {
+        if !base_dir.is_empty() {
+            return format!("{}/{}", base_dir.trim_end_matches('/'), path);
+        }
+    }
+    path.to_string()
+}
+
 #[tauri::command]
 pub async fn execute_ai_tool(
     app: tauri::AppHandle,
@@ -238,6 +367,7 @@ pub async fn execute_ai_tool(
     app_state: State<'_, AppState>,
     tool_name: String,
     args: Value,
+    context_local_path: Option<String>,
 ) -> Result<Value, String> {
     // Whitelist check
     if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
@@ -501,7 +631,7 @@ pub async fn execute_ai_tool(
         }
 
         "local_list" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             validate_path(&path, "path")?;
 
             let entries: Vec<Value> = std::fs::read_dir(&path)
@@ -522,15 +652,33 @@ pub async fn execute_ai_tool(
         }
 
         "local_search" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             let pattern = get_str(&args, "pattern")?;
             validate_path(&path, "path")?;
 
             let pattern_lower = pattern.to_lowercase();
+
+            // Simple glob support: *.pdf → ends_with(".pdf"), test* → starts_with("test")
+            let matcher: Box<dyn Fn(&str) -> bool> = if let Some(suffix) = pattern_lower.strip_prefix('*') {
+                let suffix = suffix.to_string();
+                Box::new(move |name: &str| name.ends_with(&suffix))
+            } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
+                let prefix = prefix.to_string();
+                Box::new(move |name: &str| name.starts_with(&prefix))
+            } else if pattern_lower.contains('*') {
+                let parts: Vec<String> = pattern_lower.split('*').map(String::from).collect();
+                Box::new(move |name: &str| {
+                    parts.iter().all(|part| name.contains(part.as_str()))
+                })
+            } else {
+                let pat = pattern_lower.clone();
+                Box::new(move |name: &str| name.contains(&pat))
+            };
+
             let results: Vec<Value> = std::fs::read_dir(&path)
                 .map_err(|e| format!("Failed to read directory: {}", e))?
                 .filter_map(|e| e.ok())
-                .filter(|e| e.file_name().to_string_lossy().to_lowercase().contains(&pattern_lower))
+                .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
                 .take(100)
                 .map(|e| {
                     let meta = e.metadata().ok();
@@ -549,7 +697,7 @@ pub async fn execute_ai_tool(
         }
 
         "local_read" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             validate_path(&path, "path")?;
 
             let meta = std::fs::metadata(&path)
@@ -580,7 +728,7 @@ pub async fn execute_ai_tool(
         }
 
         "local_write" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             let content = get_str(&args, "content")?;
             validate_path(&path, "path")?;
 
@@ -591,7 +739,7 @@ pub async fn execute_ai_tool(
         }
 
         "local_mkdir" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             validate_path(&path, "path")?;
 
             std::fs::create_dir_all(&path)
@@ -601,7 +749,7 @@ pub async fn execute_ai_tool(
         }
 
         "local_delete" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             validate_path(&path, "path")?;
 
             // Dangerous path protection (defense-in-depth)
@@ -627,8 +775,9 @@ pub async fn execute_ai_tool(
         }
 
         "local_rename" => {
-            let from = get_str(&args, "from")?;
-            let to = get_str(&args, "to")?;
+            let base = context_local_path.as_deref();
+            let from = resolve_local_path(&get_str(&args, "from")?, base);
+            let to = resolve_local_path(&get_str(&args, "to")?, base);
             validate_path(&from, "from")?;
             validate_path(&to, "to")?;
 
@@ -638,8 +787,492 @@ pub async fn execute_ai_tool(
             Ok(json!({ "success": true, "message": format!("Renamed {} to {}", from, to) }))
         }
 
+        "local_move_files" => {
+            let base = context_local_path.as_deref();
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| resolve_local_path(s, base))).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let destination = resolve_local_path(&get_str(&args, "destination")?, base);
+            validate_path(&destination, "destination")?;
+
+            if paths.is_empty() {
+                return Err("'paths' array is empty".to_string());
+            }
+
+            // Ensure destination directory exists
+            std::fs::create_dir_all(&destination)
+                .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+
+            let mut moved = Vec::new();
+            let mut errors = Vec::new();
+            let total = paths.len();
+
+            for (idx, source) in paths.iter().enumerate() {
+                if let Err(e) = validate_path(source, "path") {
+                    errors.push(json!({ "file": source, "error": e }));
+                    continue;
+                }
+                let filename = std::path::Path::new(source)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+
+                emit_tool_progress(&app, "local_move_files", idx as u32 + 1, total as u32, &filename);
+
+                // Try rename first (fast, same-device move)
+                match std::fs::rename(source, &dest_path) {
+                    Ok(_) => moved.push(filename),
+                    Err(_) => {
+                        // Cross-device fallback: copy + delete
+                        match std::fs::copy(source, &dest_path)
+                            .and_then(|_| std::fs::remove_file(source))
+                        {
+                            Ok(_) => moved.push(filename),
+                            Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
+                        }
+                    }
+                }
+            }
+
+            Ok(json!({
+                "moved": moved.len(),
+                "failed": errors.len(),
+                "total": total,
+                "files": moved,
+                "errors": errors,
+            }))
+        }
+
+        "local_batch_rename" => {
+            let base = context_local_path.as_deref();
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| resolve_local_path(s, base))).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let mode = get_str(&args, "mode")?;
+
+            if paths.is_empty() {
+                return Err("'paths' array is empty".to_string());
+            }
+
+            // Helper: split name and extension (preserve extension for files)
+            fn split_name_ext(name: &str, is_dir: bool) -> (&str, &str) {
+                if is_dir { return (name, ""); }
+                match name.rfind('.') {
+                    Some(pos) if pos > 0 => (&name[..pos], &name[pos..]),
+                    _ => (name, ""),
+                }
+            }
+
+            // Compute new names
+            let mut renames: Vec<(String, String)> = Vec::new();
+            let mut errors = Vec::new();
+
+            for (idx, source) in paths.iter().enumerate() {
+                if let Err(e) = validate_path(source, "path") {
+                    errors.push(json!({ "file": source, "error": e }));
+                    continue;
+                }
+                let src_path = std::path::Path::new(source);
+                let filename = src_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let is_dir = src_path.is_dir();
+                let (name_no_ext, ext) = split_name_ext(&filename, is_dir);
+
+                let new_name = match mode.as_str() {
+                    "find_replace" => {
+                        let find = get_str_opt(&args, "find").unwrap_or_default();
+                        let replace_with = get_str_opt(&args, "replace").unwrap_or_default();
+                        let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(false);
+                        if find.is_empty() {
+                            filename.clone()
+                        } else if case_sensitive {
+                            filename.replace(&find, &replace_with)
+                        } else {
+                            // Case-insensitive replace
+                            let lower_find = find.to_lowercase();
+                            let lower_name = filename.to_lowercase();
+                            let mut result = String::new();
+                            let mut start = 0;
+                            while let Some(pos) = lower_name[start..].find(&lower_find) {
+                                result.push_str(&filename[start..start + pos]);
+                                result.push_str(&replace_with);
+                                start += pos + find.len();
+                            }
+                            result.push_str(&filename[start..]);
+                            result
+                        }
+                    }
+                    "add_prefix" => {
+                        let prefix = get_str_opt(&args, "prefix").unwrap_or_default();
+                        format!("{}{}", prefix, filename)
+                    }
+                    "add_suffix" => {
+                        let suffix = get_str_opt(&args, "suffix").unwrap_or_default();
+                        format!("{}{}{}", name_no_ext, suffix, ext)
+                    }
+                    "sequential" => {
+                        let base_name = get_str_opt(&args, "base_name").unwrap_or_else(|| "file".to_string());
+                        let start_number = args.get("start_number").and_then(|v| v.as_u64()).unwrap_or(1);
+                        let padding = args.get("padding").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
+                        let num = start_number + idx as u64;
+                        format!("{}_{:0>width$}{}", base_name, num, ext, width = padding)
+                    }
+                    _ => {
+                        errors.push(json!({ "file": filename, "error": format!("Unknown rename mode: {}", mode) }));
+                        continue;
+                    }
+                };
+
+                if new_name != filename && !new_name.trim().is_empty() {
+                    let parent = src_path.parent().unwrap_or(std::path::Path::new("/"));
+                    let dest = parent.join(&new_name).to_string_lossy().to_string();
+                    renames.push((source.clone(), dest));
+                }
+            }
+
+            // Conflict detection
+            let new_names: Vec<&str> = renames.iter().map(|(_, d)| d.as_str()).collect();
+            let mut seen = std::collections::HashSet::new();
+            for name in &new_names {
+                if !seen.insert(*name) {
+                    return Err(format!("Naming conflict detected: multiple files would be renamed to '{}'", name));
+                }
+            }
+
+            // Execute renames
+            let mut renamed = Vec::new();
+            let total = renames.len();
+            for (idx, (from, to)) in renames.iter().enumerate() {
+                let filename = std::path::Path::new(from).file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                emit_tool_progress(&app, "local_batch_rename", idx as u32 + 1, total as u32, &filename);
+                match std::fs::rename(from, to) {
+                    Ok(_) => renamed.push(json!({ "from": from, "to": to })),
+                    Err(e) => errors.push(json!({ "file": from, "error": e.to_string() })),
+                }
+            }
+
+            Ok(json!({
+                "renamed": renamed.len(),
+                "failed": errors.len(),
+                "total": paths.len(),
+                "renames": renamed,
+                "errors": errors,
+            }))
+        }
+
+        "local_copy_files" => {
+            let base = context_local_path.as_deref();
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| resolve_local_path(s, base))).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let destination = resolve_local_path(&get_str(&args, "destination")?, base);
+            validate_path(&destination, "destination")?;
+
+            if paths.is_empty() {
+                return Err("'paths' array is empty".to_string());
+            }
+
+            std::fs::create_dir_all(&destination)
+                .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+
+            fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<u64, String> {
+                std::fs::create_dir_all(dst)
+                    .map_err(|e| format!("Failed to create dir {}: {}", dst.display(), e))?;
+                let mut count = 0u64;
+                for entry in std::fs::read_dir(src)
+                    .map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?
+                {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let src_path = entry.path();
+                    let dst_path = dst.join(entry.file_name());
+                    if src_path.is_dir() {
+                        count += copy_dir_recursive(&src_path, &dst_path)?;
+                    } else {
+                        std::fs::copy(&src_path, &dst_path)
+                            .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
+                        count += 1;
+                    }
+                }
+                Ok(count)
+            }
+
+            let mut copied = Vec::new();
+            let mut errors = Vec::new();
+            let total = paths.len();
+
+            for (idx, source) in paths.iter().enumerate() {
+                if let Err(e) = validate_path(source, "path") {
+                    errors.push(json!({ "file": source, "error": e }));
+                    continue;
+                }
+                let src_path = std::path::Path::new(source);
+                let filename = src_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+
+                emit_tool_progress(&app, "local_copy_files", idx as u32 + 1, total as u32, &filename);
+
+                if src_path.is_dir() {
+                    match copy_dir_recursive(src_path, std::path::Path::new(&dest_path)) {
+                        Ok(_) => copied.push(filename),
+                        Err(e) => errors.push(json!({ "file": filename, "error": e })),
+                    }
+                } else {
+                    match std::fs::copy(source, &dest_path) {
+                        Ok(_) => copied.push(filename),
+                        Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
+                    }
+                }
+            }
+
+            Ok(json!({
+                "copied": copied.len(),
+                "failed": errors.len(),
+                "total": total,
+                "files": copied,
+                "errors": errors,
+            }))
+        }
+
+        "local_trash" => {
+            let base = context_local_path.as_deref();
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| resolve_local_path(s, base))).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+
+            if paths.is_empty() {
+                return Err("'paths' array is empty".to_string());
+            }
+
+            let mut trashed = Vec::new();
+            let mut errors = Vec::new();
+            let total = paths.len();
+
+            for (idx, path) in paths.iter().enumerate() {
+                if let Err(e) = validate_path(path, "path") {
+                    errors.push(json!({ "file": path, "error": e }));
+                    continue;
+                }
+                let filename = std::path::Path::new(path).file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.clone());
+
+                emit_tool_progress(&app, "local_trash", idx as u32 + 1, total as u32, &filename);
+
+                match trash::delete(path) {
+                    Ok(_) => trashed.push(filename),
+                    Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
+                }
+            }
+
+            Ok(json!({
+                "trashed": trashed.len(),
+                "failed": errors.len(),
+                "total": total,
+                "files": trashed,
+                "errors": errors,
+            }))
+        }
+
+        "local_file_info" => {
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
+            validate_path(&path, "path")?;
+
+            let p = std::path::Path::new(&path);
+            let meta = std::fs::symlink_metadata(&path)
+                .map_err(|e| format!("Failed to stat: {}", e))?;
+
+            let mut info = json!({
+                "path": path,
+                "name": p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                "size": meta.len(),
+                "is_file": meta.is_file(),
+                "is_dir": meta.is_dir(),
+                "is_symlink": meta.is_symlink(),
+                "readonly": meta.permissions().readonly(),
+            });
+
+            // Timestamps
+            if let Ok(modified) = meta.modified() {
+                if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
+                    info["modified"] = json!(dur.as_secs());
+                }
+            }
+            if let Ok(created) = meta.created() {
+                if let Ok(dur) = created.duration_since(std::time::UNIX_EPOCH) {
+                    info["created"] = json!(dur.as_secs());
+                }
+            }
+
+            // Unix-specific: permissions octal, uid, gid
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                info["permissions_octal"] = json!(format!("{:o}", meta.mode()));
+                info["uid"] = json!(meta.uid());
+                info["gid"] = json!(meta.gid());
+            }
+
+            // MIME type from extension
+            if meta.is_file() {
+                if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                    let mime = match ext.to_lowercase().as_str() {
+                        "pdf" => "application/pdf", "txt" => "text/plain",
+                        "html" | "htm" => "text/html", "css" => "text/css",
+                        "js" => "text/javascript", "json" => "application/json",
+                        "xml" => "application/xml", "zip" => "application/zip",
+                        "7z" => "application/x-7z-compressed", "tar" => "application/x-tar",
+                        "gz" => "application/gzip", "png" => "image/png",
+                        "jpg" | "jpeg" => "image/jpeg", "gif" => "image/gif",
+                        "svg" => "image/svg+xml", "mp3" => "audio/mpeg",
+                        "mp4" => "video/mp4", "rs" => "text/x-rust",
+                        "ts" | "tsx" => "text/typescript", "py" => "text/x-python",
+                        _ => "application/octet-stream",
+                    };
+                    info["mime_type"] = json!(mime);
+                }
+            }
+
+            Ok(info)
+        }
+
+        "local_disk_usage" => {
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
+            validate_path(&path, "path")?;
+
+            let p = std::path::Path::new(&path);
+            if !p.is_dir() {
+                return Err(format!("Path is not a directory: {}", path));
+            }
+
+            // Inline calculation (same logic as filesystem.rs calculate_folder_size)
+            let mut total_bytes: u64 = 0;
+            let mut file_count: u64 = 0;
+            let mut dir_count: u64 = 0;
+            const MAX_ENTRIES: u64 = 500_000;
+            let mut entry_count: u64 = 0;
+
+            for entry in walkdir::WalkDir::new(&path)
+                .follow_links(false)
+                .max_depth(100)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                entry_count += 1;
+                if entry_count > MAX_ENTRIES { break; }
+                if entry.file_type().is_file() {
+                    total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    file_count += 1;
+                } else if entry.file_type().is_dir() && entry.path() != p {
+                    dir_count += 1;
+                }
+            }
+
+            Ok(json!({
+                "path": path,
+                "total_bytes": total_bytes,
+                "total_human": format!("{:.1} MB", total_bytes as f64 / 1_048_576.0),
+                "file_count": file_count,
+                "dir_count": dir_count,
+            }))
+        }
+
+        "local_find_duplicates" => {
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
+            validate_path(&path, "path")?;
+            let min_size = args.get("min_size").and_then(|v| v.as_u64()).unwrap_or(1024);
+
+            let p = std::path::Path::new(&path);
+            if !p.is_dir() {
+                return Err(format!("Path is not a directory: {}", path));
+            }
+
+            // Phase 1: group files by size
+            let mut size_groups: std::collections::HashMap<u64, Vec<std::path::PathBuf>> = std::collections::HashMap::new();
+            const MAX_SCAN: u64 = 50_000;
+            let mut scan_count: u64 = 0;
+
+            for entry in walkdir::WalkDir::new(&path)
+                .follow_links(false)
+                .max_depth(50)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if !entry.file_type().is_file() { continue; }
+                scan_count += 1;
+                if scan_count > MAX_SCAN { break; }
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if size < min_size { continue; }
+                size_groups.entry(size).or_default().push(entry.into_path());
+            }
+
+            // Phase 2: hash files with matching sizes
+            use md5::{Md5, Digest};
+            use std::io::Read;
+            let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> = std::collections::HashMap::new();
+
+            for (size, files) in &size_groups {
+                if files.len() < 2 { continue; }
+                for file_path in files {
+                    if let Ok(mut f) = std::fs::File::open(file_path) {
+                        let mut hasher = Md5::new();
+                        let mut buf = [0u8; 8192];
+                        loop {
+                            match f.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => hasher.update(&buf[..n]),
+                                Err(_) => break,
+                            }
+                        }
+                        let hash = format!("{:x}", hasher.finalize());
+                        let entry = hash_groups.entry(hash).or_insert_with(|| (*size, Vec::new()));
+                        entry.1.push(file_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+
+            // Phase 3: collect duplicates
+            let mut duplicates: Vec<Value> = hash_groups
+                .into_iter()
+                .filter(|(_, (_, files))| files.len() >= 2)
+                .map(|(hash, (size, files))| json!({
+                    "hash": hash,
+                    "size": size,
+                    "count": files.len(),
+                    "wasted_bytes": size * (files.len() as u64 - 1),
+                    "files": files,
+                }))
+                .collect();
+
+            duplicates.sort_by(|a, b| {
+                let wa = a["wasted_bytes"].as_u64().unwrap_or(0);
+                let wb = b["wasted_bytes"].as_u64().unwrap_or(0);
+                wb.cmp(&wa)
+            });
+
+            let total_wasted: u64 = duplicates.iter()
+                .map(|d| d["wasted_bytes"].as_u64().unwrap_or(0))
+                .sum();
+
+            Ok(json!({
+                "groups": duplicates.len(),
+                "total_wasted_bytes": total_wasted,
+                "total_wasted_human": format!("{:.1} MB", total_wasted as f64 / 1_048_576.0),
+                "duplicates": duplicates,
+            }))
+        }
+
         "local_edit" => {
-            let path = get_str(&args, "path")?;
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
             let find = get_str(&args, "find")?;
             let replace = get_str(&args, "replace")?;
             let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(true);
@@ -917,11 +1550,94 @@ pub async fn execute_ai_tool(
             }))
         }
 
-        "archive_create" | "archive_extract" => {
-            let _path = get_str(&args, "path")?;
-            let _format = get_str_opt(&args, "format").unwrap_or_else(|| "zip".to_string());
+        "archive_compress" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let output_path = get_str(&args, "output_path")?;
+            let format = get_str_opt(&args, "format").unwrap_or_else(|| "zip".to_string());
+            let password = get_str_opt(&args, "password");
+            let compression_level = args.get("compression_level").and_then(|v| v.as_i64());
+            validate_path(&output_path, "output_path")?;
+            for p in &paths {
+                validate_path(p, "path")?;
+            }
+
+            // Delegate to existing Tauri compress commands
+            let result = match format.as_str() {
+                "zip" => {
+                    crate::compress_files_core(paths, output_path.clone(), password, compression_level).await
+                }
+                "7z" => {
+                    crate::compress_7z_core(paths, output_path.clone(), password, compression_level).await
+                }
+                "tar" | "tar.gz" | "tar.bz2" | "tar.xz" => {
+                    crate::compress_tar_core(paths, output_path.clone(), format.clone(), compression_level).await
+                }
+                _ => Err(format!("Unsupported format: {}. Use zip, 7z, tar, tar.gz, tar.bz2, or tar.xz", format)),
+            };
+
+            match result {
+                Ok(msg) => Ok(json!({
+                    "success": true,
+                    "message": msg,
+                    "output_path": output_path,
+                    "format": format,
+                })),
+                Err(e) => Err(e),
+            }
+        }
+
+        "archive_decompress" => {
+            let archive_path = get_str(&args, "archive_path")?;
+            let output_dir = get_str(&args, "output_dir")?;
+            let password = get_str_opt(&args, "password");
+            let create_subfolder = args.get("create_subfolder").and_then(|v| v.as_bool()).unwrap_or(true);
+            validate_path(&archive_path, "archive_path")?;
+            validate_path(&output_dir, "output_dir")?;
+
+            // Detect format from extension
+            let lower = archive_path.to_lowercase();
+            let result = if lower.ends_with(".zip") {
+                crate::extract_archive_core(archive_path.clone(), output_dir.clone(), create_subfolder, password).await
+            } else if lower.ends_with(".7z") {
+                crate::extract_7z_core(archive_path.clone(), output_dir.clone(), password, create_subfolder).await
+            } else if lower.ends_with(".tar") || lower.ends_with(".tar.gz") || lower.ends_with(".tgz")
+                || lower.ends_with(".tar.bz2") || lower.ends_with(".tar.xz") {
+                crate::extract_tar_core(archive_path.clone(), output_dir.clone(), create_subfolder).await
+            } else {
+                Err(format!("Unsupported archive format: {}", archive_path))
+            };
+
+            match result {
+                Ok(msg) => Ok(json!({
+                    "success": true,
+                    "message": msg,
+                    "archive_path": archive_path,
+                    "output_dir": output_dir,
+                })),
+                Err(e) => Err(e),
+            }
+        }
+
+        "hash_file" => {
+            let path = get_str(&args, "path")?;
+            let algorithm = get_str_opt(&args, "algorithm").unwrap_or_else(|| "sha256".to_string());
+            validate_path(&path, "path")?;
+
+            let p = std::path::Path::new(&path);
+            if !p.is_file() {
+                return Err(format!("Path is not a file: {}", path));
+            }
+
+            // Delegate to existing cyber_tools::hash_file
+            let hash = crate::cyber_tools::hash_file(path.clone(), algorithm.clone()).await?;
+
             Ok(json!({
-                "message": "Archive operations should be performed via the context menu on files. Right-click a file to compress/extract.",
+                "path": path,
+                "algorithm": algorithm,
+                "hash": hash,
             }))
         }
 

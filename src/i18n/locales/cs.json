@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Paměť",
-                "archive_create": "Vytvořit archiv",
-                "archive_extract": "Rozbalit archiv",
+                "archive_compress": "Komprimovat",
+                "archive_decompress": "Dekomprimovat",
                 "compare_directories": "Porovnat",
                 "download_files": "Hromadné stažení",
+                "hash_file": "Hash souboru",
+                "local_batch_rename": "Hromadné přejmenování",
+                "local_copy_files": "Hromadné kopírování",
                 "local_delete": "Místní smazání",
+                "local_disk_usage": "Využití disku",
                 "local_edit": "Místní úprava",
+                "local_file_info": "Info o souboru",
+                "local_find_duplicates": "Najít duplikáty",
                 "local_list": "Místní seznam",
                 "local_mkdir": "Místní složka",
+                "local_move_files": "Hromadný přesun",
                 "local_read": "Místní čtení",
                 "local_rename": "Místní přejmenování",
                 "local_search": "Místní hledání",
+                "local_trash": "Koš",
                 "local_write": "Místní zápis",
                 "preview_edit": "Náhled úprav",
                 "rag_index": "RAG index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Náhled synchronizace",
                 "terminal_execute": "Terminál",
                 "upload_files": "Hromadné nahrání"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automaticky schvaluje VŠECHNA volání nástrojů bez potvrzovacích dialogů. Zvyšuje limit vícekrokových operací z 10 na 50. Dostupné pouze v tématu Cyberpunk.",
+                "enable": "Aktivovat Extreme Mode",
+                "warning": "Všechny souborové operace budou provedeny okamžitě bez schválení. Používejte na vlastní riziko."
             }
         },
         "archive": {

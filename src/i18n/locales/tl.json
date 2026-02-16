@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Memory",
-                "archive_create": "Gumawa ng Archive",
-                "archive_extract": "I-extract ang Archive",
+                "archive_compress": "I-compress",
+                "archive_decompress": "I-decompress",
                 "compare_directories": "Ikumpara",
                 "download_files": "Batch Download",
+                "hash_file": "Hash File",
+                "local_batch_rename": "Palitan Pangalan",
+                "local_copy_files": "Kopyahin Grupo",
                 "local_delete": "Lokal na Burahin",
+                "local_disk_usage": "Paggamit ng Disk",
                 "local_edit": "Lokal na I-edit",
+                "local_file_info": "Impo ng File",
+                "local_find_duplicates": "Mga Duplikado",
                 "local_list": "Lokal na Listahan",
                 "local_mkdir": "Lokal na Mkdir",
+                "local_move_files": "Ilipat Grupo",
                 "local_read": "Lokal na Basahin",
                 "local_rename": "Lokal na Palitan ng Pangalan",
                 "local_search": "Lokal na Paghahanap",
+                "local_trash": "Basurahan",
                 "local_write": "Lokal na Isulat",
                 "preview_edit": "Preview ng Edit",
                 "rag_index": "RAG Index",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Preview ng Sync",
                 "terminal_execute": "Terminal",
                 "upload_files": "Batch Upload"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Awtomatikong aprubahan ang LAHAT ng tool call nang walang confirmation dialog. Pinapataas ang multi-step na limitasyon mula 10 hanggang 50. Available lamang sa Cyberpunk na tema.",
+                "enable": "I-enable ang Extreme Mode",
+                "warning": "Lahat ng file operation ay kaagad na isasagawa nang walang pag-apruba. Gamitin sa sariling peligro."
             }
         },
         "archive": {

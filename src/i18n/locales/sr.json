@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Меморија",
-                "archive_create": "Креирај архиву",
-                "archive_extract": "Извуци архиву",
+                "archive_compress": "Компресуј",
+                "archive_decompress": "Декомпресуј",
                 "compare_directories": "Упореди",
                 "download_files": "Групно преузимање",
+                "hash_file": "Хеш Фајла",
+                "local_batch_rename": "Преименуј",
+                "local_copy_files": "Копирај",
                 "local_delete": "Локално брисање",
+                "local_disk_usage": "Простор на Диску",
                 "local_edit": "Локално уређивање",
+                "local_file_info": "Инфо о Фајлу",
+                "local_find_duplicates": "Дупликати",
                 "local_list": "Локална листа",
                 "local_mkdir": "Локални фолдер",
+                "local_move_files": "Премести",
                 "local_read": "Локално читање",
                 "local_rename": "Локално преименовање",
                 "local_search": "Локална претрага",
+                "local_trash": "Корпа",
                 "local_write": "Локални запис",
                 "preview_edit": "Преглед уређивања",
                 "rag_index": "RAG индекс",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Преглед синхронизације",
                 "terminal_execute": "Терминал",
                 "upload_files": "Групно отпремање"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Аутоматски одобрава СВЕ позиве алата без дијалога за потврду. Повећава лимит вишекорачних операција са 10 на 50. Доступно само у теми Cyberpunk.",
+                "enable": "Укључи Extreme Mode",
+                "warning": "Све операције са фајловима ће се извршити одмах без одобрења. Користите на сопствени ризик."
             }
         },
         "archive": {

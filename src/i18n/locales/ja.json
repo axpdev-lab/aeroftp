@@ -1831,17 +1831,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "メモリ",
-                "archive_create": "アーカイブ作成",
-                "archive_extract": "アーカイブ展開",
+                "archive_compress": "圧縮",
+                "archive_decompress": "解凍",
                 "compare_directories": "比較",
                 "download_files": "一括ダウンロード",
+                "hash_file": "Hash File",
+                "local_batch_rename": "一括リネーム",
+                "local_copy_files": "一括コピー",
                 "local_delete": "ローカル削除",
+                "local_disk_usage": "ディスク使用量",
                 "local_edit": "ローカル編集",
+                "local_file_info": "ファイル情報",
+                "local_find_duplicates": "重複検索",
                 "local_list": "ローカル一覧",
                 "local_mkdir": "ローカルフォルダ作成",
+                "local_move_files": "一括移動",
                 "local_read": "ローカル読取",
                 "local_rename": "ローカル名前変更",
                 "local_search": "ローカル検索",
+                "local_trash": "ゴミ箱",
                 "local_write": "ローカル書込",
                 "preview_edit": "編集プレビュー",
                 "rag_index": "RAG インデックス",
@@ -1862,6 +1870,12 @@
                 "sync_preview": "同期プレビュー",
                 "terminal_execute": "ターミナル",
                 "upload_files": "一括アップロード"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "確認ダイアログなしですべてのツール呼び出しを自動承認します。マルチステップの上限を10から50に引き上げます。Cyberpunkテーマでのみ利用可能です。",
+                "enable": "Extreme Modeを有効化",
+                "warning": "すべてのファイル操作が承認なしで即座に実行されます。自己責任でご利用ください。"
             }
         },
         "archive": {

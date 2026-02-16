@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Pamat",
-                "archive_create": "Vytvorit archiv",
-                "archive_extract": "Extrahovat archiv",
+                "archive_compress": "Komprimovat",
+                "archive_decompress": "Dekomprimovat",
                 "compare_directories": "Porovnat",
                 "download_files": "Hromadne stiahnutie",
+                "hash_file": "Hash Suboru",
+                "local_batch_rename": "Premenovat",
+                "local_copy_files": "Kopirovat",
                 "local_delete": "Zmazat lokalne",
+                "local_disk_usage": "Vyuzitie Disku",
                 "local_edit": "Upravit lokalne",
+                "local_file_info": "Info o Subore",
+                "local_find_duplicates": "Duplikaty",
                 "local_list": "Lokalny zoznam",
                 "local_mkdir": "Vytvorit lokalny priecinok",
+                "local_move_files": "Presunut",
                 "local_read": "Citat lokalne",
                 "local_rename": "Premenovat lokalne",
                 "local_search": "Hladat lokalne",
+                "local_trash": "Kos",
                 "local_write": "Zapisat lokalne",
                 "preview_edit": "Nahled upravy",
                 "rag_index": "Index RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Nahled synchronizacie",
                 "terminal_execute": "Terminal",
                 "upload_files": "Hromadne nahranie"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Automaticky schvali VSETKY volania nastrojov bez potvrdzovacich dialogov. Zvysuje limit viacerych krokov z 10 na 50. Dostupne iba v teme Cyberpunk.",
+                "enable": "Zapnut Extreme Mode",
+                "warning": "Vsetky operacie so subormi sa vykonaju okamzite bez schvalenia. Pouzivajte na vlastne riziko."
             }
         },
         "archive": {

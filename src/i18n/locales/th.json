@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "หน่วยความจำ",
-                "archive_create": "สร้างไฟล์บีบอัด",
-                "archive_extract": "แตกไฟล์บีบอัด",
+                "archive_compress": "บีบอัด",
+                "archive_decompress": "แตกไฟล์",
                 "compare_directories": "เปรียบเทียบ",
                 "download_files": "ดาวน์โหลดเป็นชุด",
+                "hash_file": "Hash ไฟล์",
+                "local_batch_rename": "เปลี่ยนชื่อกลุ่ม",
+                "local_copy_files": "คัดลอกกลุ่ม",
                 "local_delete": "ลบภายใน",
+                "local_disk_usage": "การใช้ดิสก์",
                 "local_edit": "แก้ไขภายใน",
+                "local_file_info": "ข้อมูลไฟล์",
+                "local_find_duplicates": "ไฟล์ซ้ำ",
                 "local_list": "รายการภายใน",
                 "local_mkdir": "โฟลเดอร์ภายใน",
+                "local_move_files": "ย้ายกลุ่ม",
                 "local_read": "อ่านภายใน",
                 "local_rename": "เปลี่ยนชื่อภายใน",
                 "local_search": "ค้นหาภายใน",
+                "local_trash": "ถังขยะ",
                 "local_write": "เขียนภายใน",
                 "preview_edit": "ดูตัวอย่างการแก้ไข",
                 "rag_index": "ดัชนี RAG",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "ดูตัวอย่างการซิงค์",
                 "terminal_execute": "เทอร์มินัล",
                 "upload_files": "อัปโหลดเป็นชุด"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "อนุมัติการเรียกใช้เครื่องมือทั้งหมดโดยอัตโนมัติโดยไม่ต้องยืนยัน เพิ่มขีดจำกัดหลายขั้นตอนจาก 10 เป็น 50 ใช้ได้เฉพาะในธีม Cyberpunk เท่านั้น",
+                "enable": "เปิดใช้งาน Extreme Mode",
+                "warning": "การดำเนินการไฟล์ทั้งหมดจะถูกดำเนินการทันทีโดยไม่ต้องอนุมัติ ใช้งานด้วยความเสี่ยงของคุณเอง"
             }
         },
         "archive": {

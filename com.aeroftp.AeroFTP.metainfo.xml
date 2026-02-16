@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.2.2" date="2026-02-16">
+      <description>
+        <p>AeroAgent File Management Pro: 9 new tools (batch move, copy, trash, rename, disk usage, find duplicates, archive compress/decompress). Extreme Mode for fully autonomous 50-step AI execution (Cyberpunk theme only). Relative path resolution fix for all 14 local tools. Connection context awareness distinguishes AeroCloud, server, and AeroFile modes. AeroSync modal now themed across all 4 themes via CSS custom properties. 13 new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.2.1" date="2026-02-16">
       <description>
         <p>Splash screen menu bar flash fix (race condition in APP_READY_DONE timing). New Security Toolkit lock-and-key icon. New Cyberpunk hacker theme icon. AeroCloud default sync interval set to 24h with inotify active.</p>

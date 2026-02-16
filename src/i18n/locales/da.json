@@ -1866,17 +1866,25 @@
             },
             "toolLabels": {
                 "agent_memory_write": "Hukommelse",
-                "archive_create": "Opret arkiv",
-                "archive_extract": "Udpak arkiv",
+                "archive_compress": "Komprimer",
+                "archive_decompress": "Dekomprimer",
                 "compare_directories": "Sammenlign",
                 "download_files": "Massedownload",
+                "hash_file": "Hash fil",
+                "local_batch_rename": "Masseomdøb",
+                "local_copy_files": "Massekopi",
                 "local_delete": "Lokal sletning",
+                "local_disk_usage": "Diskforbrug",
                 "local_edit": "Lokal redigering",
+                "local_file_info": "Filinfo",
+                "local_find_duplicates": "Find dubletter",
                 "local_list": "Lokal liste",
                 "local_mkdir": "Lokal mappe",
+                "local_move_files": "Masseflytning",
                 "local_read": "Lokal læsning",
                 "local_rename": "Lokal omdøbning",
                 "local_search": "Lokal søgning",
+                "local_trash": "Papirkurv",
                 "local_write": "Lokal skrivning",
                 "preview_edit": "Forhåndsvis redigering",
                 "rag_index": "RAG-indeks",
@@ -1897,6 +1905,12 @@
                 "sync_preview": "Synk-forhåndsvisning",
                 "terminal_execute": "Terminal",
                 "upload_files": "Masseupload"
+            },
+            "extremeMode": {
+                "title": "Extreme Mode",
+                "description": "Godkend automatisk ALLE værktøjskald uden bekræftelsesdialoger. Øger multi-trin grænsen fra 10 til 50. Kun tilgængelig i Cyberpunk temaet.",
+                "enable": "Aktiver Extreme Mode",
+                "warning": "Alle filoperationer vil blive udført øjeblikkeligt uden godkendelse. Brug på egen risiko."
             }
         },
         "archive": {
