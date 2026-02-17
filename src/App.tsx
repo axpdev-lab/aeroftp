@@ -987,9 +987,11 @@ const App: React.FC = () => {
   }, [recentPaths]);
 
   const addRecentPath = useCallback((path: string) => {
+    const normalize = (p: string) => p.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+    const normalized = normalize(path);
     setRecentPaths(prev => {
-      const filtered = prev.filter(p => p !== path);
-      return [path, ...filtered].slice(0, 20);
+      const filtered = prev.filter(p => normalize(p) !== normalized);
+      return [normalized, ...filtered].slice(0, 20);
     });
   }, []);
 
@@ -1133,7 +1135,29 @@ const App: React.FC = () => {
     return () => { unlisten.then(fn => fn()); };
   }, [isConnected, currentLocalPath, theme, debugMode]);
 
-  // Auto-enable debug mode when Cyberpunk theme is active, disable when switching away
+  // AeroAgent app tool events — theme switching + sync control
+  useEffect(() => {
+    const unlistenTheme = listen<{ theme: string }>('ai-set-theme', (event) => {
+      const t = event.payload.theme;
+      if (['light', 'dark', 'tokyo', 'cyber'].includes(t)) {
+        setTheme(t as Theme);
+      }
+    });
+    const unlistenSync = listen<{ action: string }>('ai-sync-control', (event) => {
+      const action = event.payload.action;
+      if (action === 'start') {
+        invoke('start_background_sync').catch(() => {});
+      } else if (action === 'stop') {
+        invoke('stop_background_sync').catch(() => {});
+      }
+    });
+    return () => {
+      unlistenTheme.then(fn => fn());
+      unlistenSync.then(fn => fn());
+    };
+  }, []);
+
+  // Auto-enable debug mode when Cyber theme is active, disable when switching away
   useEffect(() => {
     const isCyber = getEffectiveTheme(theme, isDark) === 'cyber';
     setDebugMode(isCyber);
@@ -2365,7 +2389,7 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
       setIsSyncNavigation(false);
       notify.info(t('toast.navSyncDisabled'));
-      humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, 'success');
+      humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, undefined);
     }
   };
 
@@ -3070,13 +3094,16 @@ const App: React.FC = () => {
     if (names.length === 0) return;
 
     const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: true });
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
       // Get protocol from active session as fallback (outside loop for efficiency)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = !!protocol && isNonFtpProvider(protocol);
+
+      // Only create frontend log for provider deletes — FTP/SFTP backend emits
+      // transfer events (delete_start/delete_complete) that are logged by useTransferEvents
+      const logId = isProvider ? humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: true }) : null;
 
       // Reset cancel flags before batch delete
       batchCancelledRef.current = false;
@@ -3114,27 +3141,22 @@ const App: React.FC = () => {
       }
       await loadRemoteFiles(undefined, true);
       setSelectedRemoteFiles(new Set());
-      // Summary message with location and item details
-      // Note: For recursive folder deletes, the backend already logs individual files via
-      // delete_file_complete/delete_dir_complete events. The summary here only covers the
-      // top-level items selected by the user (not the files inside folders).
-      const loc = t('browser.remote');
-      const count = deletedFolders.length + deletedFiles.length;
-      if (count === 1 && deletedFolders.length === 1) {
-        // Single folder: backend already logged "Folder removed: X" via delete_dir_complete,
-        // so just silently mark our start entry as success without duplicating
-        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_dir_success', { location: loc, filename: deletedFolders[0] }) });
-      } else if (count === 1 && deletedFiles.length === 1) {
-        // Single file: no backend events, this is the only log entry
-        humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_file_success', { location: loc, filename: deletedFiles[0] }) });
-      } else {
-        // Multiple items
-        const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
-        humanLog.updateEntry(logId, {
-          status: 'success',
-          message: `[${loc}] ${t('activity.delete_multiple_success', { count })}`,
-          details: allDeleted.join('\n')
-        });
+      // Summary log for provider deletes only (FTP/SFTP is handled by useTransferEvents)
+      if (logId) {
+        const loc = t('browser.remote');
+        const count = deletedFolders.length + deletedFiles.length;
+        if (count === 1 && deletedFolders.length === 1) {
+          humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_dir_success', { location: loc, filename: deletedFolders[0] }) });
+        } else if (count === 1 && deletedFiles.length === 1) {
+          humanLog.updateEntry(logId, { status: 'success', message: t('activity.delete_file_success', { location: loc, filename: deletedFiles[0] }) });
+        } else {
+          const allDeleted = [...deletedFolders.map(n => `📁 ${n}`), ...deletedFiles.map(n => `📄 ${n}`)];
+          humanLog.updateEntry(logId, {
+            status: 'success',
+            message: `[${loc}] ${t('activity.delete_multiple_success', { count })}`,
+            details: allDeleted.join('\n')
+          });
+        }
       }
       const parts = [];
       if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);

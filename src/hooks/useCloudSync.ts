@@ -98,13 +98,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         setCloudSyncing(false);
         setIsCloudActive(true);
         setCloudLastSync(new Date().toISOString());
-        if (cloudSyncLogId) {
-          al.updateEntry(cloudSyncLogId, {
-            status: 'success',
-            message: tr('activity.sync_success', { server: csn })
-          });
-          cloudSyncLogId = null;
-        }
+        // Don't update log here — cloud_sync_complete handles the summary log
+        // to avoid duplicate entries. Just clear syncing state.
       } else if (status === 'idle') {
         setCloudSyncing(false);
         setIsCloudActive(true);

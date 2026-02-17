@@ -5,7 +5,7 @@
  */
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
@@ -60,6 +60,14 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     const [applyToAll, setApplyToAll] = useState(false);
     const [showRename, setShowRename] = useState(false);
     const [newFileName, setNewFileName] = useState('');
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
 
     // Generate suggested new name
     const generateNewName = (name: string): string => {

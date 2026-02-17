@@ -213,7 +213,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 ### AI Tool Security (v1.6.0+)
 
-- **Tool name whitelist**: Only 28 allowed tool names accepted by the backend (25 built-in + `rag_index` + `rag_search` + `agent_memory_write`)
+- **Tool name whitelist**: 46 allowed tool names accepted by the backend (45 built-in + `agent_memory_write`)
 - **Path validation**: Null byte rejection, path traversal prevention (component-level `..` detection via `std::path::Component::ParentDir`), 4096-char length limit. Applied in both `ai_tools.rs` (`validate_path`) and `context_intelligence.rs` (`validate_context_path`)
 - **Tool argument validation** (v2.0.x): Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits before tool execution
 - **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries, agent memory 50KB, config files 5MB
@@ -301,7 +301,7 @@ AeroFTP is designed as a **privacy-enhanced** file manager. While no software ca
 | **FTP Insecure Warning** | Visual red badge and warning banner on plaintext FTP selection |
 | **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords and keys from RAM on drop |
 | **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString |
-| **AI Tool Sandboxing** | 28-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation + kill-on-timeout |
+| **AI Tool Sandboxing** | 45-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation + kill-on-timeout |
 | **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis + fail-closed validation |
 | **AeroFile Hardening** | Path validation on all commands + symlink safety + resource exhaustion limits + preview size caps + iframe sandbox + filename validation |
 | **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
@@ -332,4 +332,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.2.2 - 16 February 2026*
+*AeroFTP v2.2.3 - 17 February 2026*

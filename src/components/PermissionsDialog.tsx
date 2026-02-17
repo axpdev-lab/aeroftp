@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Check, Shield } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
@@ -19,6 +19,14 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
         group: { read: true, write: false, execute: true },
         others: { read: true, write: false, execute: true }
     });
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
 
     // Parse initial permissions
     useEffect(() => {

@@ -15,7 +15,7 @@ export interface ProjectContext {
 
 // Smart context section with priority
 export interface ContextSection {
-    type: 'project' | 'git' | 'imports' | 'memory' | 'rag' | 'files';
+    type: 'project' | 'git' | 'imports' | 'memory' | 'rag' | 'files' | 'app_knowledge';
     content: string;
     priority: number;       // 1 = highest priority
     estimatedTokens: number;

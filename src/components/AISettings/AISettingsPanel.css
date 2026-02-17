@@ -1,0 +1,481 @@
+/*
+ * AISettingsPanel — Theme overrides
+ *
+ * Scoped to .ai-settings-panel to avoid affecting other components.
+ * Covers classes NOT handled by the global styles.css dark: prefix remapping:
+ *   - Plain bg-gray-900/800 (no dark: prefix)
+ *   - Purple/indigo accent colors
+ *   - Focus ring colors
+ */
+
+/* =========================================================
+   LIGHT MODE
+   ========================================================= */
+:root:not(.dark) .ai-settings-panel {
+  background-color: #ffffff !important;
+  color: #1f2937 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-900 {
+  background-color: #ffffff !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-800 {
+  background-color: #f9fafb !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-800\/50 {
+  background-color: rgba(249, 250, 251, 0.5) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-700 {
+  background-color: #f3f4f6 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-700\/50 {
+  background-color: rgba(243, 244, 246, 0.5) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-900\/50 {
+  background-color: #edf0f5 !important; /* distinct from parent #f9fafb */
+  border: 1px solid #e2e6ec !important;
+  border-radius: 0.5rem;
+}
+
+:root:not(.dark) .ai-settings-panel .text-gray-100 {
+  color: #1f2937 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-gray-300 {
+  color: #374151 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-gray-400 {
+  color: #6b7280 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .border-gray-700 {
+  border-color: #e5e7eb !important;
+}
+
+:root:not(.dark) .ai-settings-panel .border-gray-600 {
+  border-color: #d1d5db !important;
+}
+
+:root:not(.dark) .ai-settings-panel .border-gray-500 {
+  border-color: #d1d5db !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-white {
+  color: #1f2937 !important;
+}
+
+/* Keep white text on colored button backgrounds */
+:root:not(.dark) .ai-settings-panel .bg-purple-600.text-white,
+:root:not(.dark) .ai-settings-panel .bg-indigo-600.text-white,
+:root:not(.dark) .ai-settings-panel .bg-cyan-600.text-white {
+  color: #ffffff !important;
+}
+
+/* --- Purple selection states (agent mode Normal card) --- */
+:root:not(.dark) .ai-settings-panel .border-purple-400 {
+  border-color: #7c3aed !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-purple-600\/10 {
+  background-color: rgba(124, 58, 237, 0.1) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .ring-purple-500\/30 {
+  --tw-ring-color: rgba(124, 58, 237, 0.3) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-purple-400 {
+  color: #7c3aed !important;
+}
+
+/* --- Teal selection states (agent mode Safe card) --- */
+:root:not(.dark) .ai-settings-panel .border-teal-400 {
+  border-color: #14b8a6 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-teal-600\/10 {
+  background-color: rgba(20, 184, 166, 0.1) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .ring-teal-500\/30 {
+  --tw-ring-color: rgba(20, 184, 166, 0.3) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-teal-400 {
+  color: #0d9488 !important;
+}
+
+/* --- Amber selection states (agent mode Expert card) --- */
+:root:not(.dark) .ai-settings-panel .border-amber-400 {
+  border-color: #f59e0b !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-amber-600\/10 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .ring-amber-500\/30 {
+  --tw-ring-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-amber-400 {
+  color: #d97706 !important;
+}
+
+/* --- Red selection states (agent mode Extreme card) --- */
+:root:not(.dark) .ai-settings-panel .border-red-400 {
+  border-color: #ef4444 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-red-600\/10 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .ring-red-500\/30 {
+  --tw-ring-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-red-400 {
+  color: #dc2626 !important;
+}
+
+/* Light mode scrollbar */
+:root:not(.dark) .ai-settings-panel .scrollbar-thin {
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+/* =========================================================
+   TOKYO NIGHT
+   ========================================================= */
+
+/* --- Backgrounds --- */
+html.tokyo .ai-settings-panel .bg-gray-900 {
+  background-color: var(--tokyo-bg) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-gray-800 {
+  background-color: var(--tokyo-bg-dark) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-gray-800\/50 {
+  background-color: rgba(22, 22, 30, 0.5) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-gray-900\/50 {
+  background-color: rgba(26, 27, 38, 0.5) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-gray-700 {
+  background-color: var(--tokyo-bg-highlight) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-gray-700\/50 {
+  background-color: rgba(41, 46, 66, 0.5) !important;
+}
+
+/* --- Text --- */
+html.tokyo .ai-settings-panel .text-gray-100 {
+  color: var(--tokyo-fg) !important;
+}
+
+html.tokyo .ai-settings-panel .text-gray-300 {
+  color: var(--tokyo-fg-dark) !important;
+}
+
+html.tokyo .ai-settings-panel .text-gray-400 {
+  color: var(--tokyo-comment) !important;
+}
+
+html.tokyo .ai-settings-panel .text-gray-500 {
+  color: var(--tokyo-comment) !important;
+}
+
+/* --- Borders --- */
+html.tokyo .ai-settings-panel .border-gray-700 {
+  border-color: var(--tokyo-fg-gutter) !important;
+}
+
+html.tokyo .ai-settings-panel .border-gray-600 {
+  border-color: var(--tokyo-fg-gutter) !important;
+}
+
+html.tokyo .ai-settings-panel .border-gray-500 {
+  border-color: var(--tokyo-fg-gutter) !important;
+}
+
+/* --- Purple accents → Tokyo purple/magenta --- */
+html.tokyo .ai-settings-panel .text-purple-400 {
+  color: var(--tokyo-purple) !important;
+}
+
+html.tokyo .ai-settings-panel .text-purple-500 {
+  color: var(--tokyo-purple) !important;
+}
+
+html.tokyo .ai-settings-panel .border-purple-400 {
+  border-color: var(--tokyo-purple) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-purple-600 {
+  background-color: var(--tokyo-purple) !important;
+}
+
+html.tokyo .ai-settings-panel .hover\:bg-purple-700:hover {
+  background-color: var(--tokyo-magenta) !important;
+}
+
+html.tokyo .ai-settings-panel .focus\:ring-purple-500:focus {
+  --tw-ring-color: var(--tokyo-purple) !important;
+}
+
+/* --- Indigo accents → Tokyo blue --- */
+html.tokyo .ai-settings-panel .bg-indigo-600 {
+  background-color: var(--tokyo-blue) !important;
+}
+
+html.tokyo .ai-settings-panel .hover\:bg-indigo-700:hover {
+  background-color: var(--tokyo-purple) !important;
+}
+
+/* --- Cyan (Ollama) → Tokyo cyan --- */
+html.tokyo .ai-settings-panel .text-cyan-400 {
+  color: var(--tokyo-cyan) !important;
+}
+
+html.tokyo .ai-settings-panel .bg-cyan-600 {
+  background-color: var(--tokyo-cyan) !important;
+}
+
+/* --- Purple selection states (agent mode Normal card) --- */
+html.tokyo .ai-settings-panel .bg-purple-600\/10 {
+  background-color: rgba(187, 154, 247, 0.1) !important;
+}
+
+html.tokyo .ai-settings-panel .ring-purple-500\/30 {
+  --tw-ring-color: rgba(187, 154, 247, 0.3) !important;
+}
+
+/* --- Teal selection states (agent mode Safe card) --- */
+html.tokyo .ai-settings-panel .border-teal-400 {
+  border-color: #2dd4bf !important;
+}
+
+html.tokyo .ai-settings-panel .bg-teal-600\/10 {
+  background-color: rgba(45, 212, 191, 0.1) !important;
+}
+
+html.tokyo .ai-settings-panel .ring-teal-500\/30 {
+  --tw-ring-color: rgba(45, 212, 191, 0.3) !important;
+}
+
+html.tokyo .ai-settings-panel .text-teal-400 {
+  color: #2dd4bf !important;
+}
+
+/* --- Amber selection states (agent mode Expert card) --- */
+html.tokyo .ai-settings-panel .border-amber-400 {
+  border-color: #fbbf24 !important;
+}
+
+html.tokyo .ai-settings-panel .bg-amber-600\/10 {
+  background-color: rgba(251, 191, 36, 0.1) !important;
+}
+
+html.tokyo .ai-settings-panel .ring-amber-500\/30 {
+  --tw-ring-color: rgba(251, 191, 36, 0.3) !important;
+}
+
+html.tokyo .ai-settings-panel .text-amber-400 {
+  color: #fbbf24 !important;
+}
+
+/* --- Red selection states (agent mode Extreme card) --- */
+html.tokyo .ai-settings-panel .border-red-400 {
+  border-color: #f87171 !important;
+}
+
+html.tokyo .ai-settings-panel .bg-red-600\/10 {
+  background-color: rgba(248, 113, 113, 0.1) !important;
+}
+
+html.tokyo .ai-settings-panel .ring-red-500\/30 {
+  --tw-ring-color: rgba(248, 113, 113, 0.3) !important;
+}
+
+/* --- Tokyo scrollbar --- */
+html.tokyo .ai-settings-panel .scrollbar-thin {
+  scrollbar-color: var(--tokyo-fg-gutter) var(--tokyo-bg-dark);
+}
+
+/* =========================================================
+   CYBER
+   ========================================================= */
+
+/* --- Backgrounds --- */
+html.cyber .ai-settings-panel .bg-gray-900 {
+  background-color: var(--cyber-bg) !important;
+}
+
+html.cyber .ai-settings-panel .bg-gray-800 {
+  background-color: var(--cyber-bg-dark) !important;
+}
+
+html.cyber .ai-settings-panel .bg-gray-800\/50 {
+  background-color: rgba(6, 10, 18, 0.5) !important;
+}
+
+html.cyber .ai-settings-panel .bg-gray-900\/50 {
+  background-color: rgba(10, 14, 23, 0.5) !important;
+}
+
+html.cyber .ai-settings-panel .bg-gray-700 {
+  background-color: var(--cyber-bg-highlight) !important;
+}
+
+html.cyber .ai-settings-panel .bg-gray-700\/50 {
+  background-color: rgba(17, 27, 39, 0.5) !important;
+}
+
+/* --- Text --- */
+html.cyber .ai-settings-panel .text-gray-100 {
+  color: var(--cyber-fg) !important;
+}
+
+html.cyber .ai-settings-panel .text-gray-300 {
+  color: var(--cyber-fg-secondary) !important;
+}
+
+html.cyber .ai-settings-panel .text-gray-400 {
+  color: var(--cyber-fg-secondary) !important;
+}
+
+html.cyber .ai-settings-panel .text-gray-500 {
+  color: var(--cyber-fg-muted) !important;
+}
+
+/* --- Borders --- */
+html.cyber .ai-settings-panel .border-gray-700 {
+  border-color: var(--cyber-border) !important;
+}
+
+html.cyber .ai-settings-panel .border-gray-600 {
+  border-color: var(--cyber-border) !important;
+}
+
+html.cyber .ai-settings-panel .border-gray-500 {
+  border-color: var(--cyber-border) !important;
+}
+
+/* --- Purple accents → Cyber cyan/green --- */
+html.cyber .ai-settings-panel .text-purple-400 {
+  color: var(--cyber-cyan) !important;
+}
+
+html.cyber .ai-settings-panel .text-purple-500 {
+  color: var(--cyber-cyan) !important;
+}
+
+html.cyber .ai-settings-panel .border-purple-400 {
+  border-color: var(--cyber-cyan) !important;
+}
+
+html.cyber .ai-settings-panel .bg-purple-600 {
+  background-color: var(--cyber-green-dim) !important;
+}
+
+html.cyber .ai-settings-panel .hover\:bg-purple-700:hover {
+  background-color: var(--cyber-green) !important;
+}
+
+html.cyber .ai-settings-panel .focus\:ring-purple-500:focus {
+  --tw-ring-color: var(--cyber-cyan) !important;
+}
+
+/* --- Indigo accents → Cyber cyan --- */
+html.cyber .ai-settings-panel .bg-indigo-600 {
+  background-color: var(--cyber-cyan) !important;
+}
+
+html.cyber .ai-settings-panel .hover\:bg-indigo-700:hover {
+  background-color: var(--cyber-green-dim) !important;
+}
+
+/* --- Cyan (Ollama) → Cyber green --- */
+html.cyber .ai-settings-panel .text-cyan-400 {
+  color: var(--cyber-green) !important;
+}
+
+html.cyber .ai-settings-panel .bg-cyan-600 {
+  background-color: var(--cyber-green-dim) !important;
+}
+
+/* --- Purple selection states (agent mode Normal card) --- */
+html.cyber .ai-settings-panel .bg-purple-600\/10 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+html.cyber .ai-settings-panel .ring-purple-500\/30 {
+  --tw-ring-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* --- Teal selection states (agent mode Safe card) --- */
+html.cyber .ai-settings-panel .border-teal-400 {
+  border-color: var(--cyber-cyan) !important;
+}
+
+html.cyber .ai-settings-panel .bg-teal-600\/10 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+
+html.cyber .ai-settings-panel .ring-teal-500\/30 {
+  --tw-ring-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+html.cyber .ai-settings-panel .text-teal-400 {
+  color: var(--cyber-cyan) !important;
+}
+
+/* --- Amber selection states (agent mode Expert card) --- */
+html.cyber .ai-settings-panel .border-amber-400 {
+  border-color: #fbbf24 !important;
+}
+
+html.cyber .ai-settings-panel .bg-amber-600\/10 {
+  background-color: rgba(251, 191, 36, 0.1) !important;
+}
+
+html.cyber .ai-settings-panel .ring-amber-500\/30 {
+  --tw-ring-color: rgba(251, 191, 36, 0.3) !important;
+}
+
+html.cyber .ai-settings-panel .text-amber-400 {
+  color: #fbbf24 !important;
+}
+
+/* --- Red selection states (agent mode Extreme card) --- */
+html.cyber .ai-settings-panel .border-red-400 {
+  border-color: #f87171 !important;
+}
+
+html.cyber .ai-settings-panel .bg-red-600\/10 {
+  background-color: rgba(248, 113, 113, 0.1) !important;
+}
+
+html.cyber .ai-settings-panel .ring-red-500\/30 {
+  --tw-ring-color: rgba(248, 113, 113, 0.3) !important;
+}
+
+/* --- Cyber scrollbar --- */
+html.cyber .ai-settings-panel .scrollbar-thin {
+  scrollbar-color: rgba(16, 185, 129, 0.3) var(--cyber-bg-dark);
+}

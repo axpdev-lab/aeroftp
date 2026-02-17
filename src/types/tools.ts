@@ -283,7 +283,85 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'medium',
     },
 
+    // Content inspection tools
+    {
+        name: 'local_grep',
+        description: 'Search file contents using regex pattern. Recursively searches text files in a directory, returning matching lines with context.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Directory to search in', required: true },
+            { name: 'pattern', type: 'string', description: 'Regex pattern to search for', required: true },
+            { name: 'glob', type: 'string', description: 'File filter pattern (e.g. "*.ts", "*.rs")', required: false },
+            { name: 'max_results', type: 'number', description: 'Maximum matches to return (default: 50)', required: false },
+            { name: 'context_lines', type: 'number', description: 'Lines of context around each match (default: 2)', required: false },
+            { name: 'case_sensitive', type: 'boolean', description: 'Case-sensitive search (default: true)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_head',
+        description: 'Read the first N lines of a local file (default: 20 lines)',
+        parameters: [
+            { name: 'path', type: 'string', description: 'File path', required: true },
+            { name: 'lines', type: 'number', description: 'Number of lines to read (default: 20, max: 500)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_tail',
+        description: 'Read the last N lines of a local file (default: 20 lines)',
+        parameters: [
+            { name: 'path', type: 'string', description: 'File path', required: true },
+            { name: 'lines', type: 'number', description: 'Number of lines to read (default: 20, max: 500)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_stat_batch',
+        description: 'Get file metadata for multiple paths at once: size, modified date, type, permissions',
+        parameters: [
+            { name: 'paths', type: 'array', description: 'Array of file/directory paths to stat (max 100)', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'local_tree',
+        description: 'Display a recursive directory tree with file sizes, filtered by depth and glob pattern',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Root directory path', required: true },
+            { name: 'max_depth', type: 'number', description: 'Maximum depth to recurse (default: 3, max: 10)', required: false },
+            { name: 'show_hidden', type: 'boolean', description: 'Show hidden files/directories (default: false)', required: false },
+            { name: 'glob', type: 'string', description: 'File filter pattern (e.g. "*.ts")', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+
+    // Clipboard
+    {
+        name: 'clipboard_read',
+        description: 'Read current text content from the system clipboard',
+        parameters: [],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'clipboard_write',
+        description: 'Write text content to the system clipboard',
+        parameters: [
+            { name: 'content', type: 'string', description: 'Text to copy to clipboard', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+
     // Read-only analysis tools (safe)
+    {
+        name: 'local_diff',
+        description: 'Compare two local files and show unified diff output with additions and deletions',
+        parameters: [
+            { name: 'path_a', type: 'string', description: 'First file path', required: true },
+            { name: 'path_b', type: 'string', description: 'Second file path', required: true },
+            { name: 'context_lines', type: 'number', description: 'Lines of context around changes (default: 3)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
     {
         name: 'local_file_info',
         description: 'Get detailed file properties: size, permissions, timestamps, MIME type, owner (Unix)',
@@ -337,10 +415,12 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'high',
     },
     {
-        name: 'terminal_execute',
-        description: 'Execute a command in the integrated terminal',
+        name: 'shell_execute',
+        description: 'Execute a shell command and capture output. Returns stdout, stderr, and exit code. Use this to run system commands, scripts, build tools, git, npm, etc.',
         parameters: [
             { name: 'command', type: 'string', description: 'Shell command to execute', required: true },
+            { name: 'working_dir', type: 'string', description: 'Working directory (default: user home)', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (default: 30, max: 120)', required: false },
         ],
         dangerLevel: 'high',
     },
@@ -376,6 +456,38 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'category', type: 'string', description: 'Category: convention, preference, issue, pattern', required: false },
         ],
         dangerLevel: 'medium',
+    },
+
+    // App control tools
+    {
+        name: 'set_theme',
+        description: 'Change the application theme. Available themes: light, dark, tokyo (Tokyo Night), cyber (Cyber)',
+        parameters: [
+            { name: 'theme', type: 'string', description: 'Theme name: light, dark, tokyo, or cyber', required: true },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'app_info',
+        description: 'Get information about the current application state: version, platform, connection status, and current working directory',
+        parameters: [],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'sync_control',
+        description: 'Control the AeroSync background synchronization service. Actions: start (begin sync), stop (halt sync), status (check if running)',
+        parameters: [
+            { name: 'action', type: 'string', description: 'Action to perform: start, stop, or status', required: true },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'vault_peek',
+        description: 'Peek at an AeroVault encrypted container header without requiring the password. Shows encryption info, file count, and creation date',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Path to the .aerovault file', required: true },
+        ],
+        dangerLevel: 'safe',
     },
 ];
 

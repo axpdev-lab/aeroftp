@@ -90,6 +90,14 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     }
   }, [isOpen, scan]);
 
+  // Hide scrollbars when dialog is open (WebKitGTK fix)
+  useEffect(() => {
+    if (isOpen) {
+      document.documentElement.classList.add('modal-open');
+      return () => { document.documentElement.classList.remove('modal-open'); };
+    }
+  }, [isOpen]);
+
   // Keyboard handler: Escape to close
   useEffect(() => {
     if (!isOpen) return;

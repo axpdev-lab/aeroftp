@@ -9,7 +9,7 @@
  * - Beat-reactive flash/pulse effects across all modes
  * - Cyber Mode with CRT scanlines and glitch effects
  * - Particle system following audio peaks
- * - Tokyo Night / Cyberpunk color theme
+ * - Tokyo Night / Cyber color theme
  */
 
 import React, { useRef, useEffect, useCallback } from 'react';
@@ -35,7 +35,7 @@ interface AudioVisualizerProps {
     className?: string;
 }
 
-// Tokyo Night / Cyberpunk color palette
+// Tokyo Night / Cyber color palette
 const COLORS = {
     primary: '#7aa2f7',    // Blue
     secondary: '#bb9af7',  // Purple

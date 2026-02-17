@@ -116,7 +116,7 @@ html.tokyo .sync-panel {
     --sync-action-gradient: linear-gradient(135deg, #2d2250 0%, #1e1640 100%);
 }
 
-/* Cyberpunk variables */
+/* Cyber variables */
 html.cyber .sync-panel {
     --sync-bg: var(--cyber-bg);
     --sync-bg-deep: var(--cyber-bg-dark);
@@ -478,6 +478,16 @@ html.cyber .sync-panel {
     white-space: nowrap;
     color: var(--sync-text-file);
     font-size: 13px;
+}
+
+.sync-reason-text {
+    font-size: 10px;
+    color: var(--sync-text-dimmed);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
 }
 
 .sync-col-local,
@@ -929,7 +939,7 @@ html.cyber .sync-speed-pill.maniac {
     background: rgba(239, 68, 68, 0.06);
 }
 
-/* ============ Cyberpunk Theme Overrides ============ */
+/* ============ Cyber Theme Overrides ============ */
 
 html.cyber .sync-speed-pill.active {
     color: #0a0e17;

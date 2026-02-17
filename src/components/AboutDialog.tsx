@@ -172,6 +172,14 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     const [showDonatePanel, setShowDonatePanel] = useState(false);
     const [copied, setCopied] = useState(false);
 
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
+
     useEffect(() => {
         if (!isOpen) return;
         getVersion().then(setAppVersion).catch(() => setAppVersion('1.3.4'));

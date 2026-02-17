@@ -31,6 +31,12 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
 
+  // Hide scrollbars when dialog is open (WebKitGTK fix)
+  useEffect(() => {
+    document.documentElement.classList.add('modal-open');
+    return () => { document.documentElement.classList.remove('modal-open'); };
+  }, []);
+
   useEffect(() => {
     loadPermissions();
   }, [filePath]);

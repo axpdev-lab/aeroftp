@@ -1,5 +1,5 @@
 name: aeroftp
-version: '2.2.2'
+version: '2.2.3'
 summary: Multi-Protocol File Transfer & Cloud Client — 14 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -42,7 +42,7 @@ description: |
   - Structured error taxonomy with retryability hints
 
   More Features:
-  - 4 app themes (Light, Dark, Tokyo Night, Cyberpunk) with 3 icon styles
+  - 4 app themes (Light, Dark, Tokyo Night, Cyber) with 3 icon styles
   - Archive browser (ZIP, 7z, TAR, RAR) with selective extraction
   - AeroPlayer media player with 14 visualizers and 10-band EQ
   - Dual-pane browser with drag & drop and batch rename

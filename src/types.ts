@@ -243,6 +243,7 @@ export interface FileComparison {
   local_info: FileInfo | null;
   remote_info: FileInfo | null;
   is_dir: boolean;
+  sync_reason: string;
 }
 
 export interface CompareOptions {

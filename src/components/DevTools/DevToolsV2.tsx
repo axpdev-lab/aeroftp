@@ -81,8 +81,10 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(window.innerWidth);
     const [isMaximized, setIsMaximized] = useState(false);
-    const [height, setHeight] = useState(350);
+    const [height, setHeight] = useState(500);
     const isDragging = useRef(false);
+    const isHDragging = useRef(false);
+    const [panelRatios, setPanelRatios] = useState<number[]>([]);
 
     // Theme-aware classes based on appTheme
     const isLightTheme = appTheme === 'light';
@@ -222,8 +224,29 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     }, [panels, containerWidth]);
 
     const visiblePanels = getVisiblePanels();
+    const visiblePanelsKey = visiblePanels.join(',');
 
-    // Resize handling
+    // Reset panel width ratios when visible panels change
+    useEffect(() => {
+        const count = visiblePanels.length;
+        setPanelRatios(count > 0 ? Array(count).fill(1 / count) : []);
+    }, [visiblePanelsKey]);
+
+    // Get CSS width for a panel based on its ratio
+    const getPanelWidth = (panel: keyof PanelVisibility): string => {
+        const idx = visiblePanels.indexOf(panel);
+        if (idx < 0) return '0%';
+        const ratio = panelRatios.length === visiblePanels.length ? panelRatios[idx] : (1 / visiblePanels.length);
+        return `${(ratio ?? (1 / visiblePanels.length)) * 100}%`;
+    };
+
+    // Check if a panel is not the last visible (for placing resize handle after it)
+    const isNotLastVisible = (panel: keyof PanelVisibility): boolean => {
+        const idx = visiblePanels.indexOf(panel);
+        return idx >= 0 && idx < visiblePanels.length - 1;
+    };
+
+    // Vertical resize handling
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
         isDragging.current = true;
@@ -247,6 +270,46 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
     }, [height]);
+
+    // Horizontal panel resize handler
+    const handlePanelResize = useCallback((handleIndex: number) => (e: React.MouseEvent) => {
+        e.preventDefault();
+        isHDragging.current = true;
+        const startX = e.clientX;
+        const startRatios = [...panelRatios];
+        const containerW = containerRef.current?.offsetWidth || window.innerWidth;
+        const MIN_RATIO = 0.15;
+
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+
+        const onMove = (moveEvent: MouseEvent) => {
+            if (!isHDragging.current) return;
+            const deltaPct = (moveEvent.clientX - startX) / containerW;
+
+            let left = startRatios[handleIndex] + deltaPct;
+            let right = startRatios[handleIndex + 1] - deltaPct;
+
+            if (left < MIN_RATIO) { right += left - MIN_RATIO; left = MIN_RATIO; }
+            if (right < MIN_RATIO) { left += right - MIN_RATIO; right = MIN_RATIO; }
+
+            const newRatios = [...startRatios];
+            newRatios[handleIndex] = left;
+            newRatios[handleIndex + 1] = right;
+            setPanelRatios(newRatios);
+        };
+
+        const onUp = () => {
+            isHDragging.current = false;
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }, [panelRatios]);
 
     const togglePanel = (panel: keyof PanelVisibility) => {
         setPanels(prev => ({ ...prev, [panel]: !prev[panel] }));
@@ -278,9 +341,10 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         return () => window.removeEventListener('file-changed', handleFileChanged);
     }, [previewFile]);
 
-    if (!isOpen) return null;
-
-    const panelWidth = visiblePanels.length > 0 ? `${100 / visiblePanels.length}%` : '100%';
+    // Keep mounted after first open to preserve AIChat state (history, conversations)
+    const hasBeenOpenedRef = useRef(false);
+    if (isOpen) hasBeenOpenedRef.current = true;
+    if (!hasBeenOpenedRef.current) return null;
 
     // Max height: leave space for header (~56px) + statusbar (~32px)
     const maxHeight = 'calc(100vh - 88px)';
@@ -288,7 +352,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     return (
         <div
             ref={containerRef}
-            className={`${theme.panel} border-t ${theme.border} flex flex-col flex-shrink-0`}
+            className={`${theme.panel} border-t ${theme.border} flex flex-col flex-shrink-0 ${!isOpen ? 'hidden' : ''}`}
             style={{
                 height: isMaximized ? maxHeight : height,
                 maxHeight: maxHeight
@@ -364,7 +428,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 </div>
             </div>
 
-            {/* 3-Column Content Area */}
+            {/* Resizable 3-Column Content Area */}
             <div className="flex-1 flex overflow-hidden">
                 {visiblePanels.length === 0 ? (
                     <div className={`flex-1 flex items-center justify-center ${theme.text} text-sm`}>
@@ -375,8 +439,8 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                     <>
                         {visiblePanels.includes('editor') && (
                             <div
-                                className={`border-r ${theme.border} flex flex-col overflow-hidden`}
-                                style={{ width: panelWidth }}
+                                className="flex flex-col overflow-hidden"
+                                style={{ width: getPanelWidth('editor') }}
                             >
                                 <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <Code size={12} className="text-blue-400" />
@@ -396,9 +460,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                         className="h-full"
                                         theme={editorTheme}
                                         onAskAgent={(code, fileName) => {
-                                            // Activate chat panel
                                             setPanels(prev => ({ ...prev, chat: true }));
-                                            // Dispatch event for AIChat to pick up
                                             window.dispatchEvent(new CustomEvent('aeroagent-ask', { detail: { code, fileName } }));
                                         }}
                                     />
@@ -406,10 +468,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             </div>
                         )}
 
+                        {/* Resize handle after editor */}
+                        {visiblePanels.includes('editor') && isNotLastVisible('editor') && (
+                            <div
+                                onMouseDown={handlePanelResize(visiblePanels.indexOf('editor'))}
+                                className={`w-1 cursor-col-resize ${theme.resizeHandle} transition-colors flex-shrink-0 group flex items-center justify-center`}
+                            >
+                                <div className={`w-0.5 h-8 rounded-full ${theme.resizeBar} transition-opacity`} />
+                            </div>
+                        )}
+
                         {visiblePanels.includes('terminal') && (
                             <div
-                                className={`border-r ${theme.border} flex flex-col overflow-hidden`}
-                                style={{ width: panelWidth }}
+                                className="flex flex-col overflow-hidden"
+                                style={{ width: getPanelWidth('terminal') }}
                             >
                                 <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <Terminal size={12} className="text-green-400" />
@@ -421,20 +493,29 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             </div>
                         )}
 
-                        {visiblePanels.includes('chat') && (
+                        {/* Resize handle after terminal */}
+                        {visiblePanels.includes('terminal') && isNotLastVisible('terminal') && (
                             <div
-                                className="flex flex-col overflow-hidden"
-                                style={{ width: panelWidth }}
+                                onMouseDown={handlePanelResize(visiblePanels.indexOf('terminal'))}
+                                className={`w-1 cursor-col-resize ${theme.resizeHandle} transition-colors flex-shrink-0 group flex items-center justify-center`}
                             >
-                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
-                                    <MessageSquare size={12} className="text-purple-400" />
-                                    <span className={`text-xs ${theme.text}`}>{t('devtools.agent')}</span>
-                                </div>
-                                <div className="flex-1 overflow-hidden">
-                                    <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={previewFile?.name} editorFilePath={previewFile?.path} />
-                                </div>
+                                <div className={`w-0.5 h-8 rounded-full ${theme.resizeBar} transition-opacity`} />
                             </div>
                         )}
+
+                        {/* Chat panel — always mounted to preserve AIChat state */}
+                        <div
+                            className={`flex flex-col overflow-hidden ${visiblePanels.includes('chat') ? '' : 'hidden'}`}
+                            style={{ width: visiblePanels.includes('chat') ? getPanelWidth('chat') : undefined }}
+                        >
+                            <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
+                                <MessageSquare size={12} className="text-purple-400" />
+                                <span className={`text-xs ${theme.text}`}>{t('devtools.agent')}</span>
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={previewFile?.name} editorFilePath={previewFile?.path} />
+                            </div>
+                        </div>
                     </>
                 )}
             </div>

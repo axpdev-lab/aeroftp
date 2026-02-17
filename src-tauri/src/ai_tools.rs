@@ -6,6 +6,8 @@
 
 use serde_json::{json, Value};
 use tauri::{Emitter, State};
+use tokio::process::Command as TokioCommand;
+use std::process::Stdio;
 use crate::provider_commands::ProviderState;
 use crate::AppState;
 
@@ -30,6 +32,15 @@ const ALLOWED_TOOLS: &[&str] = &[
     "agent_memory_write",
     // Cyber tools
     "hash_file",
+    // Content inspection tools
+    "local_grep", "local_head", "local_tail", "local_stat_batch",
+    "local_diff", "local_tree",
+    // Clipboard tools
+    "clipboard_read", "clipboard_write",
+    // App control tools
+    "set_theme", "app_info", "sync_control", "vault_peek",
+    // Shell execution
+    "shell_execute",
 ];
 
 /// Validate a path argument — reject null bytes, traversal, excessive length
@@ -334,6 +345,92 @@ pub async fn validate_tool_args(
                 }
             }
         }
+        "local_grep" | "local_tree" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                if !p.is_dir() {
+                    errors.push(format!("Directory not found: {}", path));
+                }
+            }
+            if tool_name == "local_grep" {
+                if let Some(pattern) = args.get("pattern").and_then(|v| v.as_str()) {
+                    if regex::Regex::new(pattern).is_err() {
+                        errors.push(format!("Invalid regex pattern: {}", pattern));
+                    }
+                } else {
+                    errors.push("Missing 'pattern' parameter".to_string());
+                }
+            }
+        }
+        "local_head" | "local_tail" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    errors.push(format!("File not found: {}", path));
+                } else if p.is_dir() {
+                    errors.push(format!("Path is a directory, not a file: {}", path));
+                }
+            }
+        }
+        "local_stat_batch" => {
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            } else if let Some(arr) = paths {
+                if arr.len() > 100 {
+                    errors.push(format!("Too many paths: {} (max 100)", arr.len()));
+                }
+            }
+        }
+        "local_diff" => {
+            for key in &["path_a", "path_b"] {
+                if let Some(path) = args.get(key).and_then(|v| v.as_str()) {
+                    if let Err(e) = validate_path(path, key) {
+                        errors.push(e);
+                    }
+                    let p = std::path::Path::new(path);
+                    if !p.exists() {
+                        errors.push(format!("File not found: {}", path));
+                    } else if p.is_dir() {
+                        errors.push(format!("Path is a directory, not a file: {}", path));
+                    }
+                } else {
+                    errors.push(format!("Missing '{}' parameter", key));
+                }
+            }
+        }
+        "clipboard_write" => {
+            if args.get("content").and_then(|v| v.as_str()).is_none() {
+                errors.push("Missing 'content' parameter".to_string());
+            }
+        }
+        "set_theme" => {
+            match args.get("theme").and_then(|v| v.as_str()) {
+                Some(t) if ["light", "dark", "tokyo", "cyber"].contains(&t) => {},
+                Some(t) => errors.push(format!("Invalid theme '{}'. Use: light, dark, tokyo, cyber", t)),
+                None => errors.push("Missing required parameter 'theme'".to_string()),
+            }
+        }
+        "sync_control" => {
+            match args.get("action").and_then(|v| v.as_str()) {
+                Some(a) if ["start", "stop", "status"].contains(&a) => {},
+                Some(a) => errors.push(format!("Invalid action '{}'. Use: start, stop, status", a)),
+                None => errors.push("Missing required parameter 'action'".to_string()),
+            }
+        }
+        "vault_peek" => {
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(path, "path") {
+                    errors.push(e);
+                }
+                if !path.ends_with(".aerovault") {
+                    warnings.push("File does not have .aerovault extension".to_string());
+                }
+            } else {
+                errors.push("Missing required parameter 'path'".to_string());
+            }
+        }
+        // app_info needs no validation (no parameters)
         _ => {} // Remote tools: path format already validated above
     }
 
@@ -358,6 +455,130 @@ fn resolve_local_path(path: &str, base: Option<&str>) -> String {
         }
     }
     path.to_string()
+}
+
+/// Maximum output size from shell commands (512 KB)
+const SHELL_MAX_OUTPUT_BYTES: usize = 512 * 1024;
+
+/// Denied command patterns — defense-in-depth (also checked on frontend)
+static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> = std::sync::LazyLock::new(|| {
+    [
+        r"^\s*rm\s+(-[a-zA-Z]*)?.*\s+/\s*$",         // rm -rf /
+        r"^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+/\s*$",
+        r"^\s*mkfs\b",                                  // mkfs (format disk)
+        r"^\s*dd\s+.*of=/dev/",                          // dd to device
+        r"^\s*shutdown\b",                               // shutdown
+        r"^\s*reboot\b",                                 // reboot
+        r"^\s*halt\b",                                   // halt
+        r"^\s*init\s+[06]\b",                            // init 0/6
+        r"^\s*:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:",      // fork bomb
+        r"^\s*>\s*/dev/sd[a-z]",                         // overwrite disk
+        r"^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+/",         // chmod 777 /
+        r"^\s*chown\s+.*\s+/\s*$",                       // chown /
+    ]
+    .iter()
+    .filter_map(|p| regex::Regex::new(p).ok())
+    .collect()
+});
+
+/// Execute a shell command and capture output.
+/// Used by AeroAgent's shell_execute tool.
+#[tauri::command]
+pub async fn shell_execute(
+    command: String,
+    working_dir: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<Value, String> {
+    if command.trim().is_empty() {
+        return Err("No command specified".to_string());
+    }
+
+    // Security: check denied commands
+    if DENIED_COMMAND_PATTERNS.iter().any(|rx| rx.is_match(&command)) {
+        return Err("Command blocked: potentially destructive system command".to_string());
+    }
+
+    // Determine working directory
+    let cwd = working_dir
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp".to_string())
+        });
+
+    // Validate working directory exists
+    let cwd_path = std::path::Path::new(&cwd);
+    if !cwd_path.exists() || !cwd_path.is_dir() {
+        return Err(format!("Working directory does not exist: {}", cwd));
+    }
+
+    let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(30).min(120));
+
+    // Build command with environment isolation
+    let mut cmd = TokioCommand::new("sh");
+    cmd.args(["-c", &command])
+        .current_dir(&cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .env_clear();
+
+    // Restore minimal safe environment
+    for key in &["PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "USER", "SHELL"] {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn shell: {}", e))?;
+
+    // Wait with timeout
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => return Err(format!("Shell process error: {}", e)),
+        Err(_) => {
+            return Ok(json!({
+                "stdout": "",
+                "stderr": format!("Command timed out after {}s", timeout.as_secs()),
+                "exit_code": -1,
+                "success": false,
+                "timed_out": true,
+                "command": command
+            }));
+        }
+    };
+
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    // Truncate output if too large
+    let stdout_raw = &output.stdout[..output.stdout.len().min(SHELL_MAX_OUTPUT_BYTES)];
+    let stderr_raw = &output.stderr[..output.stderr.len().min(SHELL_MAX_OUTPUT_BYTES)];
+
+    let stdout = String::from_utf8_lossy(stdout_raw);
+    let stderr = String::from_utf8_lossy(stderr_raw);
+
+    let stdout_truncated = output.stdout.len() > SHELL_MAX_OUTPUT_BYTES;
+    let stderr_truncated = output.stderr.len() > SHELL_MAX_OUTPUT_BYTES;
+
+    let mut stdout_str = stdout.to_string();
+    if stdout_truncated {
+        stdout_str.push_str(&format!("\n[...truncated, {} bytes total]", output.stdout.len()));
+    }
+    let mut stderr_str = stderr.to_string();
+    if stderr_truncated {
+        stderr_str.push_str(&format!("\n[...truncated, {} bytes total]", output.stderr.len()));
+    }
+
+    Ok(json!({
+        "stdout": stdout_str,
+        "stderr": stderr_str,
+        "exit_code": exit_code,
+        "success": output.status.success(),
+        "timed_out": false,
+        "command": command
+    }))
 }
 
 #[tauri::command]
@@ -1941,6 +2162,581 @@ pub async fn execute_ai_tool(
                 "success": true,
                 "message": format!("Memory entry saved: [{}] {}", sanitized_category, entry)
             }))
+        }
+
+        "local_grep" => {
+            let path = get_str(&args, "path")?;
+            let pattern = get_str(&args, "pattern")?;
+            validate_path(&path, "path")?;
+
+            let glob_filter = get_str_opt(&args, "glob");
+            let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+            let context_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
+            let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(true);
+
+            let re = if case_sensitive {
+                regex::Regex::new(&pattern)
+            } else {
+                regex::RegexBuilder::new(&pattern).case_insensitive(true).build()
+            }.map_err(|e| format!("Invalid regex: {}", e))?;
+
+            let base_path = std::path::Path::new(&path);
+            if !base_path.is_dir() {
+                return Err(format!("Not a directory: {}", path));
+            }
+
+            // Compile glob pattern if provided
+            let glob_re = if let Some(ref g) = glob_filter {
+                let glob_pattern = g.replace('.', "\\.").replace('*', ".*").replace('?', ".");
+                regex::RegexBuilder::new(&format!("^{}$", glob_pattern))
+                    .case_insensitive(true)
+                    .build()
+                    .ok()
+            } else {
+                None
+            };
+
+            let mut matches: Vec<Value> = Vec::new();
+            let mut files_searched: u32 = 0;
+            const MAX_FILE_SIZE: u64 = 10_485_760; // 10MB
+
+            for entry in walkdir::WalkDir::new(&path)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if matches.len() >= max_results {
+                    break;
+                }
+                let entry_path = entry.path();
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if !meta.is_file() || meta.len() > MAX_FILE_SIZE {
+                    continue;
+                }
+
+                // Apply glob filter on filename
+                if let Some(ref gre) = glob_re {
+                    if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
+                        if !gre.is_match(name) {
+                            continue;
+                        }
+                    }
+                }
+
+                // Skip binary files: check first 8KB for null bytes
+                let bytes = match std::fs::read(entry_path) {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+                let check_len = bytes.len().min(8192);
+                if bytes[..check_len].contains(&0) {
+                    continue;
+                }
+
+                let content = match String::from_utf8(bytes) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                files_searched += 1;
+
+                let lines: Vec<&str> = content.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    if matches.len() >= max_results {
+                        break;
+                    }
+                    if re.is_match(line) {
+                        let rel = entry_path.strip_prefix(base_path)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
+
+                        let ctx_before: Vec<&str> = lines[i.saturating_sub(context_lines)..i]
+                            .iter().copied().collect();
+                        let ctx_after: Vec<&str> = lines[(i + 1)..lines.len().min(i + 1 + context_lines)]
+                            .iter().copied().collect();
+
+                        matches.push(json!({
+                            "file": rel,
+                            "line_number": i + 1,
+                            "line": line.chars().take(500).collect::<String>(),
+                            "context_before": ctx_before,
+                            "context_after": ctx_after,
+                        }));
+                    }
+                }
+            }
+
+            Ok(json!({
+                "success": true,
+                "pattern": pattern,
+                "total_matches": matches.len(),
+                "files_searched": files_searched,
+                "matches": matches,
+            }))
+        }
+
+        "local_head" => {
+            let path = get_str(&args, "path")?;
+            validate_path(&path, "path")?;
+            let num_lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+
+            let p = std::path::Path::new(&path);
+            if !p.is_file() {
+                return Err(format!("Not a file: {}", path));
+            }
+            let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat: {}", e))?;
+            if meta.len() > 52_428_800 {
+                return Err("File too large (max 50MB)".to_string());
+            }
+
+            use std::io::{BufRead, BufReader};
+            let file = std::fs::File::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
+            let reader = BufReader::new(file);
+            let mut result_lines: Vec<String> = Vec::new();
+            let mut total_lines: usize = 0;
+
+            for line in reader.lines() {
+                total_lines += 1;
+                if result_lines.len() < num_lines {
+                    match line {
+                        Ok(l) => result_lines.push(l),
+                        Err(_) => result_lines.push("[binary data]".to_string()),
+                    }
+                } else {
+                    // Keep counting total lines
+                    if line.is_err() { continue; }
+                }
+            }
+
+            let content = result_lines.join("\n");
+            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+            Ok(json!({
+                "success": true,
+                "content": content,
+                "lines_read": result_lines.len(),
+                "total_lines": total_lines,
+                "file_name": name,
+            }))
+        }
+
+        "local_tail" => {
+            let path = get_str(&args, "path")?;
+            validate_path(&path, "path")?;
+            let num_lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+
+            let p = std::path::Path::new(&path);
+            if !p.is_file() {
+                return Err(format!("Not a file: {}", path));
+            }
+            let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat: {}", e))?;
+            if meta.len() > 52_428_800 {
+                return Err("File too large (max 50MB)".to_string());
+            }
+
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read: {}", e))?;
+            let all_lines: Vec<&str> = content.lines().collect();
+            let total_lines = all_lines.len();
+            let start = total_lines.saturating_sub(num_lines);
+            let result_lines: Vec<&str> = all_lines[start..].to_vec();
+            let result_content = result_lines.join("\n");
+            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+            Ok(json!({
+                "success": true,
+                "content": result_content,
+                "lines_read": result_lines.len(),
+                "total_lines": total_lines,
+                "file_name": name,
+            }))
+        }
+
+        "local_stat_batch" => {
+            let paths = args.get("paths")
+                .and_then(|v| v.as_array())
+                .ok_or("Missing 'paths' array")?;
+
+            if paths.len() > 100 {
+                return Err(format!("Too many paths: {} (max 100)", paths.len()));
+            }
+
+            let base = context_local_path.as_deref();
+            let mut files: Vec<Value> = Vec::new();
+
+            for p in paths.iter().filter_map(|v| v.as_str()) {
+                let resolved = resolve_local_path(p, base);
+                let path = std::path::Path::new(&resolved);
+                if let Ok(meta) = std::fs::metadata(path) {
+                    let size = meta.len();
+                    let modified = meta.modified().ok().map(|t| {
+                        let datetime: chrono::DateTime<chrono::Local> = t.into();
+                        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    });
+                    let is_file = meta.is_file();
+                    let is_dir = meta.is_dir();
+                    #[cfg(unix)]
+                    let permissions = {
+                        use std::os::unix::fs::PermissionsExt;
+                        format!("{:o}", meta.permissions().mode() & 0o777)
+                    };
+                    #[cfg(not(unix))]
+                    let permissions = if meta.permissions().readonly() { "r--" } else { "rw-" }.to_string();
+
+                    let size_human = if size < 1024 {
+                        format!("{} B", size)
+                    } else if size < 1_048_576 {
+                        format!("{:.1} KB", size as f64 / 1024.0)
+                    } else if size < 1_073_741_824 {
+                        format!("{:.1} MB", size as f64 / 1_048_576.0)
+                    } else {
+                        format!("{:.2} GB", size as f64 / 1_073_741_824.0)
+                    };
+
+                    files.push(json!({
+                        "path": resolved,
+                        "name": path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                        "size": size,
+                        "size_human": size_human,
+                        "modified": modified,
+                        "is_file": is_file,
+                        "is_dir": is_dir,
+                        "permissions": permissions,
+                        "exists": true,
+                    }));
+                } else {
+                    files.push(json!({
+                        "path": resolved,
+                        "name": path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                        "exists": false,
+                    }));
+                }
+            }
+
+            Ok(json!({
+                "success": true,
+                "files": files,
+                "total": files.len(),
+            }))
+        }
+
+        "local_diff" => {
+            let path_a = get_str(&args, "path_a")?;
+            let path_b = get_str(&args, "path_b")?;
+            validate_path(&path_a, "path_a")?;
+            validate_path(&path_b, "path_b")?;
+            let context_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+
+            const MAX_DIFF_SIZE: u64 = 5_242_880; // 5MB
+
+            let meta_a = std::fs::metadata(&path_a).map_err(|e| format!("path_a: {}", e))?;
+            let meta_b = std::fs::metadata(&path_b).map_err(|e| format!("path_b: {}", e))?;
+
+            if !meta_a.is_file() {
+                return Err(format!("Not a file: {}", path_a));
+            }
+            if !meta_b.is_file() {
+                return Err(format!("Not a file: {}", path_b));
+            }
+            if meta_a.len() > MAX_DIFF_SIZE {
+                return Err(format!("File A too large: {:.1} MB (max 5MB)", meta_a.len() as f64 / 1_048_576.0));
+            }
+            if meta_b.len() > MAX_DIFF_SIZE {
+                return Err(format!("File B too large: {:.1} MB (max 5MB)", meta_b.len() as f64 / 1_048_576.0));
+            }
+
+            let content_a = std::fs::read_to_string(&path_a)
+                .map_err(|e| format!("Failed to read file A: {}", e))?;
+            let content_b = std::fs::read_to_string(&path_b)
+                .map_err(|e| format!("Failed to read file B: {}", e))?;
+
+            let diff = similar::TextDiff::from_lines(&content_a, &content_b);
+            let unified = diff.unified_diff()
+                .context_radius(context_lines)
+                .header(&path_a, &path_b)
+                .to_string();
+
+            let mut additions: usize = 0;
+            let mut deletions: usize = 0;
+            for change in diff.iter_all_changes() {
+                match change.tag() {
+                    similar::ChangeTag::Insert => additions += 1,
+                    similar::ChangeTag::Delete => deletions += 1,
+                    _ => {}
+                }
+            }
+
+            let name_a = std::path::Path::new(&path_a).file_name()
+                .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let name_b = std::path::Path::new(&path_b).file_name()
+                .map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+            Ok(json!({
+                "success": true,
+                "diff": unified,
+                "identical": additions == 0 && deletions == 0,
+                "stats": {
+                    "additions": additions,
+                    "deletions": deletions,
+                    "file_a": name_a,
+                    "file_b": name_b,
+                },
+            }))
+        }
+
+        "local_tree" => {
+            let path = get_str(&args, "path")?;
+            validate_path(&path, "path")?;
+            let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(3).min(10) as usize;
+            let show_hidden = args.get("show_hidden").and_then(|v| v.as_bool()).unwrap_or(false);
+            let glob_filter = get_str_opt(&args, "glob");
+
+            let base_path = std::path::Path::new(&path);
+            if !base_path.is_dir() {
+                return Err(format!("Not a directory: {}", path));
+            }
+
+            // Compile glob pattern if provided
+            let glob_re = if let Some(ref g) = glob_filter {
+                let glob_pattern = g.replace('.', "\\.").replace('*', ".*").replace('?', ".");
+                regex::RegexBuilder::new(&format!("^{}$", glob_pattern))
+                    .case_insensitive(true)
+                    .build()
+                    .ok()
+            } else {
+                None
+            };
+
+            const MAX_ENTRIES: usize = 1000;
+            let mut tree_lines: Vec<String> = Vec::new();
+            let mut file_count: u32 = 0;
+            let mut dir_count: u32 = 0;
+            let mut total_size: u64 = 0;
+
+            let root_name = base_path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            tree_lines.push(format!("{}/", root_name));
+
+            fn build_tree(
+                dir: &std::path::Path,
+                prefix: &str,
+                depth: usize,
+                max_depth: usize,
+                show_hidden: bool,
+                glob_re: &Option<regex::Regex>,
+                lines: &mut Vec<String>,
+                file_count: &mut u32,
+                dir_count: &mut u32,
+                total_size: &mut u64,
+                max_entries: usize,
+            ) {
+                if depth >= max_depth || lines.len() >= max_entries {
+                    return;
+                }
+                let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+                    Ok(e) => e.filter_map(|e| e.ok()).collect(),
+                    Err(_) => return,
+                };
+                entries.sort_by_key(|e| {
+                    let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                    (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+                });
+
+                let count = entries.len();
+                for (i, entry) in entries.iter().enumerate() {
+                    if lines.len() >= max_entries {
+                        lines.push(format!("{}... (truncated at {} entries)", prefix, max_entries));
+                        return;
+                    }
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !show_hidden && name.starts_with('.') {
+                        continue;
+                    }
+                    let is_last = i == count - 1;
+                    let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251C}\u{2500}\u{2500} " };
+                    let child_prefix = if is_last { format!("{}    ", prefix) } else { format!("{}\u{2502}   ", prefix) };
+
+                    let meta = match entry.metadata() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+
+                    if meta.is_dir() {
+                        *dir_count += 1;
+                        lines.push(format!("{}{}{}/", prefix, connector, name));
+                        build_tree(&entry.path(), &child_prefix, depth + 1, max_depth, show_hidden, glob_re, lines, file_count, dir_count, total_size, max_entries);
+                    } else if meta.is_file() {
+                        // Apply glob filter on filename
+                        if let Some(ref gre) = glob_re {
+                            if !gre.is_match(&name) {
+                                continue;
+                            }
+                        }
+                        *file_count += 1;
+                        *total_size += meta.len();
+                        let size_str = if meta.len() < 1024 {
+                            format!("{} B", meta.len())
+                        } else if meta.len() < 1_048_576 {
+                            format!("{:.1} KB", meta.len() as f64 / 1024.0)
+                        } else {
+                            format!("{:.1} MB", meta.len() as f64 / 1_048_576.0)
+                        };
+                        lines.push(format!("{}{}{} ({})", prefix, connector, name, size_str));
+                    }
+                }
+            }
+
+            build_tree(base_path, "", 0, max_depth, show_hidden, &glob_re, &mut tree_lines, &mut file_count, &mut dir_count, &mut total_size, MAX_ENTRIES);
+
+            let total_human = if total_size < 1024 {
+                format!("{} B", total_size)
+            } else if total_size < 1_048_576 {
+                format!("{:.1} KB", total_size as f64 / 1024.0)
+            } else if total_size < 1_073_741_824 {
+                format!("{:.1} MB", total_size as f64 / 1_048_576.0)
+            } else {
+                format!("{:.2} GB", total_size as f64 / 1_073_741_824.0)
+            };
+
+            Ok(json!({
+                "success": true,
+                "tree": tree_lines.join("\n"),
+                "stats": {
+                    "files": file_count,
+                    "dirs": dir_count,
+                    "total_size": total_size,
+                    "total_size_human": total_human,
+                },
+                "truncated": tree_lines.len() >= MAX_ENTRIES,
+            }))
+        }
+
+        "clipboard_read" => {
+            let mut clipboard = arboard::Clipboard::new()
+                .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+            let content = clipboard.get_text()
+                .map_err(|e| format!("Failed to read clipboard: {}", e))?;
+
+            Ok(json!({
+                "success": true,
+                "content": content,
+                "length": content.len(),
+            }))
+        }
+
+        "clipboard_write" => {
+            let content = get_str(&args, "content")?;
+            let mut clipboard = arboard::Clipboard::new()
+                .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+            clipboard.set_text(&content)
+                .map_err(|e| format!("Failed to write clipboard: {}", e))?;
+
+            Ok(json!({
+                "success": true,
+                "message": format!("Copied {} characters to clipboard", content.len()),
+                "length": content.len(),
+            }))
+        }
+
+        // === APP CONTROL TOOLS ===
+
+        "set_theme" => {
+            let theme = get_str(&args, "theme")?;
+            let valid_themes = ["light", "dark", "tokyo", "cyber"];
+            if !valid_themes.contains(&theme.as_str()) {
+                return Err(format!("Invalid theme '{}'. Valid themes: {}", theme, valid_themes.join(", ")));
+            }
+            app.emit("ai-set-theme", json!({ "theme": theme }))
+                .map_err(|e| format!("Failed to emit theme event: {}", e))?;
+            Ok(json!({
+                "success": true,
+                "theme": theme,
+                "message": format!("Theme changed to '{}'", theme)
+            }))
+        }
+
+        "app_info" => {
+            let version = env!("CARGO_PKG_VERSION");
+            let os = std::env::consts::OS;
+            let arch = std::env::consts::ARCH;
+
+            let has_prov = has_provider(&state).await;
+            let has_ftp_conn = has_ftp(&app_state).await;
+
+            let mut info = json!({
+                "version": version,
+                "platform": os,
+                "arch": arch,
+                "connected": has_prov || has_ftp_conn,
+                "connection_type": if has_prov { "provider" } else if has_ftp_conn { "ftp" } else { "none" },
+            });
+
+            if let Some(ref local_path) = context_local_path {
+                info["current_local_path"] = json!(local_path);
+            }
+
+            Ok(info)
+        }
+
+        "sync_control" => {
+            let action = get_str(&args, "action")?;
+            match action.as_str() {
+                "status" => {
+                    let running = crate::BACKGROUND_SYNC_RUNNING.load(std::sync::atomic::Ordering::SeqCst);
+                    Ok(json!({
+                        "success": true,
+                        "sync_running": running,
+                        "message": if running { "Background sync is running" } else { "Background sync is not running" }
+                    }))
+                }
+                "start" => {
+                    app.emit("ai-sync-control", json!({ "action": "start" }))
+                        .map_err(|e| format!("Failed to emit sync control event: {}", e))?;
+                    Ok(json!({
+                        "success": true,
+                        "message": "Background sync start requested"
+                    }))
+                }
+                "stop" => {
+                    app.emit("ai-sync-control", json!({ "action": "stop" }))
+                        .map_err(|e| format!("Failed to emit sync control event: {}", e))?;
+                    Ok(json!({
+                        "success": true,
+                        "message": "Background sync stop requested"
+                    }))
+                }
+                _ => Err(format!("Invalid sync action '{}'. Use: start, stop, status", action))
+            }
+        }
+
+        "vault_peek" => {
+            let path = resolve_local_path(&get_str(&args, "path")?, context_local_path.as_deref());
+            validate_path(&path, "path")?;
+
+            let p = std::path::Path::new(&path);
+            if !p.exists() {
+                return Err(format!("Vault file not found: {}", path));
+            }
+            if !path.ends_with(".aerovault") {
+                return Err("File is not an AeroVault container (.aerovault)".to_string());
+            }
+
+            let info = crate::aerovault_v2::vault_v2_peek(path).await?;
+            Ok(info)
+        }
+
+        "shell_execute" => {
+            let command = get_str(&args, "command")?;
+            let working_dir = get_str_opt(&args, "working_dir");
+            let timeout_secs = args.get("timeout_secs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30)
+                .min(120);
+            let result = shell_execute(command, working_dir, Some(timeout_secs)).await?;
+            Ok(result)
         }
 
         _ => Err(format!("Tool not implemented: {}", tool_name)),

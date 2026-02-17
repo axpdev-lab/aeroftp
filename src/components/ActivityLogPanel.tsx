@@ -230,7 +230,7 @@ const THEMES = {
         cursor: 'bg-[#7aa2f7]',
     },
     cyber: {
-        // Cyberpunk - green + blue neon, NO pink
+        // Cyber - green + blue neon, NO pink
         panel: 'bg-gradient-to-b from-[#0a0e17] via-[#0d1117] to-[#0a0e17] border-t border-emerald-900/50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]',
         header: 'bg-gradient-to-r from-[#0d1117] via-[#111b27] to-[#0d1117] border-b border-emerald-900/30',
         headerText: 'text-emerald-300',

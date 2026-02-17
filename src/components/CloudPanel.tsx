@@ -77,7 +77,8 @@ const SetupWizard: React.FC<{
     const [remoteFolder, setRemoteFolder] = useState('/cloud/');
     const [serverProfile, setServerProfile] = useState('');
     const [syncOnChange, setSyncOnChange] = useState(true);
-    const [syncInterval, setSyncInterval] = useState(1440); // 24h — inotify handles realtime, interval is safety net
+    const [syncInterval, setSyncInterval] = useState(24); // 24h default
+    const [syncUnit, setSyncUnit] = useState<'hours' | 'minutes'>('hours');
     const [isLoading, setIsLoading] = useState(false);
 
     // Load default folder on mount
@@ -127,14 +128,24 @@ const SetupWizard: React.FC<{
             }
 
             // Then setup AeroCloud
+            const intervalSecs = syncUnit === 'hours' ? syncInterval * 3600 : syncInterval * 60;
             const config = await invoke<CloudConfig>('setup_aerocloud', {
                 cloudName,
                 localFolder,
                 remoteFolder,
                 serverProfile,
                 syncOnChange,
-                syncIntervalSecs: syncInterval * 60,
+                syncIntervalSecs: intervalSecs,
             });
+
+            // Auto-install badge shell extension on Linux
+            try {
+                await invoke<string>('install_shell_extension_cmd');
+                logger.debug('Badge shell extension installed automatically');
+            } catch {
+                // Non-critical: badge install may fail on non-Linux or missing Nautilus
+            }
+
             onComplete(config);
         } catch (error) {
             console.error('Setup failed:', error);
@@ -173,19 +184,20 @@ const SetupWizard: React.FC<{
                                 value={cloudName}
                                 onChange={(e) => setCloudName(e.target.value)}
                                 placeholder={t('cloud.cloudNamePlaceholder')}
+                                className="wizard-input-editable"
                             />
                         </div>
 
                         <h3 className="mt-4"><FolderOpen size={20} /> {t('cloud.localFolder')}</h3>
                         <p>{t('cloud.stepFolder')}</p>
-                        <div className="folder-input">
-                            <input
-                                type="text"
-                                value={localFolder}
-                                onChange={(e) => setLocalFolder(e.target.value)}
-                                placeholder={`${t('common.select')}...`}
-                                readOnly
-                            />
+                        <div className="flex items-center gap-2">
+                            {localFolder ? (
+                                <span className="flex-1 text-sm font-mono text-gray-300 dark:text-gray-300 truncate" title={localFolder}>
+                                    {localFolder}
+                                </span>
+                            ) : (
+                                <span className="flex-1 text-sm text-gray-500 italic">{t('cloud.noFolderSelected')}</span>
+                            )}
                             <button onClick={selectLocalFolder} className="browse-btn">
                                 <Folder size={16} /> {t('common.browse')}
                             </button>
@@ -203,6 +215,7 @@ const SetupWizard: React.FC<{
                                 value={remoteFolder}
                                 onChange={(e) => setRemoteFolder(e.target.value)}
                                 placeholder="/cloud/"
+                                className="wizard-input-editable"
                             />
                         </div>
                         <div className="server-select">
@@ -254,11 +267,27 @@ const SetupWizard: React.FC<{
                                 <input
                                     type="number"
                                     min="1"
-                                    max="60"
+                                    max={syncUnit === 'hours' ? 168 : 1440}
                                     value={syncInterval}
-                                    onChange={(e) => setSyncInterval(parseInt(e.target.value) || 5)}
+                                    onChange={(e) => setSyncInterval(Math.max(1, parseInt(e.target.value) || 1))}
                                 />
-                                <span>{t('settings.minutes')}</span>
+                                <select
+                                    value={syncUnit}
+                                    onChange={(e) => {
+                                        const newUnit = e.target.value as 'hours' | 'minutes';
+                                        // Convert value when switching units
+                                        if (newUnit === 'hours' && syncUnit === 'minutes') {
+                                            setSyncInterval(Math.max(1, Math.round(syncInterval / 60)));
+                                        } else if (newUnit === 'minutes' && syncUnit === 'hours') {
+                                            setSyncInterval(syncInterval * 60);
+                                        }
+                                        setSyncUnit(newUnit);
+                                    }}
+                                    className="interval-select"
+                                >
+                                    <option value="minutes">{t('settings.minutes')}</option>
+                                    <option value="hours">{t('cloud.hours') || 'ore'}</option>
+                                </select>
                             </div>
                         </div>
 
@@ -413,11 +442,11 @@ const CloudDashboard: React.FC<{
             )}
 
             <div className="dashboard-cards">
-                <div className="info-card">
+                <div className="info-card info-card-clickable" onClick={onOpenFolder} title={t('cloud.openFolder')}>
                     <Folder size={20} />
                     <div>
                         <span className="label">{t('cloud.localFolder')}</span>
-                        <span className="value">{config.local_folder}</span>
+                        <span className="value">{config.local_folder} <FolderOpen size={12} className="inline ml-1 opacity-50" /></span>
                     </div>
                 </div>
 
@@ -449,7 +478,12 @@ const CloudDashboard: React.FC<{
                     <Clock size={20} />
                     <div>
                         <span className="label">{t('cloud.syncInterval')}</span>
-                        <span className="value">{Math.round(config.sync_interval_secs / 60)} {t('settings.minutes')}</span>
+                        <span className="value">
+                            {config.sync_interval_secs >= 3600
+                                ? `${Math.round(config.sync_interval_secs / 3600)} ${t('cloud.hours') || 'ore'}`
+                                : `${Math.round(config.sync_interval_secs / 60)} ${t('settings.minutes')}`
+                            }
+                        </span>
                     </div>
                 </div>
             </div>
@@ -476,10 +510,6 @@ const CloudDashboard: React.FC<{
                         <Pause size={16} /> {t('cloud.pause')}
                     </button>
                 )}
-
-                <button onClick={onOpenFolder} className="btn-secondary">
-                    <FolderOpen size={16} /> {t('cloud.openFolder')}
-                </button>
 
                 <button onClick={onDisable} className="btn-danger">
                     <CloudOff size={16} /> {t('cloud.disable')}
@@ -752,15 +782,40 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                                 <input
                                     type="number"
                                     min="1"
-                                    max="60"
-                                    value={config ? Math.round(config.sync_interval_secs / 60) : 5}
-                                    onChange={e => setConfig(prev => prev ? {
-                                        ...prev,
-                                        sync_interval_secs: Math.max(1, parseInt(e.target.value) || 5) * 60
-                                    } : null)}
+                                    max={(() => {
+                                        const secs = config?.sync_interval_secs || 300;
+                                        return secs >= 3600 ? 168 : 1440;
+                                    })()}
+                                    value={(() => {
+                                        const secs = config?.sync_interval_secs || 300;
+                                        return secs >= 3600 ? Math.round(secs / 3600) : Math.round(secs / 60);
+                                    })()}
+                                    onChange={e => {
+                                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                                        const secs = config?.sync_interval_secs || 300;
+                                        const isHours = secs >= 3600;
+                                        setConfig(prev => prev ? {
+                                            ...prev,
+                                            sync_interval_secs: isHours ? val * 3600 : val * 60
+                                        } : null);
+                                    }}
                                     className="w-20 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
                                 />
-                                <span className="text-sm text-gray-500 dark:text-gray-400">{t('settings.minutes')}</span>
+                                <select
+                                    value={config && config.sync_interval_secs >= 3600 ? 'hours' : 'minutes'}
+                                    onChange={e => {
+                                        const currentSecs = config?.sync_interval_secs || 300;
+                                        const currentVal = currentSecs >= 3600 ? Math.round(currentSecs / 3600) : Math.round(currentSecs / 60);
+                                        setConfig(prev => prev ? {
+                                            ...prev,
+                                            sync_interval_secs: e.target.value === 'hours' ? currentVal * 3600 : currentVal * 60
+                                        } : null);
+                                    }}
+                                    className="px-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                >
+                                    <option value="minutes">{t('settings.minutes')}</option>
+                                    <option value="hours">{t('cloud.hours') || 'ore'}</option>
+                                </select>
                             </div>
                             <p className="text-xs text-gray-400 mt-1">{t('cloud.syncIntervalDesc')}</p>
                         </div>
@@ -802,6 +857,15 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                                     if (config) {
                                         try {
                                             await invoke('save_cloud_config_cmd', { config });
+                                            // Sync interval to SyncSchedule so the background worker uses the correct value
+                                            try {
+                                                const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
+                                                if (schedule) {
+                                                    await invoke('save_sync_schedule_cmd', {
+                                                        schedule: { ...schedule, interval_secs: config.sync_interval_secs }
+                                                    });
+                                                }
+                                            } catch { /* scheduler may not be initialized yet */ }
                                             setShowSettings(false);
                                             logger.debug('Settings saved!');
                                         } catch (e) {

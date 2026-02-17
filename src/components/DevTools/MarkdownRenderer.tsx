@@ -96,11 +96,13 @@ interface ContentSegment {
 /** Split content into alternating markdown text and TOOL/ARGS blocks */
 function splitContent(text: string): ContentSegment[] {
     const segments: ContentSegment[] = [];
+    // Strip code fences before parsing to avoid matching TOOL/ARGS examples inside code blocks
+    const stripped = text.replace(/```[\s\S]*?```/g, (m) => ' '.repeat(m.length));
     const toolPattern = /TOOL:\s*(\w+)\s*\n\s*ARGS:\s*/gi;
     let lastIndex = 0;
     let match;
 
-    while ((match = toolPattern.exec(text)) !== null) {
+    while ((match = toolPattern.exec(stripped)) !== null) {
         // Add markdown text before this tool block
         if (match.index > lastIndex) {
             const md = text.slice(lastIndex, match.index).trim();

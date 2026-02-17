@@ -271,12 +271,6 @@ impl SyncSchedule {
         Some(secs_until_window + interval_remaining)
     }
 
-    /// `DateTime<Local>` of the next sync opportunity.
-    pub fn next_sync_at(&self) -> Option<DateTime<Local>> {
-        self.next_sync_in()
-            .map(|secs| Local::now() + chrono::Duration::seconds(secs as i64))
-    }
-
     /// Check whether the current local time is inside the configured time
     /// window. Returns `true` when no window is set (always allowed).
     pub fn is_in_time_window(&self) -> bool {
@@ -715,23 +709,6 @@ mod tests {
             last_sync: None,
         };
         assert!(!s2.should_sync_now());
-    }
-
-    #[test]
-    fn test_next_sync_at_returns_future() {
-        let s = SyncSchedule {
-            enabled: true,
-            interval_secs: 300,
-            time_window: None,
-            paused: false,
-            last_sync: Some(Utc::now() - chrono::Duration::seconds(100)),
-        };
-
-        let next = s.next_sync_at();
-        assert!(next.is_some());
-        let dt = next.unwrap();
-        // The returned time should be in the future (or very close to now)
-        assert!(dt >= Local::now() - chrono::Duration::seconds(1));
     }
 
     #[test]

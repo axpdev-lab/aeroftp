@@ -555,6 +555,52 @@ tbody tr:hover .lucide-file-text {
   transform: scale(1.1);
 }
 
+/* Blinking cursor for typewriter effects */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Expert Mode flowing gradient */
+@keyframes expert-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.expert-active-bg {
+  background: linear-gradient(
+    270deg,
+    rgba(245, 158, 11, 0.12),
+    rgba(217, 119, 6, 0.22),
+    rgba(180, 83, 9, 0.12),
+    rgba(245, 158, 11, 0.22),
+    rgba(217, 119, 6, 0.12)
+  );
+  background-size: 300% 100%;
+  animation: expert-flow 4s ease infinite;
+}
+
+/* Extreme Mode flowing gradient */
+@keyframes extreme-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.extreme-active-bg {
+  background: linear-gradient(
+    270deg,
+    rgba(239, 68, 68, 0.15),
+    rgba(220, 38, 38, 0.25),
+    rgba(185, 28, 28, 0.15),
+    rgba(239, 68, 68, 0.25),
+    rgba(220, 38, 38, 0.15)
+  );
+  background-size: 300% 100%;
+  animation: extreme-flow 3s ease infinite;
+}
+
 /* Selection highlight pulse */
 @keyframes selection-pulse {
 
@@ -1274,7 +1320,7 @@ html.tokyo::-webkit-scrollbar-thumb:hover {
 }
 
 /* ======================================
-   Cyberpunk Theme
+   Cyber Theme
    Green + Blue neon on deep dark base
    ====================================== */
 
@@ -1295,7 +1341,7 @@ html.cyber {
   --cyber-border: rgba(16, 185, 129, 0.25);
 }
 
-/* Cyberpunk - Override dark mode colors */
+/* Cyber - Override dark mode colors */
 html.cyber.dark {
   --color-bg-primary: var(--cyber-bg);
   --color-bg-secondary: var(--cyber-bg-dark);
@@ -1308,7 +1354,7 @@ html.cyber.dark {
   --color-border: var(--cyber-border);
 }
 
-/* Cyberpunk specific styling */
+/* Cyber specific styling */
 html.cyber .dark\:bg-gray-900 {
   background-color: var(--cyber-bg) !important;
 }
@@ -1336,7 +1382,7 @@ html.cyber .dark\:text-gray-300 {
   color: var(--cyber-fg-secondary) !important;
 }
 
-/* Cyberpunk accents */
+/* Cyber accents */
 html.cyber .text-blue-500,
 html.cyber .dark\:text-blue-400 {
   color: var(--cyber-cyan) !important;
@@ -1352,12 +1398,12 @@ html.cyber .hover\:bg-blue-600:hover {
   background-color: var(--cyber-green) !important;
 }
 
-/* Cyberpunk folder icons */
+/* Cyber folder icons */
 html.cyber .text-yellow-500 {
   color: var(--cyber-amber) !important;
 }
 
-/* Cyberpunk success/error colors */
+/* Cyber success/error colors */
 html.cyber .text-green-500,
 html.cyber .text-green-600 {
   color: var(--cyber-green-dim) !important;
@@ -1368,7 +1414,7 @@ html.cyber .text-red-600 {
   color: var(--cyber-red) !important;
 }
 
-/* Cyberpunk gradient override for header */
+/* Cyber gradient override for header */
 html.cyber .dark\:from-gray-900 {
   --tw-gradient-from: var(--cyber-bg) !important;
 }
@@ -1377,7 +1423,56 @@ html.cyber .dark\:to-gray-800 {
   --tw-gradient-to: var(--cyber-bg-dark) !important;
 }
 
-/* Cyberpunk scrollbar */
+/* =========================================================
+   Tool Approval — Theme-aware button
+   ========================================================= */
+
+/* Default dark: purple accent (matches AI Settings) */
+.tool-approval-allow {
+  background-color: rgba(124, 58, 237, 0.7);
+  color: #fff;
+}
+.tool-approval-allow:hover {
+  background-color: rgba(124, 58, 237, 0.9);
+}
+
+/* Light mode: blue like VS Code */
+:root:not(.dark) .tool-approval-allow {
+  background-color: #0078d4;
+  color: #fff;
+}
+:root:not(.dark) .tool-approval-allow:hover {
+  background-color: #106ebe;
+}
+
+:root:not(.dark) .tool-approval-bubble {
+  background-color: #f3f4f6 !important;
+  border-color: #e5e7eb !important;
+}
+
+/* Tokyo Night: purple */
+html.tokyo .tool-approval-allow {
+  background-color: var(--tokyo-purple);
+  color: #fff;
+}
+html.tokyo .tool-approval-allow:hover {
+  background-color: var(--tokyo-magenta);
+}
+
+/* Cyber: green neon */
+html.cyber .tool-approval-allow {
+  background-color: var(--cyber-green-dim);
+  color: #000;
+}
+html.cyber .tool-approval-allow:hover {
+  background-color: var(--cyber-green);
+}
+
+html.cyber .tool-approval-bubble {
+  border-color: var(--cyber-border) !important;
+}
+
+/* Cyber scrollbar */
 html.cyber::-webkit-scrollbar-track {
   background: var(--cyber-bg-dark);
 }
@@ -1388,4 +1483,91 @@ html.cyber::-webkit-scrollbar-thumb {
 
 html.cyber::-webkit-scrollbar-thumb:hover {
   background: rgba(16, 185, 129, 0.5);
+}
+
+/* =========================================================
+   MARKDOWN RENDERER — LIGHT MODE
+   Chat messages use hardcoded dark classes; override for light.
+   Code blocks keep dark background (industry convention).
+   ========================================================= */
+
+:root:not(.dark) .markdown-renderer {
+  color: #374151 !important; /* gray-700 — main body text */
+}
+
+:root:not(.dark) .markdown-renderer h1,
+:root:not(.dark) .markdown-renderer h2,
+:root:not(.dark) .markdown-renderer h3 {
+  color: #111827 !important; /* gray-900 */
+}
+
+:root:not(.dark) .markdown-renderer h4 {
+  color: #1f2937 !important; /* gray-800 */
+}
+
+:root:not(.dark) .markdown-renderer li {
+  color: #374151 !important; /* gray-700 */
+}
+
+:root:not(.dark) .markdown-renderer strong {
+  color: #111827 !important; /* gray-900 */
+}
+
+:root:not(.dark) .markdown-renderer blockquote {
+  color: #6b7280 !important; /* gray-500 */
+  border-left-color: #8b5cf6 !important; /* purple-500 stays */
+}
+
+:root:not(.dark) .markdown-renderer a {
+  color: #7c3aed !important; /* purple-600 — more visible on light bg */
+}
+
+:root:not(.dark) .markdown-renderer a:hover {
+  color: #6d28d9 !important; /* purple-700 */
+}
+
+:root:not(.dark) .markdown-renderer table {
+  border-color: #d1d5db !important; /* gray-300 */
+}
+
+:root:not(.dark) .markdown-renderer th {
+  border-color: #d1d5db !important;
+  background-color: #f3f4f6 !important; /* gray-100 */
+  color: #111827 !important;
+}
+
+:root:not(.dark) .markdown-renderer td {
+  border-color: #d1d5db !important;
+  color: #374151 !important;
+}
+
+:root:not(.dark) .markdown-renderer hr {
+  border-color: #d1d5db !important;
+}
+
+/* Light: inline code — purple on soft violet bg */
+:root:not(.dark) .markdown-renderer .bg-gray-700 {
+  background-color: #ede9fe !important; /* violet-100 */
+}
+
+:root:not(.dark) .markdown-renderer .text-purple-300 {
+  color: #7c3aed !important; /* purple-600 */
+}
+
+/* Tokyo Night: inline code */
+html.tokyo .markdown-renderer .bg-gray-700 {
+  background-color: var(--tokyo-bg-highlight) !important;
+}
+
+html.tokyo .markdown-renderer .text-purple-300 {
+  color: var(--tokyo-purple) !important;
+}
+
+/* Cyber: inline code */
+html.cyber .markdown-renderer .bg-gray-700 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+html.cyber .markdown-renderer .text-purple-300 {
+  color: var(--cyber-cyan) !important;
 }

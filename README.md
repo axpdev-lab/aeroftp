@@ -41,7 +41,7 @@ AeroFTP
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
 ├── AeroTools    — Code editor + Terminal + AI chat
-│   └── AeroAgent    — AI-powered assistant (28 tools, 10 providers)
+│   └── AeroAgent    — AI-powered assistant (45 tools, 10 providers)
 └── AeroPlayer   — Media player with visualizers
 ```
 
@@ -215,9 +215,9 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 ## Additional Features
 
 ### 4 Themes
-Light, Dark, Tokyo Night, and Cyberpunk — with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
+Light, Dark, Tokyo Night, and Cyber — with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
 
-### Security Toolkit (Cyberpunk theme)
+### Security Toolkit (Cyber theme)
 Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCha20-Poly1305 encrypt/decrypt), Password Forge (CSPRNG + BIP39 passphrase generator with entropy display).
 
 ### 47 Languages at 100% Coverage

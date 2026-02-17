@@ -113,11 +113,6 @@ impl SftpProvider {
         }
     }
 
-    /// Enable or disable SSH compression for this provider
-    pub fn set_compression(&mut self, enabled: bool) {
-        self.compression_enabled = enabled;
-    }
-
     /// Normalize path (ensure absolute)
     fn normalize_path(&self, path: &str) -> String {
         if path.starts_with('/') {

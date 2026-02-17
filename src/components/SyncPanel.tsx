@@ -688,6 +688,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 remote_info: e.action === 'download'
                     ? { name: e.relative_path.split('/').pop() || '', path: e.relative_path, size: e.bytes_transferred || 0, modified: null, is_dir: false, checksum: null }
                     : null,
+                sync_reason: e.action === 'upload' ? 'Resumed from journal (upload)' : 'Resumed from journal (download)',
             }));
         } else {
             selectedComparisons = comparisons.filter(c => selectedPaths.has(c.relative_path) && !c.is_dir);
@@ -1655,6 +1656,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                     className={`sync-row ${selectedPaths.has(comparison.relative_path) ? 'selected' : ''} ${result === 'success' ? 'sync-row-success' : result === 'error' || result === 'verify_failed' ? 'sync-row-error' : ''} ${comparison.is_dir ? 'sync-row-dir' : ''}`}
                                                     onClick={() => !isSyncing && !comparison.is_dir && toggleSelection(comparison.relative_path)}
                                                     style={{ height: VIRTUAL_ROW_HEIGHT, boxSizing: 'border-box' }}
+                                                    title={comparison.sync_reason}
                                                 >
                                                     <div className="sync-col-check">
                                                         {!comparison.is_dir ? (
@@ -1669,13 +1671,20 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                             <span className="text-gray-500 text-xs">&mdash;</span>
                                                         )}
                                                     </div>
-                                                    <div className="sync-col-status" style={{ color: statusCfg.color }}>
+                                                    <div className="sync-col-status" style={{ color: statusCfg.color }} title={comparison.sync_reason}>
                                                         <StatusIcon size={14} />
                                                         <span className="status-label">{getStatusLabel(comparison.status)}</span>
                                                     </div>
                                                     <div className="sync-col-file">
-                                                        {comparison.is_dir ? <Folder size={14} className="inline mr-1" /> : <File size={14} className="inline mr-1" />}
-                                                        {comparison.relative_path}
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="truncate">
+                                                                {comparison.is_dir ? <Folder size={14} className="inline mr-1" /> : <File size={14} className="inline mr-1" />}
+                                                                {comparison.relative_path}
+                                                            </span>
+                                                            {comparison.sync_reason && comparison.status !== 'identical' && (
+                                                                <span className="sync-reason-text">{comparison.sync_reason}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <div className="sync-col-result">
                                                         {resultIcon}

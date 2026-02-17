@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { Sparkles, PanelLeftClose, PanelLeftOpen, Plus, Download, Settings2 } from 'lucide-react';
+import { Sparkles, PanelLeftClose, PanelLeftOpen, Plus, Download, Settings2, Zap, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { EffectiveTheme } from '../../hooks/useTheme';
+import type { AgentMode } from './aiChatTypes';
 
 interface AIChatHeaderProps {
     showHistory: boolean;
@@ -13,12 +14,16 @@ interface AIChatHeaderProps {
     onOpenSettings: () => void;
     hasMessages: boolean;
     appTheme?: EffectiveTheme;
+    agentMode?: AgentMode;
+    onSetAgentMode?: (mode: AgentMode) => void;
+    onExtremeWarning?: () => void;
 }
 
 export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
     showHistory, onToggleHistory, onNewChat,
     showExportMenu, onToggleExportMenu, onExport,
     onOpenSettings, hasMessages, appTheme = 'dark',
+    agentMode = 'normal', onSetAgentMode, onExtremeWarning,
 }) => {
     const t = useTranslation();
 
@@ -59,6 +64,47 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
         }
     }, [appTheme]);
 
+    const modeBadge = useMemo(() => {
+        switch (agentMode) {
+            case 'safe':
+                return (
+                    <button
+                        onClick={onOpenSettings}
+                        className="flex items-center gap-1 px-2 py-1 mr-1 rounded border border-teal-500/40 bg-teal-500/10 text-teal-400 text-[10px] font-bold cursor-pointer transition-all hover:bg-teal-500/20 hover:border-teal-500/60"
+                        title={t('ai.agentMode.safe')}
+                    >
+                        <ShieldCheck size={10} className="shrink-0" />
+                        <span className="tracking-wider uppercase">Safe</span>
+                    </button>
+                );
+            case 'expert':
+                return (
+                    <button
+                        onClick={onOpenSettings}
+                        className="expert-active-bg flex items-center gap-1 px-2 py-1 mr-1 rounded border border-amber-500/40 text-amber-400 text-[10px] font-bold cursor-pointer transition-all hover:border-amber-500/60 shadow-[0_0_8px_rgba(245,158,11,0.15)]"
+                        title={t('ai.agentMode.expert')}
+                    >
+                        <Zap size={10} className="shrink-0" />
+                        <span className="tracking-wider uppercase">Expert</span>
+                    </button>
+                );
+            case 'extreme':
+                if (appTheme !== 'cyber') return null;
+                return (
+                    <button
+                        onClick={onExtremeWarning}
+                        className="extreme-active-bg flex items-center gap-1 px-2 py-1 mr-1 rounded border border-red-500/40 text-red-400 text-[10px] font-bold cursor-pointer transition-all hover:border-red-500/60 shadow-[0_0_8px_rgba(239,68,68,0.15)]"
+                        title={t('ai.extremeMode.title')}
+                    >
+                        <Zap size={10} className="shrink-0" />
+                        <span className="tracking-wider uppercase">Extreme</span>
+                    </button>
+                );
+            default: // normal — no badge
+                return null;
+        }
+    }, [agentMode, appTheme, onOpenSettings, onExtremeWarning, t]);
+
     return (
         <div className={`flex items-center justify-between px-4 py-2 ${styles.headerBg} border-b`}>
             {/* left side */}
@@ -71,6 +117,7 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
             </div>
             {/* right side */}
             <div className="flex items-center gap-1">
+                {modeBadge}
                 <button onClick={onNewChat} className={`p-1.5 ${styles.btn} rounded transition-colors`} title={t('ai.newChat')}>
                     <Plus size={14} />
                 </button>

@@ -383,14 +383,14 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 </button>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto bg-gray-900 rounded-lg p-2 font-mono text-[11px] leading-relaxed">
+                        <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 rounded-lg p-2 font-mono text-[11px] leading-relaxed">
                             {logs
                                 .filter(l => logFilter === 'ALL' || l.level === logFilter)
                                 .map(l => (
-                                    <div key={l.id} className="flex gap-2 hover:bg-gray-800/50">
-                                        <span className="text-gray-600 shrink-0">{l.timestamp}</span>
+                                    <div key={l.id} className="flex gap-2 hover:bg-gray-200/50 dark:hover:bg-gray-800/50">
+                                        <span className="text-gray-500 dark:text-gray-600 shrink-0">{l.timestamp}</span>
                                         <span className={`shrink-0 w-12 text-right ${levelColor[l.level]}`}>{l.level}</span>
-                                        <span className="text-gray-300 break-all">{l.message}</span>
+                                        <span className="text-gray-700 dark:text-gray-300 break-all">{l.message}</span>
                                     </div>
                                 ))}
                             <div ref={logEndRef} />

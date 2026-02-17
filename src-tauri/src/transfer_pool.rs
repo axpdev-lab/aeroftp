@@ -1,5 +1,6 @@
 // AeroSync Parallel Transfer Pool
 // Semaphore-bounded parallel transfer engine with compression support
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

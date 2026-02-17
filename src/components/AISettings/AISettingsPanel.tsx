@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TransferProgressBar } from '../TransferProgressBar';
 import {
-    X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert,
+    X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield,
     Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers,
     Eye, EyeOff, List
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import {
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
 } from '../../types/ai';
 import { logger } from '../../utils/logger';
+import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
@@ -254,6 +255,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [plugins, setPlugins] = useState<PluginManifest[]>([]);
     const t = useTranslation();
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Agent mode state (synced with localStorage)
+    const [selectedAgentMode, setSelectedAgentMode] = useState<string>(() => {
+        try {
+            return localStorage.getItem('aeroftp_ai_agent_mode') || 'normal';
+        } catch { return 'normal'; }
+    });
 
     // Clear debounced save on unmount
     useEffect(() => {
@@ -650,10 +658,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-4">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-            <div className="relative bg-gray-900 text-gray-100 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
                     <div className="flex items-center gap-3">
@@ -803,13 +811,15 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             <div className="flex-1 relative">
                                                                 <input
                                                                     type={showApiKey[provider.id] ? 'text' : 'password'}
-                                                                    value={provider.apiKey || ''}
-                                                                    onChange={e => updateProvider({
-                                                                        ...provider,
-                                                                        apiKey: e.target.value
-                                                                    })}
-                                                                    placeholder={provider.type === 'ollama' ? t('ai.settings.notRequiredOllama') : t('ai.settings.enterApiKey')}
-                                                                    className="w-full px-3 py-2 pr-9 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                                                    value={provider.type === 'ollama' ? 'ollama' : (provider.apiKey || '')}
+                                                                    onChange={e => {
+                                                                        if (provider.type !== 'ollama') {
+                                                                            updateProvider({ ...provider, apiKey: e.target.value });
+                                                                        }
+                                                                    }}
+                                                                    disabled={provider.type === 'ollama'}
+                                                                    placeholder={provider.type === 'ollama' ? 'ollama' : t('ai.settings.enterApiKey')}
+                                                                    className={`w-full px-3 py-2 pr-9 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 ${provider.type === 'ollama' ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                                 />
                                                                 <button
                                                                     type="button"
@@ -1033,7 +1043,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                                                             {/* Model Info */}
                                                             <div className="flex-1">
-                                                                <div className="font-mono text-sm text-white">{model.name}</div>
+                                                                <div className="font-mono text-sm text-gray-100">{model.name}</div>
                                                                 <div className="text-xs text-gray-400">{model.displayName}</div>
                                                             </div>
 
@@ -1232,6 +1242,66 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         <div className="space-y-6">
                             <div className="text-sm text-gray-400 mb-4">
                                 {t('ai.settings.advancedDescription')}
+                            </div>
+
+                            {/* Agent Mode */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-1">
+                                    {t('ai.agentMode.title')}
+                                </h4>
+                                <p className="text-xs text-gray-500 mb-3">
+                                    {t('ai.agentMode.description')}
+                                </p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {(document.documentElement.classList.contains('cyber')
+                                        ? (['safe', 'normal', 'expert', 'extreme'] as const)
+                                        : (['safe', 'normal', 'expert'] as const)
+                                    ).map((mode) => {
+                                        const isSelected = selectedAgentMode === mode;
+                                        const icons: Record<string, React.ReactNode> = {
+                                            safe: <ShieldCheck size={18} />,
+                                            normal: <Shield size={18} />,
+                                            expert: <Zap size={18} />,
+                                            extreme: <Zap size={18} />,
+                                        };
+                                        const colors: Record<string, { icon: string; border: string; bg: string; ring: string }> = {
+                                            safe: { icon: 'text-teal-400', border: 'border-teal-400', bg: 'bg-teal-600/10', ring: 'ring-teal-500/30' },
+                                            normal: { icon: 'text-purple-400', border: 'border-purple-400', bg: 'bg-purple-600/10', ring: 'ring-purple-500/30' },
+                                            expert: { icon: 'text-amber-400', border: 'border-amber-400', bg: 'bg-amber-600/10', ring: 'ring-amber-500/30' },
+                                            extreme: { icon: 'text-red-400', border: 'border-red-400', bg: 'bg-red-600/10', ring: 'ring-red-500/30' },
+                                        };
+                                        const labels: Record<string, { name: string; desc: string }> = {
+                                            safe: { name: t('ai.agentMode.safe'), desc: t('ai.agentMode.safeDesc') },
+                                            normal: { name: t('ai.agentMode.normal'), desc: t('ai.agentMode.normalDesc') },
+                                            expert: { name: t('ai.agentMode.expert'), desc: t('ai.agentMode.expertDesc') },
+                                            extreme: { name: t('ai.agentMode.extreme'), desc: t('ai.agentMode.extremeDesc') },
+                                        };
+                                        const info = labels[mode];
+                                        const col = colors[mode];
+                                        return (
+                                            <button
+                                                key={mode}
+                                                onClick={() => {
+                                                    setSelectedAgentMode(mode);
+                                                    localStorage.setItem('aeroftp_ai_agent_mode', mode);
+                                                    localStorage.removeItem('aeroftp_ai_approval_profile');
+                                                    localStorage.removeItem('aeroftp_ai_extreme_mode');
+                                                    window.dispatchEvent(new CustomEvent('agent-mode-changed', { detail: mode }));
+                                                }}
+                                                className={`agent-mode-card p-3 rounded-lg border text-left transition-all ${
+                                                    isSelected
+                                                        ? `${col.border} ${col.bg} ring-1 ${col.ring}`
+                                                        : 'border-gray-700 hover:border-gray-600'
+                                                }`}
+                                                data-mode={mode}
+                                            >
+                                                <div className={`${col.icon} mb-1`}>{icons[mode]}</div>
+                                                <div className="font-medium text-sm text-white">{info.name}</div>
+                                                <div className="text-xs text-gray-500 mt-1">{info.desc}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             {/* Conversation Style */}
@@ -1461,32 +1531,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </p>
                             </div>
 
-                            {/* Extreme Mode — Cyber theme only */}
-                            {document.documentElement.getAttribute('data-theme') === 'cyber' && (
-                                <div className="bg-red-950/30 border border-red-800/50 rounded-lg p-4">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <ShieldAlert size={16} className="text-red-400" />
-                                        <h4 className="text-sm font-medium text-red-400">{t('ai.extremeMode.title')}</h4>
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 mb-3">
-                                        {t('ai.extremeMode.description')}
-                                    </p>
-                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={localStorage.getItem('aeroftp_ai_extreme_mode') === 'true'}
-                                            onChange={(e) => {
-                                                localStorage.setItem('aeroftp_ai_extreme_mode', e.target.checked ? 'true' : 'false');
-                                            }}
-                                            className="rounded border-red-600 bg-gray-900 text-red-500 focus:ring-red-500"
-                                        />
-                                        <span className="text-red-300 font-medium">{t('ai.extremeMode.enable')}</span>
-                                    </label>
-                                    <p className="text-[10px] text-red-400/60 mt-2 italic">
-                                        {t('ai.extremeMode.warning')}
-                                    </p>
-                                </div>
-                            )}
                         </div>
                     )}
 

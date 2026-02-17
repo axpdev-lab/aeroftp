@@ -18,7 +18,7 @@ const CherryBlossomIcon: React.FC<{ size?: number; className?: string }> = ({ si
     </svg>
 );
 
-/** Hacker icon (neon green) — cyberpunk theme */
+/** Hacker icon (neon green) — cyber theme */
 const HackerIcon: React.FC<{ size?: number; className?: string }> = ({ size = 18, className }) => (
     <svg viewBox="0 0 100 100" width={size} height={size} fill="currentColor" className={className}>
         <path d="M73.142 41.007c0-.084.003-.166.003-.25 0-14.843-6.384-26.875-14.259-26.875-2.438 0-4.733 1.156-6.739 3.191a2.997 2.997 0 01-4.294 0c-2.007-2.035-4.301-3.191-6.739-3.191-7.875 0-14.26 12.032-14.26 26.875 0 .084.003.166.003.25C15.209 44.052 7.5 49.325 7.5 55.324 7.5 64.752 26.528 69.8 50 69.8s42.5-5.047 42.5-14.476c0-5.999-7.709-11.272-19.358-14.317z"/>

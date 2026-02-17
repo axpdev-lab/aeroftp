@@ -5399,7 +5399,7 @@ async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String,
 use std::time::Duration;
 
 // Global flag to control background sync
-static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+pub(crate) static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Background sync worker — `tokio::select!` event loop
 ///
@@ -5465,7 +5465,12 @@ async fn background_sync_worker(app: AppHandle) {
         // Determine trigger source for this cycle
         let trigger: transfer_pool::SyncTrigger = if is_first_run {
             is_first_run = false;
-            transfer_pool::SyncTrigger::Manual // First run = immediate sync
+            // Only sync on startup if explicitly configured
+            if config.sync_on_startup {
+                transfer_pool::SyncTrigger::Manual
+            } else {
+                continue; // Skip first run, wait for normal interval
+            }
         } else {
             // Load scheduler state
             let schedule = sync_scheduler::load_sync_schedule();
@@ -6563,6 +6568,7 @@ pub fn run() {
             ai_execute_tool,
             ai_tools::validate_tool_args,
             ai_tools::execute_ai_tool,
+            ai_tools::shell_execute,
             // Context Intelligence commands
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,

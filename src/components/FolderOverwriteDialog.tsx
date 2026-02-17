@@ -34,6 +34,14 @@ export const FolderOverwriteDialog: React.FC<FolderOverwriteDialogProps> = ({
         if (isOpen) setApplyToAll(false);
     }, [isOpen]);
 
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    React.useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const handleCancel = () => {

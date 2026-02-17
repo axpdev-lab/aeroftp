@@ -44,6 +44,14 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
 }) => {
   const t = useTranslation();
 
+  // Hide scrollbars when dialog is open (WebKitGTK fix)
+  useEffect(() => {
+    if (isOpen) {
+      document.documentElement.classList.add('modal-open');
+      return () => { document.documentElement.classList.remove('modal-open'); };
+    }
+  }, [isOpen]);
+
   // State
   const [mode, setMode] = useState<RenameMode>('findReplace');
   const [findText, setFindText] = useState('');

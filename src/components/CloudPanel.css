@@ -193,6 +193,17 @@
   border-color: var(--accent-primary);
 }
 
+/* Editable input with visible border — distinguishes from background */
+.wizard-input-editable {
+  background: var(--bg-primary) !important;
+  border: 1.5px solid var(--accent-primary) !important;
+  border-radius: 8px;
+}
+
+.wizard-input-editable:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
 .browse-btn {
   display: flex;
   align-items: center;
@@ -540,6 +551,28 @@
   font-size: 0.875rem;
   color: var(--text-primary);
   word-break: break-all;
+}
+
+/* Clickable info card (e.g. local folder → opens file manager) */
+.info-card-clickable {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.info-card-clickable:hover {
+  border-color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* Interval select in wizard */
+.interval-select {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
 }
 
 /* Dashboard Actions */

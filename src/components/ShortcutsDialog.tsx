@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
@@ -44,6 +45,14 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
             ]
         },
     ];
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 

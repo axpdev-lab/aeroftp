@@ -133,13 +133,6 @@ impl SyncStateTracker {
         }
     }
 
-    /// Unregister a sync root and clear all states under it
-    fn remove_sync_root(&mut self, root: &Path) {
-        self.sync_roots.retain(|r| r != root);
-        self.states.retain(|path, _| !path.starts_with(root));
-        self.access_order.retain(|path| !path.starts_with(root));
-    }
-
     /// Clear all tracked states
     fn clear_all(&mut self) {
         self.states.clear();
@@ -691,20 +684,6 @@ pub async fn register_sync_root(path: PathBuf) {
     }
 }
 
-/// Unregister a sync root
-pub async fn unregister_sync_root(path: &Path) {
-    {
-        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-        tracker.remove_sync_root(path);
-    }
-
-    #[cfg(windows)]
-    {
-        if let Err(e) = crate::cloud_filter_badge::unregister_cloud_sync_root(path) {
-            warn!("Cloud Filter deregistration failed for {:?}: {}", path, e);
-        }
-    }
-}
 
 /// Clear all tracked states
 pub async fn clear_all_states() {

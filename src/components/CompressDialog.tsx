@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes as formatSize } from '../utils/formatters';
@@ -77,6 +77,12 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [compressing, setCompressing] = useState(false);
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        document.documentElement.classList.add('modal-open');
+        return () => { document.documentElement.classList.remove('modal-open'); };
+    }, []);
 
     const formatInfo = FORMAT_OPTIONS.find(f => f.value === format)!;
     const levels = LEVEL_OPTIONS[format] || [];

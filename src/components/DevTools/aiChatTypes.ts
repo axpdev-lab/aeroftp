@@ -1,6 +1,17 @@
 import { AIProviderType } from '../../types/ai';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 
+/** Agent autonomy mode: safe → normal → expert → extreme */
+export type AgentMode = 'safe' | 'normal' | 'expert' | 'extreme';
+
+/** Max multi-step iterations per agent mode */
+export const AGENT_MODE_MAX_STEPS: Record<AgentMode, number> = {
+    safe: 5,
+    normal: 10,
+    expert: 25,
+    extreme: 50,
+};
+
 // Vision constants
 export const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
 export const MAX_IMAGES = 5;
@@ -22,6 +33,7 @@ export interface Message {
     thinking?: string;
     thinkingDuration?: number;
     webSearchUsed?: boolean;
+    toolName?: string;
     modelInfo?: {
         modelName: string;
         providerName: string;

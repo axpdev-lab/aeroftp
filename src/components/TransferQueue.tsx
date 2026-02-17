@@ -84,7 +84,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
     const adjustedX = Math.min(x, window.innerWidth - 200);
     const adjustedY = Math.min(y, window.innerHeight - 150);
 
-    const menuItem = (icon: React.ReactNode, label: string, onClick: () => void, className = 'text-gray-300 hover:bg-gray-700') => (
+    const menuItem = (icon: React.ReactNode, label: string, onClick: () => void, className = 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700') => (
         <button
             className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs ${className} transition-colors`}
             onClick={() => { onClick(); onClose(); }}
@@ -106,7 +106,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
     return (
         <div
             ref={menuRef}
-            className="fixed z-[200] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+            className="fixed z-[200] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
             style={{ left: adjustedX, top: adjustedY }}
         >
             {menuItem(<Copy size={12} />, t('transfer.copy'), copyItemDetails)}
@@ -119,7 +119,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
                 })
             )}
             {onRemove && item.status !== 'transferring' && (
-                menuItem(<Trash2 size={12} />, t('transfer.remove'), () => onRemove(item.id), 'text-gray-300 hover:bg-red-900/40 hover:text-red-300')
+                menuItem(<Trash2 size={12} />, t('transfer.remove'), () => onRemove(item.id), 'text-gray-700 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-300')
             )}
         </div>
     );
@@ -163,7 +163,7 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
 
     const menuItem = (icon: React.ReactNode, label: string, onClick: () => void, disabled: boolean, className = '') => (
         <button
-            className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors ${disabled ? 'text-gray-600 cursor-not-allowed' : `text-gray-300 hover:bg-gray-700 ${className}`}`}
+            className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors ${disabled ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : `text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 ${className}`}`}
             onClick={() => { if (!disabled) { onClick(); setIsOpen(false); } }}
             disabled={disabled}
         >
@@ -176,12 +176,12 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
             <button
                 ref={buttonRef}
                 onClick={handleToggle}
-                className="text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-0.5"
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5"
             >
                 <ChevronDown size={14} />
             </button>
             {isOpen && (
-                <div ref={dropdownRef} className="fixed bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[170px] z-[200]"
+                <div ref={dropdownRef} className="fixed bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-[170px] z-[200]"
                     style={{ top: pos.top, right: pos.right }}
                 >
                     {onClearCompleted && menuItem(<Check size={12} />, t('transfer.clearCompleted'), onClearCompleted, !hasCompleted)}
@@ -245,10 +245,10 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
     return (
         <>
-            <div className="fixed bottom-12 right-6 z-40 w-[33rem] max-h-[28rem] flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
+            <div className="fixed bottom-12 right-6 z-40 w-[33rem] max-h-[28rem] flex flex-col bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
                 {/* Header - Terminal Style */}
                 <div
-                    className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer select-none"
+                    className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 cursor-pointer select-none"
                     onClick={onToggle}
                 >
                     <div className="flex items-center gap-2">
@@ -256,8 +256,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             ? <Upload size={14} className="text-cyan-400" />
                             : <Download size={14} className="text-orange-400" />
                         }
-                        <span className="text-gray-300 font-medium">{t('transfer.queue')}</span>
-                        <span className="text-gray-500">
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">{t('transfer.queue')}</span>
+                        <span className="text-gray-500 dark:text-gray-500">
                             [{completedCount}/{items.length}]
                         </span>
                     </div>
@@ -269,19 +269,19 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             </span>
                         )}
                         {pendingCount > 0 && (
-                            <span className="text-gray-400">{pendingCount} {t('transfer.pending')}</span>
+                            <span className="text-gray-500 dark:text-gray-400">{pendingCount} {t('transfer.pending')}</span>
                         )}
                         {errorCount > 0 && (
                             <span className="text-red-400">{errorCount} {t('transfer.failed')}</span>
                         )}
 
                         {/* Quick action buttons */}
-                        <div className="flex items-center gap-0.5 ml-1 border-l border-gray-700 pl-2">
+                        <div className="flex items-center gap-0.5 ml-1 border-l border-gray-300 dark:border-gray-700 pl-2">
                             {onClearCompleted && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onClearCompleted(); }}
                                     disabled={completedCount === 0}
-                                    className={`p-1 rounded transition-colors ${completedCount > 0 ? 'text-gray-400 hover:text-green-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
+                                    className={`p-1 rounded transition-colors ${completedCount > 0 ? 'text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-gray-700' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}
                                     title={t('transfer.clearCompleted')}
                                 >
                                     <Check size={13} />
@@ -296,7 +296,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                             ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 animate-pulse'
                                             : (transferringCount > 0 || pendingCount > 0)
                                                 ? 'text-red-400 hover:text-red-300 hover:bg-red-900/30 animate-pulse'
-                                                : 'text-gray-700 cursor-not-allowed'
+                                                : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'
                                     }`}
                                     title={forceStopMode ? t('transfer.forceStop') : t('transfer.stopAll')}
                                 >
@@ -307,7 +307,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onClear(); }}
                                     disabled={items.length === 0}
-                                    className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-400 hover:text-red-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
+                                    className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}
                                     title={t('transfer.clearAll')}
                                 >
                                     <Trash2 size={13} />
@@ -331,7 +331,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     navigator.clipboard.writeText(`${header}\n${lines}`);
                                 }}
                                 disabled={items.length === 0}
-                                className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-400 hover:text-blue-400 hover:bg-gray-700' : 'text-gray-700 cursor-not-allowed'}`}
+                                className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}
                                 title={t('transfer.copyQueueToClipboard')}
                             >
                                 <Copy size={13} />
@@ -352,7 +352,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                 <div
                     ref={scrollRef}
                     onScroll={handleScroll}
-                    className="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-[24rem] scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
+                    className="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-[24rem] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent"
                 >
                     {items.map((item, index) => (
                         <div
@@ -363,7 +363,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     ? 'bg-red-900/20'
                                     : item.status === 'completed'
                                         ? 'text-gray-500'
-                                        : 'text-gray-400'
+                                        : 'text-gray-500 dark:text-gray-400'
                                 }`}
                             style={{
                                 animation: item.status === 'transferring' ? 'pulse 2s infinite' : 'none'
@@ -371,7 +371,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             onContextMenu={(e) => handleContextMenu(e, item)}
                         >
                             {/* Line Number */}
-                            <span className="text-gray-600 w-6 text-right shrink-0">
+                            <span className="text-gray-400 dark:text-gray-600 w-6 text-right shrink-0">
                                 {String(index + 1).padStart(3, '0')}
                             </span>
 
@@ -387,7 +387,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             <StatusIcon status={item.status} />
 
                             {/* Filename — truncate from start to always show extension */}
-                            <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-500' : 'text-gray-300'}`}
+                            <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}
                                 title={item.filename}
                             >
                                 <span className="block" style={{ direction: 'rtl', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
@@ -401,19 +401,19 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     ? 'bg-green-900/50 text-green-400'
                                     : item.status === 'transferring'
                                         ? 'bg-cyan-900/50 text-cyan-400'
-                                        : 'bg-gray-700 text-gray-400'
+                                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                                     }`}>
                                     {item.completedFiles || 0}/{item.totalFiles}
                                 </span>
                             )}
 
                             {/* Size */}
-                            <span className="text-gray-600 shrink-0">
+                            <span className="text-gray-400 dark:text-gray-600 shrink-0">
                                 {formatBytes(item.size)}
                             </span>
 
                             {/* Progress or Time or Error with tooltip */}
-                            <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-400 cursor-help' : 'text-gray-500'}`}
+                            <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-500 dark:text-red-400 cursor-help' : 'text-gray-500'}`}
                                 title={item.status === 'error' && item.error ? item.error : undefined}
                             >
                                 {item.status === 'transferring' && item.progress !== undefined
@@ -438,7 +438,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                         const err = item.error ? ` [${item.error}]` : '';
                                         navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
                                     }}
-                                    className="p-0.5 text-gray-600 hover:text-blue-400 transition-colors"
+                                    className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
                                     title={t('transfer.copy')}
                                 >
                                     <Copy size={10} />
@@ -446,7 +446,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 {item.status === 'error' && onRetryItem && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
-                                        className="p-0.5 text-gray-600 hover:text-cyan-400 transition-colors"
+                                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-cyan-500 dark:hover:text-cyan-400 transition-colors"
                                         title={t('transfer.retry')}
                                     >
                                         <RotateCcw size={10} />
@@ -455,7 +455,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 {item.status !== 'transferring' && onRemoveItem && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
-                                        className="p-0.5 text-gray-600 hover:text-red-400 transition-colors"
+                                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                                         title={t('transfer.remove')}
                                     >
                                         <X size={10} />
@@ -467,7 +467,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                 </div>
 
                 {/* Footer — always visible, glows during transfers */}
-                <div className={`h-1 transition-all duration-500 ${transferringCount > 0 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-gray-700 opacity-40'}`}>
+                <div className={`h-1 transition-all duration-500 ${transferringCount > 0 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-gray-300 dark:bg-gray-700 opacity-40'}`}>
                     {transferringCount > 0 && (
                         <div
                             className="h-full bg-cyan-400/60 rounded-full transition-all duration-300"

@@ -5,24 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-02-17
+
+### AeroAgent Welcome Screen & Shell Execute
+
+AeroAgent gets a professional welcome screen with Lucide icons, 3x3 capability grid, API key setup detection, and clickable quick prompts. The `shell_execute` backend tool replaces `terminal_execute` with real stdout/stderr/exit code capture. i18n structural audit fixes 1188 leaked keys across 45 locales.
+
+#### Added
+
+- **AeroAgent welcome screen redesign**: New empty state with Lucide icons replacing emoji, 3x3 capability grid (Files, Code, Search, Archives, Shell, Vault, Sync, Context, Vision), context-aware quick prompt suggestions (connected vs local mode), and API key setup banner when no providers are configured
+- **`shell_execute` backend tool**: Replaces fire-and-forget `terminal_execute` with real shell command execution via `tokio::process::Command` — captures stdout, stderr, and exit code. Environment isolation (`env_clear` + safe var restore), 512KB output cap, configurable timeout (default 30s, max 120s), denied command patterns (rm -rf /, shutdown, reboot, etc.). Visual terminal dispatch preserved for user awareness
+- **29 new i18n keys in 47 languages**: Welcome screen labels, capability descriptions, and context-aware quick prompts (`ai.welcome*`)
+
+#### Fixed
+
+- **i18n error message display**: All 9 error hint paths in `formatProviderError` used wrong prefix `t('ai.error.errorRateLimit')` — corrected to `t('ai.errorRateLimit')`. AI provider error messages (401, 403, 404, 429, 500, 502, 503, 504, timeout) now display translated text instead of raw key paths
+- **i18n structural integrity**: Comprehensive audit found 1188 keys leaked at JSON root level across 45 locales (from previous batch merge operations). All moved to correct `translations.*` path. 264 remaining `[NEEDS TRANSLATION]` placeholders translated
+- **i18n validation script**: Rewritten `scripts/i18n-validate.ts` with 8 comprehensive checks — JSON validity, root structure, meta section, missing keys, extra/orphan keys, placeholder detection, type consistency, empty strings
+
+#### Changed
+
+- **AeroAgent tool count**: 44 → 45 tools (shell_execute replaces terminal_execute with full output capture)
+- **metainfo.xml**: Updated AeroAgent description to reflect 45 tools
+
 ## [2.2.2] - 2026-02-16
 
 ### AeroAgent File Management Pro & Theme Consistency
 
-AeroAgent gains 9 new file management tools for batch operations, disk analysis, and archive handling. Extreme Mode unlocks fully autonomous 50-step execution for Cyberpunk users. All local tools now resolve relative filenames against the active local directory. AeroSync modal fully themed across all 4 app themes.
+AeroAgent gains 9 new file management tools for batch operations, disk analysis, and archive handling. Extreme Mode unlocks fully autonomous 50-step execution for Cyber users. All local tools now resolve relative filenames against the active local directory. AeroSync modal fully themed across all 4 app themes.
 
 #### Added
 
 - **AeroAgent 9 new tools**: `local_move_files` (batch move), `local_batch_rename` (regex/prefix/suffix/sequential), `local_copy_files` (batch copy), `local_trash` (recycle bin), `local_file_info` (metadata), `local_disk_usage` (recursive size), `local_find_duplicates` (hash-based), `archive_compress` (ZIP/7z/TAR), `archive_decompress` (extract archives)
-- **Extreme Mode**: Cyberpunk-theme-only feature — auto-approves all AI tool calls (including high-danger), raises step limit from 10 to 50, enables fully autonomous multi-step execution. Toggle in AI Settings → Advanced tab
+- **AeroAgent 8 new power tools**: `local_grep` (regex search in file contents, recursive, with context lines), `local_head` (read first N lines), `local_tail` (read last N lines), `local_stat_batch` (batch file metadata for up to 100 paths), `local_diff` (unified diff between two files via `similar` crate), `local_tree` (recursive directory tree with depth/glob filters), `clipboard_read` (read system clipboard), `clipboard_write` (write to system clipboard). AeroAgent total: 44 tools
+- **Extreme Mode**: Cyber-theme-only feature — auto-approves all AI tool calls (including high-danger), raises step limit from 10 to 50, enables fully autonomous multi-step execution. Toggle in AI Settings → Advanced tab
 - **AeroAgent connection context awareness**: System prompt now clearly distinguishes AeroCloud (background sync), manual server connections, and AeroFile (local-only) mode. Active panel (local vs remote) communicated to AI for accurate file operations
-- **13 new i18n keys in 47 languages**: 10 tool labels (toolLabels.local_move_files through archive_decompress) + 3 Extreme Mode keys (extremeMode, extremeModeDesc, extremeModeWarning)
+- **21 new i18n keys in 47 languages**: 18 tool labels (toolLabels.local_move_files through clipboard_write) + 3 Extreme Mode keys (extremeMode, extremeModeDesc, extremeModeWarning)
 
 #### Fixed
 
-- **AeroAgent relative path resolution**: All 14 local tools now resolve relative filenames against the user's current local directory via `resolve_local_path()` — fixes "os error 2" when AI models pass bare filenames instead of absolute paths
+- **AeroAgent relative path resolution**: All local tools now resolve relative filenames against the user's current local directory via `resolve_local_path()` — fixes "os error 2" when AI models pass bare filenames instead of absolute paths
+- **AeroAgent duplicate tool call prevention**: New `executedToolSignaturesRef` dedup mechanism prevents AI models (especially Llama 3.3 70b) from calling the same tool with identical arguments multiple times in multi-step execution. Tracked across approval restarts, cleared on new user message
 - **AeroAgent context confusion in AeroFile mode**: Agent no longer lists AeroCloud remote files when user is in local-only AeroFile mode — connection mode and active panel are now explicit in the system prompt
-- **AeroSync theme support**: SyncPanel modal now follows all 4 themes (Dark, Light, Tokyo Night, Cyberpunk) via 20 CSS custom properties replacing 87+ hardcoded hex values. Tokyo Night uses purple accents, Cyberpunk uses cyan/green neon accents
+- **AeroSync theme support**: SyncPanel modal now follows all 4 themes (Dark, Light, Tokyo Night, Cyber) via 20 CSS custom properties replacing 87+ hardcoded hex values. Tokyo Night uses purple accents, Cyber uses cyan/green neon accents
+- **Extreme Mode not visible**: Theme detection used `getAttribute('data-theme')` which always returned null — fixed to `classList.contains('cyber')` in both AISettingsPanel and AIChat
+- **AI Settings theme support**: AISettingsPanel modal now follows all 4 themes via scoped CSS overrides — Light mode gets white backgrounds with dark text, Tokyo Night maps purple accents to `--tokyo-purple`, Cyber maps accents to `--cyber-cyan/green`
 
 ## [2.2.1] - 2026-02-16
 
@@ -34,13 +61,13 @@ AeroAgent gains 9 new file management tools for batch operations, disk analysis,
 
 #### Changed
 - **Security Toolkit icon**: Replaced shield-in-gear with lock-and-key icon for clearer security identity
-- **Cyberpunk theme icon**: Replaced circuit shield with hacker icon across theme toggle, settings panel, and theme selector
+- **Cyber theme icon**: Replaced circuit shield with hacker icon across theme toggle, settings panel, and theme selector
 
 ## [2.2.0] - 2026-02-15
 
 ### AeroSync Phase 3A+ — Complete Frontend Integration & UX Maturity
 
-Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based UX with Quick Sync for beginners and Advanced mode for power users. Speed Mode presets, parallel transfer controls, filesystem watcher, sync scheduler, multi-path editor, template import/export, rollback snapshots, and Maniac Mode easter egg. Splash screen restored with professional simulated loading sequence. Accordion UX for Advanced tab. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyberpunk theme icon refresh.
+Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based UX with Quick Sync for beginners and Advanced mode for power users. Speed Mode presets, parallel transfer controls, filesystem watcher, sync scheduler, multi-path editor, template import/export, rollback snapshots, and Maniac Mode easter egg. Splash screen restored with professional simulated loading sequence. Accordion UX for Advanced tab. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyber theme icon refresh.
 
 #### Added
 
@@ -61,7 +88,7 @@ Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based
 - **Splash screen with loading sequence**: Professional startup splash with simulated 21-step module loading sequence (Tauri runtime, protocol handlers, encryption modules, AeroAgent AI, Monaco editor, i18n, IPC bridge). Variable timing with random jitter for realistic appearance. 10-second safety timeout prevents stuck state
 - **Advanced tab accordion**: All 4 sections (Direction, Compare & Verify, Transfer Control, Automation) are collapsible accordion-style with smooth CSS transitions. Only one section open at a time, reducing vertical scroll
 - **Password Forge 24-word passphrases**: Maximum passphrase length increased from 12 to 24 words. Amber BIP-39 disclaimer shown at 12+ words — generated passphrases use EFF Diceware wordlist, not valid as cryptocurrency wallet seeds
-- **Cyberpunk shield icon**: Replaced Anonymous mask with cybersecurity shield+lock icon in theme selector and Settings panel — better alignment with the security toolkit identity
+- **Cyber shield icon**: Replaced Anonymous mask with cybersecurity shield+lock icon in theme selector and Settings panel — better alignment with the security toolkit identity
 
 #### Changed
 
@@ -143,7 +170,7 @@ Post-release improvements focusing on transfer UX, visual consistency across all
 - **SpeedGraph canvas component**: Real-time transfer speed visualization with quadratic bezier smoothing, auto-scale Y axis, and stats overlay (current/avg/peak speed)
 - **TransferToastContainer**: Isolated state management for transfer toast — progress events update only the toast component via DOM events, eliminating full App re-renders
 - **prefers-reduced-motion support**: TransferProgressBar respects user accessibility preference, disabling all shimmer and slide animations when reduced motion is requested
-- **Cyberpunk Anonymous mask icon**: Replaced shield icon with detailed Anonymous mask SVG for theme toggle button and Settings appearance selector
+- **Cyber Anonymous mask icon**: Replaced shield icon with detailed Anonymous mask SVG for theme toggle button and Settings appearance selector
 - **Security toolbar visual grouping**: AeroVault and CyberTools buttons now share emerald background styling, visually identifying security-related tools as a cohesive group
 - **Icon theme system**: 3 selectable icon styles in Settings > Appearance > Icons — Outline (stroke), Filled (colored document shapes with type badges), and Minimal (monochrome accent). Defaults: light/dark use Filled, tokyo/cyber use Minimal (neon accent effect). Auto-syncs when changing app theme, user can customize after
 - **Icon theme Settings panel**: Visual preview grid showing 6 sample file icons per theme, with one-click selection and save animation feedback
@@ -329,14 +356,14 @@ Comprehensive quality audit across all 47 languages, eliminating 605 silent intr
 
 ### Theme System, Security Toolkit, Complete i18n Coverage
 
-Four built-in themes (Light, Dark, Tokyo Night, Cyberpunk), Security Toolkit with Hash Forge / CryptoLab / Password Forge, terminal and Monaco editor theme synchronization, and comprehensive i18n pass with 360 new keys across 47 languages.
+Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Hash Forge / CryptoLab / Password Forge, terminal and Monaco editor theme synchronization, and comprehensive i18n pass with 360 new keys across 47 languages.
 
 #### Added
 
-- **4-Theme System**: Light, Dark, Tokyo Night, and Cyberpunk themes with CSS custom properties and `data-theme` attribute. Theme toggle cycles through all four. Auto mode follows OS preference (light/dark). Themed PNG icons for connection screen logo
-- **Security Toolkit** (Cyberpunk theme): 3-tab modal with Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3 — text and file hashing with timing-safe compare), CryptoLab (AES-256-GCM and ChaCha20-Poly1305 text encryption with Argon2id key derivation), and Password Forge (CSPRNG random passwords + BIP39 passphrases with entropy calculation). 8 new Rust backend commands
-- **Terminal theme auto-sync**: Terminal theme now follows the app theme automatically (Light→Solarized Light, Dark→GitHub Dark, Tokyo Night→Tokyo Night, Cyberpunk→Cyber). New `cyber` terminal theme with neon green palette. Manual theme override preserved via `userOverrideRef` pattern
-- **Monaco Cyber theme**: Neon green syntax highlighting on deep black background, matching the Cyberpunk app theme. Registered alongside existing light/dark/tokyo-night themes
+- **4-Theme System**: Light, Dark, Tokyo Night, and Cyber themes with CSS custom properties and `data-theme` attribute. Theme toggle cycles through all four. Auto mode follows OS preference (light/dark). Themed PNG icons for connection screen logo
+- **Security Toolkit** (Cyber theme): 3-tab modal with Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3 — text and file hashing with timing-safe compare), CryptoLab (AES-256-GCM and ChaCha20-Poly1305 text encryption with Argon2id key derivation), and Password Forge (CSPRNG random passwords + BIP39 passphrases with entropy calculation). 8 new Rust backend commands
+- **Terminal theme auto-sync**: Terminal theme now follows the app theme automatically (Light→Solarized Light, Dark→GitHub Dark, Tokyo Night→Tokyo Night, Cyber→Cyber). New `cyber` terminal theme with neon green palette. Manual theme override preserved via `userOverrideRef` pattern
+- **Monaco Cyber theme**: Neon green syntax highlighting on deep black background, matching the Cyber app theme. Registered alongside existing light/dark/tokyo-night themes
 - **360 new i18n keys** across 16 sections: `preview.*` (104 keys — audio player, video player, image viewer, PDF viewer, text viewer, mixer, WebGL), `activityPanel.*` (20 keys — log filters, badges, controls), `transfer.*` (9 keys — queue actions, status labels), `ai.toolLabels.*` (31 keys — all 31 AI tool display names), `ai.toolApproval.*` (10 keys — approval dialog actions), `ai.thinking.*` (16 keys — animated thinking status variants), `ai.error.*` (4 keys), `protocol.*Tooltip` (14 keys — protocol selector tooltips for all 14 protocols), `connection.oauth.*` (16 keys — OAuth connect flow), `connection.fourshared.*` (16 keys — 4shared connect flow), `ui.language.*` (14 keys — language selector), `ui.session.*` (8 keys — session tab labels), `permissions.*` (8 keys — chmod dialog), `error.*` (4 keys — error boundary), `devtools.*` (7 keys — DevTools panel), `savedServers.*` (8 keys — server display templates), `vault.*` (7 keys — vault panel), `cryptomator.*` (4 keys), `cloud.*` (5 keys — cloud panel), `settings.*` (22 keys — placeholders and alerts), `toast.*` (15 keys — notification messages)
 - **Full translations for all 47 languages**: Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, Spanish, Estonian, Basque, Finnish, French, Galician, Hindi, Croatian, Hungarian, Armenian, Indonesian, Icelandic, Italian (manual), Japanese, Georgian, Khmer, Korean, Lithuanian, Latvian, Macedonian, Malay, Dutch, Norwegian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Serbian, Swedish, Swahili, Thai, Filipino, Turkish, Ukrainian, Vietnamese, Chinese Simplified
 - **`ai.thinking` converted from string to object**: 16 animated thinking status variants — each translated into all 47 languages

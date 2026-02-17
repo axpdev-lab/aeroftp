@@ -4,7 +4,7 @@
  */
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Heart, Copy, Check, ExternalLink, CreditCard } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from '../i18n';
@@ -127,6 +127,14 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
     const t = useTranslation();
     const [selectedCrypto, setSelectedCrypto] = useState<string | null>(null);
     const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        if (isOpen) {
+            document.documentElement.classList.add('modal-open');
+            return () => { document.documentElement.classList.remove('modal-open'); };
+        }
+    }, [isOpen]);
 
     const copyToClipboard = (key: string, address: string) => {
         navigator.clipboard.writeText(address);

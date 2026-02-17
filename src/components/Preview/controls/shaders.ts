@@ -306,7 +306,7 @@ void main() {
     float vignette = 1.0 - length(originalUV - 0.5) * 0.5;
     col *= vignette;
 
-    // Cyberpunk color grading
+    // Cyber color grading
     col = pow(col, vec3(0.8));
     col = col * 0.5 + 0.5 * cos(6.28318 * (col + time * 0.1 + vec3(0.0, 0.33, 0.67)));
 
@@ -562,7 +562,7 @@ void main() {
         vec3 halfDir = normalize(lightDir + viewDir);
         float spec = pow(max(dot(n, halfDir), 0.0), 32.0);
 
-        // Cyberpunk color palette from spectrum
+        // Cyber color palette from spectrum
         float bass_hue = (spectrum[0] + spectrum[2]) * 0.5;
         float mid_hue = (spectrum[20] + spectrum[25]) * 0.5;
         float treble_hue = (spectrum[50] + spectrum[55]) * 0.5;

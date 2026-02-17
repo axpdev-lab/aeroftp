@@ -1,5 +1,6 @@
 // AeroFTP Delta Sync Module
 // rsync-style rolling checksum + block matching for efficient file transfers
+#![allow(dead_code)]
 //
 // Algorithm:
 // 1. Destination: compute block signatures (rolling Adler-32 + strong SHA-256)

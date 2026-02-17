@@ -49,6 +49,8 @@ pub struct FileComparison {
     pub local_info: Option<FileInfo>,
     pub remote_info: Option<FileInfo>,
     pub is_dir: bool,
+    /// Human-readable explanation of why this file needs syncing
+    pub sync_reason: String,
 }
 
 /// Options for comparison
@@ -274,6 +276,126 @@ pub fn compare_file_pair(
     }
 }
 
+/// Generate a human-readable explanation for why a file needs syncing
+pub fn generate_sync_reason(
+    status: &SyncStatus,
+    local_info: Option<&FileInfo>,
+    remote_info: Option<&FileInfo>,
+    is_dir: bool,
+) -> String {
+    if is_dir && *status == SyncStatus::Identical {
+        return "Directory".to_string();
+    }
+
+    match status {
+        SyncStatus::Identical => "Files are identical".to_string(),
+        SyncStatus::LocalNewer => {
+            if let (Some(l), Some(r)) = (local_info, remote_info) {
+                let mut parts = Vec::new();
+                if let (Some(l_mod), Some(r_mod)) = (l.modified, r.modified) {
+                    let diff_secs = l_mod.signed_duration_since(r_mod).num_seconds();
+                    if diff_secs > 0 {
+                        parts.push(format!("Local is {} newer", format_duration(diff_secs)));
+                    }
+                }
+                if l.size != r.size {
+                    parts.push(format!("size: {} vs {} bytes", l.size, r.size));
+                }
+                if parts.is_empty() {
+                    "Local file is newer".to_string()
+                } else {
+                    parts.join(", ")
+                }
+            } else {
+                "Local file is newer".to_string()
+            }
+        }
+        SyncStatus::RemoteNewer => {
+            if let (Some(l), Some(r)) = (local_info, remote_info) {
+                let mut parts = Vec::new();
+                if let (Some(l_mod), Some(r_mod)) = (l.modified, r.modified) {
+                    let diff_secs = r_mod.signed_duration_since(l_mod).num_seconds();
+                    if diff_secs > 0 {
+                        parts.push(format!("Remote is {} newer", format_duration(diff_secs)));
+                    }
+                }
+                if l.size != r.size {
+                    parts.push(format!("size: {} vs {} bytes", l.size, r.size));
+                }
+                if parts.is_empty() {
+                    "Remote file is newer".to_string()
+                } else {
+                    parts.join(", ")
+                }
+            } else {
+                "Remote file is newer".to_string()
+            }
+        }
+        SyncStatus::LocalOnly => {
+            if let Some(l) = local_info {
+                if l.is_dir {
+                    "Directory exists only locally".to_string()
+                } else {
+                    format!("File exists only locally ({} bytes)", l.size)
+                }
+            } else {
+                "File exists only locally".to_string()
+            }
+        }
+        SyncStatus::RemoteOnly => {
+            if let Some(r) = remote_info {
+                if r.is_dir {
+                    "Directory exists only on remote".to_string()
+                } else {
+                    format!("File exists only on remote ({} bytes)", r.size)
+                }
+            } else {
+                "File exists only on remote".to_string()
+            }
+        }
+        SyncStatus::Conflict => {
+            if let (Some(l), Some(r)) = (local_info, remote_info) {
+                let mut parts = vec!["Both modified since last sync".to_string()];
+                if l.size != r.size {
+                    parts.push(format!("local: {} bytes, remote: {} bytes", l.size, r.size));
+                }
+                if let (Some(lc), Some(rc)) = (&l.checksum, &r.checksum) {
+                    if lc != rc {
+                        parts.push("checksums differ".to_string());
+                    }
+                }
+                parts.join(", ")
+            } else {
+                "Both files have been modified since last sync".to_string()
+            }
+        }
+        SyncStatus::SizeMismatch => {
+            if let (Some(l), Some(r)) = (local_info, remote_info) {
+                format!(
+                    "Same timestamp but different size (local: {} bytes, remote: {} bytes)",
+                    l.size, r.size
+                )
+            } else {
+                "Same timestamp but different file size".to_string()
+            }
+        }
+    }
+}
+
+/// Format a duration in seconds into a human-readable string
+fn format_duration(secs: i64) -> String {
+    let abs = secs.unsigned_abs();
+    if abs < 60 {
+        format!("{}s", abs)
+    } else if abs < 3600 {
+        format!("{}m {}s", abs / 60, abs % 60)
+    } else if abs < 86400 {
+        format!("{}h {}m", abs / 3600, (abs % 3600) / 60)
+    } else {
+        format!("{}d {}h", abs / 86400, (abs % 86400) / 3600)
+    }
+}
+
 /// Build comparison results from local and remote file maps
 pub fn build_comparison_results(
     local_files: HashMap<String, FileInfo>,
@@ -294,22 +416,24 @@ pub fn build_comparison_results(
         let remote = remote_files.get(&path);
         
         let status = compare_file_pair(local, remote, options);
-        
+
         // Skip identical files unless they're directories we need to show
-        let is_dir = local.map(|f| f.is_dir).unwrap_or(false) 
+        let is_dir = local.map(|f| f.is_dir).unwrap_or(false)
                   || remote.map(|f| f.is_dir).unwrap_or(false);
-        
+
         if status != SyncStatus::Identical || is_dir {
+            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
                 relative_path: path,
                 status,
                 local_info: local.cloned(),
                 remote_info: remote.cloned(),
                 is_dir,
+                sync_reason,
             });
         }
     }
-    
+
     // Sort by path for consistent display
     results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     
@@ -494,12 +618,14 @@ pub fn build_comparison_results_with_index(
         };
 
         if status != SyncStatus::Identical || is_dir {
+            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
                 relative_path: path,
                 status,
                 local_info: local.cloned(),
                 remote_info: remote.cloned(),
                 is_dir,
+                sync_reason,
             });
         }
     }
@@ -625,6 +751,7 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     /// Calculate delay for a given attempt (1-indexed)
+    #[allow(dead_code)] // Used in unit tests
     pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
         let delay = (self.base_delay_ms as f64) * self.backoff_multiplier.powi(attempt.saturating_sub(1) as i32);
         if !delay.is_finite() || delay < 0.0 {
@@ -790,6 +917,7 @@ pub struct SyncJournal {
 }
 
 impl SyncJournal {
+    #[allow(dead_code)] // Used in unit tests
     pub fn new(
         local_path: String,
         remote_path: String,
@@ -812,11 +940,13 @@ impl SyncJournal {
     }
 
     /// Count entries by status
+    #[allow(dead_code)] // Used in unit tests
     pub fn count_by_status(&self, status: &JournalEntryStatus) -> usize {
         self.entries.iter().filter(|e| e.status == *status).count()
     }
 
     /// Check if there are pending or failed-retryable entries
+    #[allow(dead_code)] // Used in unit tests
     pub fn has_resumable_entries(&self) -> bool {
         self.entries.iter().any(|e| {
             e.status == JournalEntryStatus::Pending
@@ -1291,21 +1421,6 @@ fn portable_path(path: &str) -> String {
     path.to_string()
 }
 
-/// Resolve portable path variables to absolute paths
-pub fn resolve_portable_path(path: &str) -> String {
-    let mut result = path.to_string();
-    if let Some(home) = dirs::home_dir() {
-        result = result.replacen("$HOME", &home.to_string_lossy(), 1);
-    }
-    if let Some(docs) = dirs::document_dir() {
-        result = result.replacen("$DOCUMENTS", &docs.to_string_lossy(), 1);
-    }
-    if let Some(desktop) = dirs::desktop_dir() {
-        result = result.replacen("$DESKTOP", &desktop.to_string_lossy(), 1);
-    }
-    result
-}
-
 // =============================
 // Metadata-Aware Rollback (#154)
 // =============================
@@ -1605,12 +1720,6 @@ mod tests {
         let abs = "/tmp/random/path";
         let portable = portable_path(abs);
         assert_eq!(portable, abs);
-    }
-
-    #[test]
-    fn test_resolve_portable_path() {
-        let resolved = resolve_portable_path("$HOME/test");
-        assert!(!resolved.contains("$HOME"));
     }
 
     #[test]

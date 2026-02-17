@@ -35,6 +35,7 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const INOTIFY_SUBDIR_THRESHOLD: usize = 8000;
 
 /// Health heartbeat timeout — if no events or heartbeats for this duration, consider unhealthy
+#[allow(dead_code)] // Used by status() method
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,7 @@ impl Default for WatcherMode {
 }
 
 /// Current watcher health status
+#[allow(dead_code)] // Used by status() method and Tauri command
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatcherStatus {
     /// Whether the watcher is currently running
@@ -98,9 +100,8 @@ pub struct WatcherEvent {
     /// Paths that changed
     pub paths: Vec<PathBuf>,
     /// Kind of change
+    #[allow(dead_code)] // Populated but not yet consumed; will be used by sync engine
     pub kind: WatcherEventKind,
-    /// When the event was detected
-    pub detected_at: Instant,
 }
 
 /// Simplified event kind for sync engine consumption
@@ -367,7 +368,6 @@ impl FileWatcher {
                         let event = WatcherEvent {
                             paths,
                             kind,
-                            detected_at: Instant::now(),
                         };
 
                         events_received.fetch_add(1, Ordering::Relaxed);
@@ -423,7 +423,6 @@ impl FileWatcher {
                     let watcher_event = WatcherEvent {
                         paths,
                         kind,
-                        detected_at: Instant::now(),
                     };
 
                     events_received.fetch_add(1, Ordering::Relaxed);
@@ -470,6 +469,7 @@ impl FileWatcher {
     }
 
     /// Get current watcher status for UI display
+    #[allow(dead_code)] // Used in unit tests and Tauri command
     pub fn status(&self) -> WatcherStatus {
         let last_event_str = self
             .last_event_at
@@ -505,6 +505,7 @@ impl FileWatcher {
     }
 
     /// Check if the watcher is currently running
+    #[allow(dead_code)] // Used in unit tests
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }

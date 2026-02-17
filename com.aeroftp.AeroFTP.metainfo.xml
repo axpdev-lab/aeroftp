@@ -25,7 +25,7 @@
     </ul>
     <p>AI Assistant:</p>
     <ul>
-      <li>AeroAgent Pro: AI-powered assistant with 28 provider-agnostic tools, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
+      <li>AeroAgent Pro: AI-powered assistant with 45 tools, shell command execution, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
       <li>10 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
@@ -127,19 +127,24 @@
   </languages>
 
   <releases>
+    <release version="2.2.3" date="2026-02-17">
+      <description>
+        <p>AeroAgent Welcome Screen and Shell Execute: Professional welcome screen with Lucide icons, 3x3 capability grid, API key setup detection, and clickable quick prompts. New shell_execute backend tool captures real stdout/stderr/exit code (replaces terminal_execute). i18n structural audit fixes 1188 leaked keys across 45 locales. Error message translation paths corrected. 29 new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.2.2" date="2026-02-16">
       <description>
-        <p>AeroAgent File Management Pro: 9 new tools (batch move, copy, trash, rename, disk usage, find duplicates, archive compress/decompress). Extreme Mode for fully autonomous 50-step AI execution (Cyberpunk theme only). Relative path resolution fix for all 14 local tools. Connection context awareness distinguishes AeroCloud, server, and AeroFile modes. AeroSync modal now themed across all 4 themes via CSS custom properties. 13 new i18n keys in 47 languages.</p>
+        <p>AeroAgent File Management Pro: 9 new tools (batch move, copy, trash, rename, disk usage, find duplicates, archive compress/decompress). Extreme Mode for fully autonomous 50-step AI execution (Cyber theme only). Relative path resolution fix for all 14 local tools. Connection context awareness distinguishes AeroCloud, server, and AeroFile modes. AeroSync modal now themed across all 4 themes via CSS custom properties. 13 new i18n keys in 47 languages.</p>
       </description>
     </release>
     <release version="2.2.1" date="2026-02-16">
       <description>
-        <p>Splash screen menu bar flash fix (race condition in APP_READY_DONE timing). New Security Toolkit lock-and-key icon. New Cyberpunk hacker theme icon. AeroCloud default sync interval set to 24h with inotify active.</p>
+        <p>Splash screen menu bar flash fix (race condition in APP_READY_DONE timing). New Security Toolkit lock-and-key icon. New Cyber hacker theme icon. AeroCloud default sync interval set to 24h with inotify active.</p>
       </description>
     </release>
     <release version="2.2.0" date="2026-02-15">
       <description>
-        <p>AeroSync Phase 3A+ — Complete Frontend Integration and UX Maturity: Tab-based UX (Quick Sync + Advanced), 5 Speed Mode presets, Sync Scheduler, Filesystem Watcher, Multi-Path Editor, Sync Templates, Rollback Snapshots, parallel streams (1-8). Professional splash screen with 21-step simulated loading sequence. Advanced tab accordion for compact navigation. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyberpunk shield icon. WebKitGTK scrollbar z-index fix. 31 security findings fixed across 6 independent auditors. Grade: A-. 47 languages at 100%.</p>
+        <p>AeroSync Phase 3A+ — Complete Frontend Integration and UX Maturity: Tab-based UX (Quick Sync + Advanced), 5 Speed Mode presets, Sync Scheduler, Filesystem Watcher, Multi-Path Editor, Sync Templates, Rollback Snapshots, parallel streams (1-8). Professional splash screen with 21-step simulated loading sequence. Advanced tab accordion for compact navigation. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyber shield icon. WebKitGTK scrollbar z-index fix. 31 security findings fixed across 6 independent auditors. Grade: A-. 47 languages at 100%.</p>
       </description>
     </release>
     <release version="2.1.2" date="2026-02-15">
@@ -184,7 +189,7 @@
     </release>
     <release version="2.0.6" date="2026-02-11">
       <description>
-        <p>Theme System, Security Toolkit, Complete i18n: Four built-in themes (Light, Dark, Tokyo Night, Cyberpunk) with CSS custom properties. Security Toolkit with Hash Forge (5 algorithms), CryptoLab (AES-256-GCM/ChaCha20 text encryption), and Password Forge (CSPRNG passwords + BIP39 passphrases). Terminal and Monaco editor auto-sync with app theme. 360 new i18n keys across 47 languages — zero untranslated strings. Monaco dev mode fix. About dialog updated.</p>
+        <p>Theme System, Security Toolkit, Complete i18n: Four built-in themes (Light, Dark, Tokyo Night, Cyber) with CSS custom properties. Security Toolkit with Hash Forge (5 algorithms), CryptoLab (AES-256-GCM/ChaCha20 text encryption), and Password Forge (CSPRNG passwords + BIP39 passphrases). Terminal and Monaco editor auto-sync with app theme. 360 new i18n keys across 47 languages — zero untranslated strings. Monaco dev mode fix. About dialog updated.</p>
       </description>
     </release>
     <release version="2.0.5" date="2026-02-10">

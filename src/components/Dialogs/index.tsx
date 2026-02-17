@@ -3,7 +3,7 @@
  * i18n integrated
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
 import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2 } from 'lucide-react';
@@ -297,6 +297,12 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     const t = useTranslation();
     const [copiedField, setCopiedField] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'general' | 'permissions' | 'checksum'>('general');
+
+    // Hide scrollbars when dialog is open (WebKitGTK fix)
+    useEffect(() => {
+        document.documentElement.classList.add('modal-open');
+        return () => { document.documentElement.classList.remove('modal-open'); };
+    }, []);
 
     const copyToClipboard = (text: string, field: string) => {
         navigator.clipboard.writeText(text);

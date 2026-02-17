@@ -3,6 +3,7 @@ import { AISettings, AIProviderType } from '../../types/ai';
 import { ProjectContext, BudgetMode } from '../../types/contextIntelligence';
 import { PROVIDER_PROFILES, ProviderPromptProfile, getOllamaPromptStyle } from './aiProviderProfiles';
 import { ToolMacro } from './aiChatToolMacros';
+import { APP_KNOWLEDGE_SUMMARY } from './aiChatAppKnowledge';
 
 export interface SystemPromptContext {
     providerType?: string;
@@ -34,10 +35,13 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
 
     // Connection mode — clear distinction between server, AeroCloud, and local-only
     if (ctx.isConnected && ctx.isCloudConnection) {
-        contextLines.push(`- Mode: AeroCloud connected (background sync service)`);
+        contextLines.push(`- Mode: AeroCloud connected (background sync active, browsing remote files)`);
         if (ctx.providerType) contextLines.push(`- AeroCloud protocol: ${ctx.providerType.toUpperCase()}`);
         if (ctx.serverHost) contextLines.push(`- AeroCloud server: ${ctx.serverHost}${ctx.serverPort ? ':' + ctx.serverPort : ''}`);
         if (ctx.remotePath) contextLines.push(`- AeroCloud remote folder: ${ctx.remotePath}`);
+    } else if (ctx.isCloudConnection) {
+        // AeroCloud is active in background but user is browsing local files
+        contextLines.push(`- Mode: AeroCloud active (background sync running, browsing local files)`);
     } else if (ctx.isConnected) {
         contextLines.push(`- Mode: Server connected`);
         if (ctx.providerType) contextLines.push(`- Protocol: ${ctx.providerType.toUpperCase()}`);
@@ -85,12 +89,14 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         if (pc.entry_points.length > 0) contextLines.push(`- Entry: ${pc.entry_points.join(', ')}`);
     }
 
-    // Git context (#70)
-    if (ctx.gitBranch) contextLines.push(`- Git branch: ${ctx.gitBranch}`);
-    if (ctx.gitSummary) contextLines.push(ctx.gitSummary);
+    // Git context (#70) — skip if smart context handles it (avoid double injection)
+    if (!ctx.smartContextBlock) {
+        if (ctx.gitBranch) contextLines.push(`- Git branch: ${ctx.gitBranch}`);
+        if (ctx.gitSummary) contextLines.push(ctx.gitSummary);
+    }
 
-    // File imports (#67)
-    if (ctx.fileImports && ctx.fileImports.length > 0) {
+    // File imports (#67) — skip if smart context handles it
+    if (!ctx.smartContextBlock && ctx.fileImports && ctx.fileImports.length > 0) {
         const importNames = ctx.fileImports.map(p => {
             const parts = p.replace(/\\/g, '/').split('/');
             return parts[parts.length - 1];
@@ -98,8 +104,8 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         contextLines.push(`- Editor imports: ${importNames.slice(0, 10).join(', ')}`);
     }
 
-    // Agent memory (#68) — AA-SEC-007: wrapped in delimiters to prevent prompt injection
-    if (ctx.agentMemory && ctx.agentMemory.trim()) {
+    // Agent memory (#68) — skip if smart context handles it (AA-SEC-007 protection now in both paths)
+    if (!ctx.smartContextBlock && ctx.agentMemory && ctx.agentMemory.trim()) {
         const memLines = ctx.agentMemory.trim().split('\n').slice(-10);
         contextLines.push(
             `- Agent memory (${memLines.length} notes):\n` +
@@ -235,6 +241,11 @@ export function buildSystemPrompt(settings: AISettings, contextBlock: string, pr
         protocolSection = buildCompactProtocolExpertise(providerType);
     }
 
+    // App knowledge summary — always present (~550 tokens)
+    const knowledgeSummary = effectiveBudgetMode !== 'minimal'
+        ? `\n## AeroFTP Quick Reference\n${APP_KNOWLEDGE_SUMMARY}\n`
+        : '';
+
     return `${profile.identity}
 
 ## Style
@@ -244,7 +255,7 @@ ${styleText}
 You can browse, search, upload, download, rename, delete, move, and sync files across all connected providers. You can also create and extract archives (ZIP, 7z, TAR).${toolSection}
 
 ${protocolSection}
-
+${knowledgeSummary}
 ## Behavior Rules
 ${profile.behaviorRules}
 
@@ -253,6 +264,7 @@ ${profile.behaviorRules}
 - For comparisons (sync_preview): highlight differences clearly with +/\u2212/~ markers.
 - For errors: quote the error message and explain in plain language.
 - For configuration help: list required fields, then optional fields, with examples.
+- After tool execution: briefly state the outcome, then suggest a logical next step if relevant.
 - Keep responses under 500 words unless the user asks for detail.${contextBlock}`;
 }
 

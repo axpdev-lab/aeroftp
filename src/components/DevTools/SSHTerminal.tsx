@@ -389,6 +389,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const connectedTabs = useRef<Set<string>>(new Set());
     // Map tabId → pty session id (backend)
     const ptySessionIds = useRef<Map<string, string>>(new Map());
+    // Pending command queued by AeroAgent when no terminal was open
+    const pendingCommandRef = useRef<string | null>(null);
 
     const terminalRef = useRef<HTMLDivElement>(null);
     const styleInjectedRef = useRef(false);
@@ -719,6 +721,22 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 }, 300);
             }
 
+            // Execute pending command queued by AeroAgent (auto-start flow)
+            if (pendingCommandRef.current) {
+                const pendingCmd = pendingCommandRef.current;
+                pendingCommandRef.current = null;
+                // Wait for shell prompt to be ready (after clear screen)
+                setTimeout(async () => {
+                    try {
+                        if (tab.type === 'ssh' && sessionId) {
+                            await invoke('ssh_shell_write', { sessionId, data: pendingCmd + '\n' });
+                        } else {
+                            await invoke('pty_write', { data: pendingCmd + '\n', sessionId: sessionId || null });
+                        }
+                    } catch { /* ignore */ }
+                }, 600);
+            }
+
         } catch (e) {
             const xterm = xtermInstances.current.get(tabId);
             if (xterm) xterm.writeln(`\x1b[31mError: ${e}\x1b[0m`);
@@ -837,7 +855,12 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             if (!tabId || !connectedTabs.current.has(tabId)) {
                 // No active terminal — try to find any connected tab
                 const connectedTabIds = Array.from(connectedTabs.current);
-                if (connectedTabIds.length === 0) return; // No connected terminals
+                if (connectedTabIds.length === 0) {
+                    // No connected terminals — auto-create a local tab and queue the command
+                    pendingCommandRef.current = command;
+                    addTab();
+                    return;
+                }
                 // Use the first connected tab
                 const targetTab = connectedTabIds[0];
                 const sessionId = ptySessionIds.current.get(targetTab);
@@ -863,7 +886,16 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
         window.addEventListener('terminal-execute', handleTerminalExecute);
         return () => window.removeEventListener('terminal-execute', handleTerminalExecute);
-    }, [activeTabId, tabs]);
+    }, [activeTabId, tabs, addTab]);
+
+    // Auto-start shell when AeroAgent queued a command on a new tab
+    useEffect(() => {
+        if (!pendingCommandRef.current) return;
+        const tab = tabs.find(t => t.id === activeTabId);
+        if (tab && !tab.isConnected && !tab.isConnecting) {
+            startShell();
+        }
+    }, [activeTabId, tabs, startShell]);
 
     return (
         <div className={`flex flex-col h-full ${className}`} style={{ backgroundColor: currentTheme.colors.background }}>

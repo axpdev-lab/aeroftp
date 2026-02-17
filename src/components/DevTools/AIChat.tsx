@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from './AIIcons';
@@ -15,12 +15,13 @@ import type { Conversation } from '../../utils/chatHistory';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS } from './aiChatTypes';
-import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult } from './aiChatUtils';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS } from './aiChatTypes';
+import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
 import { ToolMacro, resolveMacroSteps, macrosToToolDefinitions, isMacroCall, getMacroName, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
 import { validateToolArgs } from './aiChatToolValidation';
+import { getToolLabel } from './aiChatToolLabels';
 import { computeTokenInfo } from './aiChatTokenInfo';
 import { useAIChatImages } from './useAIChatImages';
 import { useAIChatConversations } from './useAIChatConversations';
@@ -41,10 +42,7 @@ import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcut
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
 import { CostBudgetIndicator } from './CostBudgetIndicator';
 
-/** Maximum autonomous tool-call steps before stopping */
-const MAX_AUTO_STEPS = 10;
-/** Maximum steps in extreme mode */
-const MAX_AUTO_STEPS_EXTREME = 50;
+/** Maximum autonomous steps — now driven by AGENT_MODE_MAX_STEPS */
 
 /** 3×3 grid-dots animated spinner */
 const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -61,11 +59,13 @@ const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 1
     </svg>
 );
 
-/** Hook: cycle through thinking messages while loading - now uses translation */
-function useThinkingMessage(isActive: boolean, t: (key: string) => string, intervalMs = 3000): string {
+/** Hook: cycle through thinking messages while loading — typewriter effect */
+function useThinkingMessage(isActive: boolean, t: (key: string) => string, intervalMs = 3000): { text: string; isTyping: boolean } {
     const [index, setIndex] = useState(0);
+    const [displayText, setDisplayText] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+    const prevFullRef = useRef('');
 
-    // Build thinking messages array using translation function
     const thinkingMessages = [
         t('ai.thinking.thinking'),
         t('ai.thinking.analyzing'),
@@ -85,13 +85,35 @@ function useThinkingMessage(isActive: boolean, t: (key: string) => string, inter
         t('ai.thinking.cookingUpIdeas'),
     ];
 
+    // Cycle through messages
     useEffect(() => {
         if (!isActive) { setIndex(0); return; }
         const id = setInterval(() => setIndex(i => (i + 1) % thinkingMessages.length), intervalMs);
         return () => clearInterval(id);
     }, [isActive, intervalMs, thinkingMessages.length]);
 
-    return thinkingMessages[index];
+    // Typewriter effect for current message
+    const fullText = thinkingMessages[index];
+    useEffect(() => {
+        if (!isActive) { setDisplayText(fullText); setIsTyping(false); return; }
+        if (fullText === prevFullRef.current) return;
+        prevFullRef.current = fullText;
+        setDisplayText('');
+        setIsTyping(true);
+        let charIdx = 0;
+        const timer = setInterval(() => {
+            if (charIdx < fullText.length) {
+                setDisplayText(fullText.slice(0, charIdx + 1));
+                charIdx += 1;
+            } else {
+                setIsTyping(false);
+                clearInterval(timer);
+            }
+        }, 30);
+        return () => clearInterval(timer);
+    }, [fullText, isActive]);
+
+    return { text: displayText || fullText, isTyping };
 }
 
 // Get provider icon based on type
@@ -221,7 +243,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const thinkingMessage = useThinkingMessage(isLoading, t);
+    const { text: thinkingMessage, isTyping: thinkingIsTyping } = useThinkingMessage(isLoading, t);
     const [isListening, setIsListening] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [availableModels, setAvailableModels] = useState<SelectedModel[]>([]);
@@ -263,26 +285,51 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         } catch { return null; }
     });
     // Extreme mode: auto-approve all tools, increased step limit (Cyber theme only)
-    const [extremeMode, setExtremeMode] = useState(false);
-    const extremeModeRef = useRef(false);
-    useEffect(() => {
-        extremeModeRef.current = extremeMode;
-    }, [extremeMode]);
-    // Load extreme mode setting from localStorage
-    useEffect(() => {
+    // Unified Agent Mode: safe → normal → expert → extreme
+    const [agentMode, setAgentMode] = useState<AgentMode>(() => {
         try {
-            const saved = localStorage.getItem('aeroftp_ai_extreme_mode');
-            if (saved === 'true') {
-                // Only enable if current theme is 'cyber'
-                const theme = document.documentElement.getAttribute('data-theme');
-                if (theme === 'cyber') {
-                    setExtremeMode(true);
-                }
+            const saved = localStorage.getItem('aeroftp_ai_agent_mode');
+            if (saved && ['safe', 'normal', 'expert', 'extreme'].includes(saved)) {
+                return saved as AgentMode;
             }
-        } catch { /* ignore */ }
+            // Migrate from old system
+            const oldExtreme = localStorage.getItem('aeroftp_ai_extreme_mode');
+            if (oldExtreme === 'true' && document.documentElement.classList.contains('cyber')) {
+                localStorage.setItem('aeroftp_ai_agent_mode', 'extreme');
+                localStorage.removeItem('aeroftp_ai_extreme_mode');
+                localStorage.removeItem('aeroftp_ai_approval_profile');
+                return 'extreme';
+            }
+            const oldProfile = localStorage.getItem('aeroftp_ai_approval_profile');
+            if (oldProfile) {
+                const migrated: AgentMode = oldProfile === 'strict' ? 'safe' : oldProfile === 'fast' ? 'expert' : 'normal';
+                localStorage.setItem('aeroftp_ai_agent_mode', migrated);
+                localStorage.removeItem('aeroftp_ai_extreme_mode');
+                localStorage.removeItem('aeroftp_ai_approval_profile');
+                return migrated;
+            }
+            return 'normal';
+        } catch { return 'normal'; }
+    });
+    const agentModeRef = useRef<AgentMode>(agentMode);
+    useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
+    const [showExtremeWarning, setShowExtremeWarning] = useState(false);
+
+    // Listen for agent mode changes from AISettingsPanel
+    useEffect(() => {
+        const handleModeChange = (e: Event) => {
+            const mode = (e as CustomEvent).detail as string;
+            if (['safe', 'normal', 'expert', 'extreme'].includes(mode)) {
+                setAgentMode(mode as AgentMode);
+            }
+        };
+        window.addEventListener('agent-mode-changed', handleModeChange);
+        return () => window.removeEventListener('agent-mode-changed', handleModeChange);
     }, []);
 
     const autoStopRef = useRef(false);
+    // Track executed tool signatures to detect duplicate consecutive calls across multi-step restarts
+    const executedToolSignaturesRef = useRef(new Set<string>());
     const multiStepContextRef = useRef<{
         aiRequest: Record<string, unknown>;
         messageHistory: Array<Record<string, unknown>>;
@@ -294,6 +341,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const ragIndexRef = useRef<Record<string, unknown> | null>(null);
     const ragIndexedPathRef = useRef<string | null>(null);
+    const sessionApprovedToolsRef = useRef<Set<string>>(new Set());
     const [pluginManifests, setPluginManifests] = useState<PluginManifest[]>([]);
 
     // Phase 3: Context Intelligence
@@ -336,13 +384,29 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }));
     const allTools = [...AGENT_TOOLS, ...pluginTools, ...macrosToToolDefinitions(macros)];
 
-    /** In extreme mode, ALL tools are auto-approved (no confirmation dialog) */
-    const isAutoApproved = useCallback((toolName: string) =>
-        extremeModeRef.current || isSafeTool(toolName, allTools),
-    [allTools]);
+    /** Auto-approval logic based on unified agent mode and session memory. */
+    const isAutoApproved = useCallback((toolName: string) => {
+        const mode = agentModeRef.current;
+        // Extreme: auto-approve everything
+        if (mode === 'extreme') return true;
+        // Safe tools always auto-approved in all modes
+        if (isSafeTool(toolName, allTools)) return true;
+        // Safe mode: only safe tools auto-approved, no session memory
+        if (mode === 'safe') return false;
+        // Expert: medium tools auto-approved, high uses session memory
+        if (mode === 'expert') {
+            const tool = allTools
+                ? allTools.find(t => t.name === toolName)
+                : getToolByName(toolName);
+            if (tool && tool.dangerLevel === 'medium') return true;
+            return sessionApprovedToolsRef.current.has(toolName);
+        }
+        // Normal (default): session-approved only
+        return sessionApprovedToolsRef.current.has(toolName);
+    }, [allTools]);
 
-    /** Effective max steps: 50 in extreme mode, 10 normally */
-    const effectiveMaxSteps = extremeMode ? MAX_AUTO_STEPS_EXTREME : MAX_AUTO_STEPS;
+    /** Effective max steps driven by agent mode */
+    const effectiveMaxSteps = AGENT_MODE_MAX_STEPS[agentMode];
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -731,47 +795,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 return `Memory saved: ${entry}`;
             }
 
-            // Special case: terminal_execute is frontend-only (not sent to Rust backend)
-            if (toolCall.toolName === 'terminal_execute') {
-                const command = (toolCall.args.command as string) || '';
-                if (!command) {
-                    throw new Error(t('ai.error.noCommandSpecified'));
-                }
-                // SEC: Deny destructive commands that could cause irreversible damage
-                const DENIED_COMMANDS = [
-                    /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\s*$/,     // rm -rf /
-                    /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\s*$/, // rm -rf /
-                    /^\s*mkfs\b/,                               // mkfs (format disk)
-                    /^\s*dd\s+.*of=\/dev\//,                    // dd to device
-                    /^\s*shutdown\b/,                            // shutdown
-                    /^\s*reboot\b/,                              // reboot
-                    /^\s*halt\b/,                                // halt
-                    /^\s*init\s+[06]\b/,                         // init 0/6
-                    /^\s*:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:/,  // fork bomb
-                    /^\s*>\s*\/dev\/sd[a-z]/,                   // overwrite disk
-                    /^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+\//,    // chmod 777 /
-                    /^\s*chown\s+.*\s+\/\s*$/,                  // chown /
-                ];
-                if (DENIED_COMMANDS.some(rx => rx.test(command))) {
-                    throw new Error('Command blocked: potentially destructive system command');
-                }
-                // Dispatch event for terminal to pick up
-                window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command } }));
-                // Also activate terminal panel
-                window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
-
-                const resultMessage: Message = {
-                    id: crypto.randomUUID(),
-                    role: 'assistant',
-                    content: `${t('ai.commandSentToTerminal')}: \`${command}\``,
-                    timestamp: new Date(),
-                };
-                setMessages(prev => [...prev, resultMessage]);
-                setPendingToolCalls([]);
-                return t('ai.error.commandSentToTerminal');
-            }
-
             const result = await executeToolByName(toolCall.toolName, toolCall.args);
+
+            // shell_execute: also show command in the visible terminal for user awareness
+            if (toolCall.toolName === 'shell_execute' && result && typeof result === 'object') {
+                const cmd = (result as Record<string, unknown>).command as string;
+                if (cmd) {
+                    window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command: cmd } }));
+                    window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
+                }
+            }
             const formattedResult = formatToolResult(toolCall.toolName, result);
 
             // Check for soft failures (tool returned success: false)
@@ -803,6 +836,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 id: crypto.randomUUID(),
                 role: 'assistant',
                 content: formattedResult,
+                toolName: toolCall.toolName,
                 timestamp: new Date(),
             };
             setMessages(prev => [...prev, resultMessage]);
@@ -957,6 +991,29 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     break;
                 }
 
+                // Duplicate tool call detection: if ALL requested tools were already
+                // executed with identical args in this conversation turn, break the loop.
+                // This prevents models (e.g. Llama) from repeating the same call.
+                const allDuplicates = allToolsParsedMS.every(tc => {
+                    const sig = `${tc.tool}::${JSON.stringify(tc.args)}`;
+                    return executedToolSignaturesRef.current.has(sig);
+                });
+                if (allDuplicates) {
+                    const finalMsg: Message = {
+                        id: crypto.randomUUID(),
+                        role: 'assistant',
+                        content: response.content || lastToolResult,
+                        timestamp: new Date(),
+                        modelInfo,
+                    };
+                    setMessages(prev => [...prev, finalMsg]);
+                    break;
+                }
+                // Track these calls as executed
+                for (const tc of allToolsParsedMS) {
+                    executedToolSignaturesRef.current.add(`${tc.tool}::${JSON.stringify(tc.args)}`);
+                }
+
                 // Separate safe vs approval-required
                 const safeMS = allToolsParsedMS.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
                 const approvalMS = allToolsParsedMS.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
@@ -1027,6 +1084,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     const handleSend = async () => {
         if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
+
+        // Clear duplicate detection for new conversation turn
+        executedToolSignaturesRef.current.clear();
 
         // Capture attached images before clearing
         const messageImages = attachedImages.length > 0 ? [...attachedImages] : undefined;
@@ -1143,6 +1203,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 fileImportsRef.current,
                 ragSummary,
                 contextTokenBudget,
+                budgetMode,
             );
             const smartContextBlock = formatSmartContextForPrompt(smartCtx);
 
@@ -1334,8 +1395,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 // Fire the stream command (don't await its completion for unlisten)
                 invoke('ai_chat_stream', { request: aiRequest, streamId }).catch((err: unknown) => {
-                    const errStr = err instanceof Error ? err.message : String(err);
-                    streamContent = `**Error**: ${errStr}`;
+                    const rawErr = err instanceof Error ? err.message : String(err);
+                    streamContent = formatProviderError(rawErr, t);
                     setMessages(prev => prev.map(m =>
                         m.id === msgId ? { ...m, content: streamContent } : m
                     ));
@@ -1401,6 +1462,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             args: sc.args,
                             status: 'approved' as const,
                         }));
+                        // Track initial tool signatures for duplicate detection
+                        for (const sc of safeToolCalls) {
+                            executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
+                        }
                         const levels = buildExecutionLevels(safeToolCalls);
                         const results = await executePipeline(levels, executeTool);
                         const combinedResult = results.filter(Boolean).join('\n---\n');
@@ -1490,6 +1555,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         const safeToolCalls = safeCalls.map(sc => ({
                             id: sc.id, toolName: sc.tool, args: sc.args, status: 'approved' as const,
                         }));
+                        // Track initial tool signatures for duplicate detection
+                        for (const sc of safeToolCalls) {
+                            executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
+                        }
                         const levels = buildExecutionLevels(safeToolCalls);
                         const results = await executePipeline(levels, executeTool);
                         const combinedResult = results.filter(Boolean).join('\n---\n');
@@ -1537,43 +1606,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
         } catch (error: unknown) {
             const rawErr = String(error);
-            let errStr = rawErr;
-            let httpCode = 0;
-            // Try to extract human-readable message from JSON error bodies
-            // e.g. HTTP 429 — {"error":{"code":429,"message":"You exceeded..."}}
-            const httpCodeMatch = rawErr.match(/HTTP (\d{3})/);
-            if (httpCodeMatch) httpCode = parseInt(httpCodeMatch[1], 10);
-            const jsonMatch = rawErr.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                try {
-                    const parsed = JSON.parse(jsonMatch[0]);
-                    if (parsed?.error?.code) httpCode = parsed.error.code;
-                    const msg = parsed?.error?.message || parsed?.message || parsed?.error?.status || null;
-                    if (msg) errStr = `HTTP error — ${msg}`;
-                } catch { /* keep original */ }
-            }
-            // Select hint based on HTTP status code first, then text patterns
-            let hint = 'Make sure you have configured an AI provider in settings.';
-            if (httpCode === 401 || httpCode === 403) {
-                hint = 'Authentication failed. Check your API key in AI Settings.';
-            } else if (httpCode === 429) {
-                hint = 'Rate limited by the provider. Wait a moment and try again.';
-            } else if (httpCode === 404) {
-                hint = 'Model not found. Check your model name in AI Settings.';
-            } else {
-                const errLower = rawErr.toLowerCase();
-                if (errLower.includes('tool use') || errLower.includes('tool_use') || errLower.includes('function calling')) {
-                    hint = 'This model does not support tool use. Disable "Tools" for this model in AI Settings → Models.';
-                } else if (errLower.includes('unauthorized') || errLower.includes('auth')) {
-                    hint = 'Authentication failed. Check your API key in AI Settings.';
-                } else if (errLower.includes('quota') || errLower.includes('rate limit')) {
-                    hint = 'Rate limited by the provider. Wait a moment and try again.';
-                } else if (errLower.includes('network') || errLower.includes('fetch') || errLower.includes('timeout')) {
-                    hint = 'Network error. Check your internet connection and provider URL.';
-                }
-            }
-            const sanitized = errStr.replace(/\/[\w\/./-]+/g, '[path]').replace(/\\[\w\\.\\-]+/g, '[path]');
-            const errorContent = `**Error**: ${sanitized}\n\n${hint}`;
+            const errorContent = formatProviderError(rawErr, t);
             if (streamingMsgId) {
                 // Update the existing placeholder message instead of adding a duplicate
                 setMessages(prev => prev.map(m =>
@@ -1614,6 +1647,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onOpenSettings={() => setShowSettings(true)}
                 hasMessages={messages.length > 0}
                 appTheme={appTheme}
+                agentMode={agentMode}
+                onSetAgentMode={(mode) => {
+                    setAgentMode(mode);
+                    localStorage.setItem('aeroftp_ai_agent_mode', mode);
+                    if (mode === 'extreme') setShowExtremeWarning(true);
+                }}
+                onExtremeWarning={() => setShowExtremeWarning(true)}
             />
 
             {/* Phase 3: Branch selector (#69) */}
@@ -1682,38 +1722,135 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onSearchResults={handleSearchResults}
             />
 
+            {/* Extreme Mode security warning modal */}
+            {showExtremeWarning && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)}>
+                    <div
+                        className="w-[380px] rounded-xl border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                                <AlertTriangle size={22} className="text-red-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-red-400 font-bold text-sm">{t('ai.extremeMode.title')}</h3>
+                                <p className="text-gray-500 text-[10px] uppercase tracking-wider mt-0.5">{t('ai.extremeMode.securityWarning')}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 mb-4 text-xs text-gray-300 leading-relaxed">
+                            <p>{t('ai.extremeMode.description')}</p>
+                            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                                <ShieldAlert size={14} className="text-red-400 mt-0.5 shrink-0" />
+                                <p className="text-red-300/90">{t('ai.extremeMode.warning')}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => {
+                                    setAgentMode('normal');
+                                    localStorage.setItem('aeroftp_ai_agent_mode', 'normal');
+                                    setShowExtremeWarning(false);
+                                }}
+                                className="flex-1 px-3 py-2 rounded-lg bg-gray-700/50 text-gray-300 text-xs hover:bg-gray-700 transition-colors"
+                            >
+                                {t('ai.extremeMode.disable')}
+                            </button>
+                            <button
+                                onClick={() => setShowExtremeWarning(false)}
+                                className="flex-1 px-3 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/30 transition-colors"
+                            >
+                                {t('ai.extremeMode.understood')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Messages Area */}
             <div ref={messageListRef} className="flex-1 overflow-y-auto" onClick={() => showExportMenu && setShowExportMenu(false)}>
                 {messages.length === 0 ? (
-                    /* Empty State - System Welcome */
-                    <div className="h-full flex flex-col items-center justify-center text-center px-6 py-8">
-                        <div className="w-12 h-12 rounded-full bg-purple-600/20 flex items-center justify-center mb-4">
-                            <Sparkles size={24} className="text-purple-400" />
+                    /* Empty State - AeroAgent Welcome */
+                    <div className="h-full flex flex-col items-center justify-center text-center px-6 py-6 gap-4">
+                        {/* Logo + Title */}
+                        <div className="flex flex-col items-center gap-2">
+                            <div className="w-11 h-11 rounded-full bg-purple-600/20 flex items-center justify-center">
+                                <Sparkles size={22} className="text-purple-400" />
+                            </div>
+                            <h3 className={`text-lg font-semibold ${ct.text}`}>{t('ai.aeroAgent')}</h3>
+                            <p className={`text-xs ${ct.textSecondary} max-w-xs`}>
+                                {availableModels.length === 0 ? t('ai.welcomeSubtitleSetup') : t('ai.welcomeSubtitle')}
+                            </p>
                         </div>
-                        <h3 className={`text-lg font-medium ${ct.text} mb-2`}>{t('ai.aeroAgent')}</h3>
-                        <p className={`text-sm ${ct.textSecondary} max-w-sm mb-6`}>
-                            {t('ai.welcome')}
-                        </p>
-                        <div className="grid grid-cols-2 gap-2 text-xs max-w-md">
-                            {[
-                                { icon: '📂', label: t('ai.listFiles') },
-                                { icon: '📄', label: t('ai.readFiles') },
-                                { icon: '✏️', label: t('ai.createEditFiles') },
-                                { icon: '🔄', label: t('ai.uploadDownload') },
-                                { icon: '🔍', label: t('ai.compareDirectories') },
-                                { icon: '🔐', label: t('ai.modifyPermissions') },
-                            ].map((item, i) => (
-                                <div key={i} className={`flex items-center gap-2 px-3 py-2 ${ct.bgSecondaryHalf} rounded-lg ${ct.textSecondary}`}>
-                                    <span>{item.icon}</span>
-                                    <span>{item.label}</span>
-                                </div>
-                            ))}
+
+                        {/* API Key Banner — only when no providers configured */}
+                        {availableModels.length === 0 && (
+                            <button
+                                onClick={() => setShowSettings(true)}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 transition-colors text-amber-400 text-xs font-medium`}
+                            >
+                                <Key size={14} />
+                                <span>{t('ai.welcomeConfigureProvider')}</span>
+                                <Settings size={12} className="opacity-60" />
+                            </button>
+                        )}
+
+                        {/* Capabilities Grid */}
+                        <div className="w-full max-w-sm">
+                            <div className={`text-[10px] uppercase tracking-wider ${ct.textSecondary} mb-2 opacity-60`}>
+                                {t('ai.welcomeCapabilities')}
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                                {[
+                                    { icon: FolderOpen, label: t('ai.welcomeFiles'), desc: t('ai.welcomeFilesDesc') },
+                                    { icon: FileCode, label: t('ai.welcomeCode'), desc: t('ai.welcomeCodeDesc') },
+                                    { icon: Search, label: t('ai.welcomeSearch'), desc: t('ai.welcomeSearchDesc') },
+                                    { icon: Archive, label: t('ai.welcomeArchives'), desc: t('ai.welcomeArchivesDesc') },
+                                    { icon: Terminal, label: t('ai.welcomeShell'), desc: t('ai.welcomeShellDesc') },
+                                    { icon: Shield, label: t('ai.welcomeVault'), desc: t('ai.welcomeVaultDesc') },
+                                    { icon: RefreshCw, label: t('ai.welcomeSync'), desc: t('ai.welcomeSyncDesc') },
+                                    { icon: Brain, label: t('ai.welcomeContext'), desc: t('ai.welcomeContextDesc') },
+                                    { icon: Eye, label: t('ai.welcomeVision'), desc: t('ai.welcomeVisionDesc') },
+                                ].map((item, i) => (
+                                    <div key={i} className={`flex flex-col items-center gap-1 px-2 py-2 ${ct.bgSecondaryHalf} rounded-lg hover:scale-[1.02] transition-transform cursor-default`}>
+                                        <item.icon size={16} className="text-purple-400" />
+                                        <span className={`text-[11px] font-medium ${ct.text} leading-tight`}>{item.label}</span>
+                                        <span className={`text-[9px] ${ct.textSecondary} leading-tight opacity-70`}>{item.desc}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Quick Prompt Suggestions */}
+                        <div className="w-full max-w-sm">
+                            <div className={`text-[10px] uppercase tracking-wider ${ct.textSecondary} mb-2 opacity-60`}>
+                                {t('ai.welcomeTryAsking')}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                {(isConnected ? [
+                                    t('ai.welcomePromptRemote1'),
+                                    t('ai.welcomePromptRemote2'),
+                                    t('ai.welcomePromptRemote3'),
+                                ] : [
+                                    t('ai.welcomePromptLocal1'),
+                                    t('ai.welcomePromptLocal2'),
+                                    t('ai.welcomePromptLocal3'),
+                                ]).map((prompt, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setInput(prompt)}
+                                        className={`text-left text-xs px-3 py-2 ${ct.bgSecondaryHalf} rounded-lg ${ct.textSecondary} hover:text-purple-400 hover:bg-purple-500/10 transition-colors cursor-pointer`}
+                                    >
+                                        &ldquo;{prompt}&rdquo;
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 ) : (
                     /* Messages List */
                     <div className="p-4 space-y-4">
-                        {messages.map((message) => (
+                        {messages.filter(m => m.role === 'user' || m.content || m.thinking).map((message) => (
                             <div
                                 key={message.id}
                                 data-message-id={message.id}
@@ -1796,6 +1933,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                                 {copiedId === message.id ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
                                             </button>
                                         )}
+                                        {message.toolName && (
+                                            <span className="flex items-center gap-1 text-purple-400/70">
+                                                <Wrench size={9} />
+                                                <span>{getToolLabel(message.toolName, t)}</span>
+                                            </span>
+                                        )}
                                         {message.role === 'assistant' && (
                                             <button
                                                 onClick={() => forkConversation(message.id)}
@@ -1832,12 +1975,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         ))}
                         {isLoading && !pendingToolCalls.some(tc => tc.status === 'pending') && (
                             <div className="flex gap-3">
-                                <div className={`${ct.bgHalf} rounded-lg px-4 py-2 ${ct.textSecondary} text-sm flex items-center gap-2`}>
-                                    <GridSpinner size={14} className="text-purple-400" />
-                                    {isAutoExecuting ? (
+                                <div className={`${ct.bgHalf} rounded-lg px-4 py-2 ${ct.textSecondary} text-sm flex items-center gap-3`}>
+                                    <GridSpinner size={14} className="text-purple-400 shrink-0" />
+                                    {isAutoExecuting && autoStepCount > 1 ? (
                                         <>
-                                            {extremeMode && <span className="text-red-400 font-bold animate-pulse mr-1">EXTREME</span>}
-                                            <span>Step {autoStepCount}/{effectiveMaxSteps}</span>
+                                            {agentMode === 'extreme' && <span className="text-red-400 font-bold animate-pulse mr-1">EXTREME</span>}
+                                            <span>Step {autoStepCount}</span>
                                             <span className="mx-1">&mdash;</span>
                                             <button
                                                 onClick={() => { autoStopRef.current = true; }}
@@ -1847,7 +1990,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             </button>
                                         </>
                                     ) : (
-                                        <span className="transition-opacity duration-300">{thinkingMessage}</span>
+                                        <span className="transition-opacity duration-300">
+                                            {thinkingMessage}
+                                            {thinkingIsTyping && (
+                                                <span className="inline-block w-[3px] h-3.5 ml-0.5 bg-purple-400 rounded-[1px] animate-[blink_0.5s_infinite] align-middle"
+                                                    style={{ animationTimingFunction: 'steps(1)' }} />
+                                            )}
+                                        </span>
                                     )}
                                 </div>
                             </div>
@@ -1857,9 +2006,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <ToolApproval
                                 toolCall={pendingToolCalls[0]}
                                 allTools={allTools}
+                                onApproveSession={agentMode === 'safe' ? undefined : (toolName: string) => {
+                                    sessionApprovedToolsRef.current.add(toolName);
+                                }}
                                 onApprove={async () => {
                                     setIsLoading(true);
-                                    const toolResult = await executeTool(pendingToolCalls[0]);
+                                    const tc0 = pendingToolCalls[0];
+                                    // Track approved tool signature for duplicate detection
+                                    executedToolSignaturesRef.current.add(`${tc0.toolName}::${JSON.stringify(tc0.args)}`);
+                                    const toolResult = await executeTool(tc0);
                                     setPendingToolCalls([]);
                                     if (toolResult && multiStepContextRef.current && !autoStopRef.current) {
                                         const ctx = multiStepContextRef.current;
@@ -1889,6 +2044,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 allTools={allTools}
                                 onApproveAll={async () => {
                                     setIsLoading(true);
+                                    // Track all approved tool signatures for duplicate detection
+                                    for (const tc of pendingToolCalls) {
+                                        executedToolSignaturesRef.current.add(`${tc.toolName}::${JSON.stringify(tc.args)}`);
+                                    }
                                     const levels = buildExecutionLevels(pendingToolCalls);
                                     const results = await executePipeline(levels, executeTool);
                                     setPendingToolCalls([]);
