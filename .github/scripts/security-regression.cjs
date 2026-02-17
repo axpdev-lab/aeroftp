@@ -15,27 +15,34 @@ function assert(condition, message) {
   }
 }
 
-function checkTerminalDenylist() {
-  const file = 'src/components/DevTools/AIChat.tsx';
-  const content = read(file);
+function checkShellDenylist() {
+  // v2.2.3: denylist moved from frontend (terminal_execute) to Rust backend (shell_execute)
+  const rustFile = 'src-tauri/src/ai_tools.rs';
+  const rustContent = read(rustFile);
 
   const requiredTokens = [
-    "if (toolCall.toolName === 'terminal_execute')",
-    'const DENIED_COMMANDS = [',
-    '/^\\s*rm\\s+(-[a-zA-Z]*)?.*\\s+\\/\\s*$/',
-    '/^\\s*mkfs\\b/',
-    '/^\\s*dd\\s+.*of=\\/dev\\//',
-    '/^\\s*shutdown\\b/',
-    '/^\\s*reboot\\b/',
-    '/^\\s*halt\\b/',
-    '/^\\s*:\\(\\)\\s*\\{\\s*:\\|:\\s*&\\s*\\}\\s*;\\s*:/',
-    "throw new Error('Command blocked: potentially destructive system command')",
+    'DENIED_COMMAND_PATTERNS',
+    'pub async fn shell_execute(',
+    '"Command blocked: potentially destructive system command"',
+    '^\\s*rm\\s+(-[a-zA-Z]*)?.*\\s+/\\s*$',
+    '^\\s*mkfs\\b',
+    '^\\s*dd\\s+.*of=/dev/',
+    '^\\s*shutdown\\b',
+    '^\\s*reboot\\b',
+    '^\\s*halt\\b',
+    '^\\s*:\\(\\)\\s*\\{\\s*:\\|:\\s*&\\s*\\}\\s*;\\s*:',
   ];
 
   for (const token of requiredTokens) {
-    assert(content.includes(token), `terminal denylist regression: missing token in ${file}: ${token}`);
+    assert(rustContent.includes(token), `shell denylist regression: missing token in ${rustFile}: ${token}`);
   }
 
+  // Also verify frontend references shell_execute (not terminal_execute)
+  const chatFile = 'src/components/DevTools/AIChat.tsx';
+  const chatContent = read(chatFile);
+  assert(chatContent.includes("toolCall.toolName === 'shell_execute'"), `shell denylist regression: AIChat.tsx should reference shell_execute`);
+
+  // Self-test: verify regex patterns block known-bad commands
   const deniedPatterns = [
     /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\s*$/,
     /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\s*$/,
@@ -66,11 +73,11 @@ function checkTerminalDenylist() {
   ];
 
   for (const cmd of knownBad) {
-    assert(deniedPatterns.some((rx) => rx.test(cmd)), `terminal denylist self-test failed: bad command not blocked: ${cmd}`);
+    assert(deniedPatterns.some((rx) => rx.test(cmd)), `shell denylist self-test failed: bad command not blocked: ${cmd}`);
   }
 
   for (const cmd of knownSafe) {
-    assert(!deniedPatterns.some((rx) => rx.test(cmd)), `terminal denylist self-test failed: safe command incorrectly blocked: ${cmd}`);
+    assert(!deniedPatterns.some((rx) => rx.test(cmd)), `shell denylist self-test failed: safe command incorrectly blocked: ${cmd}`);
   }
 }
 
@@ -176,7 +183,7 @@ function checkPluginSandboxConstraints() {
 
 function run() {
   const checks = [
-    ['Terminal denylist', checkTerminalDenylist],
+    ['Shell denylist', checkShellDenylist],
     ['Host-key fail-closed', checkHostKeyFailClosed],
     ['OAuth/settings leak guard', checkOauthSettingsLeakGuard],
     ['Settings vault migration', checkSettingsVaultMigration],
