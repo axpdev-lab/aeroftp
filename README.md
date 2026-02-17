@@ -13,15 +13,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/axpnet/aeroftp?style=for-the-badge" alt="Latest Release">
-  <img src="https://img.shields.io/github/stars/axpnet/aeroftp?style=for-the-badge" alt="GitHub Stars">
-  <img src="https://img.shields.io/github/forks/axpnet/aeroftp?style=for-the-badge" alt="GitHub Forks">
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-green?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Built%20with-Tauri%202%20%2B%20React%2018-purple?style=for-the-badge" alt="Built with">
-  <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
-  <img src="https://img.shields.io/badge/License-GPL--3.0-orange?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/Languages-47-blue?style=for-the-badge" alt="Languages">
-  <img src="https://img.shields.io/badge/Protocols-14-teal?style=for-the-badge" alt="Protocols">
+  <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
+  <a href="https://snapcraft.io/aeroftp"><img src="https://img.shields.io/badge/snap-aeroftp-blue?logo=snapcraft" alt="Snap" /></a>
+  <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
+  <img src="https://img.shields.io/badge/tauri-2-blue?logo=tauri&logoColor=white" alt="Tauri 2" />
+  <img src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
+  <img src="https://img.shields.io/badge/protocols-14-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
 </p>
 
 ---
