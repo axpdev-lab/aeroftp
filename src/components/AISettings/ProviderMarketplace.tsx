@@ -5,7 +5,7 @@ import { AIProviderType, PROVIDER_PRESETS } from '../../types/ai';
 import {
     MARKETPLACE_PROVIDERS, MARKETPLACE_CATEGORIES, FEATURE_LABELS,
     MarketplaceCategory, MarketplaceProvider
-} from './providerMarketplace';
+} from './providerMarketplaceData';
 import {
     GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon,
     OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon,
