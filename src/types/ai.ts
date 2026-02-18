@@ -138,7 +138,7 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
     {
         name: 'Qwen (Alibaba)',
         type: 'qwen',
-        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
         isEnabled: false,
         isDefault: false,
     },

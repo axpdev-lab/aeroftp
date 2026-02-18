@@ -29,12 +29,12 @@ export const APP_KNOWLEDGE: KBSection[] = [
             'add server', 'new server', 'configure', 'setup', 'endpoint', 'bucket',
             'password', 'key', 'certificate', 'tls', 'ssl', 'oauth', 'credential',
         ],
-        compact: 'Connections: 14 protocols (FTP/FTPS/SFTP/WebDAV/S3/GDrive/Dropbox/OneDrive/MEGA/Box/pCloud/Azure/4shared/Filen). Configure in Connection Screen or via Saved Servers.',
+        compact: 'Connections: 14 protocols (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen). Configure in Connection Screen or via Saved Servers.',
         full: `How to connect to a remote server in AeroFTP:
 
 1. **Connection Screen**: The main screen shows a connection form. Select a protocol from the dropdown (14 available).
 2. **Fill in fields**: Each protocol has different required fields:
-   - FTP/FTPS/SFTP: Host, Port, Username, Password (or SSH key for SFTP)
+   - FTP, FTPS, SFTP: Host, Port, Username, Password (or SSH key for SFTP)
    - S3: Endpoint URL, Access Key, Secret Key, Bucket, Region
    - WebDAV: Full URL (e.g. https://cloud.example.com/remote.php/dav/files/user/)
    - Cloud providers (GDrive, Dropbox, OneDrive, Box, pCloud): Click "Connect" to start OAuth flow in browser
@@ -285,7 +285,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - **OpenRouter**: API key from openrouter.ai. Access 100+ models from all providers through one key.
 - **Ollama**: Local AI. Set base URL (default: http://localhost:11434). Click "Detect" to auto-discover installed models. "Pull Model" to download new ones.
 - **Kimi** (Moonshot AI): API key from platform.moonshot.cn. Chinese LLM provider.
-- **Qwen** (Alibaba): API key from dashscope.aliyuncs.com. Models: Qwen-Max, Qwen-Turbo, etc.
+- **Qwen** (Alibaba): API key from dashscope-intl.aliyuncs.com. Models: Qwen-Max, Qwen-Turbo, etc.
 - **DeepSeek**: API key from platform.deepseek.com. Models: DeepSeek-V3, DeepSeek-R1, etc.
 - **Custom**: Any OpenAI-compatible endpoint. Set base URL + API key.
 
