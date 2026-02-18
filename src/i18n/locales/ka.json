@@ -1998,6 +1998,32 @@
                 "title": "AI პროვაიდერების მარკეტპლეისი",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "გაუქმება",
+                "cleanup": "გასუფთავება",
+                "cleanupOld": "ძველების გასუფთავება",
+                "clearAll": "ყველას წაშლა",
+                "confirmClearAll": "წაიშალოს მთელი ჩატის ისტორია?",
+                "confirmDelete": "დიახ, წაშალე ყველა",
+                "days": "დღე",
+                "dbSize": "DB ზომა",
+                "deleteOlderThan": "წაშალე უძველესი ვიდრე",
+                "manager": "ჩატის ისტორიის მენეჯერი",
+                "messagesCount": "შეტყობინებები",
+                "noResults": "შედეგები ვერ მოიძებნა",
+                "retention": "ჩატის ისტორიის შენახვა",
+                "retentionDesc": "ავტომატურად შლის არჩეულ პერიოდზე ძველ საუბრებს. მუშაობს SQLite + FTS5-ზე.",
+                "retentionHint": "დააყენეთ შეუზღუდავი ყველა საუბრის სამუდამოდ შესანახად. გასუფთავება ავტომატურად ეშვება გაშვებისას.",
+                "searchHint": "ძიება ყველა საუბარში",
+                "searchPlaceholder": "ძიება ყველა საუბარში...",
+                "searching": "ძიება...",
+                "sessions": "სესიები",
+                "totalCost": "ღირებულება",
+                "totalTokens": "Tokens",
+                "unlimited": "შეუზღუდავი",
+                "roleAI": "AI",
+                "roleUser": "მომხმარებელი"
             }
         },
         "archive": {

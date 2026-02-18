@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Sparkles, PanelLeftClose, PanelLeftOpen, Plus, Download, Settings2, Zap, ShieldCheck } from 'lucide-react';
+import { Sparkles, PanelLeftClose, PanelLeftOpen, Plus, Download, Settings2, Zap, ShieldCheck, Database } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 import type { AgentMode } from './aiChatTypes';
@@ -12,6 +12,7 @@ interface AIChatHeaderProps {
     onToggleExportMenu: () => void;
     onExport: (format: 'markdown' | 'json') => void;
     onOpenSettings: () => void;
+    onOpenHistoryManager: () => void;
     hasMessages: boolean;
     appTheme?: EffectiveTheme;
     agentMode?: AgentMode;
@@ -22,7 +23,7 @@ interface AIChatHeaderProps {
 export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
     showHistory, onToggleHistory, onNewChat,
     showExportMenu, onToggleExportMenu, onExport,
-    onOpenSettings, hasMessages, appTheme = 'dark',
+    onOpenSettings, onOpenHistoryManager, hasMessages, appTheme = 'dark',
     agentMode = 'normal', onSetAgentMode, onExtremeWarning,
 }) => {
     const t = useTranslation();
@@ -118,6 +119,9 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
             {/* right side */}
             <div className="flex items-center gap-1">
                 {modeBadge}
+                <button onClick={onOpenHistoryManager} className={`p-1.5 ${styles.btn} rounded transition-colors`} title={t('ai.history.manager')}>
+                    <Database size={14} />
+                </button>
                 <button onClick={onNewChat} className={`p-1.5 ${styles.btn} rounded transition-colors`} title={t('ai.newChat')}>
                     <Plus size={14} />
                 </button>

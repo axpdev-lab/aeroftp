@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 2.2.x   | Yes (current) |
+| 2.3.x   | Yes (current) |
+| 2.2.x   | Security fixes only |
 | 2.1.x   | Security fixes only |
-| 2.0.x   | Security fixes only |
-| < 1.9   | No  |
+| < 2.0   | No  |
 
 ## Security Architecture
 
@@ -306,6 +306,8 @@ AeroFTP is designed as a **privacy-enhanced** file manager. While no software ca
 | **AeroFile Hardening** | Path validation on all commands + symlink safety + resource exhaustion limits + preview size caps + iframe sandbox + filename validation |
 | **TOTP 2FA for Vault** | Optional RFC 6238 TOTP second factor with rate limiting (exponential backoff), `setup_verified` gate, zeroized secret bytes, single Mutex atomic state |
 | **Remote Vault Security** | Null byte validation, path traversal rejection, symlink detection, `canonicalize()` verification, Unix 0o600 permissions, error propagation on all writes |
+| **Chat History SQLite** | SQLite WAL + FTS5 full-text search with XSS-safe snippet rendering, FTS query injection prevention, retention auto-apply, dedicated clear-all, in-memory fallback |
+| **Security Audit (v2.3.0)** | 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — SQL injection prevention, XSS in FTS snippets, WAL mode hardening, retention enforcement |
 | **Security Audit (v2.2.4)** | 13 findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — TOTP, Remote Vault, modals, provider configs |
 | **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
 | **WebDAV Digest Auth** | RFC 2617 Digest authentication with auto-detection — password never transmitted, nonce-based replay protection, request integrity verification |
@@ -335,4 +337,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.2.4 - 18 February 2026*
+*AeroFTP v2.3.0 - 19 February 2026*

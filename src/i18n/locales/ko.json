@@ -1998,6 +1998,32 @@
                 "title": "AI 공급자 마켓플레이스",
                 "tools": "도구",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "취소",
+                "cleanup": "정리",
+                "cleanupOld": "오래된 항목 정리",
+                "clearAll": "모두 삭제",
+                "confirmClearAll": "모든 채팅 기록을 삭제하시겠습니까?",
+                "confirmDelete": "예, 모두 삭제",
+                "days": "일",
+                "dbSize": "DB 크기",
+                "deleteOlderThan": "다음보다 오래된 항목 삭제",
+                "manager": "채팅 기록 관리자",
+                "messagesCount": "메시지",
+                "noResults": "결과를 찾을 수 없습니다",
+                "retention": "채팅 기록 보존",
+                "retentionDesc": "선택한 기간보다 오래된 대화를 자동으로 삭제합니다. SQLite + FTS5 기반.",
+                "retentionHint": "모든 대화를 영구 보존하려면 무제한으로 설정하세요. 정리는 시작 시 자동으로 실행됩니다.",
+                "searchHint": "모든 대화에서 검색",
+                "searchPlaceholder": "모든 대화에서 검색...",
+                "searching": "검색 중...",
+                "sessions": "세션",
+                "totalCost": "비용",
+                "totalTokens": "Tokens",
+                "unlimited": "무제한",
+                "roleAI": "AI",
+                "roleUser": "사용자"
             }
         },
         "archive": {

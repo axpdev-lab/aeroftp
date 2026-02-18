@@ -1998,6 +1998,32 @@
                 "title": "Soko la watoa huduma wa AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Ghairi",
+                "cleanup": "Usafishaji",
+                "cleanupOld": "Safisha za zamani",
+                "clearAll": "Futa zote",
+                "confirmClearAll": "Futa historia YOTE ya mazungumzo?",
+                "confirmDelete": "Ndiyo, futa zote",
+                "days": "siku",
+                "dbSize": "Ukubwa wa DB",
+                "deleteOlderThan": "Futa za zamani kuliko",
+                "manager": "Meneja wa Historia ya Mazungumzo",
+                "messagesCount": "Ujumbe",
+                "noResults": "Hakuna matokeo",
+                "retention": "Uhifadhi wa Historia ya Mazungumzo",
+                "retentionDesc": "Futa kiotomatiki mazungumzo ya zamani kuliko kipindi kilichochaguliwa. Inaendeshwa na SQLite + FTS5.",
+                "retentionHint": "Weka kwa Bila kikomo ili kuhifadhi mazungumzo yote milele. Usafishaji unaendeshwa kiotomatiki wakati wa kuanza.",
+                "searchHint": "Tafuta katika mazungumzo yako yote",
+                "searchPlaceholder": "Tafuta katika mazungumzo yote...",
+                "searching": "Inatafuta...",
+                "sessions": "Vipindi",
+                "totalCost": "Gharama",
+                "totalTokens": "Tokens",
+                "unlimited": "Bila kikomo",
+                "roleAI": "AI",
+                "roleUser": "Mtumiaji"
             }
         },
         "archive": {

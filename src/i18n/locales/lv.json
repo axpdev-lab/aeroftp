@@ -1998,6 +1998,32 @@
                 "title": "AI pakalpojumu sniedzēju tirgus",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Atcelt",
+                "cleanup": "Tīrīšana",
+                "cleanupOld": "Tīrīt vecos",
+                "clearAll": "Dzēst visu",
+                "confirmClearAll": "Dzēst VISU tērzēšanas vēsturi?",
+                "confirmDelete": "Jā, dzēst visu",
+                "days": "dienas",
+                "dbSize": "DB izmērs",
+                "deleteOlderThan": "Dzēst vecākus par",
+                "manager": "Tērzēšanas vēstures pārvaldnieks",
+                "messagesCount": "Ziņojumi",
+                "noResults": "Rezultāti nav atrasti",
+                "retention": "Tērzēšanas vēstures saglabāšana",
+                "retentionDesc": "Automātiski dzēš sarunas, kas vecākas par izvēlēto periodu. Darbina SQLite + FTS5.",
+                "retentionHint": "Iestatiet uz Neierobežots, lai saglabātu visas sarunas mūžīgi. Tīrīšana notiek automātiski startējot.",
+                "searchHint": "Meklēt visās sarunās",
+                "searchPlaceholder": "Meklēt visās sarunās...",
+                "searching": "Meklē...",
+                "sessions": "Sesijas",
+                "totalCost": "Izmaksas",
+                "totalTokens": "Tokens",
+                "unlimited": "Neierobežots",
+                "roleAI": "AI",
+                "roleUser": "Lietotājs"
             }
         },
         "archive": {

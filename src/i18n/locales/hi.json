@@ -1998,6 +1998,32 @@
                 "title": "AI प्रदाता मार्केटप्लेस",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "रद्द करें",
+                "cleanup": "सफाई",
+                "cleanupOld": "पुराने साफ़ करें",
+                "clearAll": "सब मिटाएं",
+                "confirmClearAll": "सम्पूर्ण चैट इतिहास हटाएं?",
+                "confirmDelete": "हाँ, सब हटाएं",
+                "days": "दिन",
+                "dbSize": "DB आकार",
+                "deleteOlderThan": "इससे पुराने हटाएं",
+                "manager": "चैट इतिहास प्रबंधक",
+                "messagesCount": "संदेश",
+                "noResults": "कोई परिणाम नहीं मिला",
+                "retention": "चैट इतिहास संरक्षण",
+                "retentionDesc": "चयनित अवधि से पुरानी बातचीत स्वचालित रूप से हटाएं। SQLite + FTS5 द्वारा संचालित।",
+                "retentionHint": "सभी बातचीत हमेशा रखने के लिए असीमित सेट करें। सफाई स्टार्टअप पर स्वचालित रूप से चलती है।",
+                "searchHint": "अपनी सभी बातचीत में खोजें",
+                "searchPlaceholder": "सभी बातचीत में खोजें...",
+                "searching": "खोज रहे हैं...",
+                "sessions": "सत्र",
+                "totalCost": "लागत",
+                "totalTokens": "Tokens",
+                "unlimited": "असीमित",
+                "roleAI": "AI",
+                "roleUser": "उपयोगकर्ता"
             }
         },
         "archive": {

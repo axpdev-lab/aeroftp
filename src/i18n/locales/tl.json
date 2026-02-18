@@ -1998,6 +1998,32 @@
                 "title": "AI Provider Marketplace",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Kanselahin",
+                "cleanup": "Paglilinis",
+                "cleanupOld": "Linisin ang luma",
+                "clearAll": "Burahin lahat",
+                "confirmClearAll": "Burahin ang LAHAT ng kasaysayan ng chat?",
+                "confirmDelete": "Oo, burahin lahat",
+                "days": "araw",
+                "dbSize": "Laki ng DB",
+                "deleteOlderThan": "Burahin ang mas luma sa",
+                "manager": "Tagapamahala ng Kasaysayan ng Chat",
+                "messagesCount": "Mga Mensahe",
+                "noResults": "Walang nahanap na resulta",
+                "retention": "Pagpapanatili ng Kasaysayan ng Chat",
+                "retentionDesc": "Awtomatikong burahin ang mga pag-uusap na mas luma sa napiling panahon. Pinapagana ng SQLite + FTS5.",
+                "retentionHint": "Itakda sa Walang limitasyon upang panatilihin ang lahat ng pag-uusap. Ang paglilinis ay awtomatikong tumatakbo sa pagsisimula.",
+                "searchHint": "Maghanap sa lahat ng iyong pag-uusap",
+                "searchPlaceholder": "Maghanap sa lahat ng pag-uusap...",
+                "searching": "Naghahanap...",
+                "sessions": "Mga Sesyon",
+                "totalCost": "Gastos",
+                "totalTokens": "Tokens",
+                "unlimited": "Walang limitasyon",
+                "roleAI": "AI",
+                "roleUser": "Gumagamit"
             }
         },
         "archive": {

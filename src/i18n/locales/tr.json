@@ -1998,6 +1998,32 @@
                 "title": "AI sağlayıcı pazar yeri",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Iptal",
+                "cleanup": "Temizlik",
+                "cleanupOld": "Eskileri temizle",
+                "clearAll": "Tumunu temizle",
+                "confirmClearAll": "TUM sohbet gecmisi silinsin mi?",
+                "confirmDelete": "Evet, tumunu sil",
+                "days": "gun",
+                "dbSize": "DB Boyutu",
+                "deleteOlderThan": "Sunden eski olanlar silinsin",
+                "manager": "Sohbet Gecmisi Yoneticisi",
+                "messagesCount": "Mesajlar",
+                "noResults": "Sonuc bulunamadi",
+                "retention": "Sohbet Gecmisi Saklama",
+                "retentionDesc": "Secilen sureden eski konusmalari otomatik olarak sil. SQLite + FTS5 tarafindan desteklenmektedir.",
+                "retentionHint": "Tum konusmalari kalici olarak saklamak icin Sinirsiz olarak ayarlayin. Temizlik baslatmada otomatik calisir.",
+                "searchHint": "Tum konusmalarinizda arayin",
+                "searchPlaceholder": "Tum konusmalarda ara...",
+                "searching": "Araniyor...",
+                "sessions": "Oturumlar",
+                "totalCost": "Maliyet",
+                "totalTokens": "Tokens",
+                "unlimited": "Sinirsiz",
+                "roleAI": "AI",
+                "roleUser": "Kullanici"
             }
         },
         "archive": {

@@ -1998,6 +1998,32 @@
                 "title": "AI hornitzaileen merkatua",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Utzi",
+                "cleanup": "Garbiketa",
+                "cleanupOld": "Zaharrak garbitu",
+                "clearAll": "Dena ezabatu",
+                "confirmClearAll": "Txat-historial OSOA ezabatu?",
+                "confirmDelete": "Bai, dena ezabatu",
+                "days": "egun",
+                "dbSize": "DB tamaina",
+                "deleteOlderThan": "Hau baino zaharragoak ezabatu",
+                "manager": "Txat-historiaren kudeatzailea",
+                "messagesCount": "Mezuak",
+                "noResults": "Ez da emaitzarik aurkitu",
+                "retention": "Txat-historiaren atxikipena",
+                "retentionDesc": "Automatikoki ezabatu hautatutako aldia baino zaharragoak diren elkarrizketak. SQLite + FTS5 erabiltzen du.",
+                "retentionHint": "Mugagabe ezarri elkarrizketa guztiak betirako gordetzeko. Garbiketa automatikoki exekutatzen da abiaraztean.",
+                "searchHint": "Bilatu zure elkarrizketa guztietan",
+                "searchPlaceholder": "Bilatu elkarrizketa guztietan...",
+                "searching": "Bilatzen...",
+                "sessions": "Saioak",
+                "totalCost": "Kostua",
+                "totalTokens": "Tokens",
+                "unlimited": "Mugagabe",
+                "roleAI": "AI",
+                "roleUser": "Erabiltzailea"
             }
         },
         "archive": {

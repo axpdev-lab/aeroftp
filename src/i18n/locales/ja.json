@@ -1963,6 +1963,32 @@
                 "title": "AIプロバイダーマーケットプレイス",
                 "tools": "ツール",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "キャンセル",
+                "cleanup": "クリーンアップ",
+                "cleanupOld": "古い履歴を削除",
+                "clearAll": "すべて削除",
+                "confirmClearAll": "すべてのチャット履歴を削除しますか？",
+                "confirmDelete": "はい、すべて削除",
+                "days": "日",
+                "dbSize": "DB サイズ",
+                "deleteOlderThan": "次より古いものを削除",
+                "manager": "チャット履歴マネージャー",
+                "messagesCount": "メッセージ",
+                "noResults": "結果が見つかりません",
+                "retention": "チャット履歴の保持",
+                "retentionDesc": "選択した期間より古い会話を自動的に削除します。SQLite + FTS5 を使用。",
+                "retentionHint": "すべての会話を永久に保持するには無制限に設定してください。クリーンアップは起動時に自動実行されます。",
+                "searchHint": "すべての会話を検索",
+                "searchPlaceholder": "すべての会話を検索...",
+                "searching": "検索中...",
+                "sessions": "セッション",
+                "totalCost": "コスト",
+                "totalTokens": "Tokens",
+                "unlimited": "無制限",
+                "roleAI": "AI",
+                "roleUser": "ユーザー"
             }
         },
         "archive": {

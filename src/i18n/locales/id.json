@@ -1998,6 +1998,32 @@
                 "title": "Marketplace Penyedia AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Batal",
+                "cleanup": "Bersihkan",
+                "cleanupOld": "Bersihkan yang lama",
+                "clearAll": "Hapus semua",
+                "confirmClearAll": "Hapus SEMUA riwayat obrolan?",
+                "confirmDelete": "Ya, hapus semua",
+                "days": "hari",
+                "dbSize": "Ukuran DB",
+                "deleteOlderThan": "Hapus lebih lama dari",
+                "manager": "Pengelola Riwayat Obrolan",
+                "messagesCount": "Pesan",
+                "noResults": "Tidak ada hasil ditemukan",
+                "retention": "Retensi Riwayat Obrolan",
+                "retentionDesc": "Otomatis menghapus percakapan yang lebih lama dari periode yang dipilih. Didukung SQLite + FTS5.",
+                "retentionHint": "Atur ke Tak Terbatas untuk menyimpan semua percakapan selamanya. Pembersihan berjalan otomatis saat startup.",
+                "searchHint": "Cari di semua percakapan Anda",
+                "searchPlaceholder": "Cari di semua percakapan...",
+                "searching": "Mencari...",
+                "sessions": "Sesi",
+                "totalCost": "Biaya",
+                "totalTokens": "Tokens",
+                "unlimited": "Tak Terbatas",
+                "roleAI": "AI",
+                "roleUser": "Pengguna"
             }
         },
         "archive": {

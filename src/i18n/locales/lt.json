@@ -1998,6 +1998,32 @@
                 "title": "AI teikėjų rinka",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Atšaukti",
+                "cleanup": "Valymas",
+                "cleanupOld": "Valyti senus",
+                "clearAll": "Išvalyti viską",
+                "confirmClearAll": "Ištrinti VISĄ pokalbių istoriją?",
+                "confirmDelete": "Taip, ištrinti viską",
+                "days": "dienos",
+                "dbSize": "DB dydis",
+                "deleteOlderThan": "Ištrinti senesnius nei",
+                "manager": "Pokalbių istorijos tvarkyklė",
+                "messagesCount": "Žinutės",
+                "noResults": "Rezultatų nerasta",
+                "retention": "Pokalbių istorijos saugojimas",
+                "retentionDesc": "Automatiškai ištrina pokalbius, senesnius nei pasirinktas laikotarpis. Veikia su SQLite + FTS5.",
+                "retentionHint": "Nustatykite Neribota, kad visi pokalbiai būtų saugomi amžinai. Valymas vykdomas automatiškai paleidžiant.",
+                "searchHint": "Ieškoti visuose pokalbiuose",
+                "searchPlaceholder": "Ieškoti visuose pokalbiuose...",
+                "searching": "Ieškoma...",
+                "sessions": "Sesijos",
+                "totalCost": "Kaina",
+                "totalTokens": "Tokens",
+                "unlimited": "Neribota",
+                "roleAI": "AI",
+                "roleUser": "Vartotojas"
             }
         },
         "archive": {

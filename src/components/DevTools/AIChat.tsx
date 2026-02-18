@@ -11,7 +11,7 @@ import { ToolApproval } from './ToolApproval';
 import { BatchToolApproval } from './BatchToolApproval';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
-import type { Conversation } from '../../utils/chatHistory';
+import { type Conversation, cleanupHistory } from '../../utils/chatHistory';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
@@ -38,6 +38,7 @@ import { DEFAULT_TEMPLATES, loadCustomTemplates, resolveTemplate } from './aiCha
 import type { PromptTemplate } from './aiChatPromptTemplates';
 import PromptTemplateSelector from './PromptTemplateSelector';
 import { ChatSearchOverlay, type SearchMatch } from './ChatSearchOverlay';
+import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
 import { CostBudgetIndicator } from './CostBudgetIndicator';
@@ -260,6 +261,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     // Phase 4: Search, Templates, Cost Budget
     const [showSearch, setShowSearch] = useState(false);
+    const [showHistoryManager, setShowHistoryManager] = useState(false);
     const [showTemplates, setShowTemplates] = useState(false);
     const [allTemplates, setAllTemplates] = useState<PromptTemplate[]>(DEFAULT_TEMPLATES);
     const [conversationCost, setConversationCost] = useState<ConversationCost | null>(null);
@@ -281,10 +283,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         setBudgetCheck(null);
     }, [startNewChatBase]);
 
-    // Wrap switchConversation to also clear pending tool calls
-    const switchConversation = useCallback((conv: Conversation) => {
-        switchConversationBase(conv);
+    // BUG-008: Wrap switchConversation — await async base, clear pending tools first
+    const switchConversation = useCallback(async (conv: Conversation) => {
         setPendingToolCalls([]);
+        await switchConversationBase(conv);
     }, [switchConversationBase]);
     // AI settings cached from vault (sync init from localStorage, then async vault refresh)
     const [cachedAiSettings, setCachedAiSettings] = useState<AISettings | null>(() => {
@@ -467,12 +469,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [messages]);
 
     // Debounced persist (fix H-004: stale closure + rapid fire)
-    // Note: persistConversation handles activeConversationId === null by creating a new ID
+    // BUG-009: Capture convId at timer creation to prevent cross-contamination on switch
     useEffect(() => {
         if (messages.length === 0) return;
-        const timer = setTimeout(() => persistConversation(messages), 1500);
+        const currentConvId = activeConversationId;
+        const timer = setTimeout(() => {
+            // Only persist if still on the same conversation
+            if (activeConversationId === currentConvId) {
+                persistConversation(messages);
+            }
+        }, 1500);
         return () => clearTimeout(timer);
-    }, [messages, persistConversation]);
+    }, [messages, persistConversation, activeConversationId]);
 
     // Save conversation on unmount (component destroyed when DevTools closes)
     useEffect(() => {
@@ -554,6 +562,22 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     // Load chat history on mount
     useEffect(() => { loadChatHistory(); }, [loadChatHistory]);
+
+    // F2: Auto-apply retention policy on startup (once per mount)
+    const retentionAppliedRef = useRef(false);
+    useEffect(() => {
+        if (retentionAppliedRef.current) return;
+        const days = cachedAiSettings?.advancedSettings?.chatHistoryRetentionDays;
+        if (days && days > 0) {
+            retentionAppliedRef.current = true;
+            cleanupHistory(days).then(deleted => {
+                if (deleted > 0) {
+                    logger.info(`Retention auto-cleanup: removed ${deleted} sessions older than ${days} days`);
+                    loadChatHistory(true);
+                }
+            });
+        }
+    }, [cachedAiSettings?.advancedSettings?.chatHistoryRetentionDays, loadChatHistory]);
 
     // Listen for "Ask AeroAgent" events from Monaco editor
     useEffect(() => {
@@ -1652,6 +1676,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onToggleExportMenu={() => setShowExportMenu(!showExportMenu)}
                 onExport={exportConversation}
                 onOpenSettings={() => setShowSettings(true)}
+                onOpenHistoryManager={() => setShowHistoryManager(true)}
                 hasMessages={messages.length > 0}
                 appTheme={appTheme}
                 agentMode={agentMode}
@@ -1727,6 +1752,24 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onClose={() => setShowSearch(false)}
                 onHighlightMessage={handleSearchHighlightMessage}
                 onSearchResults={handleSearchResults}
+            />
+
+            {/* Chat History Manager — full-text search + bulk management */}
+            <ChatHistoryManager
+                visible={showHistoryManager}
+                onClose={() => setShowHistoryManager(false)}
+                onSessionDeleted={() => {
+                    loadChatHistory(true);
+                }}
+                onNavigateToSession={async (sessionId) => {
+                    let conv = conversations.find(c => c.id === sessionId);
+                    if (!conv) {
+                        // UX-002: Load session on-demand if not in local list
+                        const { loadSession } = await import('../../utils/chatHistory');
+                        conv = await loadSession(sessionId) ?? undefined;
+                    }
+                    if (conv) switchConversation(conv);
+                }}
             />
 
             {/* Extreme Mode security warning modal */}

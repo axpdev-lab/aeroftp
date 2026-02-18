@@ -1998,6 +1998,32 @@
                 "title": "AI-leverantörsmarknadsplats",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Avbryt",
+                "cleanup": "Rensning",
+                "cleanupOld": "Rensa gamla",
+                "clearAll": "Rensa allt",
+                "confirmClearAll": "Radera ALL chatthistorik?",
+                "confirmDelete": "Ja, radera allt",
+                "days": "dagar",
+                "dbSize": "DB-storlek",
+                "deleteOlderThan": "Radera aldre an",
+                "manager": "Chatthistorikhanterare",
+                "messagesCount": "Meddelanden",
+                "noResults": "Inga resultat hittades",
+                "retention": "Bevarande av chatthistorik",
+                "retentionDesc": "Radera automatiskt konversationer aldre an vald period. Drivs av SQLite + FTS5.",
+                "retentionHint": "Stall in pa Obegransat for att behalla alla konversationer for alltid. Rensning kors automatiskt vid start.",
+                "searchHint": "Sok i alla dina konversationer",
+                "searchPlaceholder": "Sok i alla konversationer...",
+                "searching": "Soker...",
+                "sessions": "Sessioner",
+                "totalCost": "Kostnad",
+                "totalTokens": "Tokens",
+                "unlimited": "Obegransat",
+                "roleAI": "AI",
+                "roleUser": "Anvandare"
             }
         },
         "archive": {

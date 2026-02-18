@@ -1998,6 +1998,32 @@
                 "title": "AI тржиште пружалаца",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Откази",
+                "cleanup": "Чишћење",
+                "cleanupOld": "Очисти старо",
+                "clearAll": "Обриши све",
+                "confirmClearAll": "Обрисати СВУ историју ћаскања?",
+                "confirmDelete": "Да, обриши све",
+                "days": "дана",
+                "dbSize": "Величина DB",
+                "deleteOlderThan": "Обриши старије од",
+                "manager": "Управљач историје ћаскања",
+                "messagesCount": "Поруке",
+                "noResults": "Нема резултата",
+                "retention": "Чување историје ћаскања",
+                "retentionDesc": "Аутоматски бриши разговоре старије од изабраног периода. Покреће SQLite + FTS5.",
+                "retentionHint": "Поставите на Неограничено за трајно чување свих разговора. Чишћење се покреће аутоматски при покретању.",
+                "searchHint": "Претражи све разговоре",
+                "searchPlaceholder": "Претражи све разговоре...",
+                "searching": "Претрага...",
+                "sessions": "Сесије",
+                "totalCost": "Цена",
+                "totalTokens": "Tokens",
+                "unlimited": "Неограничено",
+                "roleAI": "AI",
+                "roleUser": "Корисник"
             }
         },
         "archive": {

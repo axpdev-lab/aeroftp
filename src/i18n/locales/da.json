@@ -1998,6 +1998,32 @@
                 "title": "AI-udbydermarkedsplads",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Annuller",
+                "cleanup": "Oprydning",
+                "cleanupOld": "Ryd op i gamle",
+                "clearAll": "Ryd alt",
+                "confirmClearAll": "Slet AL chathistorik?",
+                "confirmDelete": "Ja, slet alt",
+                "days": "dage",
+                "dbSize": "DB-størrelse",
+                "deleteOlderThan": "Slet ældre end",
+                "manager": "Chathistorik-håndtering",
+                "messagesCount": "Beskeder",
+                "noResults": "Ingen resultater fundet",
+                "retention": "Opbevaring af chathistorik",
+                "retentionDesc": "Slet automatisk samtaler ældre end den valgte periode. Drives af SQLite + FTS5.",
+                "retentionHint": "Sæt til Ubegrænset for at beholde alle samtaler for evigt. Oprydning kører automatisk ved opstart.",
+                "searchHint": "Søg på tværs af alle dine samtaler",
+                "searchPlaceholder": "Søg i alle samtaler...",
+                "searching": "Søger...",
+                "sessions": "Sessioner",
+                "totalCost": "Omkostning",
+                "totalTokens": "Tokens",
+                "unlimited": "Ubegrænset",
+                "roleAI": "AI",
+                "roleUser": "Bruger"
             }
         },
         "archive": {

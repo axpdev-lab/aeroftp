@@ -1998,6 +1998,32 @@
                 "title": "AI-veitendumarkaðstorg",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Hætta við",
+                "cleanup": "Hreinsun",
+                "cleanupOld": "Hreinsa gamalt",
+                "clearAll": "Hreinsa allt",
+                "confirmClearAll": "Eyða ALLRI spjallsögu?",
+                "confirmDelete": "Já, eyða öllu",
+                "days": "dagar",
+                "dbSize": "DB stærð",
+                "deleteOlderThan": "Eyða eldra en",
+                "manager": "Spjallsögustjóri",
+                "messagesCount": "Skilaboð",
+                "noResults": "Engar niðurstöður fundust",
+                "retention": "Varðveisla spjallsögu",
+                "retentionDesc": "Eyðir sjálfkrafa samtölum sem eru eldri en valið tímabil. Keyrt á SQLite + FTS5.",
+                "retentionHint": "Stilltu á Ótakmarkað til að geyma öll samtöl að eilífu. Hreinsun keyrir sjálfkrafa við ræsingu.",
+                "searchHint": "Leita í öllum samtölum þínum",
+                "searchPlaceholder": "Leita í öllum samtölum...",
+                "searching": "Leitar...",
+                "sessions": "Lotur",
+                "totalCost": "Kostnaður",
+                "totalTokens": "Tokens",
+                "unlimited": "Ótakmarkað",
+                "roleAI": "AI",
+                "roleUser": "Notandi"
             }
         },
         "archive": {

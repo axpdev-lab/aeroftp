@@ -1998,6 +1998,32 @@
                 "title": "ตลาดผู้ให้บริการ AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "ยกเลิก",
+                "cleanup": "ทำความสะอาด",
+                "cleanupOld": "ล้างข้อมูลเก่า",
+                "clearAll": "ล้างทั้งหมด",
+                "confirmClearAll": "ลบประวัติแชททั้งหมด?",
+                "confirmDelete": "ใช่, ลบทั้งหมด",
+                "days": "วัน",
+                "dbSize": "ขนาด DB",
+                "deleteOlderThan": "ลบที่เก่ากว่า",
+                "manager": "ตัวจัดการประวัติแชท",
+                "messagesCount": "ข้อความ",
+                "noResults": "ไม่พบผลลัพธ์",
+                "retention": "การเก็บรักษาประวัติแชท",
+                "retentionDesc": "ลบการสนทนาที่เก่ากว่าช่วงเวลาที่เลือกโดยอัตโนมัติ ขับเคลื่อนโดย SQLite + FTS5",
+                "retentionHint": "ตั้งค่าเป็นไม่จำกัดเพื่อเก็บการสนทนาทั้งหมดตลอดไป การทำความสะอาดทำงานอัตโนมัติเมื่อเปิดโปรแกรม",
+                "searchHint": "ค้นหาในการสนทนาทั้งหมดของคุณ",
+                "searchPlaceholder": "ค้นหาในการสนทนาทั้งหมด...",
+                "searching": "กำลังค้นหา...",
+                "sessions": "เซสชัน",
+                "totalCost": "ค่าใช้จ่าย",
+                "totalTokens": "Tokens",
+                "unlimited": "ไม่จำกัด",
+                "roleAI": "AI",
+                "roleUser": "ผู้ใช้"
             }
         },
         "archive": {

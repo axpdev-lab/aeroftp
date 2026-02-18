@@ -1998,6 +1998,32 @@
                 "title": "Marketplace de Proveedores IA",
                 "tools": "Herramientas",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Cancelar",
+                "cleanup": "Limpieza",
+                "cleanupOld": "Limpiar antiguos",
+                "clearAll": "Borrar todo",
+                "confirmClearAll": "¿Eliminar TODO el historial de chat?",
+                "confirmDelete": "Sí, eliminar todo",
+                "days": "días",
+                "dbSize": "Tamaño DB",
+                "deleteOlderThan": "Eliminar más antiguos de",
+                "manager": "Gestor de historial de chat",
+                "messagesCount": "Mensajes",
+                "noResults": "No se encontraron resultados",
+                "retention": "Retención del historial de chat",
+                "retentionDesc": "Elimina automáticamente las conversaciones más antiguas que el período seleccionado. Funciona con SQLite + FTS5.",
+                "retentionHint": "Establece Ilimitado para conservar todas las conversaciones para siempre. La limpieza se ejecuta automáticamente al iniciar.",
+                "searchHint": "Buscar en todas tus conversaciones",
+                "searchPlaceholder": "Buscar en todas las conversaciones...",
+                "searching": "Buscando...",
+                "sessions": "Sesiones",
+                "totalCost": "Coste",
+                "totalTokens": "Tokens",
+                "unlimited": "Ilimitado",
+                "roleAI": "AI",
+                "roleUser": "Usuario"
             }
         },
         "archive": {

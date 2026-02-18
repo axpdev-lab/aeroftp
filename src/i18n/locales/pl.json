@@ -1998,6 +1998,32 @@
                 "title": "Marketplace dostawców AI",
                 "tools": "Narzędzia",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Anuluj",
+                "cleanup": "Oczyszczanie",
+                "cleanupOld": "Wyczysc stare",
+                "clearAll": "Wyczysc wszystko",
+                "confirmClearAll": "Usunac CALA historie czatu?",
+                "confirmDelete": "Tak, usun wszystko",
+                "days": "dni",
+                "dbSize": "Rozmiar DB",
+                "deleteOlderThan": "Usun starsze niz",
+                "manager": "Menedzer historii czatu",
+                "messagesCount": "Wiadomosci",
+                "noResults": "Nie znaleziono wynikow",
+                "retention": "Przechowywanie historii czatu",
+                "retentionDesc": "Automatycznie usuwaj rozmowy starsze niz wybrany okres. Obslugiwane przez SQLite + FTS5.",
+                "retentionHint": "Ustaw na Bez limitu, aby zachowac wszystkie rozmowy na zawsze. Oczyszczanie uruchamia sie automatycznie przy starcie.",
+                "searchHint": "Szukaj we wszystkich rozmowach",
+                "searchPlaceholder": "Szukaj we wszystkich rozmowach...",
+                "searching": "Szukanie...",
+                "sessions": "Sesje",
+                "totalCost": "Koszt",
+                "totalTokens": "Tokens",
+                "unlimited": "Bez limitu",
+                "roleAI": "AI",
+                "roleUser": "Uzytkownik"
             }
         },
         "archive": {

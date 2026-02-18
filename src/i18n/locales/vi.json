@@ -1998,6 +1998,32 @@
                 "title": "Chợ nhà cung cấp AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Hủy",
+                "cleanup": "Dọn dẹp",
+                "cleanupOld": "Dọn dẹp cũ",
+                "clearAll": "Xóa tất cả",
+                "confirmClearAll": "Xóa TẤT CẢ lịch sử trò chuyện?",
+                "confirmDelete": "Có, xóa tất cả",
+                "days": "ngày",
+                "dbSize": "Kích thước DB",
+                "deleteOlderThan": "Xóa cũ hơn",
+                "manager": "Quản lý Lịch sử Trò chuyện",
+                "messagesCount": "Tin nhắn",
+                "noResults": "Không tìm thấy kết quả",
+                "retention": "Lưu giữ Lịch sử Trò chuyện",
+                "retentionDesc": "Tự động xóa các cuộc trò chuyện cũ hơn khoảng thời gian đã chọn. Được hỗ trợ bởi SQLite + FTS5.",
+                "retentionHint": "Đặt thành Không giới hạn để giữ tất cả cuộc trò chuyện mãi mãi. Việc dọn dẹp chạy tự động khi khởi động.",
+                "searchHint": "Tìm kiếm trong tất cả cuộc trò chuyện của bạn",
+                "searchPlaceholder": "Tìm kiếm trong tất cả cuộc trò chuyện...",
+                "searching": "Đang tìm kiếm...",
+                "sessions": "Phiên",
+                "totalCost": "Chi phí",
+                "totalTokens": "Tokens",
+                "unlimited": "Không giới hạn",
+                "roleAI": "AI",
+                "roleUser": "Người dùng"
             }
         },
         "archive": {

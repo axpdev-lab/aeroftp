@@ -1998,6 +1998,32 @@
                 "title": "Tržiště poskytovatelů AI",
                 "tools": "Nástroje",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Zrušit",
+                "cleanup": "Vyčištění",
+                "cleanupOld": "Vyčistit staré",
+                "clearAll": "Vymazat vše",
+                "confirmClearAll": "Smazat VEŠKEROU historii chatu?",
+                "confirmDelete": "Ano, smazat vše",
+                "days": "dní",
+                "dbSize": "Velikost DB",
+                "deleteOlderThan": "Smazat starší než",
+                "manager": "Správce historie chatu",
+                "messagesCount": "Zprávy",
+                "noResults": "Nebyly nalezeny žádné výsledky",
+                "retention": "Uchovávání historie chatu",
+                "retentionDesc": "Automaticky mazá konverzace starší než zvolené období. Používá SQLite + FTS5.",
+                "retentionHint": "Nastavte Neomezeně pro trvalé uchování všech konverzací. Vyčištění probíhá automaticky při spuštění.",
+                "searchHint": "Hledat ve všech vašich konverzacích",
+                "searchPlaceholder": "Hledat ve všech konverzacích...",
+                "searching": "Vyhledávání...",
+                "sessions": "Relace",
+                "totalCost": "Náklady",
+                "totalTokens": "Tokens",
+                "unlimited": "Neomezeně",
+                "roleAI": "AI",
+                "roleUser": "Uživatel"
             }
         },
         "archive": {

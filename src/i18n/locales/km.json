@@ -1998,6 +1998,32 @@
                 "title": "ស្តុកអ្នកផ្តល់ AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "បោះបង់",
+                "cleanup": "សម្អាត",
+                "cleanupOld": "សម្អាតចាស់",
+                "clearAll": "លុបទាំងអស់",
+                "confirmClearAll": "លុបប្រវត្តិជជែកទាំងអស់?",
+                "confirmDelete": "បាទ លុបទាំងអស់",
+                "days": "ថ្ងៃ",
+                "dbSize": "ទំហំ DB",
+                "deleteOlderThan": "លុបចាស់ជាង",
+                "manager": "កម្មវិធីគ្រប់គ្រងប្រវត្តិជជែក",
+                "messagesCount": "សារ",
+                "noResults": "រកមិនឃើញលទ្ធផល",
+                "retention": "ការរក្សាប្រវត្តិជជែក",
+                "retentionDesc": "លុបការសន្ទនាចាស់ជាងរយៈពេលដែលបានជ្រើសរើសដោយស្វ័យប្រវត្តិ។ ដំណើរការដោយ SQLite + FTS5។",
+                "retentionHint": "កំណត់ទៅគ្មានដែនកំណត់ដើម្បីរក្សាការសន្ទនាទាំងអស់ជារៀងរហូត។ ការសម្អាតដំណើរការដោយស្វ័យប្រវត្តិពេលចាប់ផ្ដើម។",
+                "searchHint": "ស្វែងរកក្នុងការសន្ទនាទាំងអស់របស់អ្នក",
+                "searchPlaceholder": "ស្វែងរកក្នុងការសន្ទនាទាំងអស់...",
+                "searching": "កំពុងស្វែងរក...",
+                "sessions": "សម័យ",
+                "totalCost": "តម្លៃ",
+                "totalTokens": "Tokens",
+                "unlimited": "គ្មានដែនកំណត់",
+                "roleAI": "AI",
+                "roleUser": "អ្នកប្រើ"
             }
         },
         "archive": {

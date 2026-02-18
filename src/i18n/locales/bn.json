@@ -1998,6 +1998,32 @@
                 "title": "AI প্রদানকারী মার্কেটপ্লেস",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "বাতিল",
+                "cleanup": "পরিষ্কার",
+                "cleanupOld": "পুরানো পরিষ্কার",
+                "clearAll": "সব মুছুন",
+                "confirmClearAll": "সমস্ত চ্যাট ইতিহাস মুছে ফেলতে চান?",
+                "confirmDelete": "হ্যাঁ, সব মুছুন",
+                "days": "দিন",
+                "dbSize": "DB আকার",
+                "deleteOlderThan": "এর চেয়ে পুরনো মুছুন",
+                "manager": "চ্যাট ইতিহাস পরিচালনা",
+                "messagesCount": "বার্তা",
+                "noResults": "কোনো ফলাফল পাওয়া যায়নি",
+                "retention": "চ্যাট ইতিহাস সংরক্ষণ",
+                "retentionDesc": "নির্বাচিত সময়ের চেয়ে পুরনো কথোপকথন স্বয়ংক্রিয়ভাবে মুছে ফেলুন। SQLite + FTS5 দ্বারা চালিত।",
+                "retentionHint": "সব কথোপকথন চিরকাল রাখতে সীমাহীন নির্বাচন করুন। পরিষ্কার স্টার্টআপে স্বয়ংক্রিয়ভাবে চলে।",
+                "searchHint": "আপনার সব কথোপকথনে অনুসন্ধান",
+                "searchPlaceholder": "সব কথোপকথনে অনুসন্ধান...",
+                "searching": "অনুসন্ধান চলছে...",
+                "sessions": "সেশন",
+                "totalCost": "খরচ",
+                "totalTokens": "Tokens",
+                "unlimited": "সীমাহীন",
+                "roleAI": "AI",
+                "roleUser": "ব্যবহারকারী"
             }
         },
         "archive": {

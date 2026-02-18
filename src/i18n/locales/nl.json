@@ -1998,6 +1998,32 @@
                 "title": "AI-aanbieder Marktplaats",
                 "tools": "Gereedschappen",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Annuleren",
+                "cleanup": "Opschonen",
+                "cleanupOld": "Oude opschonen",
+                "clearAll": "Alles wissen",
+                "confirmClearAll": "ALLE chatgeschiedenis verwijderen?",
+                "confirmDelete": "Ja, alles verwijderen",
+                "days": "dagen",
+                "dbSize": "DB grootte",
+                "deleteOlderThan": "Verwijder ouder dan",
+                "manager": "Chatgeschiedenis beheer",
+                "messagesCount": "Berichten",
+                "noResults": "Geen resultaten gevonden",
+                "retention": "Chatgeschiedenis bewaren",
+                "retentionDesc": "Verwijdert automatisch gesprekken ouder dan de geselecteerde periode. Aangedreven door SQLite + FTS5.",
+                "retentionHint": "Stel in op Onbeperkt om alle gesprekken voor altijd te bewaren. Opschoning draait automatisch bij het opstarten.",
+                "searchHint": "Zoek in al uw gesprekken",
+                "searchPlaceholder": "Zoek in alle gesprekken...",
+                "searching": "Zoeken...",
+                "sessions": "Sessies",
+                "totalCost": "Kosten",
+                "totalTokens": "Tokens",
+                "unlimited": "Onbeperkt",
+                "roleAI": "AI",
+                "roleUser": "Gebruiker"
             }
         },
         "archive": {

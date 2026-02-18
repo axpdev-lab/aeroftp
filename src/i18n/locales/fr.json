@@ -1998,6 +1998,32 @@
                 "title": "Marketplace Fournisseurs IA",
                 "tools": "Outils",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Annuler",
+                "cleanup": "Nettoyage",
+                "cleanupOld": "Nettoyer les anciens",
+                "clearAll": "Tout effacer",
+                "confirmClearAll": "Supprimer TOUT l'historique de chat ?",
+                "confirmDelete": "Oui, tout supprimer",
+                "days": "jours",
+                "dbSize": "Taille DB",
+                "deleteOlderThan": "Supprimer plus anciens que",
+                "manager": "Gestionnaire d'historique de chat",
+                "messagesCount": "Messages",
+                "noResults": "Aucun résultat trouvé",
+                "retention": "Conservation de l'historique de chat",
+                "retentionDesc": "Supprime automatiquement les conversations plus anciennes que la période sélectionnée. Alimenté par SQLite + FTS5.",
+                "retentionHint": "Définir sur Illimité pour conserver toutes les conversations indéfiniment. Le nettoyage s'exécute automatiquement au démarrage.",
+                "searchHint": "Rechercher dans toutes vos conversations",
+                "searchPlaceholder": "Rechercher dans toutes les conversations...",
+                "searching": "Recherche...",
+                "sessions": "Sessions",
+                "totalCost": "Coût",
+                "totalTokens": "Tokens",
+                "unlimited": "Illimité",
+                "roleAI": "AI",
+                "roleUser": "Utilisateur"
             }
         },
         "archive": {

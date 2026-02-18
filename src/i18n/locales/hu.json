@@ -1998,6 +1998,32 @@
                 "title": "AI szolgáltató piactér",
                 "tools": "Eszközök",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Mégse",
+                "cleanup": "Törlés",
+                "cleanupOld": "Régiek törlése",
+                "clearAll": "Összes törlése",
+                "confirmClearAll": "Törli az ÖSSZES csevegési előzményt?",
+                "confirmDelete": "Igen, törölje mindet",
+                "days": "nap",
+                "dbSize": "DB méret",
+                "deleteOlderThan": "Régebbiek törlése mint",
+                "manager": "Csevegési előzmények kezelője",
+                "messagesCount": "Üzenetek",
+                "noResults": "Nincs találat",
+                "retention": "Csevegési előzmények megőrzése",
+                "retentionDesc": "Automatikusan törli a kiválasztott időszaknál régebbi beszélgetéseket. SQLite + FTS5 alapú.",
+                "retentionHint": "Állítsa Korlátlanra az összes beszélgetés végleges megőrzéséhez. A törlés automatikusan fut indításkor.",
+                "searchHint": "Keresés az összes beszélgetésben",
+                "searchPlaceholder": "Keresés az összes beszélgetésben...",
+                "searching": "Keresés...",
+                "sessions": "Munkamenetek",
+                "totalCost": "Költség",
+                "totalTokens": "Tokens",
+                "unlimited": "Korlátlan",
+                "roleAI": "AI",
+                "roleUser": "Felhasználó"
             }
         },
         "archive": {

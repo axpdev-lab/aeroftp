@@ -1998,6 +1998,32 @@
                 "title": "Trhovisko poskytovateľov AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Zrusit",
+                "cleanup": "Cistenie",
+                "cleanupOld": "Vycistit stare",
+                "clearAll": "Vymazat vsetko",
+                "confirmClearAll": "Vymazat CELU historiu chatu?",
+                "confirmDelete": "Ano, vymazat vsetko",
+                "days": "dni",
+                "dbSize": "Velkost DB",
+                "deleteOlderThan": "Vymazat starsie ako",
+                "manager": "Spravca historie chatu",
+                "messagesCount": "Spravy",
+                "noResults": "Ziadne vysledky",
+                "retention": "Uchovavanie historie chatu",
+                "retentionDesc": "Automaticky mazat konverzacie starsie ako zvolene obdobie. Pohanane SQLite + FTS5.",
+                "retentionHint": "Nastavte na Neobmedzene pre uchovanie vsetkych konverzacii navzdy. Cistenie sa spusta automaticky pri starte.",
+                "searchHint": "Hladat vo vsetkych konverzaciach",
+                "searchPlaceholder": "Hladat vo vsetkych konverzaciach...",
+                "searching": "Vyhlada sa...",
+                "sessions": "Sedenia",
+                "totalCost": "Naklady",
+                "totalTokens": "Tokens",
+                "unlimited": "Neobmedzene",
+                "roleAI": "AI",
+                "roleUser": "Pouzivatel"
             }
         },
         "archive": {

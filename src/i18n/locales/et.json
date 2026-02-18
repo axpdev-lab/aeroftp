@@ -1998,6 +1998,32 @@
                 "title": "AI pakkujate turg",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Tühista",
+                "cleanup": "Puhastamine",
+                "cleanupOld": "Puhasta vanad",
+                "clearAll": "Kustuta kõik",
+                "confirmClearAll": "Kustutada KOGU vestluste ajalugu?",
+                "confirmDelete": "Jah, kustuta kõik",
+                "days": "päeva",
+                "dbSize": "DB suurus",
+                "deleteOlderThan": "Kustuta vanemad kui",
+                "manager": "Vestluste ajaloo haldur",
+                "messagesCount": "Sõnumid",
+                "noResults": "Tulemusi ei leitud",
+                "retention": "Vestluste ajaloo säilitamine",
+                "retentionDesc": "Kustuta automaatselt vestlused, mis on vanemad kui valitud periood. Kasutab SQLite + FTS5.",
+                "retentionHint": "Määrake Piiramatu, et säilitada kõik vestlused igavesti. Puhastamine käivitub automaatselt käivitamisel.",
+                "searchHint": "Otsi kõigist oma vestlustest",
+                "searchPlaceholder": "Otsi kõigist vestlustest...",
+                "searching": "Otsimine...",
+                "sessions": "Seansid",
+                "totalCost": "Maksumus",
+                "totalTokens": "Tokens",
+                "unlimited": "Piiramatu",
+                "roleAI": "AI",
+                "roleUser": "Kasutaja"
             }
         },
         "archive": {

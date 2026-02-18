@@ -1998,6 +1998,32 @@
                 "title": "Marchnadfa darparwyr AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Canslo",
+                "cleanup": "Glanhau",
+                "cleanupOld": "Glanhau hen",
+                "clearAll": "Clirio popeth",
+                "confirmClearAll": "Dileu HOLL hanes sgwrs?",
+                "confirmDelete": "Ie, dileu popeth",
+                "days": "diwrnod",
+                "dbSize": "Maint DB",
+                "deleteOlderThan": "Dileu hŷn na",
+                "manager": "Rheolwr Hanes Sgwrs",
+                "messagesCount": "Negeseuon",
+                "noResults": "Dim canlyniadau wedi'u canfod",
+                "retention": "Cadw Hanes Sgwrs",
+                "retentionDesc": "Dileu sgyrsiau hŷn na'r cyfnod a ddewiswyd yn awtomatig. Yn defnyddio SQLite + FTS5.",
+                "retentionHint": "Gosodwch i Diderfyn i gadw pob sgwrs am byth. Mae glanhau yn rhedeg yn awtomatig ar gychwyn.",
+                "searchHint": "Chwilio ar draws eich holl sgyrsiau",
+                "searchPlaceholder": "Chwilio ar draws pob sgwrs...",
+                "searching": "Yn chwilio...",
+                "sessions": "Sesiynau",
+                "totalCost": "Cost",
+                "totalTokens": "Tokens",
+                "unlimited": "Diderfyn",
+                "roleAI": "AI",
+                "roleUser": "Defnyddiwr"
             }
         },
         "archive": {

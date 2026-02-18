@@ -1998,6 +1998,32 @@
                 "title": "Tržnica ponudnikov AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Preklic",
+                "cleanup": "Ciscenje",
+                "cleanupOld": "Pocisti stare",
+                "clearAll": "Pocisti vse",
+                "confirmClearAll": "Izbrisati VSO zgodovino klepeta?",
+                "confirmDelete": "Da, izbrisi vse",
+                "days": "dni",
+                "dbSize": "Velikost DB",
+                "deleteOlderThan": "Izbrisi starejse od",
+                "manager": "Upravitelj zgodovine klepeta",
+                "messagesCount": "Sporocila",
+                "noResults": "Ni rezultatov",
+                "retention": "Hramba zgodovine klepeta",
+                "retentionDesc": "Samodejno brisi pogovore, starejse od izbranega obdobja. Poganja SQLite + FTS5.",
+                "retentionHint": "Nastavite na Neomejeno za trajno hrambo vseh pogovorov. Ciscenje se izvaja samodejno ob zagonu.",
+                "searchHint": "Iskanje po vseh pogovorih",
+                "searchPlaceholder": "Iskanje po vseh pogovorih...",
+                "searching": "Iskanje...",
+                "sessions": "Seje",
+                "totalCost": "Strosek",
+                "totalTokens": "Tokens",
+                "unlimited": "Neomejeno",
+                "roleAI": "AI",
+                "roleUser": "Uporabnik"
             }
         },
         "archive": {

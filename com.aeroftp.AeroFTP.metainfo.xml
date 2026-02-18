@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.3.0" date="2026-02-19">
+      <description>
+        <p>Chat History SQLite Redesign: Complete rewrite of chat history persistence from JSON flat-file to SQLite WAL + FTS5 full-text search. 18 Tauri commands for CRUD, search, export/import, branches, stats, cleanup, and clear-all. Chat History Manager UI with retention policies (7/30/90/180/365 days or unlimited), full-text search with highlighted snippets, session browser, and statistics dashboard. In-memory fallback for graceful degradation. 55+ security audit findings resolved from 5 independent auditors. 24 new i18n keys translated across all 47 languages.</p>
+      </description>
+    </release>
     <release version="2.2.4" date="2026-02-18">
       <description>
         <p>Provider Marketplace, 2FA Vault, Remote Vault, CLI and Security Hardening: Searchable Provider Marketplace modal with 15 AI providers across 6 categories. 5 new providers (Mistral, Groq, Perplexity, Cohere, Together AI). TOTP two-factor authentication for vault master password with rate limiting. Remote Vault support for opening .aerovault files on connected servers. CLI foundation (aeroftp-cli binary with connect/ls/get/put/sync). CSP violation reporter. 13 security findings fixed from 5-auditor review.</p>

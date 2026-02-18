@@ -61,6 +61,7 @@ export interface AISettings {
         thinkingBudget?: number;    // Extended thinking budget tokens (0 = disabled, default 10000)
         webSearchEnabled?: boolean;    // Provider web search (Kimi $web_search, Qwen enable_search)
         streamingTimeoutSecs?: number; // Streaming response timeout in seconds (default 120)
+        chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
     };
     defaultModelId: string | null;
 }

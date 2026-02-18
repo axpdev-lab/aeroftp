@@ -48,6 +48,7 @@ mod tray_badge;
 mod sync_badge;
 mod cyber_tools;
 mod totp;
+mod chat_history;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -6163,6 +6164,25 @@ pub fn run() {
                 }
             }
 
+            // Initialize Chat History SQLite database
+            match chat_history::init_db(&app.handle()) {
+                Ok(conn) => {
+                    // Run JSON→SQLite migration if ai_history.json exists
+                    if let Err(e) = chat_history::migrate_from_json(&conn, &app.handle()) {
+                        log::warn!("Chat history migration failed: {e}");
+                    }
+                    app.manage(chat_history::ChatHistoryDb(std::sync::Mutex::new(conn)));
+                }
+                Err(e) => {
+                    log::error!("Chat history DB init failed: {e}");
+                    // Fallback: in-memory DB so commands don't panic
+                    let conn = rusqlite::Connection::open_in_memory()
+                        .expect("in-memory SQLite");
+                    let _ = chat_history::init_db_schema(&conn);
+                    app.manage(chat_history::ChatHistoryDb(std::sync::Mutex::new(conn)));
+                }
+            }
+
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
             // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
@@ -6768,6 +6788,25 @@ pub fn run() {
             totp::totp_enable,
             totp::totp_disable,
             totp::totp_load_secret,
+            // Chat History SQLite
+            chat_history::chat_history_init,
+            chat_history::chat_history_list_sessions,
+            chat_history::chat_history_get_session,
+            chat_history::chat_history_create_session,
+            chat_history::chat_history_save_message,
+            chat_history::chat_history_update_session_title,
+            chat_history::chat_history_delete_session,
+            chat_history::chat_history_delete_sessions_bulk,
+            chat_history::chat_history_clear_all,
+            chat_history::chat_history_search,
+            chat_history::chat_history_cleanup,
+            chat_history::chat_history_stats,
+            chat_history::chat_history_export_session,
+            chat_history::chat_history_import,
+            chat_history::chat_history_create_branch,
+            chat_history::chat_history_switch_branch,
+            chat_history::chat_history_delete_branch,
+            chat_history::chat_history_save_branch_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

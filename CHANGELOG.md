@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-02-19
+
+### Chat History SQLite Redesign
+
+AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FTS5 backend, matching the architecture of VS Code, Cursor, and OpenCode. Full-text search across all conversations, configurable retention with auto-cleanup at startup, dedicated bulk management, export/import sessions, and conversation branching — all validated by a 55-finding security audit from 5 independent reviewers (4x Claude Opus 4.6 + GPT-5.3 Codex).
+
+#### Added
+
+- **SQLite chat history backend**: Complete rewrite of chat persistence using SQLite WAL mode with FTS5 full-text search. 3 tables (sessions, messages, branches) + FTS5 virtual table with automatic content sync via triggers. Replaces `ai_history.json` flat file
+- **Auto-migration from JSON**: Existing `ai_history.json` conversations automatically migrated to SQLite on first launch, with `.migrated` backup file. Transaction-wrapped for atomicity with automatic rollback on error
+- **Full-text search (FTS5)**: Cross-session search across all conversation history with `<mark>` highlighted snippets, integrated in ChatHistoryManager with real-time results
+- **Configurable retention with auto-apply**: Auto-cleanup at app startup — conversations older than the configured retention period (30/60/90/180 days or unlimited) are automatically deleted. One-time guard prevents redundant cleanup. Setting in AI Settings Advanced tab
+- **Dedicated clear-all command**: `chat_history_clear_all` Rust command with explicit DELETE across all 4 tables, replacing the semantically overloaded `deleteSessionsBulk(undefined, 0)` approach
+- **Chat History Manager UI**: Full management interface with search, stats dashboard (sessions, messages, tokens, cost, DB size), date-range cleanup, and confirm-delete dialog
+- **Session export/import**: Export individual sessions as JSON or Markdown format. Import sessions from JSON export files with transaction-wrapped insert
+- **Branch management**: Create, switch, and delete conversation branches with per-branch message persistence via SQLite
+- **Chat stats API**: `chat_history_stats` command returning total sessions, messages, tokens, cost, and database file size in bytes
+- **In-memory fallback**: If SQLite file initialization fails (permissions, disk full), app falls back to in-memory database — prevents crashes while maintaining full functionality
+- **24 new i18n keys in 47 languages**: Chat history manager labels (cancel, cleanup, clearAll, confirmClearAll, days, dbSize, manager, retention, searching, sessions, totalCost, totalTokens, etc.) — 1,104 translations across 46 non-English locales
+
+#### Fixed
+
+- **FTS5 snippet XSS prevention**: `sanitize_fts_snippet()` escapes all HTML entities in search result snippets, then restores only safe `<mark>` tags — prevents script injection via malicious chat content stored in history
+- **FTS5 query injection prevention**: `sanitize_fts_query()` wraps user search input in double quotes as a phrase literal — prevents FTS5 syntax injection and query manipulation
+- **INSERT OR REPLACE FTS desync**: Changed to `ON CONFLICT DO UPDATE` — the previous `REPLACE` approach performs DELETE+INSERT which breaks FTS5 external content sync by changing rowid
+- **Streaming message truncation**: `savedMessageContentRef` tracks content hash instead of just message ID presence — prevents saving truncated/partial content when streaming messages are persisted before completion
+- **Auto-save race condition**: Debounce timer now captures `convId` at creation time — prevents saving to the wrong conversation when user switches sessions during the 2-second debounce window
+- **Force reload after manager ops**: `loadChatHistory(true)` force parameter bypasses the `historyLoadedRef` one-shot guard — UI always reflects current state after delete/cleanup/clear operations
+- **Transaction wrapping**: JSON migration and session import now wrapped in explicit SQLite transactions — atomic commit on success, automatic rollback on error. JSON backup renamed only after successful commit
+- **Mutex poison recovery**: All DB lock acquisitions use `unwrap_or_else(|e| e.into_inner())` — prevents app crash if a previous operation panicked while holding the database lock
+- **FTS error handling**: FTS5 table/trigger initialization errors logged explicitly instead of silently swallowed with `let _ =` — search disabled gracefully if FTS5 extension is unavailable
+
+#### Changed
+
+- **Chat persistence format**: `ai_history.json` flat file → `ai_chat.db` SQLite database with WAL journal mode, 4096-byte page size, and optimized pragmas (synchronous=NORMAL, journal_size_limit=6MB, mmap_size=128MB)
+- **Chat history privacy**: AppConfig directory created with Unix 0700 permissions, SQLite database file with 0600 — matching industry standard (Claude Code uses 0600 per-session JSONL files)
+- **Security audit scope**: 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) covering security, correctness, performance, frontend UX, and severe-grade categories
+
+## [2.2.5] - 2026-02-19
+
+### AI Provider Polish & Build Fixes
+
+#### Fixed
+
+- **macOS CI build**: Renamed `providerMarketplace.ts` to `providerMarketplaceData.ts` to avoid case-insensitive filesystem conflict with `ProviderMarketplace.tsx` on macOS HFS+/APFS
+- **Qwen base URL**: Changed from `dashscope.aliyuncs.com` to `dashscope-intl.aliyuncs.com` (international endpoint for users outside China)
+- **System prompt readability**: Protocol lists now use commas and full names (`FTP, FTPS, SFTP, WebDAV, S3, Google Drive, ...`) instead of slash-concatenated abbreviations — improves response quality from smaller LLMs (Qwen Turbo, Groq, etc.)
+
 ## [2.2.4] - 2026-02-18
 
 ### Provider Marketplace, 2FA Vault, Remote Vault, CLI & Security Hardening

@@ -1998,6 +1998,32 @@
                 "title": "Marketplace Pembekal AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Batal",
+                "cleanup": "Bersihkan",
+                "cleanupOld": "Bersihkan lama",
+                "clearAll": "Padam semua",
+                "confirmClearAll": "Padam SEMUA sejarah sembang?",
+                "confirmDelete": "Ya, padam semua",
+                "days": "hari",
+                "dbSize": "Saiz DB",
+                "deleteOlderThan": "Padam lebih lama daripada",
+                "manager": "Pengurus Sejarah Sembang",
+                "messagesCount": "Mesej",
+                "noResults": "Tiada hasil ditemui",
+                "retention": "Pengekalan Sejarah Sembang",
+                "retentionDesc": "Memadam perbualan yang lebih lama daripada tempoh yang dipilih secara automatik. Dikuasakan oleh SQLite + FTS5.",
+                "retentionHint": "Tetapkan kepada Tanpa Had untuk menyimpan semua perbualan selama-lamanya. Pembersihan berjalan secara automatik semasa permulaan.",
+                "searchHint": "Cari dalam semua perbualan anda",
+                "searchPlaceholder": "Cari dalam semua perbualan...",
+                "searching": "Mencari...",
+                "sessions": "Sesi",
+                "totalCost": "Kos",
+                "totalTokens": "Tokens",
+                "unlimited": "Tanpa Had",
+                "roleAI": "AI",
+                "roleUser": "Pengguna"
             }
         },
         "archive": {

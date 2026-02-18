@@ -1998,6 +1998,32 @@
                 "title": "Marketplace Furnizori AI",
                 "tools": "Instrumente",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Anuleaza",
+                "cleanup": "Curatare",
+                "cleanupOld": "Curata vechi",
+                "clearAll": "Sterge tot",
+                "confirmClearAll": "Stergi TOT istoricul de chat?",
+                "confirmDelete": "Da, sterge tot",
+                "days": "zile",
+                "dbSize": "Dimensiune DB",
+                "deleteOlderThan": "Sterge mai vechi de",
+                "manager": "Manager Istoric Chat",
+                "messagesCount": "Mesaje",
+                "noResults": "Niciun rezultat gasit",
+                "retention": "Retentie Istoric Chat",
+                "retentionDesc": "Sterge automat conversatiile mai vechi decat perioada selectata. Powered by SQLite + FTS5.",
+                "retentionHint": "Seteaza la Nelimitat pentru a pastra toate conversatiile permanent. Curatarea ruleaza automat la pornire.",
+                "searchHint": "Cauta in toate conversatiile tale",
+                "searchPlaceholder": "Cauta in toate conversatiile...",
+                "searching": "Se cauta...",
+                "sessions": "Sesiuni",
+                "totalCost": "Cost",
+                "totalTokens": "Tokens",
+                "unlimited": "Nelimitat",
+                "roleAI": "AI",
+                "roleUser": "Utilizator"
             }
         },
         "archive": {

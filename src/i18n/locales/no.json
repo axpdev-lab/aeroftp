@@ -1998,6 +1998,32 @@
                 "title": "AI-leverandørmarkedsplass",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Avbryt",
+                "cleanup": "Opprydding",
+                "cleanupOld": "Rydd opp gamle",
+                "clearAll": "Slett alle",
+                "confirmClearAll": "Slette ALL chathistorikk?",
+                "confirmDelete": "Ja, slett alle",
+                "days": "dager",
+                "dbSize": "DB-storrelse",
+                "deleteOlderThan": "Slett eldre enn",
+                "manager": "Chathistorikk-behandler",
+                "messagesCount": "Meldinger",
+                "noResults": "Ingen resultater funnet",
+                "retention": "Oppbevaring av chathistorikk",
+                "retentionDesc": "Slett automatisk samtaler eldre enn valgt periode. Drevet av SQLite + FTS5.",
+                "retentionHint": "Sett til Ubegrenset for aa beholde alle samtaler for alltid. Opprydding kjorer automatisk ved oppstart.",
+                "searchHint": "Sok i alle samtalene dine",
+                "searchPlaceholder": "Sok i alle samtaler...",
+                "searching": "Soker...",
+                "sessions": "Sesjoner",
+                "totalCost": "Kostnad",
+                "totalTokens": "Tokens",
+                "unlimited": "Ubegrenset",
+                "roleAI": "AI",
+                "roleUser": "Bruker"
             }
         },
         "archive": {

@@ -1998,6 +1998,32 @@
                 "title": "KI-Anbieter Marketplace",
                 "tools": "Werkzeuge",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Abbrechen",
+                "cleanup": "Bereinigung",
+                "cleanupOld": "Alte bereinigen",
+                "clearAll": "Alles löschen",
+                "confirmClearAll": "GESAMTEN Chatverlauf löschen?",
+                "confirmDelete": "Ja, alles löschen",
+                "days": "Tage",
+                "dbSize": "DB-Größe",
+                "deleteOlderThan": "Älter als löschen",
+                "manager": "Chatverlauf-Verwaltung",
+                "messagesCount": "Nachrichten",
+                "noResults": "Keine Ergebnisse gefunden",
+                "retention": "Chatverlauf-Aufbewahrung",
+                "retentionDesc": "Konversationen, die älter als der gewählte Zeitraum sind, automatisch löschen. Basiert auf SQLite + FTS5.",
+                "retentionHint": "Auf Unbegrenzt setzen, um alle Konversationen dauerhaft zu behalten. Die Bereinigung erfolgt automatisch beim Start.",
+                "searchHint": "Alle Ihre Konversationen durchsuchen",
+                "searchPlaceholder": "Alle Konversationen durchsuchen...",
+                "searching": "Suche...",
+                "sessions": "Sitzungen",
+                "totalCost": "Kosten",
+                "totalTokens": "Tokens",
+                "unlimited": "Unbegrenzt",
+                "roleAI": "AI",
+                "roleUser": "Benutzer"
             }
         },
         "archive": {

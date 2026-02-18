@@ -1998,6 +1998,32 @@
                 "title": "AI-tarjoajien markkinapaikka",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Peruuta",
+                "cleanup": "Siivous",
+                "cleanupOld": "Siivoa vanhat",
+                "clearAll": "Tyhjennä kaikki",
+                "confirmClearAll": "Poista KAIKKI keskusteluhistoria?",
+                "confirmDelete": "Kyllä, poista kaikki",
+                "days": "päivää",
+                "dbSize": "DB-koko",
+                "deleteOlderThan": "Poista vanhemmat kuin",
+                "manager": "Keskusteluhistorian hallinta",
+                "messagesCount": "Viestit",
+                "noResults": "Tuloksia ei löytynyt",
+                "retention": "Keskusteluhistorian säilytys",
+                "retentionDesc": "Poista automaattisesti valittua ajanjaksoa vanhemmat keskustelut. Käyttää SQLite + FTS5.",
+                "retentionHint": "Aseta Rajoittamaton säilyttääksesi kaikki keskustelut ikuisesti. Siivous suoritetaan automaattisesti käynnistyksessä.",
+                "searchHint": "Hae kaikista keskusteluistasi",
+                "searchPlaceholder": "Hae kaikista keskusteluista...",
+                "searching": "Haetaan...",
+                "sessions": "Istunnot",
+                "totalCost": "Kustannus",
+                "totalTokens": "Tokens",
+                "unlimited": "Rajoittamaton",
+                "roleAI": "AI",
+                "roleUser": "Käyttäjä"
             }
         },
         "archive": {

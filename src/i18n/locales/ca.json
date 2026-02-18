@@ -1998,6 +1998,32 @@
                 "title": "Mercat de proveïdors d'AI",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Cancel·la",
+                "cleanup": "Neteja",
+                "cleanupOld": "Neteja antics",
+                "clearAll": "Esborra tot",
+                "confirmClearAll": "Eliminar TOTA la història del xat?",
+                "confirmDelete": "Sí, elimina tot",
+                "days": "dies",
+                "dbSize": "Mida DB",
+                "deleteOlderThan": "Elimina més antics de",
+                "manager": "Gestor d'història del xat",
+                "messagesCount": "Missatges",
+                "noResults": "No s'han trobat resultats",
+                "retention": "Retenció de l'història del xat",
+                "retentionDesc": "Elimina automàticament les converses més antigues del període seleccionat. Funciona amb SQLite + FTS5.",
+                "retentionHint": "Estableix Il·limitat per conservar totes les converses per sempre. La neteja s'executa automàticament a l'inici.",
+                "searchHint": "Cerca a totes les teves converses",
+                "searchPlaceholder": "Cerca a totes les converses...",
+                "searching": "Cercant...",
+                "sessions": "Sessions",
+                "totalCost": "Cost",
+                "totalTokens": "Tokens",
+                "unlimited": "Il·limitat",
+                "roleAI": "AI",
+                "roleUser": "Usuari"
             }
         },
         "archive": {

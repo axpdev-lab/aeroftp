@@ -2045,6 +2045,32 @@
                 "title": "Marketplace Provider AI",
                 "tools": "Strumenti",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Annulla",
+                "cleanup": "Pulizia",
+                "cleanupOld": "Pulisci vecchi",
+                "clearAll": "Cancella tutto",
+                "confirmClearAll": "Eliminare TUTTA la cronologia chat?",
+                "confirmDelete": "Sì, elimina tutto",
+                "days": "giorni",
+                "dbSize": "Dimensione DB",
+                "deleteOlderThan": "Elimina più vecchi di",
+                "manager": "Gestione Cronologia Chat",
+                "messagesCount": "Messaggi",
+                "noResults": "Nessun risultato trovato",
+                "retention": "Conservazione Cronologia Chat",
+                "retentionDesc": "Elimina automaticamente le conversazioni più vecchie del periodo selezionato. Basato su SQLite + FTS5.",
+                "retentionHint": "Imposta su Illimitato per conservare tutte le conversazioni per sempre. La pulizia viene eseguita automaticamente all'avvio.",
+                "searchHint": "Cerca in tutte le tue conversazioni",
+                "searchPlaceholder": "Cerca in tutte le conversazioni...",
+                "searching": "Ricerca in corso...",
+                "sessions": "Sessioni",
+                "totalCost": "Costo",
+                "totalTokens": "Tokens",
+                "unlimited": "Illimitato",
+                "roleAI": "AI",
+                "roleUser": "Utente"
             }
         },
         "archive": {

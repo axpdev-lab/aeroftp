@@ -1538,6 +1538,41 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </p>
                             </div>
 
+                            {/* Chat History Retention */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.history.retention')}</h4>
+                                <p className="text-[10px] text-gray-500 mb-3">
+                                    {t('ai.history.retentionDesc')}
+                                </p>
+                                <div className="flex items-center gap-3">
+                                    <select
+                                        value={settings.advancedSettings?.chatHistoryRetentionDays ?? 0}
+                                        onChange={(e) => {
+                                            const newSettings = {
+                                                ...settings,
+                                                advancedSettings: {
+                                                    ...settings.advancedSettings,
+                                                    chatHistoryRetentionDays: parseInt(e.target.value),
+                                                },
+                                            };
+                                            setSettings(newSettings);
+                                            saveSettings(newSettings);
+                                        }}
+                                        className="px-3 py-1.5 bg-gray-900 border border-gray-600 rounded text-sm text-white focus:border-purple-500 focus:outline-none"
+                                    >
+                                        <option value={0}>{t('ai.history.unlimited')}</option>
+                                        <option value={30}>30 {t('ai.history.days')}</option>
+                                        <option value={60}>60 {t('ai.history.days')}</option>
+                                        <option value={90}>90 {t('ai.history.days')}</option>
+                                        <option value={180}>180 {t('ai.history.days')}</option>
+                                        <option value={365}>365 {t('ai.history.days')}</option>
+                                    </select>
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">
+                                    {t('ai.history.retentionHint')}
+                                </p>
+                            </div>
+
                         </div>
                     )}
 

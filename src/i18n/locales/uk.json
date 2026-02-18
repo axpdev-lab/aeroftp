@@ -1998,6 +1998,32 @@
                 "title": "Маркетплейс провайдерів ШІ",
                 "tools": "Інструменти",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Скасувати",
+                "cleanup": "Очищення",
+                "cleanupOld": "Очистити старі",
+                "clearAll": "Очистити все",
+                "confirmClearAll": "Видалити ВСЮ історію чату?",
+                "confirmDelete": "Так, видалити все",
+                "days": "днів",
+                "dbSize": "Розмір DB",
+                "deleteOlderThan": "Видалити старші ніж",
+                "manager": "Менеджер історії чату",
+                "messagesCount": "Повідомлення",
+                "noResults": "Результатів не знайдено",
+                "retention": "Зберігання історії чату",
+                "retentionDesc": "Автоматично видаляти розмови старші за обраний період. Працює на SQLite + FTS5.",
+                "retentionHint": "Встановіть Без обмежень, щоб зберігати всі розмови назавжди. Очищення запускається автоматично при старті.",
+                "searchHint": "Пошук по всіх розмовах",
+                "searchPlaceholder": "Пошук по всіх розмовах...",
+                "searching": "Пошук...",
+                "sessions": "Сесії",
+                "totalCost": "Вартість",
+                "totalTokens": "Tokens",
+                "unlimited": "Без обмежень",
+                "roleAI": "AI",
+                "roleUser": "Користувач"
             }
         },
         "archive": {

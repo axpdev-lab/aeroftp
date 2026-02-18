@@ -1998,6 +1998,32 @@
                 "title": "AI 提供商市场",
                 "tools": "工具",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "取消",
+                "cleanup": "清理",
+                "cleanupOld": "清理旧数据",
+                "clearAll": "清除全部",
+                "confirmClearAll": "删除全部聊天记录？",
+                "confirmDelete": "是的，全部删除",
+                "days": "天",
+                "dbSize": "DB 大小",
+                "deleteOlderThan": "删除早于",
+                "manager": "聊天记录管理器",
+                "messagesCount": "消息",
+                "noResults": "未找到结果",
+                "retention": "聊天记录保留",
+                "retentionDesc": "自动删除超过所选时间段的对话。由 SQLite + FTS5 驱动。",
+                "retentionHint": "设置为无限制可永久保留所有对话。清理在启动时自动运行。",
+                "searchHint": "搜索所有对话",
+                "searchPlaceholder": "搜索所有对话...",
+                "searching": "搜索中...",
+                "sessions": "会话",
+                "totalCost": "费用",
+                "totalTokens": "Tokens",
+                "unlimited": "无限制",
+                "roleAI": "AI",
+                "roleUser": "用户"
             }
         },
         "archive": {

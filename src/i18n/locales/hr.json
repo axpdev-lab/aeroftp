@@ -1998,6 +1998,32 @@
                 "title": "AI tržište pružatelja",
                 "tools": "Tools",
                 "vision": "Vision"
+            },
+            "history": {
+                "cancel": "Odustani",
+                "cleanup": "Obriši",
+                "cleanupOld": "Obriši stare",
+                "clearAll": "Obriši sve",
+                "confirmClearAll": "Izbrisati SVU povijest razgovora?",
+                "confirmDelete": "Da, izbriši sve",
+                "days": "dana",
+                "dbSize": "Veličina DB",
+                "deleteOlderThan": "Izbriši starije od",
+                "manager": "Upravitelj povijesti razgovora",
+                "messagesCount": "Poruke",
+                "noResults": "Nema pronađenih rezultata",
+                "retention": "Zadržavanje povijesti razgovora",
+                "retentionDesc": "Automatski briše razgovore starije od odabranog razdoblja. Pokreće SQLite + FTS5.",
+                "retentionHint": "Postavite na Neograničeno za trajno čuvanje svih razgovora. Čišćenje se pokreće automatski pri pokretanju.",
+                "searchHint": "Pretražite sve svoje razgovore",
+                "searchPlaceholder": "Pretraži sve razgovore...",
+                "searching": "Pretraživanje...",
+                "sessions": "Sesije",
+                "totalCost": "Trošak",
+                "totalTokens": "Tokens",
+                "unlimited": "Neograničeno",
+                "roleAI": "AI",
+                "roleUser": "Korisnik"
             }
         },
         "archive": {
