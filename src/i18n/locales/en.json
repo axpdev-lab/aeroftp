@@ -274,6 +274,30 @@
             "insertPath": "Insert path",
             "listFiles": "List files & folders",
             "localPath": "Local Path",
+            "marketplace": {
+                "add": "Add",
+                "added": "Added",
+                "all": "All",
+                "available": "available",
+                "browseProviders": "Browse Providers",
+                "chinese": "Chinese",
+                "fast": "Fast Inference",
+                "flagship": "Flagship",
+                "gateway": "Gateway",
+                "local": "Local",
+                "localFeature": "Local",
+                "noResults": "No providers match your search",
+                "rag": "RAG",
+                "search": "Search providers...",
+                "searchFeature": "Web Search",
+                "specialized": "Specialized",
+                "streaming": "Streaming",
+                "subtitle": "Discover and add AI providers from our marketplace",
+                "thinking": "Thinking",
+                "title": "AI Provider Marketplace",
+                "tools": "Tools",
+                "vision": "Vision"
+            },
             "maxStepsReached": "Maximum steps reached ({max})",
             "modelFamily": {
                 "detected": "Model family detected",
@@ -1703,6 +1727,21 @@
             "resultsCount": "{count} results",
             "search_files": "Search files"
         },
+        "security": {
+            "totp": {
+                "back": "Back",
+                "disable": "Disable 2FA",
+                "disableConfirm": "Enter your current TOTP code to disable two-factor authentication:",
+                "enable": "Enable 2FA",
+                "enabled": "Two-factor authentication is enabled",
+                "enterCode": "Enter the 6-digit code from your authenticator app to verify:",
+                "invalidCode": "Invalid code. Please try again.",
+                "next": "Next",
+                "scanQr": "Add this secret to your authenticator app (Google Authenticator, Authy, Microsoft Authenticator). Or enter the manual key:",
+                "setup": "Two-Factor Authentication",
+                "verify": "Verify & Enable"
+            }
+        },
         "settings": {
             "accessKeyId": "Access Key ID",
             "addServer": "Add Server",
@@ -2650,7 +2689,17 @@
             "totalItems": "total",
             "unlock": "Unlock",
             "v1Standard": "AeroVault v1 (Standard)",
-            "v2Advanced": "AeroVault v2 (Advanced Security)"
+            "v2Advanced": "AeroVault v2 (Advanced Security)",
+            "remote": {
+                "cleanup": "Close Remote Vault",
+                "downloading": "Downloading vault from server...",
+                "noConnection": "Connect to a server to open remote vaults",
+                "open": "Open Remote Vault",
+                "saveAndClose": "Save & Close",
+                "title": "Remote Vault",
+                "uploadFailed": "Failed to upload vault changes",
+                "uploading": "Uploading vault changes..."
+            }
         },
         "versions": {
             "actions": "Actions",

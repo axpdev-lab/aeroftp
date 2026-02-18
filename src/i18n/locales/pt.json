@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Executa ls -la e resume o que vês",
             "welcomePromptRemote1": "Lista todos os ficheiros no servidor remoto",
             "welcomePromptRemote2": "Compara as pastas local e remota",
-            "welcomePromptRemote3": "Descarrega todos os ficheiros .log"
+            "welcomePromptRemote3": "Descarrega todos os ficheiros .log",
+            "marketplace": {
+                "add": "Adicionar",
+                "added": "Adicionado",
+                "all": "Todos",
+                "available": "disponíveis",
+                "browseProviders": "Explorar provedores",
+                "chinese": "Chinês",
+                "fast": "Inferência rápida",
+                "flagship": "Principal",
+                "gateway": "Gateway",
+                "local": "Local",
+                "localFeature": "Local",
+                "noResults": "Nenhum provedor corresponde à sua pesquisa",
+                "rag": "RAG",
+                "search": "Pesquisar provedores...",
+                "searchFeature": "Pesquisa web",
+                "specialized": "Especializado",
+                "streaming": "Streaming",
+                "subtitle": "Descubra e adicione provedores de IA do nosso marketplace",
+                "thinking": "Thinking",
+                "title": "Marketplace de Provedores IA",
+                "tools": "Ferramentas",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Este arquivo é protegido por senha",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Excluido {name}",
             "itemsDeleted": "{count} item(ns) excluido(s)",
             "titleFull": "AeroVault - Criptografia de nivel militar",
-            "totalItems": "total"
+            "totalItems": "total",
+            "remote": {
+                "cleanup": "Fechar vault remoto",
+                "downloading": "Baixando vault do servidor...",
+                "noConnection": "Conecte-se a um servidor para abrir vaults remotos",
+                "open": "Abrir vault remoto",
+                "saveAndClose": "Salvar e fechar",
+                "title": "Vault remoto",
+                "uploadFailed": "Falha ao enviar as alterações do vault",
+                "uploading": "Enviando alterações do vault..."
+            }
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Apenas local",
             "showRemote": "Mostrar remoto",
             "showSystemMenu": "Mostrar barra de menu do sistema"
+        },
+        "security": {
+            "totp": {
+                "back": "Voltar",
+                "disable": "Desativar 2FA",
+                "disableConfirm": "Digite seu código TOTP atual para desativar a autenticação de dois fatores:",
+                "enable": "Ativar 2FA",
+                "enabled": "A autenticação de dois fatores está ativada",
+                "enterCode": "Digite o código de 6 dígitos do seu aplicativo de autenticação para verificar:",
+                "invalidCode": "Código inválido. Tente novamente.",
+                "next": "Próximo",
+                "scanQr": "Adicione este segredo ao seu aplicativo de autenticação (Google Authenticator, Authy, Microsoft Authenticator). Ou insira a chave manualmente:",
+                "setup": "Autenticação de dois fatores",
+                "verify": "Verificar e ativar"
+            }
         }
     }
 }

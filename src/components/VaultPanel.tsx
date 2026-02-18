@@ -10,6 +10,7 @@ import { formatDate, formatSize } from '../utils/formatters';
 
 interface VaultPanelProps {
     onClose: () => void;
+    isConnected?: boolean;
 }
 
 type VaultMode = 'home' | 'create' | 'open' | 'browse';
@@ -72,7 +73,7 @@ const securityLevels = {
     }
 };
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<VaultMode>('home');
     const [vaultPath, setVaultPath] = useState('');
@@ -93,6 +94,12 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
     const [currentDir, setCurrentDir] = useState('');
     const [newDirName, setNewDirName] = useState('');
     const [showNewDirDialog, setShowNewDirDialog] = useState(false);
+
+    // Remote vault state
+    const [remoteVaultPath, setRemoteVaultPath] = useState('');
+    const [remoteLocalPath, setRemoteLocalPath] = useState('');
+    const [remoteLoading, setRemoteLoading] = useState(false);
+    const [showRemoteInput, setShowRemoteInput] = useState(false);
 
     // New state for unified vault support
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
@@ -195,6 +202,59 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
         const security = await detectVaultVersion(path);
         setVaultSecurity(security);
         setMode('open');
+    };
+
+    // Remote Vault: download from server, open locally
+    const handleOpenRemoteVault = async () => {
+        if (!remoteVaultPath.trim() || !remoteVaultPath.endsWith('.aerovault')) {
+            setError(t('vault.remote.open') + ': .aerovault');
+            return;
+        }
+        setRemoteLoading(true);
+        setError(null);
+        try {
+            const localPath = await invoke<string>('vault_v2_download_remote', { remotePath: remoteVaultPath });
+            setRemoteLocalPath(localPath);
+            setVaultPath(localPath);
+            const security = await detectVaultVersion(localPath);
+            setVaultSecurity(security);
+            setShowRemoteInput(false);
+            setMode('open');
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setRemoteLoading(false);
+        }
+    };
+
+    // Remote Vault: upload changes back to server and cleanup
+    const handleSaveRemoteAndClose = async () => {
+        if (!remoteLocalPath || !remoteVaultPath) return;
+        setLoading(true);
+        setError(null);
+        try {
+            await invoke('vault_v2_upload_remote', { localPath: remoteLocalPath, remotePath: remoteVaultPath });
+            await invoke('vault_v2_cleanup_temp', { localPath: remoteLocalPath });
+            setRemoteLocalPath('');
+            setRemoteVaultPath('');
+            setSuccess(t('vault.remote.saveAndClose'));
+            resetState();
+            setMode('home');
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Remote Vault: cleanup without uploading
+    const handleCleanupRemote = async () => {
+        if (!remoteLocalPath) return;
+        try {
+            await invoke('vault_v2_cleanup_temp', { localPath: remoteLocalPath });
+        } catch { /* best-effort cleanup */ }
+        setRemoteLocalPath('');
+        setRemoteVaultPath('');
     };
 
     const handleUnlock = async () => {
@@ -481,6 +541,52 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                                 <Lock size={16} /> {t('vault.openExisting')}
                             </button>
                         </div>
+
+                        {/* Remote Vault — only when connected to a server */}
+                        {isConnected && (
+                            <div className="w-full max-w-md mt-2 space-y-2">
+                                {!showRemoteInput ? (
+                                    <button
+                                        onClick={() => setShowRemoteInput(true)}
+                                        className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium
+                                            bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 transition-colors w-full justify-center"
+                                    >
+                                        <Download size={16} />
+                                        {t('vault.remote.open')}
+                                    </button>
+                                ) : (
+                                    <div className="p-3 rounded-lg border border-purple-500/30 bg-purple-500/5 space-y-2">
+                                        <p className="text-xs text-purple-400">{t('vault.remote.title')}</p>
+                                        <input
+                                            type="text"
+                                            value={remoteVaultPath}
+                                            onChange={e => setRemoteVaultPath(e.target.value)}
+                                            placeholder="/path/to/vault.aerovault"
+                                            className="w-full px-3 py-1.5 rounded text-sm bg-gray-800 border border-gray-600 text-white placeholder:text-gray-500"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => { setShowRemoteInput(false); setRemoteVaultPath(''); }}
+                                                className="flex-1 py-1.5 rounded text-xs bg-gray-700 text-gray-300"
+                                            >
+                                                {t('security.totp.back')}
+                                            </button>
+                                            <button
+                                                onClick={handleOpenRemoteVault}
+                                                disabled={remoteLoading || !remoteVaultPath.endsWith('.aerovault')}
+                                                className="flex-1 py-1.5 rounded text-xs bg-purple-600 text-white disabled:opacity-50 flex items-center justify-center gap-1"
+                                            >
+                                                {remoteLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                                {remoteLoading ? t('vault.remote.downloading') : t('vault.remote.open')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                {!isConnected && (
+                                    <p className="text-xs text-gray-500 text-center">{t('vault.remote.noConnection')}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -658,6 +764,16 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose }) => {
                             <button onClick={() => setChangingPassword(!changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                                 <Key size={14} /> {t('vault.changePassword')}
                             </button>
+                            {/* Remote vault: Save & Close */}
+                            {remoteLocalPath && (
+                                <button
+                                    onClick={handleSaveRemoteAndClose}
+                                    disabled={loading}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 hover:bg-purple-500 rounded text-white"
+                                >
+                                    <Download size={14} /> {t('vault.remote.saveAndClose')}
+                                </button>
+                            )}
                             {currentLevelConfig && (
                                 <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-900/50`}>
                                     <LevelIcon size={12} />

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Запусти ls -la і підсумуй побачене",
             "welcomePromptRemote1": "Покажи всі файли на віддаленому сервері",
             "welcomePromptRemote2": "Порівняй локальні та віддалені теки",
-            "welcomePromptRemote3": "Завантаж усі файли .log"
+            "welcomePromptRemote3": "Завантаж усі файли .log",
+            "marketplace": {
+                "add": "Додати",
+                "added": "Додано",
+                "all": "Усі",
+                "available": "доступно",
+                "browseProviders": "Огляд провайдерів",
+                "chinese": "Китайська",
+                "fast": "Швидкий висновок",
+                "flagship": "Флагман",
+                "gateway": "Gateway",
+                "local": "Локальний",
+                "localFeature": "Локальний",
+                "noResults": "Жоден провайдер не відповідає вашому запиту",
+                "rag": "RAG",
+                "search": "Пошук провайдерів...",
+                "searchFeature": "Веб-пошук",
+                "specialized": "Спеціалізований",
+                "streaming": "Streaming",
+                "subtitle": "Відкривайте та додавайте провайдерів ШІ з нашого маркетплейсу",
+                "thinking": "Thinking",
+                "title": "Маркетплейс провайдерів ШІ",
+                "tools": "Інструменти",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Цей архів захищений паролем",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} видалено",
             "itemsDeleted": "{count} елемент(ів) видалено",
             "titleFull": "AeroVault - Шифрування військового рівня",
-            "totalItems": "всього"
+            "totalItems": "всього",
+            "remote": {
+                "cleanup": "Закрити віддалений vault",
+                "downloading": "Завантаження vault з сервера...",
+                "noConnection": "Підключіться до сервера, щоб відкрити віддалені vault",
+                "open": "Відкрити віддалений vault",
+                "saveAndClose": "Зберегти та закрити",
+                "title": "Віддалений vault",
+                "uploadFailed": "Не вдалося завантажити зміни vault",
+                "uploading": "Завантаження змін vault..."
+            }
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Лише локально",
             "showRemote": "Показати віддалене",
             "showSystemMenu": "Показати системне меню"
+        },
+        "security": {
+            "totp": {
+                "back": "Назад",
+                "disable": "Вимкнути 2FA",
+                "disableConfirm": "Введіть поточний код TOTP, щоб вимкнути двофакторну автентифікацію:",
+                "enable": "Увімкнути 2FA",
+                "enabled": "Двофакторна автентифікація увімкнена",
+                "enterCode": "Введіть 6-значний код з вашого додатку автентифікації для перевірки:",
+                "invalidCode": "Невірний код. Спробуйте знову.",
+                "next": "Далі",
+                "scanQr": "Додайте цей секрет до вашого додатку автентифікації (Google Authenticator, Authy, Microsoft Authenticator). Або введіть ключ вручну:",
+                "setup": "Двофакторна автентифікація",
+                "verify": "Перевірити та увімкнути"
+            }
         }
     }
 }

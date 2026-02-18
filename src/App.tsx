@@ -74,6 +74,7 @@ import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
 import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
+import { initCspReporter } from './utils/cspReporter';
 import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import { useTranslation } from './i18n';
 
@@ -462,6 +463,9 @@ const App: React.FC = () => {
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
+    // CSP Phase 2: register violation reporter (debug-gated, no-op in production)
+    initCspReporter();
+
     const migrationDone = localStorage.getItem('keystore_migration_v2_done');
     if (!migrationDone) {
       const hasLegacy = localStorage.getItem('aeroftp-saved-servers')

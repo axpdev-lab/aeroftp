@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Spusti ls -la a zhrň, čo vidíš",
             "welcomePromptRemote1": "Zobraz všetky súbory na vzdialenom serveri",
             "welcomePromptRemote2": "Porovnaj lokálne a vzdialené priečinky",
-            "welcomePromptRemote3": "Stiahni všetky súbory .log"
+            "welcomePromptRemote3": "Stiahni všetky súbory .log",
+            "marketplace": {
+                "add": "Pridať",
+                "added": "Pridané",
+                "all": "Všetky",
+                "available": "dostupných",
+                "browseProviders": "Prehľadávať poskytovateľov",
+                "chinese": "Čínske",
+                "fast": "Rýchle odvodenie",
+                "flagship": "Vlajková loď",
+                "gateway": "Gateway",
+                "local": "Lokálne",
+                "localFeature": "Lokálne",
+                "noResults": "Žiadni poskytovatelia nezodpovedajú vášmu vyhľadávaniu",
+                "rag": "RAG",
+                "search": "Hľadať poskytovateľov...",
+                "searchFeature": "Vyhľadávanie na webe",
+                "specialized": "Špecializované",
+                "streaming": "Streaming",
+                "subtitle": "Objavte a pridajte poskytovateľov AI z nášho trhoviska",
+                "thinking": "Thinking",
+                "title": "Trhovisko poskytovateľov AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Tento archiv je chraneny heslom",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Zmazane {name}",
             "itemsDeleted": "Zmazanych poloziek: {count}",
             "titleFull": "AeroVault - Sifrovanie vojenskej triedy",
-            "totalItems": "celkom"
+            "totalItems": "celkom",
+            "remote": {
+                "cleanup": "Zatvoriť vzdialený trezor",
+                "downloading": "Sťahovanie trezoru zo servera...",
+                "noConnection": "Pripojte sa k serveru na otvorenie vzdialených trezorov",
+                "open": "Otvoriť vzdialený trezor",
+                "saveAndClose": "Uložiť a zatvoriť",
+                "title": "Vzdialený trezor",
+                "uploadFailed": "Nahrávanie zmien trezoru zlyhalo",
+                "uploading": "Nahrávanie zmien trezoru..."
+            }
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Len lokálne",
             "showRemote": "Zobraziť vzdialené",
             "showSystemMenu": "Zobraziť systémové menu"
+        },
+        "ai.agentMode.title": "Rezim agenta",
+        "ai.agentMode.description": "Ovlada spravanie schvalovania nastrojov, limity krokov a uroven autonomie.",
+        "ai.agentMode.safe": "Bezpecny",
+        "ai.agentMode.safeDesc": "Iba bezpecne nastroje sa vykonavaju automaticky. Ziadna pamat relacie. Max. 5 krokov.",
+        "ai.agentMode.normal": "Normalny",
+        "ai.agentMode.normalDesc": "Bezpecne nastroje sa vykonavaju automaticky. Stredne nastroje schvalene na relaciu. Max. 10 krokov.",
+        "ai.agentMode.expert": "Expert",
+        "ai.agentMode.expertDesc": "Bezpecne a stredne sa vykonavaju automaticky. Vysokorizikove schvalene na relaciu. Max. 25 krokov.",
+        "ai.agentMode.extreme": "Extremny",
+        "ai.agentMode.extremeDesc": "Vsetky nastroje sa vykonavaju automaticky. Ziadne potvrdenia. Max. 50 krokov. Iba Cyber.",
+        "security": {
+            "totp": {
+                "back": "Späť",
+                "disable": "Vypnúť 2FA",
+                "disableConfirm": "Zadajte aktuálny kód TOTP na vypnutie dvojfaktorovej autentifikácie:",
+                "enable": "Zapnúť 2FA",
+                "enabled": "Dvojfaktorová autentifikácia je zapnutá",
+                "enterCode": "Zadajte 6-miestny kód z vašej autentifikačnej aplikácie na overenie:",
+                "invalidCode": "Neplatný kód. Skúste to znova.",
+                "next": "Ďalej",
+                "scanQr": "Pridajte tento tajný kľúč do vašej autentifikačnej aplikácie (Google Authenticator, Authy, Microsoft Authenticator). Alebo zadajte kľúč manuálne:",
+                "setup": "Dvojfaktorová autentifikácia",
+                "verify": "Overiť a zapnúť"
+            }
         }
     }
 }

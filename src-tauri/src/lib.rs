@@ -39,6 +39,7 @@ mod ai_stream;
 mod archive_browse;
 mod aerovault;
 mod aerovault_v2;
+mod vault_remote;
 mod cryptomator;
 mod master_password;
 mod windows_acl;
@@ -46,6 +47,7 @@ mod filesystem;
 mod tray_badge;
 mod sync_badge;
 mod cyber_tools;
+mod totp;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -6151,6 +6153,16 @@ pub fn run() {
         .setup(move |app| {
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
 
+            // Ensure AppConfig directory exists with restricted permissions (0700)
+            if let Ok(config_dir) = app.path().app_config_dir() {
+                let _ = std::fs::create_dir_all(&config_dir);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o700));
+                }
+            }
+
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
             // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
@@ -6424,6 +6436,7 @@ pub fn run() {
     let builder = builder.manage(cryptomator::CryptomatorState::new());
     // Master Password state for app-level security
     let builder = builder.manage(master_password::MasterPasswordState::new());
+    let builder = builder.manage(totp::TotpState::default());
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -6569,6 +6582,7 @@ pub fn run() {
             ai_tools::validate_tool_args,
             ai_tools::execute_ai_tool,
             ai_tools::shell_execute,
+            ai_tools::clipboard_read_image,
             // Context Intelligence commands
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,
@@ -6606,6 +6620,10 @@ pub fn run() {
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
             aerovault_v2::vault_v2_add_files_to_dir,
+            // Remote Vault — open .aerovault on remote servers
+            vault_remote::vault_v2_download_remote,
+            vault_remote::vault_v2_upload_remote,
+            vault_remote::vault_v2_cleanup_temp,
             // Cryptomator vault support
             cryptomator::cryptomator_unlock,
             cryptomator::cryptomator_lock,
@@ -6742,6 +6760,14 @@ pub fn run() {
             cyber_tools::generate_password,
             cyber_tools::generate_passphrase,
             cyber_tools::calculate_entropy,
+            // TOTP 2FA
+            totp::totp_setup_start,
+            totp::totp_setup_verify,
+            totp::totp_verify,
+            totp::totp_status,
+            totp::totp_enable,
+            totp::totp_disable,
+            totp::totp_load_secret,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Suorita ls -la ja tiivistä mitä näet",
             "welcomePromptRemote1": "Listaa kaikki tiedostot etäpalvelimella",
             "welcomePromptRemote2": "Vertaa paikallisia ja etäkansioita",
-            "welcomePromptRemote3": "Lataa kaikki .log tiedostot"
+            "welcomePromptRemote3": "Lataa kaikki .log tiedostot",
+            "marketplace": {
+                "add": "Lisää",
+                "added": "Lisätty",
+                "all": "Kaikki",
+                "available": "saatavilla",
+                "browseProviders": "Selaa tarjoajia",
+                "chinese": "Kiinalainen",
+                "fast": "Nopea päättely",
+                "flagship": "Lippulaiva",
+                "gateway": "Gateway",
+                "local": "Paikallinen",
+                "localFeature": "Paikallinen",
+                "noResults": "Yksikään tarjoaja ei vastaa hakuasi",
+                "rag": "RAG",
+                "search": "Hae tarjoajia...",
+                "searchFeature": "Verkkohaku",
+                "specialized": "Erikoistunut",
+                "streaming": "Streaming",
+                "subtitle": "Löydä ja lisää AI-tarjoajia markkinapaikaltamme",
+                "thinking": "Thinking",
+                "title": "AI-tarjoajien markkinapaikka",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Tämä arkisto on salasanasuojattu",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} poistettu",
             "itemsDeleted": "{count} kohdetta poistettu",
             "titleFull": "AeroVault - Sotilastason salaus",
-            "totalItems": "yhteensä"
+            "totalItems": "yhteensä",
+            "remote": {
+                "cleanup": "Sulje etäholvi",
+                "downloading": "Ladataan holvia palvelimelta...",
+                "noConnection": "Yhdistä palvelimeen avataksesi etäholveja",
+                "open": "Avaa etäholvi",
+                "saveAndClose": "Tallenna & Sulje",
+                "title": "Etäholvi",
+                "uploadFailed": "Holvin muutosten lataus epäonnistui",
+                "uploading": "Ladataan holvin muutoksia..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -2668,6 +2702,31 @@
             "localOnly": "Vain paikallinen",
             "showRemote": "Näytä etä",
             "showSystemMenu": "Näytä järjestelmävalikkorivi"
+        },
+        "ai.agentMode.title": "Agenttitila",
+        "ai.agentMode.description": "Hallitsee työkalujen hyväksymiskäyttäytymistä, vaiheiden rajoja ja autonomian tasoa.",
+        "ai.agentMode.safe": "Turvallinen",
+        "ai.agentMode.safeDesc": "Vain turvalliset työkalut suoritetaan automaattisesti. Ei istuntomuistia. Enintään 5 vaihetta.",
+        "ai.agentMode.normal": "Normaali",
+        "ai.agentMode.normalDesc": "Turvalliset työkalut suoritetaan automaattisesti. Keskitason työkalut hyväksytään istunnolle. Enintään 10 vaihetta.",
+        "ai.agentMode.expert": "Asiantuntija",
+        "ai.agentMode.expertDesc": "Turvalliset ja keskitason suoritetaan automaattisesti. Korkean riskin hyväksytään istunnolle. Enintään 25 vaihetta.",
+        "ai.agentMode.extreme": "Äärimmäinen",
+        "ai.agentMode.extremeDesc": "Kaikki työkalut suoritetaan automaattisesti. Ei vahvistuksia. Enintään 50 vaihetta. Vain Cyber.",
+        "security": {
+            "totp": {
+                "back": "Takaisin",
+                "disable": "Poista 2FA käytöstä",
+                "disableConfirm": "Syötä nykyinen TOTP-koodisi poistaaksesi kaksivaiheisen todennuksen käytöstä:",
+                "enable": "Ota 2FA käyttöön",
+                "enabled": "Kaksivaiheinen todennus on käytössä",
+                "enterCode": "Syötä 6-numeroinen koodi todennussovelluksestasi vahvistaaksesi:",
+                "invalidCode": "Virheellinen koodi. Yritä uudelleen.",
+                "next": "Seuraava",
+                "scanQr": "Lisää tämä salaisuus todennussovellukseesi (Google Authenticator, Authy, Microsoft Authenticator). Tai syötä avain manuaalisesti:",
+                "setup": "Kaksivaiheinen todennus",
+                "verify": "Vahvista & Ota käyttöön"
+            }
         }
     }
 }

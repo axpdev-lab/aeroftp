@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Запусти ls -la и подведи итог увиденного",
             "welcomePromptRemote1": "Покажи все файлы на удалённом сервере",
             "welcomePromptRemote2": "Сравни локальные и удалённые папки",
-            "welcomePromptRemote3": "Скачай все файлы .log"
+            "welcomePromptRemote3": "Скачай все файлы .log",
+            "marketplace": {
+                "add": "Добавить",
+                "added": "Добавлено",
+                "all": "Все",
+                "available": "доступно",
+                "browseProviders": "Обзор провайдеров",
+                "chinese": "Китайский",
+                "fast": "Быстрый вывод",
+                "flagship": "Флагман",
+                "gateway": "Gateway",
+                "local": "Локальный",
+                "localFeature": "Локальный",
+                "noResults": "Нет провайдеров, соответствующих вашему запросу",
+                "rag": "RAG",
+                "search": "Поиск провайдеров...",
+                "searchFeature": "Веб-поиск",
+                "specialized": "Специализированный",
+                "streaming": "Streaming",
+                "subtitle": "Откройте и добавьте провайдеров ИИ из нашего маркетплейса",
+                "thinking": "Thinking",
+                "title": "Маркетплейс провайдеров ИИ",
+                "tools": "Инструменты",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Этот архив защищён паролем",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Удалено {name}",
             "itemsDeleted": "Удалено элементов: {count}",
             "titleFull": "AeroVault — шифрование военного класса",
-            "totalItems": "всего"
+            "totalItems": "всего",
+            "remote": {
+                "cleanup": "Закрыть удалённый vault",
+                "downloading": "Загрузка vault с сервера...",
+                "noConnection": "Подключитесь к серверу для открытия удалённых vault",
+                "open": "Открыть удалённый vault",
+                "saveAndClose": "Сохранить и закрыть",
+                "title": "Удалённый vault",
+                "uploadFailed": "Не удалось загрузить изменения vault",
+                "uploading": "Загрузка изменений vault..."
+            }
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Только локально",
             "showRemote": "Показать удаленное",
             "showSystemMenu": "Показать системное меню"
+        },
+        "security": {
+            "totp": {
+                "back": "Назад",
+                "disable": "Отключить 2FA",
+                "disableConfirm": "Введите текущий код TOTP, чтобы отключить двухфакторную аутентификацию:",
+                "enable": "Включить 2FA",
+                "enabled": "Двухфакторная аутентификация включена",
+                "enterCode": "Введите 6-значный код из вашего приложения аутентификации для проверки:",
+                "invalidCode": "Неверный код. Попробуйте снова.",
+                "next": "Далее",
+                "scanQr": "Добавьте этот секрет в ваше приложение аутентификации (Google Authenticator, Authy, Microsoft Authenticator). Или введите ключ вручную:",
+                "setup": "Двухфакторная аутентификация",
+                "verify": "Проверить и включить"
+            }
         }
     }
 }

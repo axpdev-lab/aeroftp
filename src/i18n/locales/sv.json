@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Kör ls -la och sammanfatta vad du ser",
             "welcomePromptRemote1": "Lista alla filer på fjärrservern",
             "welcomePromptRemote2": "Jämför lokala och fjärrmappar",
-            "welcomePromptRemote3": "Ladda ner alla .log-filer"
+            "welcomePromptRemote3": "Ladda ner alla .log-filer",
+            "marketplace": {
+                "add": "Lägg till",
+                "added": "Tillagd",
+                "all": "Alla",
+                "available": "tillgängliga",
+                "browseProviders": "Bläddra bland leverantörer",
+                "chinese": "Kinesiska",
+                "fast": "Snabb inferens",
+                "flagship": "Flaggskepp",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Inga leverantörer matchar din sökning",
+                "rag": "RAG",
+                "search": "Sök leverantörer...",
+                "searchFeature": "Webbsökning",
+                "specialized": "Specialiserad",
+                "streaming": "Streaming",
+                "subtitle": "Upptäck och lägg till AI-leverantörer från vår marknadsplats",
+                "thinking": "Thinking",
+                "title": "AI-leverantörsmarknadsplats",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Detta arkiv är lösenordsskyddat",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Borttaget {name}",
             "itemsDeleted": "{count} objekt borttagna",
             "titleFull": "AeroVault - Militarklassad kryptering",
-            "totalItems": "totalt"
+            "totalItems": "totalt",
+            "remote": {
+                "cleanup": "Stäng fjärrvalv",
+                "downloading": "Laddar ner valv från servern...",
+                "noConnection": "Anslut till en server för att öppna fjärrvalv",
+                "open": "Öppna fjärrvalv",
+                "saveAndClose": "Spara & Stäng",
+                "title": "Fjärrvalv",
+                "uploadFailed": "Misslyckades att ladda upp valvändringar",
+                "uploading": "Laddar upp valvändringar..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-valv",
@@ -2668,6 +2702,31 @@
             "localOnly": "Endast lokalt",
             "showRemote": "Visa fjärr",
             "showSystemMenu": "Visa systemmenyrad"
+        },
+        "ai.agentMode.title": "Agentlage",
+        "ai.agentMode.description": "Styr godkannandebeteende for verktyg, steggranser och autonominiva.",
+        "ai.agentMode.safe": "Saker",
+        "ai.agentMode.safeDesc": "Endast sakra verktyg kors automatiskt. Inget sessionsminne. Max 5 steg.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Sakra verktyg kors automatiskt. Medelverktyg godkanns per session. Max 10 steg.",
+        "ai.agentMode.expert": "Expert",
+        "ai.agentMode.expertDesc": "Sakra och medel kors automatiskt. Hogrisk godkanns per session. Max 25 steg.",
+        "ai.agentMode.extreme": "Extrem",
+        "ai.agentMode.extremeDesc": "Alla verktyg kors automatiskt. Inga bekraftelser. Max 50 steg. Endast Cyber.",
+        "security": {
+            "totp": {
+                "back": "Tillbaka",
+                "disable": "Inaktivera 2FA",
+                "disableConfirm": "Ange din nuvarande TOTP-kod för att inaktivera tvåfaktorsautentisering:",
+                "enable": "Aktivera 2FA",
+                "enabled": "Tvåfaktorsautentisering är aktiverad",
+                "enterCode": "Ange den 6-siffriga koden från din autentiseringsapp för att verifiera:",
+                "invalidCode": "Ogiltig kod. Försök igen.",
+                "next": "Nästa",
+                "scanQr": "Lägg till denna hemlighet i din autentiseringsapp (Google Authenticator, Authy, Microsoft Authenticator). Eller ange nyckeln manuellt:",
+                "setup": "Tvåfaktorsautentisering",
+                "verify": "Verifiera & Aktivera"
+            }
         }
     }
 }

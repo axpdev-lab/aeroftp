@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "运行 ls -la 并总结你看到的内容",
             "welcomePromptRemote1": "列出远程服务器上的所有文件",
             "welcomePromptRemote2": "比较本地和远程文件夹",
-            "welcomePromptRemote3": "下载所有 .log 文件"
+            "welcomePromptRemote3": "下载所有 .log 文件",
+            "marketplace": {
+                "add": "添加",
+                "added": "已添加",
+                "all": "全部",
+                "available": "可用",
+                "browseProviders": "浏览提供商",
+                "chinese": "中文",
+                "fast": "快速推理",
+                "flagship": "旗舰",
+                "gateway": "Gateway",
+                "local": "本地",
+                "localFeature": "本地",
+                "noResults": "没有匹配您搜索的提供商",
+                "rag": "RAG",
+                "search": "搜索提供商...",
+                "searchFeature": "网页搜索",
+                "specialized": "专业",
+                "streaming": "Streaming",
+                "subtitle": "从我们的市场中发现和添加 AI 提供商",
+                "thinking": "Thinking",
+                "title": "AI 提供商市场",
+                "tools": "工具",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "此压缩包受密码保护",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "已删除 {name}",
             "itemsDeleted": "已删除 {count} 个项目",
             "titleFull": "AeroVault - 军用级加密",
-            "totalItems": "总计"
+            "totalItems": "总计",
+            "remote": {
+                "cleanup": "关闭远程 vault",
+                "downloading": "正在从服务器下载 vault...",
+                "noConnection": "连接到服务器以打开远程 vault",
+                "open": "打开远程 vault",
+                "saveAndClose": "保存并关闭",
+                "title": "远程 vault",
+                "uploadFailed": "上传 vault 更改失败",
+                "uploading": "正在上传 vault 更改..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",
@@ -2668,6 +2702,21 @@
             "localOnly": "仅本地",
             "showRemote": "显示远程",
             "showSystemMenu": "显示系统菜单栏"
+        },
+        "security": {
+            "totp": {
+                "back": "返回",
+                "disable": "禁用 2FA",
+                "disableConfirm": "输入您当前的 TOTP 代码以禁用双因素认证：",
+                "enable": "启用 2FA",
+                "enabled": "双因素认证已启用",
+                "enterCode": "输入您认证应用中的 6 位代码进行验证：",
+                "invalidCode": "代码无效。请重试。",
+                "next": "下一步",
+                "scanQr": "将此密钥添加到您的认证应用（Google Authenticator、Authy、Microsoft Authenticator）。或手动输入密钥：",
+                "setup": "双因素认证",
+                "verify": "验证并启用"
+            }
         }
     }
 }

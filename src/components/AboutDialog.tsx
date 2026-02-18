@@ -27,35 +27,70 @@ interface SystemInfo {
 
 type TabId = 'info' | 'technical' | 'support';
 
+// Official Crypto SVG Icons (matching SupportDialog)
+const BitcoinIcon = () => (
+    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
+        <path fill="#f7931a" d="M16 0c8.837 0 16 7.163 16 16s-7.163 16-16 16S0 24.837 0 16 7.163 0 16 0z"/>
+        <path fill="#fff" d="M22.5 14.1c.3-2.1-1.3-3.2-3.4-3.9l.7-2.8-1.7-.4-.7 2.7c-.4-.1-.9-.2-1.4-.3l.7-2.7-1.7-.4-.7 2.8c-.3-.1-.7-.2-1-.3l-2.4-.6-.5 1.8s1.3.3 1.2.3c.7.2.8.6.8 1l-.8 3.3s.1 0 .2.1l-.2-.1-1.1 4.5c-.1.2-.3.5-.8.4 0 0-1.2-.3-1.2-.3l-.8 2 2.2.6 1.2.3-.7 2.8 1.7.4.7-2.8c.5.1 .9.2 1.4.3l-.7 2.8 1.7.4.7-2.8c2.9.5 5.1.3 6-2.3.7-2.1-.1-3.3-1.5-4.1 1.1-.2 1.9-.9 2.1-2.4zm-3.8 5.3c-.5 2.1-4 1-5.1.7l.9-3.7c1.2.3 4.7.8 4.2 3zm.5-5.4c-.5 1.9-3.4 1-4.3.7l.8-3.3c1 .2 4 .7 3.5 2.6z"/>
+    </svg>
+);
+const EthereumIcon = () => (
+    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
+        <path fill="#627eea" d="M16 0c8.837 0 16 7.163 16 16s-7.163 16-16 16S0 24.837 0 16 7.163 0 16 0z"/>
+        <path fill="#fff" fillOpacity=".6" d="M16.5 4v8.87l7.5 3.35z"/>
+        <path fill="#fff" d="M16.5 4L9 16.22l7.5-3.35z"/>
+        <path fill="#fff" fillOpacity=".6" d="M16.5 21.97v6.03L24 17.62z"/>
+        <path fill="#fff" d="M16.5 28V21.97L9 17.62z"/>
+        <path fill="#fff" fillOpacity=".2" d="M16.5 20.57l7.5-4.35-7.5-3.35z"/>
+        <path fill="#fff" fillOpacity=".6" d="M9 16.22l7.5 4.35v-7.7z"/>
+    </svg>
+);
+const SolanaIcon = () => (
+    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
+        <defs>
+            <linearGradient id="about-sol-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#9945ff"/>
+                <stop offset="100%" stopColor="#14f195"/>
+            </linearGradient>
+        </defs>
+        <circle cx="16" cy="16" r="16" fill="url(#about-sol-grad)"/>
+        <path fill="#fff" d="M10.5 19.5c.2-.2.4-.3.7-.3h12.1c.4 0 .7.5.3.8l-2.4 2.4c-.2.2-.4.3-.7.3H8.4c-.4 0-.7-.5-.3-.8l2.4-2.4z"/>
+        <path fill="#fff" d="M10.5 9.3c.2-.2.4-.3.7-.3h12.1c.4 0 .7.5.3.8l-2.4 2.4c-.2.2-.4.3-.7.3H8.4c-.4 0-.7-.5-.3-.8l2.4-2.4z"/>
+        <path fill="#fff" d="M21.5 14.4c-.2-.2-.4-.3-.7-.3H8.7c-.4 0-.7.5-.3.8l2.4 2.4c.2.2.4.3.7.3h12.1c.4 0 .7-.5.3-.8l-2.4-2.4z"/>
+    </svg>
+);
+const LitecoinIcon = () => (
+    <svg viewBox="0 0 508.96 508.96" className="w-5 h-5">
+        <circle fill="#fff" cx="254.48" cy="254.48" r="226.94"/>
+        <path fill="#345d9d" d="M256.38,2C115.84,2,1.9,116,1.9,256.52S115.84,511,256.38,511,510.87,397.07,510.87,256.52h0C511.27,116.38,398,2.45,257.87,2h-1.49Zm4.32,263.11-26.5,89.34H375.92a7.15,7.15,0,0,1,7.4,6.89h0v2.34L371,406.25a9.18,9.18,0,0,1-9.24,6.78H144.86l36.35-123.85L140.54,301.5l9.25-28.34,40.66-12.33L241.6,87.07a9.3,9.3,0,0,1,9.24-6.78h54.84a7.15,7.15,0,0,1,7.39,6.9h0v2.35L269.94,236.19l40.67-12.33L302,253.44Z" transform="translate(-1.9 -2.04)"/>
+    </svg>
+);
+
 // Crypto addresses for donations
 const CRYPTO_ADDRESSES = {
     btc: {
         name: 'Bitcoin',
         symbol: 'BTC',
         address: 'bc1qdxur90s5j4s55rwe9rc9n95fau4rg3tfatfhkn',
-        icon: '\u20BF',
-        color: 'from-orange-500 to-yellow-500',
+        Icon: BitcoinIcon,
     },
     eth: {
         name: 'Ethereum / EVM',
         symbol: 'ETH',
         address: '0x08F9D9C41E833539Fd733e19119A89f0664c3AeE',
-        icon: '\u039E',
-        color: 'from-blue-400 to-purple-500',
+        Icon: EthereumIcon,
     },
     sol: {
         name: 'Solana',
         symbol: 'SOL',
         address: '25A8sBNqzbR9rvrd3qyYwBkwirEh1pUiegUG6CrswHrd',
-        icon: '\u25CE',
-        color: 'from-purple-500 to-green-400',
+        Icon: SolanaIcon,
     },
     ltc: {
         name: 'Litecoin',
         symbol: 'LTC',
         address: 'LTk8iRvUqAtYyer8SPAkEAakpPXxfFY1D1',
-        icon: '\u0141',
-        color: 'from-gray-400 to-blue-400',
+        Icon: LitecoinIcon,
     },
 };
 
@@ -109,8 +144,8 @@ const CryptoDonatePanel: React.FC = () => {
                         className="w-full flex items-center justify-between px-3 py-2 text-left"
                     >
                         <div className="flex items-center gap-3">
-                            <span className={`w-8 h-8 rounded-lg bg-gradient-to-br ${chain.color} flex items-center justify-center text-white font-bold text-sm`}>
-                                {chain.icon}
+                            <span className="w-8 h-8 rounded-lg flex items-center justify-center">
+                                <chain.Icon />
                             </span>
                             <div>
                                 <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{chain.name}</div>

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Rulează ls -la și rezumă ce vezi",
             "welcomePromptRemote1": "Listează toate fișierele de pe serverul remote",
             "welcomePromptRemote2": "Compară folderele locale și remote",
-            "welcomePromptRemote3": "Descarcă toate fișierele .log"
+            "welcomePromptRemote3": "Descarcă toate fișierele .log",
+            "marketplace": {
+                "add": "Adaugă",
+                "added": "Adăugat",
+                "all": "Toate",
+                "available": "disponibile",
+                "browseProviders": "Răsfoiește furnizori",
+                "chinese": "Chineză",
+                "fast": "Inferență rapidă",
+                "flagship": "Flagship",
+                "gateway": "Gateway",
+                "local": "Local",
+                "localFeature": "Local",
+                "noResults": "Niciun furnizor nu corespunde căutării dvs.",
+                "rag": "RAG",
+                "search": "Caută furnizori...",
+                "searchFeature": "Căutare web",
+                "specialized": "Specializat",
+                "streaming": "Streaming",
+                "subtitle": "Descoperă și adaugă furnizori AI din marketplace-ul nostru",
+                "thinking": "Thinking",
+                "title": "Marketplace Furnizori AI",
+                "tools": "Instrumente",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Această arhivă este protejată cu parolă",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Sters {name}",
             "itemsDeleted": "{count} element(e) sters(e)",
             "titleFull": "AeroVault - Criptare de nivel militar",
-            "totalItems": "total"
+            "totalItems": "total",
+            "remote": {
+                "cleanup": "Închide vault-ul la distanță",
+                "downloading": "Se descarcă vault-ul de pe server...",
+                "noConnection": "Conectați-vă la un server pentru a deschide vault-uri la distanță",
+                "open": "Deschide vault la distanță",
+                "saveAndClose": "Salvează și închide",
+                "title": "Vault la distanță",
+                "uploadFailed": "Încărcarea modificărilor vault-ului a eșuat",
+                "uploading": "Se încarcă modificările vault-ului..."
+            }
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Doar local",
             "showRemote": "Afișează la distanță",
             "showSystemMenu": "Afișează bara de meniu sistem"
+        },
+        "security": {
+            "totp": {
+                "back": "Înapoi",
+                "disable": "Dezactivare 2FA",
+                "disableConfirm": "Introduceți codul TOTP curent pentru a dezactiva autentificarea cu doi factori:",
+                "enable": "Activare 2FA",
+                "enabled": "Autentificarea cu doi factori este activată",
+                "enterCode": "Introduceți codul de 6 cifre din aplicația de autentificare pentru verificare:",
+                "invalidCode": "Cod invalid. Încercați din nou.",
+                "next": "Înainte",
+                "scanQr": "Adăugați acest secret în aplicația de autentificare (Google Authenticator, Authy, Microsoft Authenticator). Sau introduceți cheia manuală:",
+                "setup": "Autentificare cu doi factori",
+                "verify": "Verifică și activează"
+            }
         }
     }
 }

@@ -45,7 +45,7 @@ AeroFTP
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
 ├── AeroTools    — Code editor + Terminal + AI chat
-│   └── AeroAgent    — AI-powered assistant (45 tools, 10 providers)
+│   └── AeroAgent    — AI-powered assistant (45 tools, 15 providers)
 └── AeroPlayer   — Media player with visualizers
 ```
 
@@ -156,9 +156,9 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **28 provider-agnostic tools** that work across all 14 protocols. 10 AI providers, vision support, RAG indexing, and a plugin system.
+An AI assistant with **28 provider-agnostic tools** that work across all 14 protocols. 15 AI providers, vision support, RAG indexing, and a plugin system.
 
-**Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Custom
+**Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, Custom
 
 **Core capabilities**:
 - **File operations**: List, read, search, create, edit, rename, delete — local and remote

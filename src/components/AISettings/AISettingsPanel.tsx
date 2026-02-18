@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TransferProgressBar } from '../TransferProgressBar';
 import {
@@ -10,7 +10,7 @@ import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from '../DevTools/AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon } from '../DevTools/AIIcons';
 import {
     AIProvider, AIModel, AISettings, AIProviderType,
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
@@ -18,6 +18,7 @@ import {
 import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { ProviderMarketplace } from './ProviderMarketplace';
 import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
 
@@ -38,6 +39,11 @@ const getProviderIcon = (type: AIProviderType): React.ReactNode => {
         case 'kimi': return <KimiIcon size={16} />;
         case 'qwen': return <QwenIcon size={16} />;
         case 'deepseek': return <DeepSeekIcon size={16} />;
+        case 'mistral': return <MistralIcon size={16} />;
+        case 'groq': return <GroqIcon size={16} />;
+        case 'perplexity': return <PerplexityIcon size={16} />;
+        case 'cohere': return <CohereIcon size={16} />;
+        case 'together': return <TogetherIcon size={16} />;
         case 'custom': return <Server size={14} className="text-gray-400" />;
         default: return <Server size={14} />;
     }
@@ -252,6 +258,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
     const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'advanced' | 'prompt' | 'plugins' | 'macros'>('providers');
+    const [showMarketplace, setShowMarketplace] = useState(false);
     const [plugins, setPlugins] = useState<PluginManifest[]>([]);
     const t = useTranslation();
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -291,6 +298,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [pullModelName, setPullModelName] = useState('');
     const [isPulling, setIsPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState<{ status: string; percent: number } | null>(null);
+
+    const addedProviderTypesSet = useMemo(() => new Set(settings.providers.map(p => p.type)), [settings.providers]);
 
     // Model editing state
     const [editingModel, setEditingModel] = useState<{
@@ -704,21 +713,19 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'providers' && (
                         <div className="space-y-4">
-                            {/* Add Provider Button */}
+                            {/* Add Provider — Marketplace Button */}
                             {unusedPresets.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                    <span className="text-sm text-gray-400">Add:</span>
-                                    {unusedPresets.map(preset => (
-                                        <button
-                                            key={preset.type}
-                                            onClick={() => addProviderFromPreset(preset)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
-                                        >
-                                            <Plus size={14} />
-                                            {getProviderIcon(preset.type)}
-                                            {preset.name}
-                                        </button>
-                                    ))}
+                                <div className="flex items-center gap-3 mb-4">
+                                    <button
+                                        onClick={() => setShowMarketplace(true)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium text-white transition-colors"
+                                    >
+                                        <Plus size={14} />
+                                        {t('ai.marketplace.browseProviders')}
+                                    </button>
+                                    <span className="text-xs text-gray-500">
+                                        {unusedPresets.length} {t('ai.marketplace.available')}
+                                    </span>
                                 </div>
                             )}
 
@@ -1826,6 +1833,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     </div>
                 );
             })()}
+            {/* Provider Marketplace Modal */}
+            <ProviderMarketplace
+                isOpen={showMarketplace}
+                onClose={() => setShowMarketplace(false)}
+                onAddProvider={addProviderFromPreset}
+                addedProviderTypes={addedProviderTypesSet}
+            />
         </div>
     );
 };

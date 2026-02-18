@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Executa ls -la i resumeix el que veus",
             "welcomePromptRemote1": "Llista tots els fitxers del servidor remot",
             "welcomePromptRemote2": "Compara les carpetes local i remota",
-            "welcomePromptRemote3": "Descarrega tots els fitxers .log"
+            "welcomePromptRemote3": "Descarrega tots els fitxers .log",
+            "marketplace": {
+                "add": "Afegir",
+                "added": "Afegit",
+                "all": "Tots",
+                "available": "disponible",
+                "browseProviders": "Explorar proveïdors",
+                "chinese": "Xinès",
+                "fast": "Inferència ràpida",
+                "flagship": "Principal",
+                "gateway": "Gateway",
+                "local": "Local",
+                "localFeature": "Local",
+                "noResults": "Cap proveïdor coincideix amb la vostra cerca",
+                "rag": "RAG",
+                "search": "Cercar proveïdors...",
+                "searchFeature": "Cerca web",
+                "specialized": "Especialitzats",
+                "streaming": "Streaming",
+                "subtitle": "Descobriu i afegiu proveïdors d'AI des del nostre mercat",
+                "thinking": "Thinking",
+                "title": "Mercat de proveïdors d'AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Aquest arxiu està protegit amb contrasenya",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} eliminat",
             "itemsDeleted": "{count} element(s) eliminat(s)",
             "titleFull": "AeroVault — Xifratge de grau militar",
-            "totalItems": "total"
+            "totalItems": "total",
+            "remote": {
+                "cleanup": "Tancar la volta remota",
+                "downloading": "Descarregant la volta del servidor...",
+                "noConnection": "Connecteu-vos a un servidor per obrir voltes remotes",
+                "open": "Obrir volta remota",
+                "saveAndClose": "Desar i tancar",
+                "title": "Volta remota",
+                "uploadFailed": "No s'han pogut pujar els canvis de la volta",
+                "uploading": "Pujant els canvis de la volta..."
+            }
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Només local",
             "showRemote": "Mostrar remot",
             "showSystemMenu": "Mostrar barra de menú del sistema"
+        },
+        "ai.agentMode.title": "Mode d'agent",
+        "ai.agentMode.description": "Controla el comportament d'aprovació d'eines, els límits de passos i el nivell d'autonomia.",
+        "ai.agentMode.safe": "Segur",
+        "ai.agentMode.safeDesc": "Només les eines segures s'executen automàticament. Sense memòria de sessió. Màx. 5 passos.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Les eines segures s'executen automàticament. Les eines mitjanes s'aproven per sessió. Màx. 10 passos.",
+        "ai.agentMode.expert": "Expert",
+        "ai.agentMode.expertDesc": "Les segures i mitjanes s'executen automàticament. Les d'alt risc s'aproven per sessió. Màx. 25 passos.",
+        "ai.agentMode.extreme": "Extrem",
+        "ai.agentMode.extremeDesc": "Totes les eines s'executen automàticament. Sense confirmacions. Màx. 50 passos. Només Cyber.",
+        "security": {
+            "totp": {
+                "back": "Enrere",
+                "disable": "Desactivar 2FA",
+                "disableConfirm": "Introduïu el vostre codi TOTP actual per desactivar l'autenticació de dos factors:",
+                "enable": "Activar 2FA",
+                "enabled": "L'autenticació de dos factors està activada",
+                "enterCode": "Introduïu el codi de 6 dígits de la vostra aplicació d'autenticació per verificar:",
+                "invalidCode": "Codi no vàlid. Torneu a provar.",
+                "next": "Següent",
+                "scanQr": "Afegiu aquest secret a la vostra aplicació d'autenticació (Google Authenticator, Authy, Microsoft Authenticator). O introduïu la clau manual:",
+                "setup": "Autenticació de dos factors",
+                "verify": "Verificar i activar"
+            }
         }
     }
 }

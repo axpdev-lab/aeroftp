@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "รัน ls -la และสรุปสิ่งที่คุณเห็น",
             "welcomePromptRemote1": "แสดงรายการไฟล์ทั้งหมดบนเซิร์ฟเวอร์ระยะไกล",
             "welcomePromptRemote2": "เปรียบเทียบโฟลเดอร์ในเครื่องและระยะไกล",
-            "welcomePromptRemote3": "ดาวน์โหลดไฟล์ .log ทั้งหมด"
+            "welcomePromptRemote3": "ดาวน์โหลดไฟล์ .log ทั้งหมด",
+            "marketplace": {
+                "add": "เพิ่ม",
+                "added": "เพิ่มแล้ว",
+                "all": "ทั้งหมด",
+                "available": "ที่ใช้ได้",
+                "browseProviders": "เรียกดูผู้ให้บริการ",
+                "chinese": "จีน",
+                "fast": "การอนุมานเร็ว",
+                "flagship": "เรือธง",
+                "gateway": "Gateway",
+                "local": "ภายในเครื่อง",
+                "localFeature": "ภายในเครื่อง",
+                "noResults": "ไม่มีผู้ให้บริการที่ตรงกับการค้นหาของคุณ",
+                "rag": "RAG",
+                "search": "ค้นหาผู้ให้บริการ...",
+                "searchFeature": "ค้นหาเว็บ",
+                "specialized": "เฉพาะทาง",
+                "streaming": "Streaming",
+                "subtitle": "ค้นพบและเพิ่มผู้ให้บริการ AI จากตลาดของเรา",
+                "thinking": "Thinking",
+                "title": "ตลาดผู้ให้บริการ AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "ไฟล์เก็บถาวรนี้มีรหัสผ่านป้องกัน",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "ลบ {name} แล้ว",
             "itemsDeleted": "ลบ {count} รายการแล้ว",
             "titleFull": "AeroVault - การเข้ารหัสระดับทหาร",
-            "totalItems": "ทั้งหมด"
+            "totalItems": "ทั้งหมด",
+            "remote": {
+                "cleanup": "ปิดห้องนิรภัยระยะไกล",
+                "downloading": "กำลังดาวน์โหลดห้องนิรภัยจากเซิร์ฟเวอร์...",
+                "noConnection": "เชื่อมต่อกับเซิร์ฟเวอร์เพื่อเปิดห้องนิรภัยระยะไกล",
+                "open": "เปิดห้องนิรภัยระยะไกล",
+                "saveAndClose": "บันทึก & ปิด",
+                "title": "ห้องนิรภัยระยะไกล",
+                "uploadFailed": "ไม่สามารถอัปโหลดการเปลี่ยนแปลงห้องนิรภัย",
+                "uploading": "กำลังอัปโหลดการเปลี่ยนแปลงห้องนิรภัย..."
+            }
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "เฉพาะในเครื่อง",
             "showRemote": "แสดงระยะไกล",
             "showSystemMenu": "แสดงแถบเมนูระบบ"
+        },
+        "ai.agentMode.title": "โหมดเอเจนต์",
+        "ai.agentMode.description": "ควบคุมพฤติกรรมการอนุมัติเครื่องมือ ขีดจำกัดขั้นตอน และระดับความเป็นอิสระ",
+        "ai.agentMode.safe": "ปลอดภัย",
+        "ai.agentMode.safeDesc": "เฉพาะเครื่องมือที่ปลอดภัยเท่านั้นที่ทำงานอัตโนมัติ ไม่มีหน่วยความจำเซสชัน สูงสุด 5 ขั้นตอน",
+        "ai.agentMode.normal": "ปกติ",
+        "ai.agentMode.normalDesc": "เครื่องมือที่ปลอดภัยทำงานอัตโนมัติ เครื่องมือระดับกลางอนุมัติต่อเซสชัน สูงสุด 10 ขั้นตอน",
+        "ai.agentMode.expert": "ผู้เชี่ยวชาญ",
+        "ai.agentMode.expertDesc": "ปลอดภัยและระดับกลางทำงานอัตโนมัติ ความเสี่ยงสูงอนุมัติต่อเซสชัน สูงสุด 25 ขั้นตอน",
+        "ai.agentMode.extreme": "สุดขีด",
+        "ai.agentMode.extremeDesc": "เครื่องมือทั้งหมดทำงานอัตโนมัติ ไม่มีการยืนยัน สูงสุด 50 ขั้นตอน เฉพาะ Cyber",
+        "security": {
+            "totp": {
+                "back": "ย้อนกลับ",
+                "disable": "ปิดใช้งาน 2FA",
+                "disableConfirm": "ป้อนรหัส TOTP ปัจจุบันของคุณเพื่อปิดใช้งานการยืนยันตัวตนสองขั้นตอน:",
+                "enable": "เปิดใช้งาน 2FA",
+                "enabled": "การยืนยันตัวตนสองขั้นตอนเปิดใช้งานอยู่",
+                "enterCode": "ป้อนรหัส 6 หลักจากแอปยืนยันตัวตนของคุณเพื่อตรวจสอบ:",
+                "invalidCode": "รหัสไม่ถูกต้อง กรุณาลองอีกครั้ง",
+                "next": "ถัดไป",
+                "scanQr": "เพิ่มรหัสลับนี้ในแอปยืนยันตัวตนของคุณ (Google Authenticator, Authy, Microsoft Authenticator) หรือป้อนคีย์ด้วยตนเอง:",
+                "setup": "การยืนยันตัวตนสองขั้นตอน",
+                "verify": "ยืนยัน & เปิดใช้งาน"
+            }
         }
     }
 }

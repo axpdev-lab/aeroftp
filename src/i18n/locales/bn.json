@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "ls -la চালান এবং যা দেখছেন তার সারাংশ দিন",
             "welcomePromptRemote1": "রিমোট সার্ভারের সব ফাইল দেখান",
             "welcomePromptRemote2": "লোকাল ও রিমোট ফোল্ডার তুলনা করুন",
-            "welcomePromptRemote3": "সব .log ফাইল ডাউনলোড করুন"
+            "welcomePromptRemote3": "সব .log ফাইল ডাউনলোড করুন",
+            "marketplace": {
+                "add": "যোগ করুন",
+                "added": "যোগ করা হয়েছে",
+                "all": "সব",
+                "available": "উপলব্ধ",
+                "browseProviders": "প্রদানকারী ব্রাউজ করুন",
+                "chinese": "চীনা",
+                "fast": "দ্রুত ইনফারেন্স",
+                "flagship": "ফ্ল্যাগশিপ",
+                "gateway": "Gateway",
+                "local": "লোকাল",
+                "localFeature": "লোকাল",
+                "noResults": "আপনার অনুসন্ধানের সাথে কোনো প্রদানকারী মেলেনি",
+                "rag": "RAG",
+                "search": "প্রদানকারী অনুসন্ধান করুন...",
+                "searchFeature": "ওয়েব অনুসন্ধান",
+                "specialized": "বিশেষায়িত",
+                "streaming": "Streaming",
+                "subtitle": "আমাদের মার্কেটপ্লেস থেকে AI প্রদানকারী আবিষ্কার ও যোগ করুন",
+                "thinking": "Thinking",
+                "title": "AI প্রদানকারী মার্কেটপ্লেস",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "এই আর্কাইভটি পাসওয়ার্ড দ্বারা সুরক্ষিত",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} মুছে ফেলা হয়েছে",
             "itemsDeleted": "{count}টি আইটেম মুছে ফেলা হয়েছে",
             "titleFull": "AeroVault — সামরিক-মানের এনক্রিপশন",
-            "totalItems": "মোট"
+            "totalItems": "মোট",
+            "remote": {
+                "cleanup": "রিমোট ভল্ট বন্ধ করুন",
+                "downloading": "সার্ভার থেকে ভল্ট ডাউনলোড হচ্ছে...",
+                "noConnection": "রিমোট ভল্ট খুলতে একটি সার্ভারে সংযুক্ত হন",
+                "open": "রিমোট ভল্ট খুলুন",
+                "saveAndClose": "সংরক্ষণ ও বন্ধ",
+                "title": "রিমোট ভল্ট",
+                "uploadFailed": "ভল্ট পরিবর্তন আপলোড করা যায়নি",
+                "uploading": "ভল্ট পরিবর্তন আপলোড হচ্ছে..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",
@@ -2668,6 +2702,31 @@
             "localOnly": "শুধুমাত্র স্থানীয়",
             "showRemote": "দূরবর্তী দেখান",
             "showSystemMenu": "সিস্টেম মেনু বার দেখান"
+        },
+        "ai.agentMode.title": "এজেন্ট মোড",
+        "ai.agentMode.description": "টুল অনুমোদনের আচরণ, ধাপের সীমা এবং স্বায়ত্তশাসনের স্তর নিয়ন্ত্রণ করে।",
+        "ai.agentMode.safe": "নিরাপদ",
+        "ai.agentMode.safeDesc": "শুধুমাত্র নিরাপদ টুল স্বয়ংক্রিয়ভাবে চলে। কোনো সেশন মেমরি নেই। সর্বোচ্চ ৫ ধাপ।",
+        "ai.agentMode.normal": "সাধারণ",
+        "ai.agentMode.normalDesc": "নিরাপদ টুল স্বয়ংক্রিয়ভাবে চলে। মাঝারি টুল সেশনের জন্য অনুমোদিত। সর্বোচ্চ ১০ ধাপ।",
+        "ai.agentMode.expert": "বিশেষজ্ঞ",
+        "ai.agentMode.expertDesc": "নিরাপদ এবং মাঝারি স্বয়ংক্রিয়ভাবে চলে। উচ্চ-ঝুঁকির টুল সেশনের জন্য অনুমোদিত। সর্বোচ্চ ২৫ ধাপ।",
+        "ai.agentMode.extreme": "চরম",
+        "ai.agentMode.extremeDesc": "সব টুল স্বয়ংক্রিয়ভাবে চলে। কোনো নিশ্চিতকরণ নেই। সর্বোচ্চ ৫০ ধাপ। শুধুমাত্র Cyber।",
+        "security": {
+            "totp": {
+                "back": "পেছনে",
+                "disable": "2FA নিষ্ক্রিয় করুন",
+                "disableConfirm": "দ্বি-ধাপ প্রমাণীকরণ নিষ্ক্রিয় করতে আপনার বর্তমান TOTP কোড লিখুন:",
+                "enable": "2FA সক্রিয় করুন",
+                "enabled": "দ্বি-ধাপ প্রমাণীকরণ সক্রিয় আছে",
+                "enterCode": "যাচাই করতে আপনার অথেন্টিকেটর অ্যাপ থেকে ৬-সংখ্যার কোড লিখুন:",
+                "invalidCode": "অবৈধ কোড। অনুগ্রহ করে আবার চেষ্টা করুন।",
+                "next": "পরবর্তী",
+                "scanQr": "আপনার অথেন্টিকেটর অ্যাপে এই গোপনীয়তা যোগ করুন (Google Authenticator, Authy, Microsoft Authenticator)। অথবা ম্যানুয়াল কী লিখুন:",
+                "setup": "দ্বি-ধাপ প্রমাণীকরণ",
+                "verify": "যাচাই ও সক্রিয় করুন"
+            }
         }
     }
 }

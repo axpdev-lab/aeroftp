@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Patakbuhin ang ls -la at ibuod ang nakikita mo",
             "welcomePromptRemote1": "Ilista lahat ng file sa remote server",
             "welcomePromptRemote2": "Ihambing ang lokal at remote na mga folder",
-            "welcomePromptRemote3": "I-download lahat ng .log file"
+            "welcomePromptRemote3": "I-download lahat ng .log file",
+            "marketplace": {
+                "add": "Idagdag",
+                "added": "Naidagdag na",
+                "all": "Lahat",
+                "available": "magagamit",
+                "browseProviders": "Mag-browse ng mga Provider",
+                "chinese": "Tsino",
+                "fast": "Mabilis na Inference",
+                "flagship": "Pangunahin",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Walang provider na tumutugma sa iyong paghahanap",
+                "rag": "RAG",
+                "search": "Maghanap ng mga provider...",
+                "searchFeature": "Web Search",
+                "specialized": "Espesyalista",
+                "streaming": "Streaming",
+                "subtitle": "Tuklasin at magdagdag ng mga AI provider mula sa aming marketplace",
+                "thinking": "Thinking",
+                "title": "AI Provider Marketplace",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Ang archive na ito ay protektado ng password",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Nabura ang {name}",
             "itemsDeleted": "{count} (mga) item ang nabura",
             "titleFull": "AeroVault - Military-Grade Encryption",
-            "totalItems": "kabuuan"
+            "totalItems": "kabuuan",
+            "remote": {
+                "cleanup": "Isara ang Remote Vault",
+                "downloading": "Dina-download ang vault mula sa server...",
+                "noConnection": "Kumonekta sa server para buksan ang mga remote vault",
+                "open": "Buksan ang Remote Vault",
+                "saveAndClose": "I-save at Isara",
+                "title": "Remote Vault",
+                "uploadFailed": "Hindi na-upload ang mga pagbabago sa vault",
+                "uploading": "Ina-upload ang mga pagbabago sa vault..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -2668,6 +2702,31 @@
             "localOnly": "Lokal lamang",
             "showRemote": "Ipakita ang remote",
             "showSystemMenu": "Ipakita ang system menu bar"
+        },
+        "ai.agentMode.title": "Mode ng Ahente",
+        "ai.agentMode.description": "Kinokontrol ang gawi ng pag-apruba ng mga kasangkapan, limitasyon ng mga hakbang at antas ng awtonomiya.",
+        "ai.agentMode.safe": "Ligtas",
+        "ai.agentMode.safeDesc": "Mga ligtas na kasangkapan lang ang awtomatikong isinasagawa. Walang memorya ng sesyon. Max 5 hakbang.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Mga ligtas na kasangkapan ay awtomatikong isinasagawa. Mga katamtamang kasangkapan ay inaprubahan sa bawat sesyon. Max 10 hakbang.",
+        "ai.agentMode.expert": "Eksperto",
+        "ai.agentMode.expertDesc": "Ligtas at katamtaman ay awtomatikong isinasagawa. Mataas na panganib ay inaprubahan sa bawat sesyon. Max 25 hakbang.",
+        "ai.agentMode.extreme": "Matindi",
+        "ai.agentMode.extremeDesc": "Lahat ng kasangkapan ay awtomatikong isinasagawa. Walang kumpirmasyon. Max 50 hakbang. Cyber lang.",
+        "security": {
+            "totp": {
+                "back": "Bumalik",
+                "disable": "I-disable ang 2FA",
+                "disableConfirm": "Ilagay ang iyong kasalukuyang TOTP code para i-disable ang two-factor authentication:",
+                "enable": "I-enable ang 2FA",
+                "enabled": "Ang two-factor authentication ay naka-enable",
+                "enterCode": "Ilagay ang 6-digit code mula sa iyong authenticator app para ma-verify:",
+                "invalidCode": "Hindi valid ang code. Pakisubukan muli.",
+                "next": "Susunod",
+                "scanQr": "Idagdag ang secret na ito sa iyong authenticator app (Google Authenticator, Authy, Microsoft Authenticator). O ilagay ang manual key:",
+                "setup": "Two-Factor Authentication",
+                "verify": "I-verify at I-enable"
+            }
         }
     }
 }

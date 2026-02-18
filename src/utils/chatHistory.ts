@@ -3,8 +3,7 @@
  * Saves conversations to app config directory via Tauri plugin-fs
  */
 
-import { readTextFile, writeTextFile, mkdir, exists } from '@tauri-apps/plugin-fs';
-import { appConfigDir } from '@tauri-apps/api/path';
+import { readTextFile, writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { logger } from './logger';
 
 export interface ConversationMessage {
@@ -49,30 +48,11 @@ const MAX_CONVERSATIONS = 50;
 const MAX_MESSAGES_PER_CONVERSATION = 200;
 const FILENAME = 'ai_history.json';
 
-let cachedPath: string | null = null;
-
-async function getHistoryPath(): Promise<string> {
-    if (cachedPath) return cachedPath;
-    const configDir = await appConfigDir();
-    cachedPath = `${configDir}${FILENAME}`;
-    return cachedPath;
-}
+const FS_OPTS = { baseDir: BaseDirectory.AppConfig };
 
 export async function loadHistory(): Promise<Conversation[]> {
     try {
-        const path = await getHistoryPath();
-        const configDir = await appConfigDir();
-
-        // Ensure config directory exists
-        if (!(await exists(configDir))) {
-            await mkdir(configDir, { recursive: true });
-        }
-
-        if (!(await exists(path))) {
-            return [];
-        }
-
-        const content = await readTextFile(path);
+        const content = await readTextFile(FILENAME, FS_OPTS);
         const data = JSON.parse(content);
         return Array.isArray(data) ? data : [];
     } catch {
@@ -82,20 +62,14 @@ export async function loadHistory(): Promise<Conversation[]> {
 
 export async function saveHistory(conversations: Conversation[]): Promise<void> {
     try {
-        const path = await getHistoryPath();
-        const configDir = await appConfigDir();
-
-        if (!(await exists(configDir))) {
-            await mkdir(configDir, { recursive: true });
-        }
-
         // Enforce limits
         const trimmed = conversations.slice(0, MAX_CONVERSATIONS).map(c => ({
             ...c,
             messages: c.messages.slice(-MAX_MESSAGES_PER_CONVERSATION),
         }));
 
-        await writeTextFile(path, JSON.stringify(trimmed, null, 2));
+        // AppConfig dir is created by Rust setup in lib.rs
+        await writeTextFile(FILENAME, JSON.stringify(trimmed, null, 2), FS_OPTS);
     } catch (e) {
         logger.error('Failed to save chat history:', e);
     }

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Spust ls -la a shrnne co vidis",
             "welcomePromptRemote1": "Vypis vsechny soubory na vzdalenemo serveru",
             "welcomePromptRemote2": "Porovnej lokalni a vzdalenou slozku",
-            "welcomePromptRemote3": "Stahni vsechny soubory .log"
+            "welcomePromptRemote3": "Stahni vsechny soubory .log",
+            "marketplace": {
+                "add": "Přidat",
+                "added": "Přidáno",
+                "all": "Vše",
+                "available": "dostupných",
+                "browseProviders": "Procházet poskytovatele",
+                "chinese": "Čínština",
+                "fast": "Rychlá inference",
+                "flagship": "Vlajková loď",
+                "gateway": "Gateway",
+                "local": "Lokální",
+                "localFeature": "Lokální",
+                "noResults": "Žádný poskytovatel neodpovídá vašemu hledání",
+                "rag": "RAG",
+                "search": "Hledat poskytovatele...",
+                "searchFeature": "Webové vyhledávání",
+                "specialized": "Specializovaný",
+                "streaming": "Streaming",
+                "subtitle": "Objevte a přidejte poskytovatele AI z našeho tržiště",
+                "thinking": "Thinking",
+                "title": "Tržiště poskytovatelů AI",
+                "tools": "Nástroje",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Tento archiv je chranen heslem",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} smazáno",
             "itemsDeleted": "{count} položek smazáno",
             "titleFull": "AeroVault — šifrování vojenské úrovně",
-            "totalItems": "celkem"
+            "totalItems": "celkem",
+            "remote": {
+                "cleanup": "Zavřít vzdálený vault",
+                "downloading": "Stahování vault ze serveru...",
+                "noConnection": "Připojte se k serveru pro otevření vzdálených vault",
+                "open": "Otevřít vzdálený vault",
+                "saveAndClose": "Uložit a zavřít",
+                "title": "Vzdálený vault",
+                "uploadFailed": "Nahrání změn vault selhalo",
+                "uploading": "Nahrávání změn vault..."
+            }
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Pouze místně",
             "showRemote": "Zobrazit vzdálené",
             "showSystemMenu": "Zobrazit systémové menu"
+        },
+        "ai.agentMode.title": "Režim agenta",
+        "ai.agentMode.description": "Ovládá chování schvalování nástrojů, limity kroků a úroveň autonomie.",
+        "ai.agentMode.safe": "Bezpečný",
+        "ai.agentMode.safeDesc": "Pouze bezpečné nástroje se spouštějí automaticky. Žádná paměť relace. Max. 5 kroků.",
+        "ai.agentMode.normal": "Normální",
+        "ai.agentMode.normalDesc": "Bezpečné nástroje se spouštějí automaticky. Středně rizikové nástroje se schválí pro relaci. Max. 10 kroků.",
+        "ai.agentMode.expert": "Expert",
+        "ai.agentMode.expertDesc": "Bezpečné a střední se spouštějí automaticky. Vysoce rizikové se schválí pro relaci. Max. 25 kroků.",
+        "ai.agentMode.extreme": "Extrémní",
+        "ai.agentMode.extremeDesc": "Všechny nástroje se spouštějí automaticky. Žádná potvrzení. Max. 50 kroků. Pouze Cyber.",
+        "security": {
+            "totp": {
+                "back": "Zpět",
+                "disable": "Vypnout 2FA",
+                "disableConfirm": "Zadejte aktuální kód TOTP pro vypnutí dvoufaktorového ověření:",
+                "enable": "Zapnout 2FA",
+                "enabled": "Dvoufaktorové ověření je zapnuto",
+                "enterCode": "Zadejte 6místný kód z vaší ověřovací aplikace pro ověření:",
+                "invalidCode": "Neplatný kód. Zkuste to znovu.",
+                "next": "Další",
+                "scanQr": "Přidejte tento tajný klíč do vaší ověřovací aplikace (Google Authenticator, Authy, Microsoft Authenticator). Nebo zadejte klíč ručně:",
+                "setup": "Dvoufaktorové ověření",
+                "verify": "Ověřit a zapnout"
+            }
         }
     }
 }

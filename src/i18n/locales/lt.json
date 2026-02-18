@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Paleisk ls -la ir apibendrink ką matai",
             "welcomePromptRemote1": "Išvardyk visus failus nuotoliniame serveryje",
             "welcomePromptRemote2": "Palygink vietinius ir nuotolinius aplankus",
-            "welcomePromptRemote3": "Atsisiųsk visus .log failus"
+            "welcomePromptRemote3": "Atsisiųsk visus .log failus",
+            "marketplace": {
+                "add": "Pridėti",
+                "added": "Pridėta",
+                "all": "Visi",
+                "available": "pasiekiama",
+                "browseProviders": "Naršyti teikėjus",
+                "chinese": "Kiniečių",
+                "fast": "Greita inferencija",
+                "flagship": "Pagrindinis",
+                "gateway": "Gateway",
+                "local": "Vietinis",
+                "localFeature": "Vietinis",
+                "noResults": "Nė vienas teikėjas neatitinka jūsų paieškos",
+                "rag": "RAG",
+                "search": "Ieškoti teikėjų...",
+                "searchFeature": "Paieška internete",
+                "specialized": "Specializuoti",
+                "streaming": "Streaming",
+                "subtitle": "Atraskite ir pridėkite AI teikėjus iš mūsų rinkos",
+                "thinking": "Thinking",
+                "title": "AI teikėjų rinka",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Šis archyvas apsaugotas slaptažodžiu",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} ištrintas",
             "itemsDeleted": "{count} elementų ištrinta",
             "titleFull": "AeroVault – karinės klasės šifravimas",
-            "totalItems": "iš viso"
+            "totalItems": "iš viso",
+            "remote": {
+                "cleanup": "Uždaryti nuotolinį seifą",
+                "downloading": "Atsiuntiamas seifas iš serverio...",
+                "noConnection": "Prisijunkite prie serverio, kad atidarytumėte nuotolinius seifus",
+                "open": "Atidaryti nuotolinį seifą",
+                "saveAndClose": "Išsaugoti ir uždaryti",
+                "title": "Nuotolinis seifas",
+                "uploadFailed": "Nepavyko įkelti seifo pakeitimų",
+                "uploading": "Įkeliami seifo pakeitimai..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",
@@ -2668,6 +2702,31 @@
             "localOnly": "Tik vietinis",
             "showRemote": "Rodyti nuotolinį",
             "showSystemMenu": "Rodyti sistemos meniu juostą"
+        },
+        "ai.agentMode.title": "Agento rezimas",
+        "ai.agentMode.description": "Valdo irankiu patvirtinimo elgsena, zingsniu limitus ir autonomijos lygi.",
+        "ai.agentMode.safe": "Saugus",
+        "ai.agentMode.safeDesc": "Tik saugus irankiai vykdomi automatiskai. Be sesijos atminties. Maks. 5 zingsniai.",
+        "ai.agentMode.normal": "Normalus",
+        "ai.agentMode.normalDesc": "Saugus irankiai vykdomi automatiskai. Vidutiniai irankiai patvirtinami per sesija. Maks. 10 zingsniu.",
+        "ai.agentMode.expert": "Ekspertas",
+        "ai.agentMode.expertDesc": "Saugus ir vidutiniai irankiai vykdomi automatiskai. Didelees rizikos patvirtinami per sesija. Maks. 25 zingsniai.",
+        "ai.agentMode.extreme": "Ekstremalus",
+        "ai.agentMode.extremeDesc": "Visi irankiai vykdomi automatiskai. Be patvirtinimu. Maks. 50 zingsniu. Tik Cyber.",
+        "security": {
+            "totp": {
+                "back": "Atgal",
+                "disable": "Išjungti 2FA",
+                "disableConfirm": "Įveskite dabartinį TOTP kodą, kad išjungtumėte dviejų veiksnių autentifikavimą:",
+                "enable": "Įjungti 2FA",
+                "enabled": "Dviejų veiksnių autentifikavimas įjungtas",
+                "enterCode": "Įveskite 6 skaitmenų kodą iš savo autentifikatoriaus programos patvirtinimui:",
+                "invalidCode": "Neteisingas kodas. Bandykite dar kartą.",
+                "next": "Toliau",
+                "scanQr": "Pridėkite šį slaptodį į savo autentifikatoriaus programą (Google Authenticator, Authy, Microsoft Authenticator). Arba įveskite rankinį raktą:",
+                "setup": "Dviejų veiksnių autentifikavimas",
+                "verify": "Patikrinti ir įjungti"
+            }
         }
     }
 }

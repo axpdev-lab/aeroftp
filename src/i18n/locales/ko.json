@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "ls -la를 실행하고 보이는 내용을 요약해줘",
             "welcomePromptRemote1": "원격 서버의 모든 파일을 나열해줘",
             "welcomePromptRemote2": "로컬과 원격 폴더를 비교해줘",
-            "welcomePromptRemote3": "모든 .log 파일을 다운로드해줘"
+            "welcomePromptRemote3": "모든 .log 파일을 다운로드해줘",
+            "marketplace": {
+                "add": "추가",
+                "added": "추가됨",
+                "all": "전체",
+                "available": "사용 가능",
+                "browseProviders": "공급자 찾아보기",
+                "chinese": "중국어",
+                "fast": "빠른 추론",
+                "flagship": "플래그십",
+                "gateway": "Gateway",
+                "local": "로컬",
+                "localFeature": "로컬",
+                "noResults": "검색과 일치하는 공급자가 없습니다",
+                "rag": "RAG",
+                "search": "공급자 검색...",
+                "searchFeature": "웹 검색",
+                "specialized": "전문화",
+                "streaming": "Streaming",
+                "subtitle": "마켓플레이스에서 AI 공급자를 발견하고 추가하세요",
+                "thinking": "Thinking",
+                "title": "AI 공급자 마켓플레이스",
+                "tools": "도구",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "이 압축 파일은 비밀번호로 보호되어 있습니다",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} 삭제됨",
             "itemsDeleted": "{count}개 항목 삭제됨",
             "titleFull": "AeroVault - 군사급 암호화",
-            "totalItems": "전체"
+            "totalItems": "전체",
+            "remote": {
+                "cleanup": "원격 vault 닫기",
+                "downloading": "서버에서 vault를 다운로드 중...",
+                "noConnection": "원격 vault를 열려면 서버에 연결하세요",
+                "open": "원격 vault 열기",
+                "saveAndClose": "저장 후 닫기",
+                "title": "원격 vault",
+                "uploadFailed": "vault 변경 사항 업로드 실패",
+                "uploading": "vault 변경 사항 업로드 중..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",
@@ -2668,6 +2702,21 @@
             "localOnly": "로컬만",
             "showRemote": "원격 표시",
             "showSystemMenu": "시스템 메뉴바 표시"
+        },
+        "security": {
+            "totp": {
+                "back": "뒤로",
+                "disable": "2FA 비활성화",
+                "disableConfirm": "이중 인증을 비활성화하려면 현재 TOTP 코드를 입력하세요:",
+                "enable": "2FA 활성화",
+                "enabled": "이중 인증이 활성화되었습니다",
+                "enterCode": "확인을 위해 인증 앱의 6자리 코드를 입력하세요:",
+                "invalidCode": "잘못된 코드입니다. 다시 시도하세요.",
+                "next": "다음",
+                "scanQr": "이 비밀 키를 인증 앱에 추가하세요 (Google Authenticator, Authy, Microsoft Authenticator). 또는 수동 키를 입력하세요:",
+                "setup": "이중 인증",
+                "verify": "확인 및 활성화"
+            }
         }
     }
 }

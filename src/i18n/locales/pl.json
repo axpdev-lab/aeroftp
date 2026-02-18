@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Uruchom ls -la i podsumuj co widzisz",
             "welcomePromptRemote1": "Wyświetl wszystkie pliki na zdalnym serwerze",
             "welcomePromptRemote2": "Porównaj lokalne i zdalne foldery",
-            "welcomePromptRemote3": "Pobierz wszystkie pliki .log"
+            "welcomePromptRemote3": "Pobierz wszystkie pliki .log",
+            "marketplace": {
+                "add": "Dodaj",
+                "added": "Dodano",
+                "all": "Wszystkie",
+                "available": "dostępnych",
+                "browseProviders": "Przeglądaj dostawców",
+                "chinese": "Chiński",
+                "fast": "Szybka inferencja",
+                "flagship": "Flagowy",
+                "gateway": "Gateway",
+                "local": "Lokalny",
+                "localFeature": "Lokalny",
+                "noResults": "Żaden dostawca nie pasuje do wyszukiwania",
+                "rag": "RAG",
+                "search": "Szukaj dostawców...",
+                "searchFeature": "Wyszukiwanie w sieci",
+                "specialized": "Specjalistyczny",
+                "streaming": "Streaming",
+                "subtitle": "Odkrywaj i dodawaj dostawców AI z naszego marketplace",
+                "thinking": "Thinking",
+                "title": "Marketplace dostawców AI",
+                "tools": "Narzędzia",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "To archiwum jest chronione hasłem",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Usunieto {name}",
             "itemsDeleted": "Usunieto {count} element(ow)",
             "titleFull": "AeroVault - Szyfrowanie klasy wojskowej",
-            "totalItems": "lacznie"
+            "totalItems": "lacznie",
+            "remote": {
+                "cleanup": "Zamknij zdalny vault",
+                "downloading": "Pobieranie vault z serwera...",
+                "noConnection": "Połącz się z serwerem, aby otworzyć zdalne vault",
+                "open": "Otwórz zdalny vault",
+                "saveAndClose": "Zapisz i zamknij",
+                "title": "Zdalny vault",
+                "uploadFailed": "Nie udało się przesłać zmian vault",
+                "uploading": "Przesyłanie zmian vault..."
+            }
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Tylko lokalnie",
             "showRemote": "Pokaż zdalne",
             "showSystemMenu": "Pokaż menu systemowe"
+        },
+        "security": {
+            "totp": {
+                "back": "Wstecz",
+                "disable": "Wyłącz 2FA",
+                "disableConfirm": "Wprowadź aktualny kod TOTP, aby wyłączyć uwierzytelnianie dwuskładnikowe:",
+                "enable": "Włącz 2FA",
+                "enabled": "Uwierzytelnianie dwuskładnikowe jest włączone",
+                "enterCode": "Wprowadź 6-cyfrowy kod z aplikacji uwierzytelniającej w celu weryfikacji:",
+                "invalidCode": "Nieprawidłowy kod. Spróbuj ponownie.",
+                "next": "Dalej",
+                "scanQr": "Dodaj ten sekret do aplikacji uwierzytelniającej (Google Authenticator, Authy, Microsoft Authenticator). Lub wprowadź klucz ręcznie:",
+                "setup": "Uwierzytelnianie dwuskładnikowe",
+                "verify": "Zweryfikuj i włącz"
+            }
         }
     }
 }

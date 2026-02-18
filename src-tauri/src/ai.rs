@@ -56,6 +56,11 @@ pub enum AIProviderType {
     Kimi,
     Qwen,
     DeepSeek,
+    Mistral,
+    Groq,
+    Perplexity,
+    Cohere,
+    Together,
 }
 
 // Image attachment for vision models

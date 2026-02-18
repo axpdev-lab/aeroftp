@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Executa ls -la e resume o que ves",
             "welcomePromptRemote1": "Lista todos os ficheiros no servidor remoto",
             "welcomePromptRemote2": "Compara os cartafoles local e remoto",
-            "welcomePromptRemote3": "Descarga todos os ficheiros .log"
+            "welcomePromptRemote3": "Descarga todos os ficheiros .log",
+            "marketplace": {
+                "add": "Engadir",
+                "added": "Engadido",
+                "all": "Todos",
+                "available": "dispoñible",
+                "browseProviders": "Explorar provedores",
+                "chinese": "Chinés",
+                "fast": "Inferencia rápida",
+                "flagship": "Principal",
+                "gateway": "Gateway",
+                "local": "Local",
+                "localFeature": "Local",
+                "noResults": "Ningún provedor coincide coa súa busca",
+                "rag": "RAG",
+                "search": "Buscar provedores...",
+                "searchFeature": "Busca web",
+                "specialized": "Especializados",
+                "streaming": "Streaming",
+                "subtitle": "Descubra e engada provedores de AI do noso mercado",
+                "thinking": "Thinking",
+                "title": "Mercado de provedores de AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Arquivo protexido con contrasinal",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} eliminado",
             "itemsDeleted": "{count} elemento(s) eliminado(s)",
             "titleFull": "AeroVault - Cifrado de nivel militar",
-            "totalItems": "total"
+            "totalItems": "total",
+            "remote": {
+                "cleanup": "Pechar bóveda remota",
+                "downloading": "Descargando a bóveda do servidor...",
+                "noConnection": "Conéctese a un servidor para abrir bóvedas remotas",
+                "open": "Abrir bóveda remota",
+                "saveAndClose": "Gardar e pechar",
+                "title": "Bóveda remota",
+                "uploadFailed": "Non se puideron subir os cambios da bóveda",
+                "uploading": "Subindo cambios da bóveda..."
+            }
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Só local",
             "showRemote": "Mostrar remoto",
             "showSystemMenu": "Mostrar barra de menú do sistema"
+        },
+        "ai.agentMode.title": "Modo axente",
+        "ai.agentMode.description": "Controla o comportamento de aprobación de ferramentas, os límites de pasos e o nivel de autonomía.",
+        "ai.agentMode.safe": "Seguro",
+        "ai.agentMode.safeDesc": "Só as ferramentas seguras se executan automaticamente. Sen memoria de sesión. Máx. 5 pasos.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "As ferramentas seguras execútanse automaticamente. As de risco medio apróbanse para a sesión. Máx. 10 pasos.",
+        "ai.agentMode.expert": "Experto",
+        "ai.agentMode.expertDesc": "As seguras e medias execútanse automaticamente. As de alto risco apróbanse para a sesión. Máx. 25 pasos.",
+        "ai.agentMode.extreme": "Extremo",
+        "ai.agentMode.extremeDesc": "Todas as ferramentas se executan automaticamente. Sen confirmacións. Máx. 50 pasos. Só Cyber.",
+        "security": {
+            "totp": {
+                "back": "Atrás",
+                "disable": "Desactivar 2FA",
+                "disableConfirm": "Introduza o seu código TOTP actual para desactivar a autenticación de dous factores:",
+                "enable": "Activar 2FA",
+                "enabled": "A autenticación de dous factores está activada",
+                "enterCode": "Introduza o código de 6 díxitos da súa aplicación de autenticación para verificar:",
+                "invalidCode": "Código non válido. Probe de novo.",
+                "next": "Seguinte",
+                "scanQr": "Engada este segredo á súa aplicación de autenticación (Google Authenticator, Authy, Microsoft Authenticator). Ou introduza a clave manual:",
+                "setup": "Autenticación de dous factores",
+                "verify": "Verificar e activar"
+            }
         }
     }
 }

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Jalankan ls -la dan ringkaskan apa yang anda lihat",
             "welcomePromptRemote1": "Senaraikan semua fail di pelayan jauh",
             "welcomePromptRemote2": "Bandingkan folder tempatan dan jauh",
-            "welcomePromptRemote3": "Muat turun semua fail .log"
+            "welcomePromptRemote3": "Muat turun semua fail .log",
+            "marketplace": {
+                "add": "Tambah",
+                "added": "Ditambah",
+                "all": "Semua",
+                "available": "tersedia",
+                "browseProviders": "Layari Pembekal",
+                "chinese": "Cina",
+                "fast": "Inferens Pantas",
+                "flagship": "Utama",
+                "gateway": "Gateway",
+                "local": "Tempatan",
+                "localFeature": "Tempatan",
+                "noResults": "Tiada pembekal sepadan dengan carian anda",
+                "rag": "RAG",
+                "search": "Cari pembekal...",
+                "searchFeature": "Carian Web",
+                "specialized": "Khusus",
+                "streaming": "Streaming",
+                "subtitle": "Temui dan tambah pembekal AI daripada marketplace kami",
+                "thinking": "Thinking",
+                "title": "Marketplace Pembekal AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Arkib ini dilindungi kata laluan",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Dipadam {name}",
             "itemsDeleted": "{count} item dipadam",
             "titleFull": "AeroVault — Penyulitan Gred Tentera",
-            "totalItems": "jumlah"
+            "totalItems": "jumlah",
+            "remote": {
+                "cleanup": "Tutup Vault Jauh",
+                "downloading": "Memuat turun vault dari pelayan...",
+                "noConnection": "Sambung ke pelayan untuk membuka vault jauh",
+                "open": "Buka Vault Jauh",
+                "saveAndClose": "Simpan & Tutup",
+                "title": "Vault Jauh",
+                "uploadFailed": "Gagal memuat naik perubahan vault",
+                "uploading": "Memuat naik perubahan vault..."
+            }
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Tempatan sahaja",
             "showRemote": "Tunjukkan jauh",
             "showSystemMenu": "Tunjukkan bar menu sistem"
+        },
+        "ai.agentMode.title": "Mod Ejen",
+        "ai.agentMode.description": "Mengawal tingkah laku kelulusan alat, had langkah dan tahap autonomi.",
+        "ai.agentMode.safe": "Selamat",
+        "ai.agentMode.safeDesc": "Hanya alat selamat dilaksanakan secara automatik. Tiada memori sesi. Maks. 5 langkah.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Alat selamat dilaksanakan secara automatik. Alat sederhana diluluskan setiap sesi. Maks. 10 langkah.",
+        "ai.agentMode.expert": "Pakar",
+        "ai.agentMode.expertDesc": "Alat selamat dan sederhana dilaksanakan secara automatik. Risiko tinggi diluluskan setiap sesi. Maks. 25 langkah.",
+        "ai.agentMode.extreme": "Melampau",
+        "ai.agentMode.extremeDesc": "Semua alat dilaksanakan secara automatik. Tiada pengesahan. Maks. 50 langkah. Cyber sahaja.",
+        "security": {
+            "totp": {
+                "back": "Kembali",
+                "disable": "Nyahaktifkan 2FA",
+                "disableConfirm": "Masukkan kod TOTP semasa anda untuk menyahaktifkan pengesahan dua faktor:",
+                "enable": "Aktifkan 2FA",
+                "enabled": "Pengesahan dua faktor diaktifkan",
+                "enterCode": "Masukkan kod 6 digit daripada aplikasi pengesah anda untuk mengesahkan:",
+                "invalidCode": "Kod tidak sah. Sila cuba lagi.",
+                "next": "Seterusnya",
+                "scanQr": "Tambah rahsia ini ke aplikasi pengesah anda (Google Authenticator, Authy, Microsoft Authenticator). Atau masukkan kunci manual:",
+                "setup": "Pengesahan Dua Faktor",
+                "verify": "Sahkan & Aktifkan"
+            }
         }
     }
 }

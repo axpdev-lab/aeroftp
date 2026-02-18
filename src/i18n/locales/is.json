@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Keyrðu ls -la og dregðu saman það sem þú sérð",
             "welcomePromptRemote1": "Sýndu allar skrár á fjartengda þjóninum",
             "welcomePromptRemote2": "Berðu saman staðbundnar og fjartengdar möppur",
-            "welcomePromptRemote3": "Sæktu allar .log skrár"
+            "welcomePromptRemote3": "Sæktu allar .log skrár",
+            "marketplace": {
+                "add": "Bæta við",
+                "added": "Bætt við",
+                "all": "Allt",
+                "available": "í boði",
+                "browseProviders": "Skoða veitendur",
+                "chinese": "Kínverskt",
+                "fast": "Hröð ályktun",
+                "flagship": "Flaggskip",
+                "gateway": "Gateway",
+                "local": "Staðbundið",
+                "localFeature": "Staðbundið",
+                "noResults": "Engir veitendur samsvara leitinni þinni",
+                "rag": "RAG",
+                "search": "Leita að veitendum...",
+                "searchFeature": "Vefleit",
+                "specialized": "Sérhæft",
+                "streaming": "Streaming",
+                "subtitle": "Uppgötvaðu og bættu við AI-veitendum frá markaðstorginu okkar",
+                "thinking": "Thinking",
+                "title": "AI-veitendumarkaðstorg",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Þessi skjalasafn er varið með lykilorði",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Eytt {name}",
             "itemsDeleted": "{count} atriði eytt",
             "titleFull": "AeroVault - Hernaðarflokks dulkóðun",
-            "totalItems": "samtals"
+            "totalItems": "samtals",
+            "remote": {
+                "cleanup": "Loka fjarhólfi",
+                "downloading": "Sæki hólf frá þjóni...",
+                "noConnection": "Tengdu við þjón til að opna fjarhólf",
+                "open": "Opna fjarhólf",
+                "saveAndClose": "Vista & Loka",
+                "title": "Fjarhólf",
+                "uploadFailed": "Ekki tókst að hlaða upp breytingum á hólfi",
+                "uploading": "Hleð upp breytingum á hólfi..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",
@@ -2668,6 +2702,31 @@
             "localOnly": "Aðeins staðbundið",
             "showRemote": "Sýna fjartengd",
             "showSystemMenu": "Sýna valmyndarstiku kerfis"
+        },
+        "ai.agentMode.title": "Umbodshamur",
+        "ai.agentMode.description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",
+        "ai.agentMode.safe": "Oruggur",
+        "ai.agentMode.safeDesc": "Adheins orugg verkfaeri keyra sjalfvirkt. Engin lotuminni. Hamark 5 skref.",
+        "ai.agentMode.normal": "Venjulegur",
+        "ai.agentMode.normalDesc": "Orugg verkfaeri keyra sjalfvirkt. Midlungsverkfaeri samthykkt a lotu. Hamark 10 skref.",
+        "ai.agentMode.expert": "Serfraedhingur",
+        "ai.agentMode.expertDesc": "Orugg og midlungsverkfaeri keyra sjalfvirkt. Hahaettuverkfaeri samthykkt a lotu. Hamark 25 skref.",
+        "ai.agentMode.extreme": "Oflugur",
+        "ai.agentMode.extremeDesc": "Oll verkfaeri keyra sjalfvirkt. Engar stadfestingar. Hamark 50 skref. Adheins Cyber.",
+        "security": {
+            "totp": {
+                "back": "Til baka",
+                "disable": "Slökkva á 2FA",
+                "disableConfirm": "Sláðu inn núverandi TOTP-kóða til að slökkva á tvíþátta auðkenningu:",
+                "enable": "Kveikja á 2FA",
+                "enabled": "Tvíþátta auðkenning er virk",
+                "enterCode": "Sláðu inn 6 stafa kóðann úr auðkenningarforritinu þínu til að staðfesta:",
+                "invalidCode": "Ógildur kóði. Vinsamlegast reyndu aftur.",
+                "next": "Næsta",
+                "scanQr": "Bættu þessu leyndarmáli við auðkenningarforritið þitt (Google Authenticator, Authy, Microsoft Authenticator). Eða sláðu inn lykilinn handvirkt:",
+                "setup": "Tvíþátta auðkenning",
+                "verify": "Staðfesta & Virkja"
+            }
         }
     }
 }

@@ -1939,7 +1939,31 @@
             "welcomePromptLocal3": "ls -la を実行して結果をまとめて",
             "welcomePromptRemote1": "リモートサーバーのすべてのファイルを一覧表示して",
             "welcomePromptRemote2": "ローカルとリモートのフォルダを比較して",
-            "welcomePromptRemote3": "すべての.logファイルをダウンロードして"
+            "welcomePromptRemote3": "すべての.logファイルをダウンロードして",
+            "marketplace": {
+                "add": "追加",
+                "added": "追加済み",
+                "all": "すべて",
+                "available": "利用可能",
+                "browseProviders": "プロバイダーを閲覧",
+                "chinese": "中国語",
+                "fast": "高速推論",
+                "flagship": "フラッグシップ",
+                "gateway": "Gateway",
+                "local": "ローカル",
+                "localFeature": "ローカル",
+                "noResults": "検索に一致するプロバイダーがありません",
+                "rag": "RAG",
+                "search": "プロバイダーを検索...",
+                "searchFeature": "ウェブ検索",
+                "specialized": "特化型",
+                "streaming": "Streaming",
+                "subtitle": "マーケットプレイスからAIプロバイダーを発見して追加",
+                "thinking": "Thinking",
+                "title": "AIプロバイダーマーケットプレイス",
+                "tools": "ツール",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "このアーカイブはパスワードで保護されています",
@@ -2000,7 +2024,17 @@
             "itemDeleted": "{name} を削除しました",
             "itemsDeleted": "{count} 個のアイテムを削除しました",
             "titleFull": "AeroVault - 軍事グレード暗号化",
-            "totalItems": "合計"
+            "totalItems": "合計",
+            "remote": {
+                "cleanup": "リモートvaultを閉じる",
+                "downloading": "サーバーからvaultをダウンロード中...",
+                "noConnection": "リモートvaultを開くにはサーバーに接続してください",
+                "open": "リモートvaultを開く",
+                "saveAndClose": "保存して閉じる",
+                "title": "リモートvault",
+                "uploadFailed": "vaultの変更のアップロードに失敗しました",
+                "uploading": "vaultの変更をアップロード中..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",
@@ -2668,6 +2702,21 @@
             "vaultMode": "マスターパスワード付き暗号化ボールトを使用",
             "warning": "資格情報が平文で保存されています",
             "warningDetail": "パスワードとトークンがOSキーチェーンに安全に移行されます。"
+        },
+        "security": {
+            "totp": {
+                "back": "戻る",
+                "disable": "2FAを無効化",
+                "disableConfirm": "二要素認証を無効にするために現在のTOTPコードを入力してください：",
+                "enable": "2FAを有効化",
+                "enabled": "二要素認証が有効です",
+                "enterCode": "確認のため、認証アプリの6桁のコードを入力してください：",
+                "invalidCode": "無効なコードです。もう一度お試しください。",
+                "next": "次へ",
+                "scanQr": "このシークレットを認証アプリに追加してください（Google Authenticator、Authy、Microsoft Authenticator）。または手動キーを入力：",
+                "setup": "二要素認証",
+                "verify": "確認して有効化"
+            }
         }
     }
 }

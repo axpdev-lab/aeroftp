@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import { VisionImage, MAX_IMAGE_SIZE, MAX_IMAGES, SUPPORTED_IMAGE_TYPES, MAX_DIMENSION } from './aiChatTypes';
 
 export function useAIChatImages() {
@@ -78,26 +79,56 @@ export function useAIChatImages() {
         } catch { /* dialog cancelled */ }
     }, [attachedImages.length, addImage]);
 
+    // Convert RGBA data from native clipboard to canvas data URL
+    const rgbaToDataUrl = useCallback((width: number, height: number, rgbaBase64: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const binary = atob(rgbaBase64);
+            const rgba = new Uint8ClampedArray(binary.length);
+            for (let i = 0; i < binary.length; i++) rgba[i] = binary.charCodeAt(i);
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject('No canvas context');
+            const imageData = new ImageData(rgba, width, height);
+            ctx.putImageData(imageData, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        });
+    }, []);
+
     // Handle clipboard paste for images
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
         const items = e.clipboardData?.items;
-        if (!items) return;
-        for (const item of Array.from(items)) {
-            if (item.type.startsWith('image/') && SUPPORTED_IMAGE_TYPES.includes(item.type)) {
-                e.preventDefault();
-                const blob = item.getAsFile();
-                if (!blob) continue;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const dataUrl = reader.result as string;
-                    const mediaType = item.type;
-                    addImage(dataUrl, mediaType);
-                };
-                reader.readAsDataURL(blob);
-                return; // Only handle first image
+        if (items) {
+            for (const item of Array.from(items)) {
+                if (item.type.startsWith('image/') && SUPPORTED_IMAGE_TYPES.includes(item.type)) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    if (!blob) continue;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        addImage(dataUrl, item.type);
+                    };
+                    reader.readAsDataURL(blob);
+                    return; // Only handle first image
+                }
             }
         }
-    }, [addImage]);
+
+        // Fallback: read image from native clipboard via arboard (WebKitGTK support)
+        e.preventDefault();
+        invoke<string | null>('clipboard_read_image').then(async (result) => {
+            if (!result) return;
+            const [wStr, hStr, ...rest] = result.split(':');
+            const w = parseInt(wStr, 10);
+            const h = parseInt(hStr, 10);
+            const rgbaBase64 = rest.join(':');
+            if (!w || !h || !rgbaBase64) return;
+            const dataUrl = await rgbaToDataUrl(w, h, rgbaBase64);
+            addImage(dataUrl, 'image/png');
+        }).catch(() => { /* No image in clipboard */ });
+    }, [addImage, rgbaToDataUrl]);
 
     const removeImage = useCallback((index: number) => {
         setAttachedImages(prev => prev.filter((_, j) => j !== index));

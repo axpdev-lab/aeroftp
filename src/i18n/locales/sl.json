@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Zaženi ls -la in povzemi, kar vidiš",
             "welcomePromptRemote1": "Prikaži vse datoteke na oddaljenem strežniku",
             "welcomePromptRemote2": "Primerjaj lokalne in oddaljene mape",
-            "welcomePromptRemote3": "Prenesi vse datoteke .log"
+            "welcomePromptRemote3": "Prenesi vse datoteke .log",
+            "marketplace": {
+                "add": "Dodaj",
+                "added": "Dodano",
+                "all": "Vse",
+                "available": "na voljo",
+                "browseProviders": "Prebrskaj ponudnike",
+                "chinese": "Kitajski",
+                "fast": "Hitro sklepanje",
+                "flagship": "Vodilni",
+                "gateway": "Gateway",
+                "local": "Lokalni",
+                "localFeature": "Lokalni",
+                "noResults": "Noben ponudnik ne ustreza vašemu iskanju",
+                "rag": "RAG",
+                "search": "Išči ponudnike...",
+                "searchFeature": "Spletno iskanje",
+                "specialized": "Specializirani",
+                "streaming": "Streaming",
+                "subtitle": "Odkrijte in dodajte ponudnike AI z naše tržnice",
+                "thinking": "Thinking",
+                "title": "Tržnica ponudnikov AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Ta arhiv je zaščiten z geslom",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Izbrisano {name}",
             "itemsDeleted": "{count} elementov izbrisanih",
             "titleFull": "AeroVault - Vojaška stopnja šifriranja",
-            "totalItems": "skupaj"
+            "totalItems": "skupaj",
+            "remote": {
+                "cleanup": "Zapri oddaljeni trezor",
+                "downloading": "Prenašanje trezorja s strežnika...",
+                "noConnection": "Povežite se s strežnikom za odpiranje oddaljenih trezorjev",
+                "open": "Odpri oddaljeni trezor",
+                "saveAndClose": "Shrani in zapri",
+                "title": "Oddaljeni trezor",
+                "uploadFailed": "Nalaganje sprememb trezorja ni uspelo",
+                "uploading": "Nalaganje sprememb trezorja..."
+            }
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Samo lokalno",
             "showRemote": "Prikaži oddaljeno",
             "showSystemMenu": "Prikaži sistemski meni"
+        },
+        "ai.agentMode.title": "Nacin agenta",
+        "ai.agentMode.description": "Nadzoruje obnasanje odobritve orodij, omejitve korakov in raven avtonomije.",
+        "ai.agentMode.safe": "Varno",
+        "ai.agentMode.safeDesc": "Samo varna orodja se izvajajo samodejno. Brez pomnilnika seje. Najvec 5 korakov.",
+        "ai.agentMode.normal": "Normalno",
+        "ai.agentMode.normalDesc": "Varna orodja se izvajajo samodejno. Srednja orodja odobrena za sejo. Najvec 10 korakov.",
+        "ai.agentMode.expert": "Strokovnjak",
+        "ai.agentMode.expertDesc": "Varna in srednja se izvajajo samodejno. Visoko tvegana odobrena za sejo. Najvec 25 korakov.",
+        "ai.agentMode.extreme": "Ekstremno",
+        "ai.agentMode.extremeDesc": "Vsa orodja se izvajajo samodejno. Brez potrditev. Najvec 50 korakov. Samo Cyber.",
+        "security": {
+            "totp": {
+                "back": "Nazaj",
+                "disable": "Onemoči 2FA",
+                "disableConfirm": "Vnesite svojo trenutno kodo TOTP za onemogočenje dvostopenjske avtentikacije:",
+                "enable": "Omogoči 2FA",
+                "enabled": "Dvostopenjska avtentikacija je omogočena",
+                "enterCode": "Vnesite 6-mestno kodo iz vaše avtentikatorske aplikacije za preverjanje:",
+                "invalidCode": "Neveljavna koda. Poskusite znova.",
+                "next": "Naprej",
+                "scanQr": "Dodajte to skrivnost v svojo avtentikatorsko aplikacijo (Google Authenticator, Authy, Microsoft Authenticator). Ali vnesite ročni ključ:",
+                "setup": "Dvostopenjska avtentikacija",
+                "verify": "Preveri in omogoči"
+            }
         }
     }
 }

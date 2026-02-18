@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Kjør ls -la og oppsummer det du ser",
             "welcomePromptRemote1": "List alle filer på den eksterne serveren",
             "welcomePromptRemote2": "Sammenlign lokale og eksterne mapper",
-            "welcomePromptRemote3": "Last ned alle .log-filer"
+            "welcomePromptRemote3": "Last ned alle .log-filer",
+            "marketplace": {
+                "add": "Legg til",
+                "added": "Lagt til",
+                "all": "Alle",
+                "available": "tilgjengelige",
+                "browseProviders": "Bla gjennom leverandører",
+                "chinese": "Kinesisk",
+                "fast": "Rask inferens",
+                "flagship": "Flaggskip",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Ingen leverandører samsvarer med søket ditt",
+                "rag": "RAG",
+                "search": "Søk leverandører...",
+                "searchFeature": "Nettsøk",
+                "specialized": "Spesialisert",
+                "streaming": "Streaming",
+                "subtitle": "Oppdag og legg til AI-leverandører fra vår markedsplass",
+                "thinking": "Thinking",
+                "title": "AI-leverandørmarkedsplass",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Dette arkivet er passordbeskyttet",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Slettet {name}",
             "itemsDeleted": "{count} element(er) slettet",
             "titleFull": "AeroVault — Militær kryptering",
-            "totalItems": "totalt"
+            "totalItems": "totalt",
+            "remote": {
+                "cleanup": "Lukk eksternt hvelv",
+                "downloading": "Laster ned hvelv fra serveren...",
+                "noConnection": "Koble til en server for å åpne eksterne hvelv",
+                "open": "Åpne eksternt hvelv",
+                "saveAndClose": "Lagre & Lukk",
+                "title": "Eksternt hvelv",
+                "uploadFailed": "Kunne ikke laste opp hvelvendringer",
+                "uploading": "Laster opp hvelvendringer..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",
@@ -2668,6 +2702,31 @@
             "localOnly": "Kun lokalt",
             "showRemote": "Vis ekstern",
             "showSystemMenu": "Vis systemmenylinje"
+        },
+        "ai.agentMode.title": "Agentmodus",
+        "ai.agentMode.description": "Styrer verktoyets godkjenningsatferd, trinngrenser og autonominiva.",
+        "ai.agentMode.safe": "Sikker",
+        "ai.agentMode.safeDesc": "Kun sikre verktoy kjores automatisk. Ingen sesjonsminne. Maks. 5 trinn.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Sikre verktoy kjores automatisk. Middels verktoy godkjennes per sesjon. Maks. 10 trinn.",
+        "ai.agentMode.expert": "Ekspert",
+        "ai.agentMode.expertDesc": "Sikre og middels verktoy kjores automatisk. Hoyrisiko godkjennes per sesjon. Maks. 25 trinn.",
+        "ai.agentMode.extreme": "Ekstrem",
+        "ai.agentMode.extremeDesc": "Alle verktoy kjores automatisk. Ingen bekreftelser. Maks. 50 trinn. Kun Cyber.",
+        "security": {
+            "totp": {
+                "back": "Tilbake",
+                "disable": "Deaktiver 2FA",
+                "disableConfirm": "Skriv inn din gjeldende TOTP-kode for å deaktivere tofaktorautentisering:",
+                "enable": "Aktiver 2FA",
+                "enabled": "Tofaktorautentisering er aktivert",
+                "enterCode": "Skriv inn den 6-sifrede koden fra autentiseringsappen din for å bekrefte:",
+                "invalidCode": "Ugyldig kode. Vennligst prøv igjen.",
+                "next": "Neste",
+                "scanQr": "Legg til denne hemmeligheten i autentiseringsappen din (Google Authenticator, Authy, Microsoft Authenticator). Eller skriv inn nøkkelen manuelt:",
+                "setup": "Tofaktorautentisering",
+                "verify": "Bekreft & Aktiver"
+            }
         }
     }
 }

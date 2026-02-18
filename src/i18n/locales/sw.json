@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Endesha ls -la na fupisha unachokiona",
             "welcomePromptRemote1": "Orodhesha faili zote kwenye seva ya mbali",
             "welcomePromptRemote2": "Linganisha folda za ndani na za mbali",
-            "welcomePromptRemote3": "Pakua faili zote za .log"
+            "welcomePromptRemote3": "Pakua faili zote za .log",
+            "marketplace": {
+                "add": "Ongeza",
+                "added": "Imeongezwa",
+                "all": "Zote",
+                "available": "inapatikana",
+                "browseProviders": "Vinjari watoa huduma",
+                "chinese": "Kichina",
+                "fast": "Uchanganuzi wa haraka",
+                "flagship": "Mkuu",
+                "gateway": "Gateway",
+                "local": "Ya ndani",
+                "localFeature": "Ya ndani",
+                "noResults": "Hakuna watoa huduma wanaolingana na utafutaji wako",
+                "rag": "RAG",
+                "search": "Tafuta watoa huduma...",
+                "searchFeature": "Utafutaji wa wavuti",
+                "specialized": "Maalum",
+                "streaming": "Streaming",
+                "subtitle": "Gundua na ongeza watoa huduma wa AI kutoka soko letu",
+                "thinking": "Thinking",
+                "title": "Soko la watoa huduma wa AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Kumbukumbu hii inalindwa na nenosiri",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Imefutwa {name}",
             "itemsDeleted": "Vitu {count} vimefutwa",
             "titleFull": "AeroVault - Usimbaji Fiche wa Kiwango cha Jeshi",
-            "totalItems": "jumla"
+            "totalItems": "jumla",
+            "remote": {
+                "cleanup": "Funga kabati la mbali",
+                "downloading": "Kupakua kabati kutoka seva...",
+                "noConnection": "Unganisha na seva ili kufungua makabati ya mbali",
+                "open": "Fungua kabati la mbali",
+                "saveAndClose": "Hifadhi na ufunge",
+                "title": "Kabati la mbali",
+                "uploadFailed": "Imeshindwa kupakia mabadiliko ya kabati",
+                "uploading": "Kupakia mabadiliko ya kabati..."
+            }
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Ndani tu",
             "showRemote": "Onyesha mbali",
             "showSystemMenu": "Onyesha upau wa menyu ya mfumo"
+        },
+        "ai.agentMode.title": "Hali ya Wakala",
+        "ai.agentMode.description": "Inadhibiti tabia ya idhini ya zana, vikomo vya hatua na kiwango cha uhuru.",
+        "ai.agentMode.safe": "Salama",
+        "ai.agentMode.safeDesc": "Zana salama pekee zinatekelezwa kiotomatiki. Hakuna kumbukumbu ya kipindi. Hatua 5 za juu.",
+        "ai.agentMode.normal": "Kawaida",
+        "ai.agentMode.normalDesc": "Zana salama zinatekelezwa kiotomatiki. Zana za kati zinaidhinishwa kwa kipindi. Hatua 10 za juu.",
+        "ai.agentMode.expert": "Mtaalamu",
+        "ai.agentMode.expertDesc": "Salama na za kati zinatekelezwa kiotomatiki. Hatari kubwa zinaidhinishwa kwa kipindi. Hatua 25 za juu.",
+        "ai.agentMode.extreme": "Kali Sana",
+        "ai.agentMode.extremeDesc": "Zana zote zinatekelezwa kiotomatiki. Hakuna uthibitisho. Hatua 50 za juu. Cyber pekee.",
+        "security": {
+            "totp": {
+                "back": "Rudi",
+                "disable": "Zima 2FA",
+                "disableConfirm": "Weka msimbo wako wa sasa wa TOTP ili kuzima uthibitishaji wa hatua mbili:",
+                "enable": "Washa 2FA",
+                "enabled": "Uthibitishaji wa hatua mbili umewashwa",
+                "enterCode": "Weka msimbo wa tarakimu 6 kutoka programu yako ya uthibitishaji ili kuthibitisha:",
+                "invalidCode": "Msimbo batili. Tafadhali jaribu tena.",
+                "next": "Ifuatayo",
+                "scanQr": "Ongeza siri hii kwenye programu yako ya uthibitishaji (Google Authenticator, Authy, Microsoft Authenticator). Au weka ufunguo wa mkono:",
+                "setup": "Uthibitishaji wa hatua mbili",
+                "verify": "Thibitisha na uwashe"
+            }
         }
     }
 }

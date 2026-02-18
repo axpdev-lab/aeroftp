@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon } from './AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
@@ -128,6 +128,11 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
         case 'kimi': return <KimiIcon size={size} />;
         case 'qwen': return <QwenIcon size={size} />;
         case 'deepseek': return <DeepSeekIcon size={size} />;
+        case 'mistral': return <MistralIcon size={size} />;
+        case 'groq': return <GroqIcon size={size} />;
+        case 'perplexity': return <PerplexityIcon size={size} />;
+        case 'cohere': return <CohereIcon size={size} />;
+        case 'together': return <TogetherIcon size={size} />;
         case 'custom': return <Bot size={size} className="text-gray-400" />;
         default: return <Bot size={size} />;
     }
@@ -262,6 +267,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
     const [activeSearchIndex, setActiveSearchIndex] = useState(0);
     const messageListRef = useRef<HTMLDivElement>(null);
+    const searchMessages = useMemo(() =>
+        messages.map(m => ({ id: m.id, role: m.role, content: m.content })),
+        [messages]
+    );
 
     // Wrap startNewChat to also clear pending tool calls, token budget, and cost
     const startNewChat = useCallback(() => {
@@ -626,11 +635,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [editorFilePath]);
 
     // Speech recognition for audio input
+    const speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
     const toggleListening = () => {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            alert('Speech recognition is not supported in this browser.');
-            return;
-        }
+        if (!speechSupported) return;
 
         if (isListening) {
             setIsListening(false);
@@ -1715,7 +1722,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             {/* Phase 4: Chat Search Overlay (#78) */}
             <ChatSearchOverlay
-                messages={messages.map(m => ({ id: m.id, role: m.role, content: m.content }))}
+                messages={searchMessages}
                 visible={showSearch}
                 onClose={() => setShowSearch(false)}
                 onHighlightMessage={handleSearchHighlightMessage}
@@ -2162,15 +2169,17 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         >
                             <ImageIcon size={16} />
                         </button>
-                        <button
-                            onClick={toggleListening}
-                            className={`p-1.5 rounded transition-colors ${isListening
-                                ? 'text-red-400 bg-red-500/20'
-                                : ct.btn}`}
-                            title={isListening ? t('ai.stopListening') : t('ai.voiceInput')}
-                        >
-                            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                        </button>
+                        {speechSupported && (
+                            <button
+                                onClick={toggleListening}
+                                className={`p-1.5 rounded transition-colors ${isListening
+                                    ? 'text-red-400 bg-red-500/20'
+                                    : ct.btn}`}
+                                title={isListening ? t('ai.stopListening') : t('ai.voiceInput')}
+                            >
+                                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                            </button>
+                        )}
                         <button
                             onClick={handleSend}
                             disabled={(!input.trim() && attachedImages.length === 0) || isLoading}

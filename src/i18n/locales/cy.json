@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Rhedeg ls -la a chrynhoi'r hyn a welwch",
             "welcomePromptRemote1": "Rhestrwch yr holl ffeiliau ar y gweinydd pell",
             "welcomePromptRemote2": "Cymharwch y ffolderi lleol a phell",
-            "welcomePromptRemote3": "Lawrlwytho'r holl ffeiliau .log"
+            "welcomePromptRemote3": "Lawrlwytho'r holl ffeiliau .log",
+            "marketplace": {
+                "add": "Ychwanegu",
+                "added": "Ychwanegwyd",
+                "all": "Pob un",
+                "available": "ar gael",
+                "browseProviders": "Pori darparwyr",
+                "chinese": "Tsieineg",
+                "fast": "Casgliad cyflym",
+                "flagship": "Blaenllaw",
+                "gateway": "Gateway",
+                "local": "Lleol",
+                "localFeature": "Lleol",
+                "noResults": "Nid oes darparwyr yn cyfateb i'ch chwiliad",
+                "rag": "RAG",
+                "search": "Chwilio darparwyr...",
+                "searchFeature": "Chwilio'r we",
+                "specialized": "Arbenigol",
+                "streaming": "Streaming",
+                "subtitle": "Darganfyddwch ac ychwanegwch ddarparwyr AI o'n marchnadfa",
+                "thinking": "Thinking",
+                "title": "Marchnadfa darparwyr AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Mae'r archif hwn wedi'i ddiogelu â chyfrinair",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} wedi'i ddileu",
             "itemsDeleted": "{count} eitem wedi'u dileu",
             "titleFull": "AeroVault — Amgryptio gradd filwrol",
-            "totalItems": "cyfanswm"
+            "totalItems": "cyfanswm",
+            "remote": {
+                "cleanup": "Cau'r seld bell",
+                "downloading": "Yn lawrlwytho'r seld o'r gweinydd...",
+                "noConnection": "Cysylltwch â gweinydd i agor seldiau pell",
+                "open": "Agor seld bell",
+                "saveAndClose": "Cadw a chau",
+                "title": "Seld bell",
+                "uploadFailed": "Methwyd â llwytho newidiadau'r seld i fyny",
+                "uploading": "Yn llwytho newidiadau'r seld i fyny..."
+            }
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Lleol yn unig",
             "showRemote": "Dangos pell",
             "showSystemMenu": "Dangos bar dewislen y system"
+        },
+        "ai.agentMode.title": "Modd Asiant",
+        "ai.agentMode.description": "Yn rheoli ymddygiad cymeradwyo offer, terfynau camau, a lefel ymreolaeth.",
+        "ai.agentMode.safe": "Diogel",
+        "ai.agentMode.safeDesc": "Dim ond offer diogel sy'n gweithredu'n awtomatig. Dim cof sesiwn. Uchafswm 5 cam.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Offer diogel yn gweithredu'n awtomatig. Offer canolig yn cael eu cymeradwyo am y sesiwn. Uchafswm 10 cam.",
+        "ai.agentMode.expert": "Arbenigwr",
+        "ai.agentMode.expertDesc": "Offer diogel a chanolig yn gweithredu'n awtomatig. Risg uchel yn cael eu cymeradwyo am y sesiwn. Uchafswm 25 cam.",
+        "ai.agentMode.extreme": "Eithafol",
+        "ai.agentMode.extremeDesc": "Pob offeryn yn gweithredu'n awtomatig. Dim cadarnhad. Uchafswm 50 cam. Cyber yn unig.",
+        "security": {
+            "totp": {
+                "back": "Yn ôl",
+                "disable": "Analluogi 2FA",
+                "disableConfirm": "Rhowch eich cod TOTP presennol i analluogi dilysu dau ffactor:",
+                "enable": "Galluogi 2FA",
+                "enabled": "Mae dilysu dau ffactor wedi'i alluogi",
+                "enterCode": "Rhowch y cod 6 digid o'ch ap dilysydd i wirio:",
+                "invalidCode": "Cod annilys. Ceisiwch eto.",
+                "next": "Nesaf",
+                "scanQr": "Ychwanegwch y gyfrinach hon at eich ap dilysydd (Google Authenticator, Authy, Microsoft Authenticator). Neu rhowch yr allwedd llaw:",
+                "setup": "Dilysu dau ffactor",
+                "verify": "Gwirio a galluogi"
+            }
         }
     }
 }

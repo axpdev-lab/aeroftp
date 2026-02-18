@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Jalankan ls -la dan rangkum apa yang kamu lihat",
             "welcomePromptRemote1": "Tampilkan semua file di server remote",
             "welcomePromptRemote2": "Bandingkan folder lokal dan remote",
-            "welcomePromptRemote3": "Unduh semua file .log"
+            "welcomePromptRemote3": "Unduh semua file .log",
+            "marketplace": {
+                "add": "Tambah",
+                "added": "Ditambahkan",
+                "all": "Semua",
+                "available": "tersedia",
+                "browseProviders": "Jelajahi Penyedia",
+                "chinese": "Cina",
+                "fast": "Inferensi Cepat",
+                "flagship": "Unggulan",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Tidak ada penyedia yang cocok dengan pencarian Anda",
+                "rag": "RAG",
+                "search": "Cari penyedia...",
+                "searchFeature": "Pencarian Web",
+                "specialized": "Khusus",
+                "streaming": "Streaming",
+                "subtitle": "Temukan dan tambahkan penyedia AI dari marketplace kami",
+                "thinking": "Thinking",
+                "title": "Marketplace Penyedia AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Arsip ini dilindungi kata sandi",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Dihapus {name}",
             "itemsDeleted": "{count} item dihapus",
             "titleFull": "AeroVault - Enkripsi Tingkat Militer",
-            "totalItems": "total"
+            "totalItems": "total",
+            "remote": {
+                "cleanup": "Tutup Vault Jarak Jauh",
+                "downloading": "Mengunduh vault dari server...",
+                "noConnection": "Hubungkan ke server untuk membuka vault jarak jauh",
+                "open": "Buka Vault Jarak Jauh",
+                "saveAndClose": "Simpan & Tutup",
+                "title": "Vault Jarak Jauh",
+                "uploadFailed": "Gagal mengunggah perubahan vault",
+                "uploading": "Mengunggah perubahan vault..."
+            }
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Hanya lokal",
             "showRemote": "Tampilkan jarak jauh",
             "showSystemMenu": "Tampilkan bilah menu sistem"
+        },
+        "ai.agentMode.title": "Mode Agen",
+        "ai.agentMode.description": "Mengontrol perilaku persetujuan alat, batas langkah, dan tingkat otonomi.",
+        "ai.agentMode.safe": "Aman",
+        "ai.agentMode.safeDesc": "Hanya alat aman yang dijalankan otomatis. Tanpa memori sesi. Maks. 5 langkah.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Alat aman dijalankan otomatis. Alat menengah disetujui per sesi. Maks. 10 langkah.",
+        "ai.agentMode.expert": "Ahli",
+        "ai.agentMode.expertDesc": "Alat aman dan menengah dijalankan otomatis. Risiko tinggi disetujui per sesi. Maks. 25 langkah.",
+        "ai.agentMode.extreme": "Ekstrem",
+        "ai.agentMode.extremeDesc": "Semua alat dijalankan otomatis. Tanpa konfirmasi. Maks. 50 langkah. Hanya Cyber.",
+        "security": {
+            "totp": {
+                "back": "Kembali",
+                "disable": "Nonaktifkan 2FA",
+                "disableConfirm": "Masukkan kode TOTP Anda saat ini untuk menonaktifkan autentikasi dua faktor:",
+                "enable": "Aktifkan 2FA",
+                "enabled": "Autentikasi dua faktor diaktifkan",
+                "enterCode": "Masukkan kode 6 digit dari aplikasi autentikator Anda untuk memverifikasi:",
+                "invalidCode": "Kode tidak valid. Silakan coba lagi.",
+                "next": "Selanjutnya",
+                "scanQr": "Tambahkan rahasia ini ke aplikasi autentikator Anda (Google Authenticator, Authy, Microsoft Authenticator). Atau masukkan kunci manual:",
+                "setup": "Autentikasi Dua Faktor",
+                "verify": "Verifikasi & Aktifkan"
+            }
         }
     }
 }

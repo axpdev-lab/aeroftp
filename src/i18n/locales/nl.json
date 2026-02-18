@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Voer ls -la uit en vat samen wat je ziet",
             "welcomePromptRemote1": "Toon alle bestanden op de externe server",
             "welcomePromptRemote2": "Vergelijk lokale en externe mappen",
-            "welcomePromptRemote3": "Download alle .log-bestanden"
+            "welcomePromptRemote3": "Download alle .log-bestanden",
+            "marketplace": {
+                "add": "Toevoegen",
+                "added": "Toegevoegd",
+                "all": "Alle",
+                "available": "beschikbaar",
+                "browseProviders": "Aanbieders verkennen",
+                "chinese": "Chinees",
+                "fast": "Snelle inferentie",
+                "flagship": "Vlaggenschip",
+                "gateway": "Gateway",
+                "local": "Lokaal",
+                "localFeature": "Lokaal",
+                "noResults": "Geen aanbieders gevonden voor uw zoekopdracht",
+                "rag": "RAG",
+                "search": "Aanbieders zoeken...",
+                "searchFeature": "Webzoeken",
+                "specialized": "Gespecialiseerd",
+                "streaming": "Streaming",
+                "subtitle": "Ontdek en voeg AI-aanbieders toe vanuit onze marktplaats",
+                "thinking": "Thinking",
+                "title": "AI-aanbieder Marktplaats",
+                "tools": "Gereedschappen",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Dit archief is beveiligd met een wachtwoord",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Verwijderd {name}",
             "itemsDeleted": "{count} item(s) verwijderd",
             "titleFull": "AeroVault — Militaire versleuteling",
-            "totalItems": "totaal"
+            "totalItems": "totaal",
+            "remote": {
+                "cleanup": "Externe vault sluiten",
+                "downloading": "Vault downloaden van server...",
+                "noConnection": "Maak verbinding met een server om externe vaults te openen",
+                "open": "Externe vault openen",
+                "saveAndClose": "Opslaan en sluiten",
+                "title": "Externe vault",
+                "uploadFailed": "Uploaden van vault-wijzigingen mislukt",
+                "uploading": "Vault-wijzigingen uploaden..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -2668,6 +2702,21 @@
             "localOnly": "Alleen lokaal",
             "showRemote": "Externe weergeven",
             "showSystemMenu": "Systeemmenubalk weergeven"
+        },
+        "security": {
+            "totp": {
+                "back": "Terug",
+                "disable": "2FA uitschakelen",
+                "disableConfirm": "Voer uw huidige TOTP-code in om tweefactorauthenticatie uit te schakelen:",
+                "enable": "2FA inschakelen",
+                "enabled": "Tweefactorauthenticatie is ingeschakeld",
+                "enterCode": "Voer de 6-cijferige code uit uw authenticatie-app in om te verifiëren:",
+                "invalidCode": "Ongeldige code. Probeer het opnieuw.",
+                "next": "Volgende",
+                "scanQr": "Voeg dit geheim toe aan uw authenticatie-app (Google Authenticator, Authy, Microsoft Authenticator). Of voer de handmatige sleutel in:",
+                "setup": "Tweefactorauthenticatie",
+                "verify": "Verifiëren en inschakelen"
+            }
         }
     }
 }

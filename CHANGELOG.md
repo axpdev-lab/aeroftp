@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2026-02-18
+
+### Provider Marketplace, 2FA Vault, Remote Vault, CLI & Security Hardening
+
+AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplace modal, adds TOTP two-factor authentication for vault unlock, enables opening AeroVault containers on remote servers, introduces the `aeroftp-cli` command-line binary, and hardens security across 13 findings from a 5-auditor review (4x Claude Opus + GPT-5.3 Codex).
+
+#### Added
+
+- **Provider Marketplace**: Searchable modal grid replacing the old "Add:" buttons row in AI Settings. 15 providers across 6 categories (Flagship, Fast Inference, Specialized, Local, Chinese, Gateway) with feature badges, pricing tier labels, and one-click setup
+- **5 new AI providers**: Mistral, Groq, Perplexity, Cohere, Together AI — all OpenAI-compatible with official SVG icons, model registry entries, and provider profiles. Total AI providers: 10 → 15
+- **TOTP 2FA for vault unlock**: Optional RFC 6238 TOTP second factor for master password vaults. QR code setup, 6-digit verification, enable/disable in Settings > Security tab. Rate limiting with exponential backoff (5 attempts → 30s-15min lockout)
+- **Remote Vault**: Open `.aerovault` files on connected remote servers — download to temp, operate locally, upload changes back with "Save & Close" flow. Accessible from VaultPanel when connected
+- **CLI foundation**: `aeroftp-cli` binary with `connect`, `ls`, `get`, `put`, `sync` commands via Clap. URL-based connection (`sftp://user@host/path`), progress bars via indicatif, all 14 providers supported
+- **CSP violation reporter**: Client-side `securitypolicyviolation` event listener with debug-gated logging, idempotency guard, and truncated blocked URI
+
+#### Fixed
+
+- **Crypto donation icons**: Replaced Unicode characters (₿, Ξ, ◎, Ł) with official SVG icons in About dialog Support tab
+- **Clipboard image paste on Linux**: WebKitGTK fallback using `arboard` crate via `clipboard_read_image` Tauri command
+- **Speech recognition button on Linux**: Hidden when Web Speech API is unavailable (WebKitGTK)
+- **TOTP security hardening**: Single `Mutex<TotpInner>` replacing 3 separate mutexes, `setup_verified` gate preventing enable without verification, `OsRng` for CSPRNG, raw secret byte zeroization, poison recovery on all lock operations
+- **Remote vault security**: Null byte validation, path traversal rejection, symlink detection via `symlink_metadata()`, `canonicalize()` before `starts_with()`, `sync_all()` after zero-fill, Unix permissions 0o600, error propagation on all writes
+- **Modal accessibility**: ARIA attributes (`role="dialog"`, `aria-modal`, `aria-labelledby`), Escape key handlers, state cleanup on close, focus management for TotpSetup and ProviderMarketplace
+- **Cohere API compatibility**: Base URL changed from `/v2` to `/compatibility` endpoint for OpenAI-compatible routing
+- **Perplexity tool format**: Changed from `native` to `text` — Sonar models do not support function calling
+- **SVG gradient ID collisions**: QwenIcon and CohereIcon now use `React.useId()` for unique gradient IDs, preventing rendering conflicts when multiple instances are mounted
+- **AISettingsPanel performance**: Provider type Set memoized with `useMemo` to prevent reconstruction on every render
+- **Provider Marketplace theme support**: Modal now supports all 4 themes (Light, Dark, Tokyo Night, Cyber) using Tailwind `dark:` prefix pattern — previously used undefined CSS variables causing transparent backgrounds
+- **TotpSetup theme support**: TOTP setup dialog now supports all 4 themes with proper `dark:` prefix classes
+- **ChatSearchOverlay render loop**: Fixed "Maximum update depth exceeded" caused by `messages.map()` creating new array references every render — replaced with `useMemo` on search messages
+- **Chat history persistence**: Complete rewrite using `BaseDirectory.AppConfig` with Rust-side directory creation in `setup()` — fixes Tauri FS scope errors on `mkdir`, `exists`, and `writeTextFile` with absolute paths
+- **Chat history privacy**: AppConfig directory created with Unix 0700 permissions (`rwx------`) preventing other users from reading conversation data
+- **Cargo binary ambiguity**: Added `default-run = "aeroftp"` to resolve `cargo run` failure when multiple `[[bin]]` targets exist (aeroftp + aeroftp-cli)
+
+#### Changed
+
+- **AeroAgent AI providers**: 10 → 15 (added Mistral, Groq, Perplexity, Cohere, Together AI)
+- **Model registry**: 14 new model entries across 5 providers with context windows, pricing, and capability metadata
+- **AI Settings UI**: "Add:" provider buttons replaced by "Browse AI Providers" button opening the Marketplace modal
+- **Security audit**: 5 independent reviewers (4x Claude Opus 4.6 + GPT-5.3 Codex), 13 findings fixed across 8 files
+
 ## [2.2.3] - 2026-02-17
 
 ### AeroAgent Welcome Screen & Shell Execute

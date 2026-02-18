@@ -1967,7 +1967,31 @@
             "welcomePromptLocal3": "Գործարկիր ls -la և ամփոփիր տեսածը",
             "welcomePromptRemote1": "Ցույց տուր հեռակա սերվերի բոլոր ֆայլերը",
             "welcomePromptRemote2": "Համեմատիր տեղական և հեռակա թղթապանակները",
-            "welcomePromptRemote3": "Ներբեռնիր բոլոր .log ֆայլերը"
+            "welcomePromptRemote3": "Ներբեռնիր բոլոր .log ֆայլերը",
+            "marketplace": {
+                "add": "Ավելացնել",
+                "added": "Ավելացված",
+                "all": "Բոլորը",
+                "available": "հասանելի",
+                "browseProviders": "Դիտել մատակարարները",
+                "chinese": "Չինական",
+                "fast": "Արագ եզրակացում",
+                "flagship": "Առաջատար",
+                "gateway": "Gateway",
+                "local": "Տեղական",
+                "localFeature": "Տեղական",
+                "noResults": "Ոչ մի մատակարար չի համապատասխանում ձեր որոնմանը",
+                "rag": "RAG",
+                "search": "Որոնել մատակարարներ...",
+                "searchFeature": "Վեբ որոնում",
+                "specialized": "Մասնագիտացված",
+                "streaming": "Streaming",
+                "subtitle": "Գտեք և ավելացրեք AI մատակարարներ մեր շուկայից",
+                "thinking": "Thinking",
+                "title": "AI Մատակարարների շուկա",
+                "tools": "Գործիքներ",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Արխիվը պաշտպանված է գաղտնաբառով",
@@ -2028,7 +2052,17 @@
             "itemDeleted": "Ջնջվեց՝ {name}",
             "itemsDeleted": "{count} տարր ջնջվեց",
             "titleFull": "AeroVault — Ռազմական մակարդակի գաղտնագրում",
-            "totalItems": "ընդամենը"
+            "totalItems": "ընդամենը",
+            "remote": {
+                "cleanup": "Փակել հեռակա պահոցը",
+                "downloading": "Պահոցը ներբեռնվում է սերվերից...",
+                "noConnection": "Միացեք սերվերին՝ հեռակա պահոցներ բացելու համար",
+                "open": "Բացել հեռակա պահոց",
+                "saveAndClose": "Պահել և փակել",
+                "title": "Հեռակա պահոց",
+                "uploadFailed": "Պահոցի փոփոխությունների վերբեռնումը ձախողվեց",
+                "uploading": "Պահոցի փոփոխությունները վերբեռնվում են..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",
@@ -2668,6 +2702,31 @@
             "errorTitle": "Սխալ",
             "successTitle": "Հաջողություն",
             "warningTitle": "Զգուշացում"
+        },
+        "ai.agentMode.title": "Ագենտի ռեժիմ",
+        "ai.agentMode.description": "Կառավարում է գործիքների հաստատման վարքը, քայլերի սահմանները և ինքնավարության մակարդակը։",
+        "ai.agentMode.safe": "Անվտանգ",
+        "ai.agentMode.safeDesc": "Միայն անվտանգ գործիքներն են ինքնագործվում։ Առանց նիստի հիշողություն։ Առավելագույնը 5 քայլ։",
+        "ai.agentMode.normal": "Սովորական",
+        "ai.agentMode.normalDesc": "Անվտանգ գործիքներն ինքնագործվում։ Միջին գործիքները հաստատվում են նիստի համար։ Առավելագույնը 10 քայլ։",
+        "ai.agentMode.expert": "Փորձագետ",
+        "ai.agentMode.expertDesc": "Անվտանգ և միջին ինքնագործվում։ Բարձր ռիսկի հաստատվում են նիստի համար։ Առավելագույնը 25 քայլ։",
+        "ai.agentMode.extreme": "Ծայրահեղ",
+        "ai.agentMode.extremeDesc": "Բոլոր գործիքներն ինքնագործվում։ Առանց հաստատման։ Առավելագույնը 50 քայլ։ Միայն Cyber։",
+        "security": {
+            "totp": {
+                "back": "Հետ",
+                "disable": "Անջատել 2FA",
+                "disableConfirm": "Մուտքագրեք ձեր ընթացիկ TOTP կոդը՝ երկգործոն նույնականացման անջատման համար՝",
+                "enable": "Միացնել 2FA",
+                "enabled": "Երկգործոն նույնականացումը միացված է",
+                "enterCode": "Մուտքագրեք 6-նիշանոց կոդը ձեր նույնականացման հավելվածից՝ հաստատելու համար՝",
+                "invalidCode": "Սխալ կոդ։ Խնդրում է նորից փորձել։",
+                "next": "Հաջորդ",
+                "scanQr": "Ավելացրեք այս գաղտնիքը ձեր նույնականացման հավելվածում (Google Authenticator, Authy, Microsoft Authenticator)։ Կամ մուտքագրեք ձեռքով բանալիը՝",
+                "setup": "Երկգործոն նույնականացում",
+                "verify": "Ստուգել և միացնել"
+            }
         }
     }
 }

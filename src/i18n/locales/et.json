@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Käivita ls -la ja tee kokkuvõte, mida näed",
             "welcomePromptRemote1": "Näita kõiki faile kaugserveris",
             "welcomePromptRemote2": "Võrdle kohalikke ja kaugkaustu",
-            "welcomePromptRemote3": "Laadi alla kõik .log failid"
+            "welcomePromptRemote3": "Laadi alla kõik .log failid",
+            "marketplace": {
+                "add": "Lisa",
+                "added": "Lisatud",
+                "all": "Kõik",
+                "available": "saadaval",
+                "browseProviders": "Sirvi pakkujaid",
+                "chinese": "Hiina",
+                "fast": "Kiire järeldamine",
+                "flagship": "Lipulaev",
+                "gateway": "Gateway",
+                "local": "Kohalik",
+                "localFeature": "Kohalik",
+                "noResults": "Ükski pakkuja ei vasta teie otsingule",
+                "rag": "RAG",
+                "search": "Otsi pakkujaid...",
+                "searchFeature": "Veebiotsing",
+                "specialized": "Spetsialiseeritud",
+                "streaming": "Streaming",
+                "subtitle": "Avastage ja lisage AI pakkujaid meie turuplatsilt",
+                "thinking": "Thinking",
+                "title": "AI pakkujate turg",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "See arhiiv on parooliga kaitstud",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} kustutatud",
             "itemsDeleted": "{count} üksus(t) kustutatud",
             "titleFull": "AeroVault - Sõjaväetaseme krüpteering",
-            "totalItems": "kokku"
+            "totalItems": "kokku",
+            "remote": {
+                "cleanup": "Sulge kaugseif",
+                "downloading": "Seifi allalaadimine serverist...",
+                "noConnection": "Ühenduge serveriga kaugseifide avamiseks",
+                "open": "Ava kaugseif",
+                "saveAndClose": "Salvesta ja sulge",
+                "title": "Kaugseif",
+                "uploadFailed": "Seifi muudatuste üleslaadimine ebaõnnestus",
+                "uploading": "Seifi muudatuste üleslaadimine..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -2668,6 +2702,31 @@
             "localOnly": "Ainult lokaalne",
             "showRemote": "Näita kauget",
             "showSystemMenu": "Näita süsteemi menüüriba"
+        },
+        "ai.agentMode.title": "Agendi režiim",
+        "ai.agentMode.description": "Juhib tööriistade kinnitamise käitumist, sammupiiranguid ja autonoomia taset.",
+        "ai.agentMode.safe": "Turvaline",
+        "ai.agentMode.safeDesc": "Ainult turvalised tööriistad käivituvad automaatselt. Seansi mälu puudub. Maks 5 sammu.",
+        "ai.agentMode.normal": "Tavaline",
+        "ai.agentMode.normalDesc": "Turvalised tööriistad käivituvad automaatselt. Keskmise riskiga tööriistad kinnitatakse seansi jaoks. Maks 10 sammu.",
+        "ai.agentMode.expert": "Ekspert",
+        "ai.agentMode.expertDesc": "Turvalised ja keskmised käivituvad automaatselt. Kõrge riskiga kinnitatakse seansi jaoks. Maks 25 sammu.",
+        "ai.agentMode.extreme": "Äärmuslik",
+        "ai.agentMode.extremeDesc": "Kõik tööriistad käivituvad automaatselt. Kinnitusi ei küsita. Maks 50 sammu. Ainult Cyber.",
+        "security": {
+            "totp": {
+                "back": "Tagasi",
+                "disable": "Keela 2FA",
+                "disableConfirm": "Sisestage oma praegune TOTP kood kaheastmelise autentimise keelamiseks:",
+                "enable": "Luba 2FA",
+                "enabled": "Kaheastmeline autentimine on lubatud",
+                "enterCode": "Sisestage oma autentimisrakenduse 6-kohaline kood kinnitamiseks:",
+                "invalidCode": "Vigane kood. Palun proovige uuesti.",
+                "next": "Edasi",
+                "scanQr": "Lisage see saladus oma autentimisrakendusse (Google Authenticator, Authy, Microsoft Authenticator). Või sisestage käsitsi võti:",
+                "setup": "Kaheastmeline autentimine",
+                "verify": "Kinnita ja luba"
+            }
         }
     }
 }

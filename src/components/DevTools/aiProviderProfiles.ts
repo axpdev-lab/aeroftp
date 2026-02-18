@@ -240,6 +240,36 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },
+    mistral: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Mistral. You support 14 storage protocols with strong code generation and analysis capabilities.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Leverage your strong instruction-following capabilities. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    groq: {
+        identity: 'You are AeroAgent, an ultra-fast AI file management assistant for AeroFTP powered by Groq. You support 14 storage protocols.',
+        style: 'Be extremely fast and concise. Prioritize action over explanation. Use function calls aggressively. Minimal responses preferred.',
+        toolFormat: 'native',
+        behaviorRules: XAI_BEHAVIOR_RULES,
+    },
+    perplexity: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Perplexity. You have built-in web search capabilities and support 14 storage protocols.',
+        style: 'Be direct and informative. When relevant, leverage your search capabilities to provide up-to-date information. Keep explanations concise.',
+        toolFormat: 'text',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    cohere: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Cohere. You support 14 storage protocols with strong RAG capabilities.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Leverage your strong retrieval-augmented generation capabilities. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    together: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Together AI. You support 14 storage protocols.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
     custom: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 14 storage protocols and prioritize getting things done.',
         style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
@@ -298,6 +328,11 @@ const PARAMETER_PRESETS: Record<AIProviderType, Record<TaskType | 'default', Par
     kimi: OPENAI_PRESETS,
     qwen: OPENAI_PRESETS,
     deepseek: OPENAI_PRESETS,
+    mistral: OPENAI_PRESETS,
+    groq: OPENAI_PRESETS,
+    perplexity: OPENAI_PRESETS,
+    cohere: OPENAI_PRESETS,
+    together: OPENAI_PRESETS,
     custom: OPENAI_PRESETS,
 };
 

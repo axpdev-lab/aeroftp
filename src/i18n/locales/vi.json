@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Chạy ls -la và tóm tắt những gì bạn thấy",
             "welcomePromptRemote1": "Liệt kê tất cả tệp trên máy chủ từ xa",
             "welcomePromptRemote2": "So sánh thư mục cục bộ và từ xa",
-            "welcomePromptRemote3": "Tải xuống tất cả tệp .log"
+            "welcomePromptRemote3": "Tải xuống tất cả tệp .log",
+            "marketplace": {
+                "add": "Thêm",
+                "added": "Đã thêm",
+                "all": "Tất cả",
+                "available": "khả dụng",
+                "browseProviders": "Duyệt nhà cung cấp",
+                "chinese": "Trung Quốc",
+                "fast": "Suy luận nhanh",
+                "flagship": "Hàng đầu",
+                "gateway": "Gateway",
+                "local": "Cục bộ",
+                "localFeature": "Cục bộ",
+                "noResults": "Không có nhà cung cấp nào phù hợp với tìm kiếm của bạn",
+                "rag": "RAG",
+                "search": "Tìm nhà cung cấp...",
+                "searchFeature": "Tìm kiếm Web",
+                "specialized": "Chuyên biệt",
+                "streaming": "Streaming",
+                "subtitle": "Khám phá và thêm nhà cung cấp AI từ chợ ứng dụng của chúng tôi",
+                "thinking": "Thinking",
+                "title": "Chợ nhà cung cấp AI",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Tệp lưu trữ này được bảo vệ bằng mật khẩu",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Đã xóa {name}",
             "itemsDeleted": "Đã xóa {count} mục",
             "titleFull": "AeroVault - Mã hóa cấp quân sự",
-            "totalItems": "tổng cộng"
+            "totalItems": "tổng cộng",
+            "remote": {
+                "cleanup": "Đóng kho từ xa",
+                "downloading": "Đang tải kho từ máy chủ...",
+                "noConnection": "Kết nối đến máy chủ để mở kho từ xa",
+                "open": "Mở kho từ xa",
+                "saveAndClose": "Lưu & Đóng",
+                "title": "Kho từ xa",
+                "uploadFailed": "Không thể tải lên các thay đổi của kho",
+                "uploading": "Đang tải lên các thay đổi của kho..."
+            }
         },
         "cryptomator": {
             "title": "Kho Cryptomator",
@@ -2668,6 +2702,31 @@
             "localOnly": "Chỉ cục bộ",
             "showRemote": "Hiện từ xa",
             "showSystemMenu": "Hiện thanh menu hệ thống"
+        },
+        "ai.agentMode.title": "Che do Agent",
+        "ai.agentMode.description": "Kiem soat hanh vi phe duyet cong cu, gioi han buoc va muc do tu chu.",
+        "ai.agentMode.safe": "An toan",
+        "ai.agentMode.safeDesc": "Chi cac cong cu an toan tu dong thuc thi. Khong co bo nho phien. Toi da 5 buoc.",
+        "ai.agentMode.normal": "Binh thuong",
+        "ai.agentMode.normalDesc": "Cong cu an toan tu dong thuc thi. Cong cu trung binh duoc phe duyet theo phien. Toi da 10 buoc.",
+        "ai.agentMode.expert": "Chuyen gia",
+        "ai.agentMode.expertDesc": "An toan va trung binh tu dong thuc thi. Rui ro cao duoc phe duyet theo phien. Toi da 25 buoc.",
+        "ai.agentMode.extreme": "Cuc doan",
+        "ai.agentMode.extremeDesc": "Tat ca cong cu tu dong thuc thi. Khong can xac nhan. Toi da 50 buoc. Chi Cyber.",
+        "security": {
+            "totp": {
+                "back": "Quay lại",
+                "disable": "Tắt 2FA",
+                "disableConfirm": "Nhập mã TOTP hiện tại của bạn để tắt xác thực hai yếu tố:",
+                "enable": "Bật 2FA",
+                "enabled": "Xác thực hai yếu tố đã được bật",
+                "enterCode": "Nhập mã 6 chữ số từ ứng dụng xác thực của bạn để xác minh:",
+                "invalidCode": "Mã không hợp lệ. Vui lòng thử lại.",
+                "next": "Tiếp theo",
+                "scanQr": "Thêm bí mật này vào ứng dụng xác thực của bạn (Google Authenticator, Authy, Microsoft Authenticator). Hoặc nhập khóa thủ công:",
+                "setup": "Xác thực hai yếu tố",
+                "verify": "Xác minh & Bật"
+            }
         }
     }
 }

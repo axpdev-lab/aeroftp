@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Exekutatu ls -la eta laburbildu ikusten duzuna",
             "welcomePromptRemote1": "Zerrendatu urruneko zerbitzariko fitxategi guztiak",
             "welcomePromptRemote2": "Konparatu bertako eta urruneko karpetak",
-            "welcomePromptRemote3": "Deskargatu .log fitxategi guztiak"
+            "welcomePromptRemote3": "Deskargatu .log fitxategi guztiak",
+            "marketplace": {
+                "add": "Gehitu",
+                "added": "Gehituta",
+                "all": "Denak",
+                "available": "eskuragarri",
+                "browseProviders": "Arakatu hornitzaileak",
+                "chinese": "Txinatar",
+                "fast": "Inferentzia azkarra",
+                "flagship": "Nagusia",
+                "gateway": "Gateway",
+                "local": "Lokala",
+                "localFeature": "Lokala",
+                "noResults": "Ez da hornitzailerik aurkitu zure bilaketarekin",
+                "rag": "RAG",
+                "search": "Bilatu hornitzaileak...",
+                "searchFeature": "Web bilaketa",
+                "specialized": "Espezializatuak",
+                "streaming": "Streaming",
+                "subtitle": "Aurkitu eta gehitu AI hornitzaileak gure merkatutik",
+                "thinking": "Thinking",
+                "title": "AI hornitzaileen merkatua",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Artxibo hau pasahitzarekin babestuta dago",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} ezabatuta",
             "itemsDeleted": "{count} elementu ezabatuta",
             "titleFull": "AeroVault - Enkriptazio militar-maila",
-            "totalItems": "guztira"
+            "totalItems": "guztira",
+            "remote": {
+                "cleanup": "Itxi urruneko kutxa gotorra",
+                "downloading": "Kutxa gotorra zerbitzaritik deskargatzen...",
+                "noConnection": "Konektatu zerbitzari batera urruneko kutxa gotorrak irekitzeko",
+                "open": "Ireki urruneko kutxa gotorra",
+                "saveAndClose": "Gorde eta itxi",
+                "title": "Urruneko kutxa gotorra",
+                "uploadFailed": "Ezin izan dira kutxa gotorraren aldaketak igo",
+                "uploading": "Kutxa gotorraren aldaketak igotzen..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
@@ -2668,6 +2702,31 @@
             "localOnly": "Tokikoa soilik",
             "showRemote": "Erakutsi urrunekoa",
             "showSystemMenu": "Erakutsi sistemaren menu-barra"
+        },
+        "ai.agentMode.title": "Agente modua",
+        "ai.agentMode.description": "Tresnen onarpen portaera, urratsen mugak eta autonomia maila kontrolatzen ditu.",
+        "ai.agentMode.safe": "Segurua",
+        "ai.agentMode.safeDesc": "Tresna seguruak soilik automatikoki exekutatzen dira. Saio memoriarik gabe. Gehienez 5 urrats.",
+        "ai.agentMode.normal": "Normala",
+        "ai.agentMode.normalDesc": "Tresna seguruak automatikoki exekutatzen dira. Tarteko tresnak saiorako onartzen dira. Gehienez 10 urrats.",
+        "ai.agentMode.expert": "Aditua",
+        "ai.agentMode.expertDesc": "Seguruak eta tartekoak automatikoki exekutatzen dira. Arrisku handikoak saiorako onartzen dira. Gehienez 25 urrats.",
+        "ai.agentMode.extreme": "Muturrekoa",
+        "ai.agentMode.extremeDesc": "Tresna guztiak automatikoki exekutatzen dira. Berrespen gabe. Gehienez 50 urrats. Cyber soilik.",
+        "security": {
+            "totp": {
+                "back": "Atzera",
+                "disable": "Desgaitu 2FA",
+                "disableConfirm": "Sartu zure uneko TOTP kodea bi faktoreko autentifikazioa desgaitzeko:",
+                "enable": "Gaitu 2FA",
+                "enabled": "Bi faktoreko autentifikazioa gaituta dago",
+                "enterCode": "Sartu zure autentifikazio aplikazioko 6 digituko kodea egiaztatzeko:",
+                "invalidCode": "Kode baliogabea. Saiatu berriz.",
+                "next": "Hurrengoa",
+                "scanQr": "Gehitu sekretu hau zure autentifikazio aplikaziora (Google Authenticator, Authy, Microsoft Authenticator). Edo sartu gako manuala:",
+                "setup": "Bi faktoreko autentifikazioa",
+                "verify": "Egiaztatu eta gaitu"
+            }
         }
     }
 }

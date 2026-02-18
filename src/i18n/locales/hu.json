@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Futtasd az ls -la parancsot és foglald össze amit látsz",
             "welcomePromptRemote1": "Listázd az összes fájlt a távoli szerveren",
             "welcomePromptRemote2": "Hasonlítsd össze a helyi és távoli mappákat",
-            "welcomePromptRemote3": "Töltsd le az összes .log fájlt"
+            "welcomePromptRemote3": "Töltsd le az összes .log fájlt",
+            "marketplace": {
+                "add": "Hozzáadás",
+                "added": "Hozzáadva",
+                "all": "Összes",
+                "available": "elérhető",
+                "browseProviders": "Szolgáltatók böngészése",
+                "chinese": "Kínai",
+                "fast": "Gyors következtetés",
+                "flagship": "Zászlóshajó",
+                "gateway": "Gateway",
+                "local": "Helyi",
+                "localFeature": "Helyi",
+                "noResults": "Nincs a keresésnek megfelelő szolgáltató",
+                "rag": "RAG",
+                "search": "Szolgáltatók keresése...",
+                "searchFeature": "Webes keresés",
+                "specialized": "Speciális",
+                "streaming": "Streaming",
+                "subtitle": "Fedezze fel és adja hozzá az AI szolgáltatókat piacterünkről",
+                "thinking": "Thinking",
+                "title": "AI szolgáltató piactér",
+                "tools": "Eszközök",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Ez az archívum jelszóval védett",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Törölve: {name}",
             "itemsDeleted": "{count} elem törölve",
             "titleFull": "AeroVault - Katonai szintű titkosítás",
-            "totalItems": "összesen"
+            "totalItems": "összesen",
+            "remote": {
+                "cleanup": "Távoli vault bezárása",
+                "downloading": "Vault letöltése a szerverről...",
+                "noConnection": "Csatlakozzon egy szerverhez a távoli vault-ok megnyitásához",
+                "open": "Távoli vault megnyitása",
+                "saveAndClose": "Mentés és bezárás",
+                "title": "Távoli vault",
+                "uploadFailed": "A vault módosítások feltöltése sikertelen",
+                "uploading": "Vault módosítások feltöltése..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator tároló",
@@ -2668,6 +2702,31 @@
             "localOnly": "Csak helyi",
             "showRemote": "Távoli megjelenítése",
             "showSystemMenu": "Rendszer menüsor megjelenítése"
+        },
+        "ai.agentMode.title": "Agens mod",
+        "ai.agentMode.description": "Az eszkoz-jovahagyas viselkedeset, a lepeskorlatokat es az autonomia szintjet szabalyozza.",
+        "ai.agentMode.safe": "Biztonsagos",
+        "ai.agentMode.safeDesc": "Csak a biztonsagos eszkozok futnak automatikusan. Nincs munkamenet-memoria. Max. 5 lepes.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "A biztonsagos eszkozok automatikusan futnak. A kozepes eszkozok munkamenetenként jovahagyva. Max. 10 lepes.",
+        "ai.agentMode.expert": "Szakerto",
+        "ai.agentMode.expertDesc": "A biztonsagos es kozepes eszkozok automatikusan futnak. A magas kockazatuak munkamenetenként jovahagyva. Max. 25 lepes.",
+        "ai.agentMode.extreme": "Extrem",
+        "ai.agentMode.extremeDesc": "Minden eszkoz automatikusan fut. Nincs megerosites. Max. 50 lepes. Csak Cyber.",
+        "security": {
+            "totp": {
+                "back": "Vissza",
+                "disable": "2FA kikapcsolása",
+                "disableConfirm": "Adja meg jelenlegi TOTP kódját a kétlépcsős hitelesítés kikapcsolásához:",
+                "enable": "2FA bekapcsolása",
+                "enabled": "A kétlépcsős hitelesítés be van kapcsolva",
+                "enterCode": "Adja meg a hitelesítő alkalmazásból a 6 számjegyű kódot az ellenőrzéshez:",
+                "invalidCode": "Érvénytelen kód. Próbálja újra.",
+                "next": "Tovább",
+                "scanQr": "Adja hozzá ezt a titkot a hitelesítő alkalmazásához (Google Authenticator, Authy, Microsoft Authenticator). Vagy adja meg a manuális kulcsot:",
+                "setup": "Kétlépcsős hitelesítés",
+                "verify": "Ellenőrzés és bekapcsolás"
+            }
         }
     }
 }

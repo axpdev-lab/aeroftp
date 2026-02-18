@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "ls -la çalıştır ve gördüklerini özetle",
             "welcomePromptRemote1": "Uzak sunucudaki tüm dosyaları listele",
             "welcomePromptRemote2": "Yerel ve uzak klasörleri karşılaştır",
-            "welcomePromptRemote3": "Tüm .log dosyalarını indir"
+            "welcomePromptRemote3": "Tüm .log dosyalarını indir",
+            "marketplace": {
+                "add": "Ekle",
+                "added": "Eklendi",
+                "all": "Tümü",
+                "available": "mevcut",
+                "browseProviders": "Sağlayıcılara gözat",
+                "chinese": "Çince",
+                "fast": "Hızlı çıkarım",
+                "flagship": "Amiral gemisi",
+                "gateway": "Gateway",
+                "local": "Yerel",
+                "localFeature": "Yerel",
+                "noResults": "Aramanızla eşleşen sağlayıcı bulunamadı",
+                "rag": "RAG",
+                "search": "Sağlayıcı ara...",
+                "searchFeature": "Web araması",
+                "specialized": "Özelleştirilmiş",
+                "streaming": "Streaming",
+                "subtitle": "Pazar yerimizden AI sağlayıcıları keşfedin ve ekleyin",
+                "thinking": "Thinking",
+                "title": "AI sağlayıcı pazar yeri",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Bu arşiv parola korumalı",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} silindi",
             "itemsDeleted": "{count} öğe silindi",
             "titleFull": "AeroVault - Askeri Düzeyde Şifreleme",
-            "totalItems": "toplam"
+            "totalItems": "toplam",
+            "remote": {
+                "cleanup": "Uzak kasayı kapat",
+                "downloading": "Kasa sunucudan indiriliyor...",
+                "noConnection": "Uzak kasaları açmak için bir sunucuya bağlanın",
+                "open": "Uzak kasayı aç",
+                "saveAndClose": "Kaydet ve kapat",
+                "title": "Uzak kasa",
+                "uploadFailed": "Kasa değişiklikleri yüklenemedi",
+                "uploading": "Kasa değişiklikleri yükleniyor..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",
@@ -2668,6 +2702,31 @@
             "localOnly": "Yalnızca yerel",
             "showRemote": "Uzak göster",
             "showSystemMenu": "Sistem menü çubuğunu göster"
+        },
+        "ai.agentMode.title": "Ajan Modu",
+        "ai.agentMode.description": "Arac onay davranisini, adim limitlerini ve otonomi seviyesini kontrol eder.",
+        "ai.agentMode.safe": "Guvenli",
+        "ai.agentMode.safeDesc": "Yalnizca guvenli araclar otomatik calisir. Oturum bellegi yok. Maks. 5 adim.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Guvenli araclar otomatik calisir. Orta araclar oturum basina onaylanir. Maks. 10 adim.",
+        "ai.agentMode.expert": "Uzman",
+        "ai.agentMode.expertDesc": "Guvenli ve orta otomatik calisir. Yuksek riskli oturum basina onaylanir. Maks. 25 adim.",
+        "ai.agentMode.extreme": "Ekstrem",
+        "ai.agentMode.extremeDesc": "Tum araclar otomatik calisir. Onay yok. Maks. 50 adim. Yalnizca Cyber.",
+        "security": {
+            "totp": {
+                "back": "Geri",
+                "disable": "2FA'yı devre dışı bırak",
+                "disableConfirm": "İki faktörlü kimlik doğrulamayı devre dışı bırakmak için mevcut TOTP kodunuzu girin:",
+                "enable": "2FA'yı etkinleştir",
+                "enabled": "İki faktörlü kimlik doğrulama etkinleştirildi",
+                "enterCode": "Doğrulamak için kimlik doğrulama uygulamanızdaki 6 haneli kodu girin:",
+                "invalidCode": "Geçersiz kod. Lütfen tekrar deneyin.",
+                "next": "İleri",
+                "scanQr": "Bu gizli anahtarı kimlik doğrulama uygulamanıza ekleyin (Google Authenticator, Authy, Microsoft Authenticator). Veya manuel anahtarı girin:",
+                "setup": "İki faktörlü kimlik doğrulama",
+                "verify": "Doğrula ve etkinleştir"
+            }
         }
     }
 }

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "ls -la चलाएं और जो दिखे उसका सारांश दें",
             "welcomePromptRemote1": "रिमोट सर्वर पर सभी फाइलें दिखाएं",
             "welcomePromptRemote2": "स्थानीय और रिमोट फोल्डर की तुलना करें",
-            "welcomePromptRemote3": "सभी .log फाइलें डाउनलोड करें"
+            "welcomePromptRemote3": "सभी .log फाइलें डाउनलोड करें",
+            "marketplace": {
+                "add": "जोड़ें",
+                "added": "जोड़ा गया",
+                "all": "सभी",
+                "available": "उपलब्ध",
+                "browseProviders": "प्रदाता खोजें",
+                "chinese": "चीनी",
+                "fast": "तेज़ अनुमान",
+                "flagship": "प्रमुख",
+                "gateway": "Gateway",
+                "local": "स्थानीय",
+                "localFeature": "स्थानीय",
+                "noResults": "आपकी खोज से कोई प्रदाता नहीं मिला",
+                "rag": "RAG",
+                "search": "प्रदाता खोजें...",
+                "searchFeature": "वेब खोज",
+                "specialized": "विशेषज्ञ",
+                "streaming": "Streaming",
+                "subtitle": "हमारे मार्केटप्लेस से AI प्रदाता खोजें और जोड़ें",
+                "thinking": "Thinking",
+                "title": "AI प्रदाता मार्केटप्लेस",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "यह आर्काइव पासवर्ड सुरक्षित है",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} हटाया गया",
             "itemsDeleted": "{count} आइटम हटाए गए",
             "titleFull": "AeroVault - सैन्य-ग्रेड एन्क्रिप्शन",
-            "totalItems": "कुल"
+            "totalItems": "कुल",
+            "remote": {
+                "cleanup": "रिमोट वॉल्ट बंद करें",
+                "downloading": "सर्वर से वॉल्ट डाउनलोड हो रहा है...",
+                "noConnection": "रिमोट वॉल्ट खोलने के लिए सर्वर से कनेक्ट करें",
+                "open": "रिमोट वॉल्ट खोलें",
+                "saveAndClose": "सहेजें और बंद करें",
+                "title": "रिमोट वॉल्ट",
+                "uploadFailed": "वॉल्ट परिवर्तन अपलोड करने में विफल",
+                "uploading": "वॉल्ट परिवर्तन अपलोड हो रहे हैं..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",
@@ -2668,6 +2702,31 @@
             "localOnly": "केवल स्थानीय",
             "showRemote": "रिमोट दिखाएं",
             "showSystemMenu": "सिस्टम मेनू बार दिखाएं"
+        },
+        "ai.agentMode.title": "एजेंट मोड",
+        "ai.agentMode.description": "टूल अनुमोदन व्यवहार, चरण सीमाओं और स्वायत्तता स्तर को नियंत्रित करता है।",
+        "ai.agentMode.safe": "सुरक्षित",
+        "ai.agentMode.safeDesc": "केवल सुरक्षित टूल स्वचालित रूप से चलते हैं। कोई सत्र मेमोरी नहीं। अधिकतम 5 चरण।",
+        "ai.agentMode.normal": "सामान्य",
+        "ai.agentMode.normalDesc": "सुरक्षित टूल स्वचालित रूप से चलते हैं। मध्यम टूल सत्र के लिए अनुमोदित। अधिकतम 10 चरण।",
+        "ai.agentMode.expert": "विशेषज्ञ",
+        "ai.agentMode.expertDesc": "सुरक्षित और मध्यम स्वचालित रूप से चलते हैं। उच्च-जोखिम सत्र के लिए अनुमोदित। अधिकतम 25 चरण।",
+        "ai.agentMode.extreme": "चरम",
+        "ai.agentMode.extremeDesc": "सभी टूल स्वचालित रूप से चलते हैं। कोई पुष्टिकरण नहीं। अधिकतम 50 चरण। केवल Cyber।",
+        "security": {
+            "totp": {
+                "back": "वापस",
+                "disable": "2FA अक्षम करें",
+                "disableConfirm": "दो-कारक प्रमाणीकरण अक्षम करने के लिए अपना वर्तमान TOTP कोड दर्ज करें:",
+                "enable": "2FA सक्षम करें",
+                "enabled": "दो-कारक प्रमाणीकरण सक्षम है",
+                "enterCode": "सत्यापन के लिए अपने प्रमाणक एप से 6 अंकों का कोड दर्ज करें:",
+                "invalidCode": "अमान्य कोड। कृपया पुनः प्रयास करें।",
+                "next": "अगला",
+                "scanQr": "इस रहस्य को अपने प्रमाणक एप में जोड़ें (Google Authenticator, Authy, Microsoft Authenticator)। या मैन्युअल कुंजी दर्ज करें:",
+                "setup": "दो-कारक प्रमाणीकरण",
+                "verify": "सत्यापित करें और सक्षम करें"
+            }
         }
     }
 }

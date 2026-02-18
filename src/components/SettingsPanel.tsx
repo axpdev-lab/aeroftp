@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
@@ -17,6 +17,7 @@ import { ConfirmDialog } from './Dialogs';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
+import { TotpSetup } from './TotpSetup';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
@@ -305,6 +306,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [masterPasswordError, setMasterPasswordError] = useState('');
     const [showOAuthSecrets, setShowOAuthSecrets] = useState(false);
 
+    // TOTP 2FA state
+    const [showTotpSetup, setShowTotpSetup] = useState(false);
+    const [totpEnabled, setTotpEnabled] = useState(false);
+    const [totpDisableCode, setTotpDisableCode] = useState('');
+    const [totpDisableError, setTotpDisableError] = useState('');
+    const [showTotpDisable, setShowTotpDisable] = useState(false);
+
     // Badge extension feedback
     const [badgeFeedback, setBadgeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [masterPasswordSuccess, setMasterPasswordSuccess] = useState('');
@@ -402,6 +410,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             }
                         })
                         .catch(console.error);
+
+                    // Load TOTP 2FA status
+                    invoke<boolean>('totp_status')
+                        .then(enabled => setTotpEnabled(enabled))
+                        .catch(() => setTotpEnabled(false));
                 } catch { }
             })();
         }
@@ -2420,8 +2433,120 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Two-Factor Authentication (2FA) */}
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                            <Shield size={24} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h4 className="font-medium text-base">{t('security.totp.setup')}</h4>
+                                            <p className="text-sm text-gray-500 mt-1">
+                                                {totpEnabled
+                                                    ? t('security.totp.enabled')
+                                                    : t('security.totp.enterCode').split('.')[0] + '.'
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Status Badge */}
+                                    <div className="flex items-center gap-2">
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                            totpEnabled
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                        }`}>
+                                            <Shield size={12} />
+                                            {totpEnabled ? '2FA Active' : '2FA Inactive'}
+                                        </span>
+                                    </div>
+
+                                    {!totpEnabled ? (
+                                        <button
+                                            onClick={() => setShowTotpSetup(true)}
+                                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                                                bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                        >
+                                            <Shield size={14} />
+                                            {t('security.totp.enable')}
+                                        </button>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {!showTotpDisable ? (
+                                                <button
+                                                    onClick={() => setShowTotpDisable(true)}
+                                                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                                                        bg-red-600/10 text-red-500 hover:bg-red-600/20 transition-colors"
+                                                >
+                                                    {t('security.totp.disable')}
+                                                </button>
+                                            ) : (
+                                                <div className="space-y-2 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
+                                                    <p className="text-sm text-red-600 dark:text-red-400">
+                                                        {t('security.totp.disableConfirm')}
+                                                    </p>
+                                                    <input
+                                                        type="text"
+                                                        value={totpDisableCode}
+                                                        onChange={e => setTotpDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                        placeholder="000000"
+                                                        maxLength={6}
+                                                        className="w-full text-center text-xl font-mono tracking-[0.3em] py-2 rounded-lg
+                                                            bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm"
+                                                    />
+                                                    {totpDisableError && (
+                                                        <p className="text-xs text-red-500">{totpDisableError}</p>
+                                                    )}
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => { setShowTotpDisable(false); setTotpDisableCode(''); setTotpDisableError(''); }}
+                                                            className="flex-1 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                                                        >
+                                                            {t('security.totp.back')}
+                                                        </button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const ok = await invoke<boolean>('totp_disable', { code: totpDisableCode });
+                                                                    if (ok) {
+                                                                        setTotpEnabled(false);
+                                                                        setShowTotpDisable(false);
+                                                                        setTotpDisableCode('');
+                                                                        setTotpDisableError('');
+                                                                    } else {
+                                                                        setTotpDisableError(t('security.totp.invalidCode'));
+                                                                    }
+                                                                } catch (e) {
+                                                                    setTotpDisableError(String(e));
+                                                                }
+                                                            }}
+                                                            disabled={totpDisableCode.length !== 6}
+                                                            className="flex-1 py-1.5 rounded text-sm bg-red-600 text-white disabled:opacity-50"
+                                                        >
+                                                            {t('security.totp.disable')}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
+
+                        {/* TOTP Setup Modal */}
+                        <TotpSetup
+                            isOpen={showTotpSetup}
+                            onClose={() => setShowTotpSetup(false)}
+                            onEnabled={(secret) => {
+                                setTotpEnabled(true);
+                                setShowTotpSetup(false);
+                                // Store secret in vault for persistence
+                                invoke('vault_store', { key: 'totp_secret', value: secret }).catch(() => {});
+                            }}
+                        />
 
                         {activeTab === 'backup' && (
                             <div className="space-y-6">

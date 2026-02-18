@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 // SVG icons from simple-icons (https://github.com/simple-icons/simple-icons)
 // Colors from official brand guidelines
@@ -77,17 +77,20 @@ export const KimiIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => 
 );
 
 // Qwen (Alibaba Cloud) - Official logo with gradient
-export const QwenIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
-    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fillRule="nonzero">
-        <path d="M12.604 1.34c.393.69.784 1.382 1.174 2.075a.18.18 0 00.157.091h5.552c.174 0 .322.11.446.327l1.454 2.57c.19.337.24.478.024.837-.26.43-.513.864-.76 1.3l-.367.658c-.106.196-.223.28-.04.512l2.652 4.637c.172.301.111.494-.043.77-.437.785-.882 1.564-1.335 2.34-.159.272-.352.375-.68.37-.777-.016-1.552-.01-2.327.016a.099.099 0 00-.081.05 575.097 575.097 0 01-2.705 4.74c-.169.293-.38.363-.725.364-.997.003-2.002.004-3.017.002a.537.537 0 01-.465-.271l-1.335-2.323a.09.09 0 00-.083-.049H4.982c-.285.03-.553-.001-.805-.092l-1.603-2.77a.543.543 0 01-.002-.54l1.207-2.12a.198.198 0 000-.197 550.951 550.951 0 01-1.875-3.272l-.79-1.395c-.16-.31-.173-.496.095-.965.465-.813.927-1.625 1.387-2.436.132-.234.304-.334.584-.335a338.3 338.3 0 012.589-.001.124.124 0 00.107-.063l2.806-4.895a.488.488 0 01.422-.246c.524-.001 1.053 0 1.583-.006L11.704 1c.341-.003.724.032.9.34zm-3.432.403a.06.06 0 00-.052.03L6.254 6.788a.157.157 0 01-.135.078H3.253c-.056 0-.07.025-.041.074l5.81 10.156c.025.042.013.062-.034.063l-2.795.015a.218.218 0 00-.2.116l-1.32 2.31c-.044.078-.021.118.068.118l5.716.008c.046 0 .08.02.104.061l1.403 2.454c.046.081.092.082.139 0l5.006-8.76.783-1.382a.055.055 0 01.096 0l1.424 2.53a.122.122 0 00.107.062l2.763-.02a.04.04 0 00.035-.02.041.041 0 000-.04l-2.9-5.086a.108.108 0 010-.113l.293-.507 1.12-1.977c.024-.041.012-.062-.035-.062H9.2c-.059 0-.073-.026-.043-.077l1.434-2.505a.107.107 0 000-.114L9.225 1.774a.06.06 0 00-.053-.031zm6.29 8.02c.046 0 .058.02.034.06l-.832 1.465-2.613 4.585a.056.056 0 01-.05.029.058.058 0 01-.05-.029L8.498 9.841c-.02-.034-.01-.052.028-.054l.216-.012 6.722-.012z" fill="url(#qwen-grad)" />
-        <defs>
-            <linearGradient id="qwen-grad" x1="0%" x2="100%" y1="0%" y2="0%">
-                <stop offset="0%" stopColor="#6336E7" stopOpacity=".84" />
-                <stop offset="100%" stopColor="#6F69F7" stopOpacity=".84" />
-            </linearGradient>
-        </defs>
-    </svg>
-);
+export const QwenIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => {
+    const gradId = useId();
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} className={className} fillRule="nonzero">
+            <path d="M12.604 1.34c.393.69.784 1.382 1.174 2.075a.18.18 0 00.157.091h5.552c.174 0 .322.11.446.327l1.454 2.57c.19.337.24.478.024.837-.26.43-.513.864-.76 1.3l-.367.658c-.106.196-.223.28-.04.512l2.652 4.637c.172.301.111.494-.043.77-.437.785-.882 1.564-1.335 2.34-.159.272-.352.375-.68.37-.777-.016-1.552-.01-2.327.016a.099.099 0 00-.081.05 575.097 575.097 0 01-2.705 4.74c-.169.293-.38.363-.725.364-.997.003-2.002.004-3.017.002a.537.537 0 01-.465-.271l-1.335-2.323a.09.09 0 00-.083-.049H4.982c-.285.03-.553-.001-.805-.092l-1.603-2.77a.543.543 0 01-.002-.54l1.207-2.12a.198.198 0 000-.197 550.951 550.951 0 01-1.875-3.272l-.79-1.395c-.16-.31-.173-.496.095-.965.465-.813.927-1.625 1.387-2.436.132-.234.304-.334.584-.335a338.3 338.3 0 012.589-.001.124.124 0 00.107-.063l2.806-4.895a.488.488 0 01.422-.246c.524-.001 1.053 0 1.583-.006L11.704 1c.341-.003.724.032.9.34zm-3.432.403a.06.06 0 00-.052.03L6.254 6.788a.157.157 0 01-.135.078H3.253c-.056 0-.07.025-.041.074l5.81 10.156c.025.042.013.062-.034.063l-2.795.015a.218.218 0 00-.2.116l-1.32 2.31c-.044.078-.021.118.068.118l5.716.008c.046 0 .08.02.104.061l1.403 2.454c.046.081.092.082.139 0l5.006-8.76.783-1.382a.055.055 0 01.096 0l1.424 2.53a.122.122 0 00.107.062l2.763-.02a.04.04 0 00.035-.02.041.041 0 000-.04l-2.9-5.086a.108.108 0 010-.113l.293-.507 1.12-1.977c.024-.041.012-.062-.035-.062H9.2c-.059 0-.073-.026-.043-.077l1.434-2.505a.107.107 0 000-.114L9.225 1.774a.06.06 0 00-.053-.031zm6.29 8.02c.046 0 .058.02.034.06l-.832 1.465-2.613 4.585a.056.056 0 01-.05.029.058.058 0 01-.05-.029L8.498 9.841c-.02-.034-.01-.052.028-.054l.216-.012 6.722-.012z" fill={`url(#${gradId})`} />
+            <defs>
+                <linearGradient id={gradId} x1="0%" x2="100%" y1="0%" y2="0%">
+                    <stop offset="0%" stopColor="#6336E7" stopOpacity=".84" />
+                    <stop offset="100%" stopColor="#6F69F7" stopOpacity=".84" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
+};
 
 // DeepSeek - Official logo (blue dolphin/whale)
 export const DeepSeekIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
@@ -96,4 +99,64 @@ export const DeepSeekIcon: React.FC<IconProps> = ({ size = 16, className = '' })
     </svg>
 );
 
-export default { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon };
+// Mistral AI - Official pixel logo (orange #FF7000)
+export const MistralIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className}>
+        <rect x="0" y="0" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="9.75" y="0" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="19.5" y="0" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="0" y="4.875" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="4.875" y="4.875" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="9.75" y="4.875" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="19.5" y="4.875" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="0" y="9.75" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="9.75" y="9.75" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="14.625" y="9.75" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="19.5" y="9.75" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="0" y="14.625" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="4.875" y="14.625" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="9.75" y="14.625" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="19.5" y="14.625" width="4.5" height="4.5" fill="#FFB800" />
+        <rect x="0" y="19.5" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="9.75" y="19.5" width="4.5" height="4.5" fill="#FF7000" />
+        <rect x="19.5" y="19.5" width="4.5" height="4.5" fill="#FF7000" />
+    </svg>
+);
+
+// Groq - Minimalist G logo (red #F55036)
+export const GroqIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#F55036">
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm4.243 16.607h-2.672v-3.399h-3.399V16.5H7.5V7.5h2.672v3.036h3.399V7.5h2.672v9.107z" />
+    </svg>
+);
+
+// Perplexity - Official logo (teal #20808D)
+export const PerplexityIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#20808D">
+        <path d="M12.168.002L5.584 5.25V0H4.066v7.37L.672 4.538l-.672.86L3.792 8.28H0v1.512h4.066v4.77L0 18.328v1.818l4.066-3.63v7.486h1.518v-5.688l5.516 5.672h.168l5.576-5.736v5.752h1.518v-7.478l4.066 3.622v-1.818l-4.066-3.766v-4.77H22.5V8.28h-3.552l3.78-2.87-.672-.86-3.624 2.832V0h-1.518v5.25L12.168.002zm.084 2.946L16.914 7.2v5.814L12.21 17.82l-4.626-4.806V7.2l4.668-4.252zM5.584 9.792v3.462l-2.16-1.998v-.696l2.16-.768zm12.834 0l2.1.768v.696l-2.1 1.998V9.792z" />
+    </svg>
+);
+
+// Cohere - Official logo (purple-coral gradient)
+export const CohereIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => {
+    const gradId = useId();
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} className={className}>
+            <path d="M8.084 2.607c-1.87 0-4.762.614-4.762 5.224C3.322 12 5.148 14.2 9.44 14.2c2.064 0 3.844-.505 5.396-1.538a.498.498 0 01.576.016l4.14 3.06c.208.154.2.488-.016.624C17.308 18.318 14.028 21.6 7.984 21.6 2.924 21.6 0 17.728 0 12.568c0-6.612 4.448-10.16 8.636-10.16 4.496 0 7.412 2.4 7.412 4.8 0 3.028-3.364 5.4-7.964 5.4" fill={`url(#${gradId})`} />
+            <defs>
+                <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#6E57E0" />
+                    <stop offset="100%" stopColor="#D18EE2" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
+};
+
+// Together AI - Official logo (blue #1B65ED)
+export const TogetherIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#1B65ED">
+        <path d="M7 4.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm5 6.5H7v9h2v-5h1v5h2V11zm-7-2a2 2 0 114 0 2 2 0 01-4 0zm-1 3H2v8h1.5v-4H5v4h1.5v-8H5zm12-1a2 2 0 114 0 2 2 0 01-4 0zm-1 3h-1.5v8H16v-4h1.5v4H19v-8h-1.5z" />
+    </svg>
+);
+

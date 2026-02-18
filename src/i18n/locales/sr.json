@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Покрени ls -la и резимирај шта видиш",
             "welcomePromptRemote1": "Прикажи све датотеке на удаљеном серверу",
             "welcomePromptRemote2": "Упореди локалне и удаљене фасцикле",
-            "welcomePromptRemote3": "Преузми све .log датотеке"
+            "welcomePromptRemote3": "Преузми све .log датотеке",
+            "marketplace": {
+                "add": "Додај",
+                "added": "Додато",
+                "all": "Све",
+                "available": "доступно",
+                "browseProviders": "Прегледај пружаоце",
+                "chinese": "Кинески",
+                "fast": "Брза инференција",
+                "flagship": "Водећи",
+                "gateway": "Gateway",
+                "local": "Локални",
+                "localFeature": "Локални",
+                "noResults": "Ниједан пружалац не одговара вашој претрази",
+                "rag": "RAG",
+                "search": "Претражи пружаоце...",
+                "searchFeature": "Веб претрага",
+                "specialized": "Специјализовани",
+                "streaming": "Streaming",
+                "subtitle": "Откријте и додајте AI пружаоце са нашег тржишта",
+                "thinking": "Thinking",
+                "title": "AI тржиште пружалаца",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Ova arhiva je zaštićena lozinkom",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Обрисано {name}",
             "itemsDeleted": "{count} ставки обрисано",
             "titleFull": "AeroVault - Војна класа шифровања",
-            "totalItems": "укупно"
+            "totalItems": "укупно",
+            "remote": {
+                "cleanup": "Затвори удаљени трезор",
+                "downloading": "Преузимање трезора са сервера...",
+                "noConnection": "Повежите се на сервер за отварање удаљених трезора",
+                "open": "Отвори удаљени трезор",
+                "saveAndClose": "Сачувај и затвори",
+                "title": "Удаљени трезор",
+                "uploadFailed": "Отпремање промена трезора није успело",
+                "uploading": "Отпремање промена трезора..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator trezor",
@@ -2668,6 +2702,31 @@
             "localOnly": "Само локално",
             "showRemote": "Прикажи удаљено",
             "showSystemMenu": "Прикажи системски мени"
+        },
+        "ai.agentMode.title": "Режим агента",
+        "ai.agentMode.description": "Контролише понашање одобравања алата, ограничења корака и ниво аутономије.",
+        "ai.agentMode.safe": "Безбедан",
+        "ai.agentMode.safeDesc": "Само безбедни алати се извршавају аутоматски. Без меморије сесије. Макс. 5 корака.",
+        "ai.agentMode.normal": "Нормалан",
+        "ai.agentMode.normalDesc": "Безбедни алати се извршавају аутоматски. Средnji алати одобрени за сесију. Макс. 10 корака.",
+        "ai.agentMode.expert": "Експерт",
+        "ai.agentMode.expertDesc": "Безбедни и средњи се извршавају аутоматски. Високоризични одобрени за сесију. Макс. 25 корака.",
+        "ai.agentMode.extreme": "Екстремни",
+        "ai.agentMode.extremeDesc": "Сви алати се извршавају аутоматски. Без потврда. Макс. 50 корака. Само Cyber.",
+        "security": {
+            "totp": {
+                "back": "Назад",
+                "disable": "Онемогући 2FA",
+                "disableConfirm": "Унесите ваш тренутни TOTP код за онемогућавање двофакторске аутентификације:",
+                "enable": "Омогући 2FA",
+                "enabled": "Двофакторска аутентификација је омогућена",
+                "enterCode": "Унесите 6-цифрени код из ваше аутентификаторске апликације за верификацију:",
+                "invalidCode": "Неважећи код. Покушајте поново.",
+                "next": "Даље",
+                "scanQr": "Додајте ову тајну у вашу аутентификаторску апликацију (Google Authenticator, Authy, Microsoft Authenticator). Или унесите ручни кључ:",
+                "setup": "Двофакторска аутентификација",
+                "verify": "Потврди и омогући"
+            }
         }
     }
 }

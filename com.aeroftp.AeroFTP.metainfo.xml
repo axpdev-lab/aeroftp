@@ -26,7 +26,7 @@
     <p>AI Assistant:</p>
     <ul>
       <li>AeroAgent Pro: AI-powered assistant with 45 tools, shell command execution, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
-      <li>10 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Custom</li>
+      <li>15 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
     </ul>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.2.4" date="2026-02-18">
+      <description>
+        <p>Provider Marketplace, 2FA Vault, Remote Vault, CLI and Security Hardening: Searchable Provider Marketplace modal with 15 AI providers across 6 categories. 5 new providers (Mistral, Groq, Perplexity, Cohere, Together AI). TOTP two-factor authentication for vault master password with rate limiting. Remote Vault support for opening .aerovault files on connected servers. CLI foundation (aeroftp-cli binary with connect/ls/get/put/sync). CSP violation reporter. 13 security findings fixed from 5-auditor review.</p>
+      </description>
+    </release>
     <release version="2.2.3" date="2026-02-17">
       <description>
         <p>AeroAgent Welcome Screen and Shell Execute: Professional welcome screen with Lucide icons, 3x3 capability grid, API key setup detection, and clickable quick prompts. New shell_execute backend tool captures real stdout/stderr/exit code (replaces terminal_execute). i18n structural audit fixes 1188 leaked keys across 45 locales. Error message translation paths corrected. 29 new i18n keys in 47 languages.</p>

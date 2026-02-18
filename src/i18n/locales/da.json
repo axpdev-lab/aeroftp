@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Koer ls -la og opsummer hvad du ser",
             "welcomePromptRemote1": "Vis alle filer pa fjernserveren",
             "welcomePromptRemote2": "Sammenlign lokale og fjernmapper",
-            "welcomePromptRemote3": "Download alle .log filer"
+            "welcomePromptRemote3": "Download alle .log filer",
+            "marketplace": {
+                "add": "Tilføj",
+                "added": "Tilføjet",
+                "all": "Alle",
+                "available": "tilgængelige",
+                "browseProviders": "Gennemse udbydere",
+                "chinese": "Kinesisk",
+                "fast": "Hurtig inferens",
+                "flagship": "Flagskib",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Ingen udbydere matcher din søgning",
+                "rag": "RAG",
+                "search": "Søg udbydere...",
+                "searchFeature": "Websøgning",
+                "specialized": "Specialiseret",
+                "streaming": "Streaming",
+                "subtitle": "Opdag og tilføj AI-udbydere fra vores markedsplads",
+                "thinking": "Thinking",
+                "title": "AI-udbydermarkedsplads",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Dette arkiv er adgangskodebeskyttet",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} slettet",
             "itemsDeleted": "{count} element(er) slettet",
             "titleFull": "AeroVault - Militærgrad kryptering",
-            "totalItems": "i alt"
+            "totalItems": "i alt",
+            "remote": {
+                "cleanup": "Luk fjernboks",
+                "downloading": "Downloader boks fra serveren...",
+                "noConnection": "Opret forbindelse til en server for at åbne fjernbokse",
+                "open": "Åbn fjernboks",
+                "saveAndClose": "Gem & Luk",
+                "title": "Fjernboks",
+                "uploadFailed": "Kunne ikke uploade boksændringer",
+                "uploading": "Uploader boksændringer..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-boks",
@@ -2668,6 +2702,31 @@
             "localOnly": "Kun lokalt",
             "showRemote": "Vis fjern",
             "showSystemMenu": "Vis systemmenulinje"
+        },
+        "ai.agentMode.title": "Agenttilstand",
+        "ai.agentMode.description": "Styrer godkendelsesadfærd for værktøjer, trinbegrænsninger og autonominiveau.",
+        "ai.agentMode.safe": "Sikker",
+        "ai.agentMode.safeDesc": "Kun sikre værktøjer køres automatisk. Ingen sessionshukommelse. Maks 5 trin.",
+        "ai.agentMode.normal": "Normal",
+        "ai.agentMode.normalDesc": "Sikre værktøjer køres automatisk. Mellemrisiko-værktøjer godkendes for sessionen. Maks 10 trin.",
+        "ai.agentMode.expert": "Ekspert",
+        "ai.agentMode.expertDesc": "Sikre og mellemrisiko køres automatisk. Højrisiko godkendes for sessionen. Maks 25 trin.",
+        "ai.agentMode.extreme": "Ekstrem",
+        "ai.agentMode.extremeDesc": "Alle værktøjer køres automatisk. Ingen bekræftelser. Maks 50 trin. Kun Cyber.",
+        "security": {
+            "totp": {
+                "back": "Tilbage",
+                "disable": "Deaktiver 2FA",
+                "disableConfirm": "Indtast din nuværende TOTP-kode for at deaktivere tofaktorgodkendelse:",
+                "enable": "Aktiver 2FA",
+                "enabled": "Tofaktorgodkendelse er aktiveret",
+                "enterCode": "Indtast den 6-cifrede kode fra din godkendelsesapp for at bekræfte:",
+                "invalidCode": "Ugyldig kode. Prøv igen.",
+                "next": "Næste",
+                "scanQr": "Tilføj denne hemmelighed til din godkendelsesapp (Google Authenticator, Authy, Microsoft Authenticator). Eller indtast nøglen manuelt:",
+                "setup": "Tofaktorgodkendelse",
+                "verify": "Bekræft & Aktiver"
+            }
         }
     }
 }

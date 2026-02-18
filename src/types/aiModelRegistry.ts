@@ -337,6 +337,28 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     // DeepSeek
     'deepseek-chat': { displayName: 'DeepSeek V3', maxTokens: 8192, maxContextTokens: 65536, inputCostPer1k: 0.00014, outputCostPer1k: 0.00028, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
     'deepseek-reasoner': { displayName: 'DeepSeek R1', maxTokens: 8192, maxContextTokens: 65536, inputCostPer1k: 0.00055, outputCostPer1k: 0.0022, supportsStreaming: true, supportsTools: false, supportsVision: false, supportsThinking: true, supportsParallelTools: false, toolCallQuality: 1, bestFor: ['reasoning', 'math'] },
+
+    // Mistral
+    'mistral-large-latest': { displayName: 'Mistral Large', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.002, outputCostPer1k: 0.006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
+    'mistral-small-latest': { displayName: 'Mistral Small', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0002, outputCostPer1k: 0.0006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['fast', 'general'] },
+    'codestral-latest': { displayName: 'Codestral', maxTokens: 8192, maxContextTokens: 32768, inputCostPer1k: 0.0003, outputCostPer1k: 0.0009, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['code'] },
+    'pixtral-large-latest': { displayName: 'Pixtral Large', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.002, outputCostPer1k: 0.006, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['vision', 'general'] },
+
+    // Groq
+    'llama-3.3-70b-versatile': { displayName: 'Llama 3.3 70B', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.00059, outputCostPer1k: 0.00079, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['fast', 'general'] },
+    'llama-3.1-8b-instant': { displayName: 'Llama 3.1 8B Instant', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.00005, outputCostPer1k: 0.00008, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 2, bestFor: ['fast'] },
+
+    // Perplexity
+    'sonar-pro': { displayName: 'Sonar Pro', maxTokens: 8192, maxContextTokens: 200000, inputCostPer1k: 0.003, outputCostPer1k: 0.015, supportsStreaming: true, supportsTools: false, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 1, bestFor: ['search', 'research'] },
+    'sonar': { displayName: 'Sonar', maxTokens: 8192, maxContextTokens: 128000, inputCostPer1k: 0.001, outputCostPer1k: 0.001, supportsStreaming: true, supportsTools: false, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 1, bestFor: ['search', 'fast'] },
+
+    // Cohere
+    'command-r-plus': { displayName: 'Command R+', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.0025, outputCostPer1k: 0.01, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 3, bestFor: ['general', 'rag'] },
+    'command-r': { displayName: 'Command R', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.00015, outputCostPer1k: 0.0006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 2, bestFor: ['fast', 'rag'] },
+
+    // Together AI
+    'meta-llama/Llama-3.3-70B-Instruct': { displayName: 'Llama 3.3 70B (Together)', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.00054, outputCostPer1k: 0.00054, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['general', 'code'] },
+    'Qwen/QwQ-32B': { displayName: 'QwQ 32B (Together)', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0003, outputCostPer1k: 0.0003, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: true, supportsParallelTools: false, toolCallQuality: 3, bestFor: ['reasoning', 'code'] },
 };
 
 /**

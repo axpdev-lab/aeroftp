@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Fuehre ls -la aus und fasse zusammen, was du siehst",
             "welcomePromptRemote1": "Liste alle Dateien auf dem Remote-Server auf",
             "welcomePromptRemote2": "Vergleiche lokale und Remote-Ordner",
-            "welcomePromptRemote3": "Lade alle .log Dateien herunter"
+            "welcomePromptRemote3": "Lade alle .log Dateien herunter",
+            "marketplace": {
+                "add": "Hinzufügen",
+                "added": "Hinzugefügt",
+                "all": "Alle",
+                "available": "verfügbar",
+                "browseProviders": "Anbieter durchsuchen",
+                "chinese": "Chinesisch",
+                "fast": "Schnelle Inferenz",
+                "flagship": "Flaggschiff",
+                "gateway": "Gateway",
+                "local": "Lokal",
+                "localFeature": "Lokal",
+                "noResults": "Kein Anbieter entspricht Ihrer Suche",
+                "rag": "RAG",
+                "search": "Anbieter suchen...",
+                "searchFeature": "Websuche",
+                "specialized": "Spezialisiert",
+                "streaming": "Streaming",
+                "subtitle": "Entdecken und fügen Sie KI-Anbieter aus unserem Marketplace hinzu",
+                "thinking": "Thinking",
+                "title": "KI-Anbieter Marketplace",
+                "tools": "Werkzeuge",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Dieses Archiv ist passwortgeschützt",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "{name} gelöscht",
             "itemsDeleted": "{count} Element(e) gelöscht",
             "titleFull": "AeroVault - Militärische Verschlüsselung",
-            "totalItems": "gesamt"
+            "totalItems": "gesamt",
+            "remote": {
+                "cleanup": "Remote-Vault schließen",
+                "downloading": "Vault wird vom Server heruntergeladen...",
+                "noConnection": "Verbinden Sie sich mit einem Server, um Remote-Vaults zu öffnen",
+                "open": "Remote-Vault öffnen",
+                "saveAndClose": "Speichern und schließen",
+                "title": "Remote-Vault",
+                "uploadFailed": "Fehler beim Hochladen der Vault-Änderungen",
+                "uploading": "Vault-Änderungen werden hochgeladen..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",
@@ -2668,6 +2702,21 @@
             "localOnly": "Nur lokal",
             "showRemote": "Remote anzeigen",
             "showSystemMenu": "Systemmenüleiste anzeigen"
+        },
+        "security": {
+            "totp": {
+                "back": "Zurück",
+                "disable": "2FA deaktivieren",
+                "disableConfirm": "Geben Sie Ihren aktuellen TOTP-Code ein, um die Zwei-Faktor-Authentifizierung zu deaktivieren:",
+                "enable": "2FA aktivieren",
+                "enabled": "Zwei-Faktor-Authentifizierung ist aktiviert",
+                "enterCode": "Geben Sie den 6-stelligen Code aus Ihrer Authentifizierungs-App ein, um zu verifizieren:",
+                "invalidCode": "Ungültiger Code. Bitte versuchen Sie es erneut.",
+                "next": "Weiter",
+                "scanQr": "Fügen Sie dieses Geheimnis zu Ihrer Authentifizierungs-App hinzu (Google Authenticator, Authy, Microsoft Authenticator). Oder geben Sie den manuellen Schlüssel ein:",
+                "setup": "Zwei-Faktor-Authentifizierung",
+                "verify": "Verifizieren und aktivieren"
+            }
         }
     }
 }

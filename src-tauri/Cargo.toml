@@ -1,16 +1,21 @@
 [package]
 name = "aeroftp"
-version = "2.2.3"
+version = "2.2.4"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
 repository = "https://github.com/axpnet/aeroftp"
 edition = "2021"
 rust-version = "1.77.2"
+default-run = "aeroftp"
 
 [lib]
 name = "ftp_client_gui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "aeroftp-cli"
+path = "src/bin/aeroftp_cli.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -110,6 +115,13 @@ hkdf = "0.12"                                                          # HKDF ke
 # Security Toolkit - Cyber Tools (v2.1.0)
 blake3 = "1"                                                           # BLAKE3 hash (Hash Forge)
 similar = "2"                                                          # Unified diff for local_diff tool
+
+# TOTP 2FA for AeroVault (v2.3.0)
+totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238 TOTP with otpauth URI
+
+# CLI Foundation (v2.3.0)
+clap = { version = "4", features = ["derive"] }                        # CLI argument parser
+indicatif = "0.17"                                                     # Progress bars for CLI
 
 # Windows Explorer badge integration (v2.0.5)
 [target.'cfg(windows)'.dependencies]

@@ -1974,7 +1974,31 @@
             "welcomePromptLocal3": "Palaid ls -la un apkopo redzēto",
             "welcomePromptRemote1": "Uzskati visus failus attālajā serverī",
             "welcomePromptRemote2": "Salīdzini lokālās un attālās mapes",
-            "welcomePromptRemote3": "Lejupielādē visus .log failus"
+            "welcomePromptRemote3": "Lejupielādē visus .log failus",
+            "marketplace": {
+                "add": "Pievienot",
+                "added": "Pievienots",
+                "all": "Visi",
+                "available": "pieejams",
+                "browseProviders": "Pārlūkot pakalpojumu sniedzējus",
+                "chinese": "Ķīniešu",
+                "fast": "Ātra inferēšana",
+                "flagship": "Vadošais",
+                "gateway": "Gateway",
+                "local": "Lokāls",
+                "localFeature": "Lokāls",
+                "noResults": "Neviens pakalpojumu sniedzējs neatbilst jūsu meklējumam",
+                "rag": "RAG",
+                "search": "Meklēt pakalpojumu sniedzējus...",
+                "searchFeature": "Tīmekļa meklēšana",
+                "specialized": "Specializēti",
+                "streaming": "Streaming",
+                "subtitle": "Atklajiet un pievienojiet AI pakalpojumu sniedzējus no mūsu tirgū",
+                "thinking": "Thinking",
+                "title": "AI pakalpojumu sniedzēju tirgus",
+                "tools": "Tools",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Šis arhīvs ir aizsargāts ar paroli",
@@ -2035,7 +2059,17 @@
             "itemDeleted": "Dzēsts {name}",
             "itemsDeleted": "{count} vienums(-i) dzēsts(-i)",
             "titleFull": "AeroVault — militārā līmeņa šifrēšana",
-            "totalItems": "kopā"
+            "totalItems": "kopā",
+            "remote": {
+                "cleanup": "Aizvērt attālināto glabātuvi",
+                "downloading": "Lejupielādē glabātuvi no servera...",
+                "noConnection": "Savienojieties ar serveri, lai atvērtu attālinātās glabātuves",
+                "open": "Atvērt attālināto glabātuvi",
+                "saveAndClose": "Saglabāt un aizvērt",
+                "title": "Attālināta glabātuve",
+                "uploadFailed": "Neizdevās augšupielādēt glabātuves izmaiņas",
+                "uploading": "Augšupielādē glabātuves izmaiņas..."
+            }
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
@@ -2668,6 +2702,31 @@
             "localOnly": "Tikai lokāli",
             "showRemote": "Rādīt attālināto",
             "showSystemMenu": "Rādīt sistēmas izvēlnes joslu"
+        },
+        "ai.agentMode.title": "Agenta rezims",
+        "ai.agentMode.description": "Kontrole riku apstiprinasanas uzvedibui, solu ierobezojumiem un autonomijas limeni.",
+        "ai.agentMode.safe": "Dross",
+        "ai.agentMode.safeDesc": "Tikai drosi riki tiek izpilditi automatiski. Nav sesijas atminas. Maks. 5 soli.",
+        "ai.agentMode.normal": "Normales",
+        "ai.agentMode.normalDesc": "Drosi riki tiek izpilditi automatiski. Videja limena riki apstiprinati pa sesiju. Maks. 10 soli.",
+        "ai.agentMode.expert": "Eksperts",
+        "ai.agentMode.expertDesc": "Drosi un videja limena riki tiek izpilditi automatiski. Augsta riska riki apstiprinati pa sesiju. Maks. 25 soli.",
+        "ai.agentMode.extreme": "Ekstremals",
+        "ai.agentMode.extremeDesc": "Visi riki tiek izpilditi automatiski. Nav apstiprinajumu. Maks. 50 soli. Tikai Cyber.",
+        "security": {
+            "totp": {
+                "back": "Atpakaļ",
+                "disable": "Atslēgt 2FA",
+                "disableConfirm": "Ievadiet savu pašreizējo TOTP kodu, lai atslēgtu divfaktoru autentifikāciju:",
+                "enable": "Ieslēgt 2FA",
+                "enabled": "Divfaktoru autentifikācija ir ieslēgta",
+                "enterCode": "Ievadiet 6 ciparu kodu no savas autentifikācijas lietotnes verificēšanai:",
+                "invalidCode": "Nederīgs kods. Lūdzu, mēģiniet vēlreiz.",
+                "next": "Tālāk",
+                "scanQr": "Pievienojiet šo noslēpumu savai autentifikācijas lietotnei (Google Authenticator, Authy, Microsoft Authenticator). Vai ievadiet manuālo atslēgu:",
+                "setup": "Divfaktoru autentifikācija",
+                "verify": "Pārbaudīt un ieslēgt"
+            }
         }
     }
 }

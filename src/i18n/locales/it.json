@@ -2021,7 +2021,31 @@
             "welcomePromptLocal3": "Esegui ls -la e riassumi cosa vedi",
             "welcomePromptRemote1": "Elenca tutti i file sul server remoto",
             "welcomePromptRemote2": "Confronta le cartelle locali e remote",
-            "welcomePromptRemote3": "Scarica tutti i file .log"
+            "welcomePromptRemote3": "Scarica tutti i file .log",
+            "marketplace": {
+                "add": "Aggiungi",
+                "added": "Aggiunto",
+                "all": "Tutti",
+                "available": "disponibili",
+                "browseProviders": "Sfoglia provider",
+                "chinese": "Cinese",
+                "fast": "Inferenza rapida",
+                "flagship": "Di punta",
+                "gateway": "Gateway",
+                "local": "Locale",
+                "localFeature": "Locale",
+                "noResults": "Nessun provider corrisponde alla ricerca",
+                "rag": "RAG",
+                "search": "Cerca provider...",
+                "searchFeature": "Ricerca web",
+                "specialized": "Specializzato",
+                "streaming": "Streaming",
+                "subtitle": "Scopri e aggiungi provider AI dal nostro marketplace",
+                "thinking": "Thinking",
+                "title": "Marketplace Provider AI",
+                "tools": "Strumenti",
+                "vision": "Vision"
+            }
         },
         "archive": {
             "passwordRequired": "Questo archivio è protetto da password",
@@ -2148,7 +2172,17 @@
             "itemDeleted": "Eliminato {name}",
             "extracted": "Estratto {name}",
             "totalItems": "totale",
-            "cascade": "Cascata"
+            "cascade": "Cascata",
+            "remote": {
+                "cleanup": "Chiudi vault remoto",
+                "downloading": "Download del vault dal server in corso...",
+                "noConnection": "Connettiti a un server per aprire vault remoti",
+                "open": "Apri vault remoto",
+                "saveAndClose": "Salva e chiudi",
+                "title": "Vault remoto",
+                "uploadFailed": "Impossibile caricare le modifiche al vault",
+                "uploading": "Caricamento delle modifiche al vault..."
+            }
         },
         "cryptomator": {
             "title": "Vault Cryptomator",
@@ -2668,6 +2702,21 @@
             "localOnly": "Solo locale",
             "showRemote": "Mostra remoto",
             "showSystemMenu": "Mostra barra menu di sistema"
+        },
+        "security": {
+            "totp": {
+                "back": "Indietro",
+                "disable": "Disabilita 2FA",
+                "disableConfirm": "Inserisci il codice TOTP corrente per disabilitare l'autenticazione a due fattori:",
+                "enable": "Abilita 2FA",
+                "enabled": "L'autenticazione a due fattori è abilitata",
+                "enterCode": "Inserisci il codice a 6 cifre dalla tua app di autenticazione per verificare:",
+                "invalidCode": "Codice non valido. Riprova.",
+                "next": "Avanti",
+                "scanQr": "Aggiungi questo segreto alla tua app di autenticazione (Google Authenticator, Authy, Microsoft Authenticator). Oppure inserisci la chiave manuale:",
+                "setup": "Autenticazione a due fattori",
+                "verify": "Verifica e abilita"
+            }
         }
     }
 }
