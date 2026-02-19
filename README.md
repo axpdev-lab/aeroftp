@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 14 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 16 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <p align="center">
@@ -18,7 +18,8 @@
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
   <img src="https://img.shields.io/badge/tauri-2-blue?logo=tauri&logoColor=white" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
-  <img src="https://img.shields.io/badge/protocols-14-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/protocols-16-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/AI%20providers-15-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
   <img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" alt="Linux" />
@@ -32,7 +33,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 14 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 16 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
@@ -40,7 +41,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (14 protocols, sync, share)
+├── AeroCloud    — Personal cloud (16 protocols, sync, share)
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
@@ -53,7 +54,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any FTP server** into a private personal cloud. Connect to 14 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any FTP server** into a private personal cloud. Connect to 16 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -156,7 +157,7 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **28 provider-agnostic tools** that work across all 14 protocols. 15 AI providers, vision support, RAG indexing, and a plugin system.
+An AI assistant with **28 provider-agnostic tools** that work across all 16 protocols. 15 AI providers, vision support, RAG indexing, and a plugin system.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, Custom
 
