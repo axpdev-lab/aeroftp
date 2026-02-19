@@ -812,12 +812,19 @@ pub async fn provider_exists(
 /// OAuth2 connection parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthConnectionParams {
-    /// Provider: "google_drive", "dropbox", "onedrive"
+    /// Provider: "google_drive", "dropbox", "onedrive", "zoho_workdrive", etc.
     pub provider: String,
     /// OAuth2 client ID (from app registration)
     pub client_id: String,
     /// OAuth2 client secret (from app registration)
     pub client_secret: String,
+    /// Region for multi-region providers (Zoho: "us", "eu", "in", "au", "jp", "ca", "sa")
+    #[serde(default = "default_region")]
+    pub region: String,
+}
+
+fn default_region() -> String {
+    "us".to_string()
 }
 
 /// OAuth2 flow state
@@ -853,7 +860,10 @@ pub async fn oauth2_start_auth(
             OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
         }
         "pcloud" => {
-            OAuthConfig::pcloud(&params.client_id, &params.client_secret)
+            OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region)
+        }
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+            OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -861,7 +871,7 @@ pub async fn oauth2_start_auth(
     let manager = OAuth2Manager::new();
     let (auth_url, state) = manager.start_auth_flow(&config).await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
-    
+
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {
         info!("Could not open browser automatically: {}", e);
@@ -895,7 +905,10 @@ pub async fn oauth2_complete_auth(
             OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
         }
         "pcloud" => {
-            OAuthConfig::pcloud(&params.client_id, &params.client_secret)
+            OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region)
+        }
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+            OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -920,9 +933,10 @@ pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
-    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
+    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider, ZohoWorkdriveProvider,
                           google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
-                          onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig};
+                          onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
+                          zoho_workdrive::ZohoWorkdriveConfig};
 
     info!("Connecting to OAuth2 provider: {}", params.provider);
 
@@ -962,11 +976,18 @@ pub async fn oauth2_connect(
             let config = PCloudConfig {
                 client_id: params.client_id.clone(),
                 client_secret: params.client_secret.clone(),
-                region: "us".to_string(),
+                region: params.region.clone(),
             };
             let mut p = PCloudProvider::new(config);
             p.connect().await
                 .map_err(|e| format!("pCloud connection failed: {}", e))?;
+            Box::new(p)
+        }
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+            let config = ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
+            let mut p = ZohoWorkdriveProvider::new(config);
+            p.connect().await
+                .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
             Box::new(p)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
@@ -996,6 +1017,7 @@ pub async fn oauth2_full_auth(
     let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
         "box" => 9484,
         "dropbox" => 17548,
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => 18765,
         _ => 0,
     };
 
@@ -1020,7 +1042,10 @@ pub async fn oauth2_full_auth(
             OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port)
         }
         "pcloud" => {
-            OAuthConfig::pcloud_with_port(&params.client_id, &params.client_secret, port)
+            OAuthConfig::pcloud_with_port(&params.client_id, &params.client_secret, port, &params.region)
+        }
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+            OAuthConfig::zoho_with_port(&params.client_id, &params.client_secret, port, &params.region)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -1084,6 +1109,7 @@ pub async fn oauth2_has_tokens(
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
         "box" => OAuthProvider::Box,
         "pcloud" => OAuthProvider::PCloud,
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
@@ -1104,6 +1130,7 @@ pub async fn oauth2_logout(
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
         "box" => OAuthProvider::Box,
         "pcloud" => OAuthProvider::PCloud,
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
@@ -2007,9 +2034,9 @@ pub async fn fourshared_connect(
 
     let config = FourSharedConfig {
         consumer_key: params.consumer_key,
-        consumer_secret: params.consumer_secret,
-        access_token,
-        access_token_secret,
+        consumer_secret: params.consumer_secret.into(),
+        access_token: access_token.into(),
+        access_token_secret: access_token_secret.into(),
     };
 
     let mut provider = FourSharedProvider::new(config);
@@ -2024,6 +2051,84 @@ pub async fn fourshared_connect(
 
     info!("Connected to 4shared ({})", account_email.as_deref().unwrap_or("no email"));
     Ok(OAuth2ConnectResult { display_name, account_email })
+}
+
+// ── Zoho WorkDrive Trash Operations ────────────────────────────────────
+
+/// List trashed files/folders in Zoho WorkDrive (privatespace + team folders)
+#[tauri::command]
+pub async fn zoho_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    // Downcast to ZohoWorkdriveProvider
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    zoho.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Permanently delete files/folders from Zoho WorkDrive trash
+#[tauri::command]
+pub async fn zoho_permanent_delete(
+    state: State<'_, ProviderState>,
+    file_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    if file_ids.len() == 1 {
+        zoho.permanent_delete(&file_ids[0]).await
+            .map_err(|e| format!("Permanent delete failed: {}", e))
+    } else {
+        zoho.permanent_delete_batch(&file_ids).await
+            .map_err(|e| format!("Permanent delete batch failed: {}", e))
+    }
+}
+
+/// Restore files/folders from Zoho WorkDrive trash to their original location
+#[tauri::command]
+pub async fn zoho_restore_from_trash(
+    state: State<'_, ProviderState>,
+    file_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    if file_ids.len() == 1 {
+        zoho.restore_from_trash(&file_ids[0]).await
+            .map_err(|e| format!("Restore failed: {}", e))
+    } else {
+        zoho.restore_from_trash_batch(&file_ids).await
+            .map_err(|e| format!("Restore batch failed: {}", e))
+    }
 }
 
 /// Check if 4shared tokens exist

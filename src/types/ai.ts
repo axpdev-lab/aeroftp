@@ -62,6 +62,7 @@ export interface AISettings {
         webSearchEnabled?: boolean;    // Provider web search (Kimi $web_search, Qwen enable_search)
         streamingTimeoutSecs?: number; // Streaming response timeout in seconds (default 120)
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
+        enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
     };
     defaultModelId: string | null;
 }

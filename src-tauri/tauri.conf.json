@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -71,7 +71,9 @@
                     "gstreamer1.0-plugins-bad"
                 ],
                 "files": {
-                    "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml"
+                    "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml",
+                    "/usr/share/polkit-1/actions/com.aeroftp.update.policy": "resources/com.aeroftp.update.policy",
+                    "/usr/lib/aeroftp/aeroftp-update-helper": "resources/aeroftp-update-helper"
                 }
             }
         },

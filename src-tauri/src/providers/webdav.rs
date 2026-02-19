@@ -7,13 +7,19 @@
 //! to provide full file system operations over HTTP/HTTPS.
 
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use md5::{Md5, Digest as _};
+use quick_xml::events::Event;
+use quick_xml::Reader;
 use rand::Rng;
 use reqwest::{Client, Method, StatusCode};
+use secrecy::ExposeSecret;
 use std::collections::HashMap;
+use tokio::io::AsyncWriteExt;
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, WebDavConfig,
+    sanitize_api_error,
 };
 
 // ============ HTTP Digest Authentication (RFC 2617) ============
@@ -164,7 +170,7 @@ impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
     pub fn new(config: WebDavConfig) -> Self {
         let client = Client::builder()
-            .danger_accept_invalid_certs(false) // Set to true for self-signed certs if needed
+            .danger_accept_invalid_certs(!config.verify_cert)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
@@ -200,194 +206,331 @@ impl WebDavProvider {
         if let Some(ref mut state) = self.digest_auth {
             let uri_path = extract_uri_path(&url);
             tracing::debug!("[WebDAV] Digest request: {} {} (uri={})", method.as_str(), url, uri_path);
-            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, &self.config.password);
+            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, self.config.password.expose_secret());
             builder.header("Authorization", auth)
         } else {
-            builder.basic_auth(&self.config.username, Some(&self.config.password))
+            builder.basic_auth(&self.config.username, Some(self.config.password.expose_secret()))
         }
     }
     
-    /// Parse PROPFIND XML response into RemoteEntry list
+    /// Parse PROPFIND XML response into RemoteEntry list using quick-xml
     fn parse_propfind_response(&self, xml: &str, base_path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut entries = Vec::new();
-        
-        // Simple XML parsing for WebDAV multistatus response
-        // In production, consider using quick-xml for proper parsing
-        
-        // Find all response elements with various namespace prefixes:
-        // <d:response>, <D:response>, <DAV:response>, <response>, <lp1:response>, etc.
-        let response_pattern = regex::Regex::new(r"(?s)<(?:[a-zA-Z0-9_]+:)?response[^>]*>(.*?)</(?:[a-zA-Z0-9_]+:)?response>")
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        
-        tracing::info!("[WebDAV] Parsing XML with base_path: {}, url: {}", base_path, self.config.url);
 
-        let match_count = response_pattern.captures_iter(xml).count();
-        tracing::info!("[WebDAV] Found {} response elements in XML", match_count);
-        
-        for cap in response_pattern.captures_iter(xml) {
-            if let Some(response_content) = cap.get(1) {
-                let content = response_content.as_str();
-                tracing::info!("[WebDAV] Processing response element, content length: {}", content.len());
-                
-                // Extract href
-                let href = self.extract_tag_content(content, "href");
-                tracing::info!("[WebDAV] Extracted href: {:?}", href);
-                if href.is_none() {
-                    tracing::warn!("[WebDAV] No href found in response element");
-                    continue;
-                }
-                let href = href.unwrap();
-                
-                // Skip the base path itself (first response is usually the directory itself)
-                let decoded_href = urlencoding::decode(&href).unwrap_or_else(|_| href.clone().into());
-                let clean_path = decoded_href.trim_end_matches('/');
-                let base_clean = base_path.trim_end_matches('/');
-                let url_clean = self.config.url.trim_end_matches('/');
-                
-                tracing::info!("[WebDAV] clean_path: {}, base_clean: {}, url_clean: {}", clean_path, base_clean, url_clean);
-                
-                // Check if this is the directory itself (not a child entry)
-                // Handle various formats: full URL, absolute path, or relative path
-                // Extract URL path component (e.g., "/dav" from "https://host/dav/")
-                let url_path_clean = url_clean
-                    .find("://")
-                    .and_then(|i| url_clean[i + 3..].find('/').map(|j| i + 3 + j))
-                    .map(|i| url_clean[i..].trim_end_matches('/'))
-                    .unwrap_or("");
+        tracing::debug!("[WebDAV] Parsing XML with base_path: {}, url: {}", base_path, self.config.url);
 
-                let is_self_reference = clean_path == base_clean
-                    || clean_path == url_clean
-                    || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
-                    || (!base_clean.is_empty() && clean_path.ends_with(&format!("/{}", base_clean.trim_start_matches('/'))))
-                    || (!base_clean.is_empty() && base_clean != "/" && url_clean.ends_with(clean_path))
-                    || (!url_path_clean.is_empty() && clean_path == url_path_clean);
-                
-                if is_self_reference {
-                    tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
-                    continue;
+        // Event-based quick-xml parser
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        let mut in_response = false;
+        let mut in_resourcetype = false;
+        let mut current_tag: Option<String> = None;
+        let mut href = String::new();
+        let mut displayname = String::new();
+        let mut getcontentlength = String::new();
+        let mut getlastmodified = String::new();
+        let mut getcontenttype = String::new();
+        let mut getetag = String::new();
+        let mut is_collection = false;
+        let mut is_collection_by_iscollection = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Err(e) => {
+                    tracing::warn!("[WebDAV] XML parse error at position {}: {}", reader.error_position(), e);
+                    break;
                 }
-                
-                // Check if it's a collection (directory) - handle various namespace formats
-                // Self-closing: <d:collection/>, <D:collection />, <collection/>
-                // Open+close: <d:collection></d:collection>, <D:collection></D:collection>
-                // DriveHQ uses <a:iscollection>1</a:iscollection>
-                // Check if resourcetype contains "collection" keyword (any format):
-                // Koofr: <D:collection xmlns:D="DAV:"/>  (has attributes before />)
-                // Nextcloud: <d:collection/>
-                // Generic: <collection/>, <D:collection></D:collection>
-                // Strategy: find <resourcetype>...</resourcetype> block, check for "collection" inside
-                let content_lower = content.to_lowercase();
-                // Find <resourcetype>...</resourcetype> block and check for "collection" inside
-                // Closing tag may have namespace: </d:resourcetype>, </D:resourcetype>, </resourcetype>
-                let has_collection_in_resourcetype = {
-                    if let Some(rt_start) = content_lower.find("resourcetype>") {
-                        let after_rt = rt_start + "resourcetype>".len();
-                        // Find closing </...resourcetype> - search for next "resourcetype>" after opening
-                        if let Some(rt_end_rel) = content_lower[after_rt..].find("resourcetype>") {
-                            let rt_content = &content_lower[after_rt..after_rt + rt_end_rel];
-                            rt_content.contains("collection")
-                        } else {
-                            false
+                Ok(Event::Eof) => break,
+
+                Ok(Event::Start(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    match local.as_str() {
+                        "response" => {
+                            in_response = true;
+                            href.clear();
+                            displayname.clear();
+                            getcontentlength.clear();
+                            getlastmodified.clear();
+                            getcontenttype.clear();
+                            getetag.clear();
+                            is_collection = false;
+                            is_collection_by_iscollection = false;
                         }
-                    } else {
-                        false
+                        "resourcetype" if in_response => {
+                            in_resourcetype = true;
+                        }
+                        "collection" if in_response && in_resourcetype => {
+                            is_collection = true;
+                        }
+                        "href" | "displayname" | "getcontentlength" | "getlastmodified"
+                        | "getcontenttype" | "getetag" | "iscollection" if in_response => {
+                            current_tag = Some(local);
+                        }
+                        _ => {}
                     }
-                };
-                let is_dir_by_iscollection = content_lower.contains("iscollection>1</");
-                let href_ends_slash = href.ends_with('/');
-                let is_dir = has_collection_in_resourcetype || is_dir_by_iscollection || href_ends_slash;
-                
-                // Extract content length
-                let size: u64 = self.extract_tag_content(content, "getcontentlength")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                
-                // Extract last modified
-                let modified = self.extract_tag_content(content, "getlastmodified");
-                
-                // Extract name from href
-                let name = decoded_href
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
-                
-                if name.is_empty() || name == "." || name == ".." {
-                    continue;
                 }
-                
-                // Build path relative to current directory
-                let path = if self.current_path.ends_with('/') {
-                    format!("{}{}", self.current_path, name)
-                } else {
-                    format!("{}/{}", self.current_path, name)
-                };
-                
-                // Extract content type for MIME
-                let mime_type = self.extract_tag_content(content, "getcontenttype");
-                
-                // Extract etag
-                let etag = self.extract_tag_content(content, "getetag");
-                
-                let mut metadata = HashMap::new();
-                if let Some(etag) = etag {
-                    metadata.insert("etag".to_string(), etag);
+
+                Ok(Event::Empty(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    if local == "collection" && in_response && in_resourcetype {
+                        is_collection = true;
+                    }
                 }
-                
-                entries.push(RemoteEntry {
-                    name,
-                    path,
-                    is_dir,
-                    size,
-                    modified,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type,
-                    metadata,
-                });
+
+                Ok(Event::End(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    match local.as_str() {
+                        "response" if in_response => {
+                            // Process accumulated response
+                            in_response = false;
+                            if href.is_empty() {
+                                tracing::warn!("[WebDAV] No href found in response element");
+                                continue;
+                            }
+
+                            let decoded_href = urlencoding::decode(&href)
+                                .unwrap_or_else(|_| href.clone().into());
+                            let clean_path = decoded_href.trim_end_matches('/');
+                            let base_clean = base_path.trim_end_matches('/');
+                            let url_clean = self.config.url.trim_end_matches('/');
+
+                            let url_path_clean = url_clean
+                                .find("://")
+                                .and_then(|i| url_clean[i + 3..].find('/').map(|j| i + 3 + j))
+                                .map(|i| url_clean[i..].trim_end_matches('/'))
+                                .unwrap_or("");
+
+                            let is_self_reference = clean_path == base_clean
+                                || clean_path == url_clean
+                                || (!base_clean.is_empty()
+                                    && clean_path.ends_with(base_clean))
+                                || (!base_clean.is_empty()
+                                    && clean_path.ends_with(&format!(
+                                        "/{}",
+                                        base_clean.trim_start_matches('/')
+                                    )))
+                                || (!base_clean.is_empty()
+                                    && base_clean != "/"
+                                    && url_clean.ends_with(clean_path))
+                                || (!url_path_clean.is_empty()
+                                    && clean_path == url_path_clean);
+
+                            if is_self_reference {
+                                tracing::debug!(
+                                    "[WebDAV] Skipping self-reference: {}",
+                                    clean_path
+                                );
+                                continue;
+                            }
+
+                            let href_ends_slash = href.ends_with('/');
+                            let is_dir = is_collection
+                                || is_collection_by_iscollection
+                                || href_ends_slash;
+
+                            let size: u64 =
+                                getcontentlength.parse().unwrap_or(0);
+                            let modified = if getlastmodified.is_empty() {
+                                None
+                            } else {
+                                Some(getlastmodified.clone())
+                            };
+
+                            // Extract name: prefer displayname, fallback to href
+                            let name = if !displayname.is_empty() {
+                                displayname.clone()
+                            } else {
+                                decoded_href
+                                    .trim_end_matches('/')
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or("")
+                                    .to_string()
+                            };
+
+                            if name.is_empty() || name == "." || name == ".." {
+                                continue;
+                            }
+
+                            let path = if self.current_path.ends_with('/') {
+                                format!("{}{}", self.current_path, name)
+                            } else {
+                                format!("{}/{}", self.current_path, name)
+                            };
+
+                            let mime_type = if getcontenttype.is_empty() {
+                                None
+                            } else {
+                                Some(getcontenttype.clone())
+                            };
+
+                            let mut metadata = HashMap::new();
+                            if !getetag.is_empty() {
+                                metadata
+                                    .insert("etag".to_string(), getetag.clone());
+                            }
+
+                            entries.push(RemoteEntry {
+                                name,
+                                path,
+                                is_dir,
+                                size,
+                                modified,
+                                permissions: None,
+                                owner: None,
+                                group: None,
+                                is_symlink: false,
+                                link_target: None,
+                                mime_type,
+                                metadata,
+                            });
+                        }
+                        "resourcetype" if in_resourcetype => {
+                            in_resourcetype = false;
+                        }
+                        _ => {
+                            if current_tag.as_deref() == Some(local.as_str()) {
+                                current_tag = None;
+                            }
+                        }
+                    }
+                }
+
+                Ok(Event::Text(ref e)) => {
+                    if let Some(ref tag) = current_tag {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !text.is_empty() {
+                            match tag.as_str() {
+                                "href" => href = text,
+                                "displayname" => displayname = text,
+                                "getcontentlength" => getcontentlength = text,
+                                "getlastmodified" => getlastmodified = text,
+                                "getcontenttype" => getcontenttype = text,
+                                "getetag" => getetag = text,
+                                "iscollection" => {
+                                    if text == "1" {
+                                        is_collection_by_iscollection = true;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                Ok(Event::CData(ref e)) => {
+                    if let Some(ref tag) = current_tag {
+                        let text = String::from_utf8_lossy(e.as_ref())
+                            .trim()
+                            .to_string();
+                        if !text.is_empty() {
+                            match tag.as_str() {
+                                "href" => href = text,
+                                "displayname" => displayname = text,
+                                "getcontentlength" => getcontentlength = text,
+                                "getlastmodified" => getlastmodified = text,
+                                "getcontenttype" => getcontenttype = text,
+                                "getetag" => getetag = text,
+                                "iscollection" => {
+                                    if text == "1" {
+                                        is_collection_by_iscollection = true;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                _ => {}
             }
+            buf.clear();
         }
-        
+
+        tracing::debug!("[WebDAV] Parsed {} entries", entries.len());
         Ok(entries)
     }
-    
-    /// Extract content from an XML tag (handles various namespace prefixes)
-    fn extract_tag_content(&self, xml: &str, tag: &str) -> Option<String> {
-        // Try various namespace prefixes used by different WebDAV servers
-        // DriveHQ uses 'a:', Nextcloud uses 'd:', some use 'D:', etc.
-        let patterns = [
-            // Generic pattern: any single-letter or word prefix (handles a:, d:, D:, DAV:, lp1:, etc.)
-            format!(r"<[a-zA-Z][a-zA-Z0-9]*:{}[^>]*>([^<]*)</[a-zA-Z][a-zA-Z0-9]*:{}>", tag, tag),
-            // No prefix
-            format!(r"<{}[^>]*>([^<]*)</{}>", tag, tag),
-            // CDATA content (DriveHQ uses CDATA for displayname)
-            format!(r"<[a-zA-Z][a-zA-Z0-9]*:{}[^>]*><!\[CDATA\[(.*?)\]\]></[a-zA-Z][a-zA-Z0-9]*:{}>", tag, tag),
-            format!(r"<{}[^>]*><!\[CDATA\[(.*?)\]\]></{}>", tag, tag),
-        ];
-        
-        for pattern in patterns {
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                if let Some(cap) = re.captures(xml) {
-                    if let Some(content) = cap.get(1) {
-                        let text = content.as_str().trim().to_string();
+
+    /// Extract a single property value from a PROPFIND Depth:0 XML response using quick-xml.
+    /// Used by stat() and storage_info() for simple single-response parsing.
+    fn extract_xml_properties(&self, xml: &str) -> HashMap<String, String> {
+        let mut props = HashMap::new();
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut current_tag: Option<String> = None;
+        let mut in_resourcetype = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Err(_) | Ok(Event::Eof) => break,
+                Ok(Event::Start(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    match local.as_str() {
+                        "resourcetype" => { in_resourcetype = true; }
+                        "collection" if in_resourcetype => {
+                            props.insert("_is_collection".to_string(), "true".to_string());
+                        }
+                        _ => { current_tag = Some(local); }
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    if local == "collection" && in_resourcetype {
+                        props.insert("_is_collection".to_string(), "true".to_string());
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    if local == "resourcetype" { in_resourcetype = false; }
+                    if current_tag.as_deref() == Some(local.as_str()) { current_tag = None; }
+                }
+                Ok(Event::Text(ref e)) => {
+                    if let Some(ref tag) = current_tag {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         if !text.is_empty() {
-                            return Some(text);
+                            if tag == "iscollection" && text == "1" {
+                                props.insert("_is_collection".to_string(), "true".to_string());
+                            }
+                            props.insert(tag.clone(), text);
                         }
                     }
                 }
+                Ok(Event::CData(ref e)) => {
+                    if let Some(ref tag) = current_tag {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !text.is_empty() {
+                            if tag == "iscollection" && text == "1" {
+                                props.insert("_is_collection".to_string(), "true".to_string());
+                            }
+                            props.insert(tag.clone(), text);
+                        }
+                    }
+                }
+                _ => {}
             }
+            buf.clear();
         }
-        
-        None
+        props
+    }
+}
+
+/// Strip namespace prefix from an XML element name, returning an owned String.
+/// e.g. "d:response" -> "response", "DAV:href" -> "href", "response" -> "response"
+fn local_name(raw: &[u8]) -> String {
+    let s = std::str::from_utf8(raw).unwrap_or("");
+    match s.rfind(':') {
+        Some(pos) => s[pos + 1..].to_string(),
+        None => s.to_string(),
     }
 }
 
 #[async_trait]
 impl StorageProvider for WebDavProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::WebDav
     }
@@ -439,7 +582,7 @@ impl StorageProvider for WebDavProvider {
                     .to_string();
 
                 if let Some(state) = DigestState::parse(&www_auth) {
-                    tracing::info!("[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
+                    tracing::debug!("[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
                         state.realm, state.qop, &state.nonce[..state.nonce.len().min(12)]);
                     self.digest_auth = Some(state);
 
@@ -453,11 +596,11 @@ impl StorageProvider for WebDavProvider {
                         .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
                     let retry_status = response2.status();
-                    tracing::info!("[WebDAV] Digest auth retry status: {}", retry_status);
+                    tracing::debug!("[WebDAV] Digest auth retry status: {}", retry_status);
 
                     match retry_status {
                         StatusCode::OK | StatusCode::MULTI_STATUS => {
-                            tracing::info!("[WebDAV] Digest auth successful");
+                            tracing::debug!("[WebDAV] Digest auth successful");
                             self.connected = true;
                             if let Some(ref initial_path) = self.config.initial_path {
                                 if !initial_path.is_empty() {
@@ -511,7 +654,7 @@ impl StorageProvider for WebDavProvider {
             path.to_string()
         };
         
-        tracing::info!("[WebDAV] Listing path: {}", list_path);
+        tracing::debug!("[WebDAV] Listing path: {}", list_path);
         
         let response = self.request(webdav_methods::propfind(), &list_path)
             .header("Depth", "1")
@@ -532,19 +675,18 @@ impl StorageProvider for WebDavProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         
         let status = response.status();
-        tracing::info!("[WebDAV] List response status: {}", status);
+        tracing::debug!("[WebDAV] List response status: {}", status);
         
         match status {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 
-                tracing::info!("[WebDAV] Response XML length: {} bytes", xml.len());
-                // Log full XML for debugging WebDAV issues
-                tracing::info!("[WebDAV] Full XML response:\n{}", xml);
+                tracing::debug!("[WebDAV] Response XML length: {} bytes", xml.len());
+                tracing::debug!("[WebDAV] Full XML response:\n{}", xml);
                 
                 let entries = self.parse_propfind_response(&xml, &list_path)?;
-                tracing::info!("[WebDAV] Parsed {} entries", entries.len());
+                tracing::debug!("[WebDAV] Parsed {} entries", entries.len());
                 Ok(entries)
             }
             StatusCode::NOT_FOUND => {
@@ -590,16 +732,10 @@ impl StorageProvider for WebDavProvider {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-                
-                // Check for collection - search for "collection" inside resourcetype block
-                let xml_lower = xml.to_lowercase();
-                let is_collection = if let Some(rt_start) = xml_lower.find("resourcetype>") {
-                    let after_rt = rt_start + "resourcetype>".len();
-                    if let Some(rt_end_rel) = xml_lower[after_rt..].find("resourcetype>") {
-                        xml_lower[after_rt..after_rt + rt_end_rel].contains("collection")
-                    } else { false }
-                } else { false } || xml_lower.contains("iscollection>1</");
-                
+
+                let props = self.extract_xml_properties(&xml);
+                let is_collection = props.contains_key("_is_collection");
+
                 if is_collection {
                     self.current_path = path.to_string();
                     Ok(())
@@ -644,16 +780,25 @@ impl StorageProvider for WebDavProvider {
         match response.status() {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
-                let bytes = response.bytes().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                
-                if let Some(progress) = on_progress {
-                    progress(bytes.len() as u64, total_size);
+                let mut stream = response.bytes_stream();
+                let mut file = tokio::fs::File::create(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let mut downloaded: u64 = 0;
+
+                while let Some(chunk_result) = stream.next().await {
+                    let chunk = chunk_result
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    file.write_all(&chunk)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    downloaded += chunk.len() as u64;
+                    if let Some(ref progress) = on_progress {
+                        progress(downloaded, total_size);
+                    }
                 }
-                
-                tokio::fs::write(local_path, &bytes).await
-                    .map_err(|e| ProviderError::IoError(e))?;
-                
+                file.flush().await.map_err(ProviderError::IoError)?;
+
                 Ok(())
             }
             StatusCode::NOT_FOUND => {
@@ -699,18 +844,22 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let data = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
-        
-        let total_size = data.len() as u64;
-        
+
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let total_size = file.metadata().await
+            .map_err(ProviderError::IoError)?
+            .len();
+
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+
         let response = self.request(Method::PUT, remote_path)
-            .body(data)
+            .body(body)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 if let Some(progress) = on_progress {
@@ -848,26 +997,20 @@ impl StorageProvider for WebDavProvider {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 let xml = response.text().await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-                
-                // Check for collection - search for "collection" inside resourcetype block
-                let xml_lower = xml.to_lowercase();
-                let is_dir = if let Some(rt_start) = xml_lower.find("resourcetype>") {
-                    let after_rt = rt_start + "resourcetype>".len();
-                    if let Some(rt_end_rel) = xml_lower[after_rt..].find("resourcetype>") {
-                        xml_lower[after_rt..after_rt + rt_end_rel].contains("collection")
-                    } else { false }
-                } else { false } || xml_lower.contains("iscollection>1</");
-                let size: u64 = self.extract_tag_content(&xml, "getcontentlength")
+
+                let props = self.extract_xml_properties(&xml);
+                let is_dir = props.contains_key("_is_collection");
+                let size: u64 = props.get("getcontentlength")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
-                let modified = self.extract_tag_content(&xml, "getlastmodified");
-                let mime_type = self.extract_tag_content(&xml, "getcontenttype");
-                
+                let modified = props.get("getlastmodified").cloned();
+                let mime_type = props.get("getcontenttype").cloned();
+
                 let name = std::path::Path::new(path)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.to_string());
-                
+
                 Ok(RemoteEntry {
                     name,
                     path: path.to_string(),
@@ -1013,10 +1156,11 @@ impl StorageProvider for WebDavProvider {
         let xml = response.text().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        let used = self.extract_tag_content(&xml, "quota-used-bytes")
+        let props = self.extract_xml_properties(&xml);
+        let used = props.get("quota-used-bytes")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
-        let free = self.extract_tag_content(&xml, "quota-available-bytes")
+        let free = props.get("quota-available-bytes")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
         let total = used + free;
@@ -1058,7 +1202,7 @@ impl StorageProvider for WebDavProvider {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("LOCK failed ({}): {}", status, text)));
+            return Err(ProviderError::ServerError(format!("LOCK failed ({}): {}", status, sanitize_api_error(&text))));
         }
 
         // Extract lock token from Lock-Token header or XML response
@@ -1093,7 +1237,7 @@ impl StorageProvider for WebDavProvider {
             reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT => Ok(()),
             status => {
                 let text = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(format!("UNLOCK failed ({}): {}", status, text)))
+                Err(ProviderError::ServerError(format!("UNLOCK failed ({}): {}", status, sanitize_api_error(&text))))
             }
         }
     }
@@ -1134,35 +1278,114 @@ impl StorageProvider for WebDavProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
+    fn test_config(url: &str) -> WebDavConfig {
+        WebDavConfig {
+            url: url.to_string(),
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        }
+    }
+
     #[test]
     fn test_build_url() {
-        let provider = WebDavProvider::new(WebDavConfig {
-            url: "https://cloud.example.com/remote.php/dav/files/user/".to_string(),
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            initial_path: None,
-        });
-        
+        let provider = WebDavProvider::new(
+            test_config("https://cloud.example.com/remote.php/dav/files/user/"),
+        );
+
         assert_eq!(
             provider.build_url("/Documents"),
             "https://cloud.example.com/remote.php/dav/files/user/Documents"
         );
     }
-    
+
     #[test]
-    fn test_extract_tag_content() {
-        let provider = WebDavProvider::new(WebDavConfig {
-            url: "https://example.com".to_string(),
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            initial_path: None,
-        });
-        
-        let xml = r#"<d:getcontentlength>12345</d:getcontentlength>"#;
-        assert_eq!(provider.extract_tag_content(xml, "getcontentlength"), Some("12345".to_string()));
-        
-        let xml2 = r#"<D:getcontenttype>text/plain</D:getcontenttype>"#;
-        assert_eq!(provider.extract_tag_content(xml2, "getcontenttype"), Some("text/plain".to_string()));
+    fn test_extract_xml_properties() {
+        let provider = WebDavProvider::new(test_config("https://example.com"));
+
+        // Test with d: prefix
+        let xml = r#"<d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:propstat>
+                    <d:prop>
+                        <d:getcontentlength>12345</d:getcontentlength>
+                        <d:getcontenttype>text/plain</d:getcontenttype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+        let props = provider.extract_xml_properties(xml);
+        assert_eq!(props.get("getcontentlength"), Some(&"12345".to_string()));
+        assert_eq!(props.get("getcontenttype"), Some(&"text/plain".to_string()));
+
+        // Test with D: prefix
+        let xml2 = r#"<D:multistatus xmlns:D="DAV:">
+            <D:response>
+                <D:propstat>
+                    <D:prop>
+                        <D:getcontentlength>99</D:getcontentlength>
+                    </D:prop>
+                </D:propstat>
+            </D:response>
+        </D:multistatus>"#;
+        let props2 = provider.extract_xml_properties(xml2);
+        assert_eq!(props2.get("getcontentlength"), Some(&"99".to_string()));
+
+        // Test collection detection
+        let xml3 = r#"<d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:propstat>
+                    <d:prop>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+        let props3 = provider.extract_xml_properties(xml3);
+        assert!(props3.contains_key("_is_collection"));
+    }
+
+    #[test]
+    fn test_parse_propfind_response() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"));
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/file.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:resourcetype/>
+                        <d:getcontentlength>1024</d:getcontentlength>
+                        <d:getlastmodified>Mon, 01 Jan 2024 00:00:00 GMT</d:getlastmodified>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/subdir/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "file.txt");
+        assert!(!entries[0].is_dir);
+        assert_eq!(entries[0].size, 1024);
+        assert_eq!(entries[1].name, "subdir");
+        assert!(entries[1].is_dir);
     }
 }

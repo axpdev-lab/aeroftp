@@ -248,7 +248,9 @@ export const TextViewer: React.FC<TextViewerProps> = ({
         if (!content || !lang) return '';
         const grammar = Prism.languages[lang];
         if (!grammar) return '';
-        return Prism.highlight(content, grammar, lang);
+        // SEC: Strip Unicode bidi override characters to prevent Trojan Source attacks
+        const safeContent = content.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
+        return Prism.highlight(safeContent, grammar, lang);
     }, [content, lang]);
 
     if (isLoading) {

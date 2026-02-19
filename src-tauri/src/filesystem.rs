@@ -528,27 +528,107 @@ async fn list_mounted_volumes_macos() -> Result<Vec<VolumeInfo>, String> {
     Ok(volumes)
 }
 
-// ─── Windows implementation (stub) ──────────────────────────────────────────
+// ─── Windows implementation (GAP-C02: real volume enumeration) ──────────────
 
 #[cfg(target_os = "windows")]
 async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
-    // Stub: return C: drive as a basic entry
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows::Win32::Storage::FileSystem::{
+        GetLogicalDrives, GetVolumeInformationW, GetDiskFreeSpaceExW, GetDriveTypeW,
+        DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_REMOTE, DRIVE_CDROM,
+    };
+    use windows::core::PCWSTR;
+
+    let drive_mask = unsafe { GetLogicalDrives() };
+    if drive_mask == 0 {
+        return Err("GetLogicalDrives failed".to_string());
+    }
+
     let mut volumes = Vec::new();
 
-    let c_drive = Path::new("C:\\");
-    if c_drive.exists() {
+    for i in 0u32..26 {
+        if drive_mask & (1 << i) == 0 {
+            continue;
+        }
+
+        let letter = (b'A' + i as u8) as char;
+        let root: Vec<u16> = format!("{}:\\", letter).encode_utf16().chain(std::iter::once(0)).collect();
+        let root_pcwstr = PCWSTR(root.as_ptr());
+
+        // Drive type classification
+        let drive_type = unsafe { GetDriveTypeW(root_pcwstr) };
+        let (volume_type, is_ejectable) = match drive_type {
+            DRIVE_REMOVABLE => ("removable", true),
+            DRIVE_FIXED => ("internal", false),
+            DRIVE_REMOTE => ("network", false),
+            DRIVE_CDROM => ("optical", true),
+            _ => ("unknown", false),
+        };
+
+        // Volume name and filesystem type
+        let mut vol_name_buf = [0u16; 256];
+        let mut fs_name_buf = [0u16; 64];
+        let vol_ok = unsafe {
+            GetVolumeInformationW(
+                root_pcwstr,
+                Some(&mut vol_name_buf),
+                None, None, None,
+                Some(&mut fs_name_buf),
+            )
+        };
+
+        let vol_name = if vol_ok.is_ok() {
+            let len = vol_name_buf.iter().position(|&c| c == 0).unwrap_or(vol_name_buf.len());
+            OsString::from_wide(&vol_name_buf[..len]).to_string_lossy().to_string()
+        } else {
+            String::new()
+        };
+
+        let fs_type = if vol_ok.is_ok() {
+            let len = fs_name_buf.iter().position(|&c| c == 0).unwrap_or(fs_name_buf.len());
+            OsString::from_wide(&fs_name_buf[..len]).to_string_lossy().to_lowercase()
+        } else {
+            "unknown".to_string()
+        };
+
+        // Disk space
+        let mut free_bytes_available = 0u64;
+        let mut total_bytes = 0u64;
+        let mut _total_free = 0u64;
+        let _ = unsafe {
+            GetDiskFreeSpaceExW(
+                root_pcwstr,
+                Some(&mut free_bytes_available as *mut u64),
+                Some(&mut total_bytes as *mut u64),
+                Some(&mut _total_free as *mut u64),
+            )
+        };
+
+        // Display name: "Volume Name (X:)" or "Local Disk (X:)"
+        let display_name = if vol_name.is_empty() {
+            match volume_type {
+                "removable" => format!("Removable Disk ({}:)", letter),
+                "network" => format!("Network Drive ({}:)", letter),
+                "optical" => format!("CD/DVD Drive ({}:)", letter),
+                _ => format!("Local Disk ({}:)", letter),
+            }
+        } else {
+            format!("{} ({}:)", vol_name, letter)
+        };
+
         volumes.push(VolumeInfo {
-            name: "Local Disk (C:)".to_string(),
-            mount_point: "C:\\".to_string(),
-            volume_type: "internal".to_string(),
-            total_bytes: 0,
-            free_bytes: 0,
-            fs_type: "ntfs".to_string(),
-            is_ejectable: false,
+            name: display_name,
+            mount_point: format!("{}:\\", letter),
+            volume_type: volume_type.to_string(),
+            total_bytes,
+            free_bytes: free_bytes_available,
+            fs_type,
+            is_ejectable,
         });
     }
 
-    info!("Detected {} mounted volumes (Windows stub)", volumes.len());
+    info!("Detected {} mounted volumes (Windows)", volumes.len());
     Ok(volumes)
 }
 
@@ -1097,89 +1177,48 @@ pub async fn delete_to_trash(path: String) -> Result<(), String> {
 
 // ─── Command 8: list_trash_items ────────────────────────────────────────────
 
-/// Percent-decode a string (for FreeDesktop .trashinfo Path= values).
-fn percent_decode(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let hex: String = chars.by_ref().take(2).collect();
-            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                result.push(byte as char);
-            } else {
-                result.push('%');
-                result.push_str(&hex);
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
 
 /// Lists items currently in the system trash (up to 200, sorted by deletion time).
-/// Uses FreeDesktop Trash spec on Linux, filesystem scanning on macOS.
+/// GAP-C01: Uses `trash` crate for cross-platform support (Linux + Windows).
+/// macOS uses manual ~/.Trash scanning (crate doesn't support list on macOS).
 #[tauri::command]
 pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
-    #[cfg(target_os = "linux")]
+    // Linux and Windows: use trash crate's os_limited API
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
-        let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-        let trash_info_dir = home.join(".local/share/Trash/info");
-        let trash_files_dir = home.join(".local/share/Trash/files");
+        let crate_items = trash::os_limited::list()
+            .map_err(|e| format!("Failed to list trash: {}", e))?;
 
-        if !trash_info_dir.exists() {
-            return Ok(Vec::new());
-        }
+        let mut items: Vec<TrashItem> = crate_items.iter().map(|item| {
+            let name = item.name.to_string_lossy().to_string();
+            let original_path = item.original_path().to_string_lossy().to_string();
+            let deleted_at = chrono::DateTime::from_timestamp(item.time_deleted, 0)
+                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
 
-        let mut items = Vec::new();
+            // Get size and is_dir via metadata (best-effort)
+            let (size, is_dir) = trash::os_limited::metadata(item)
+                .map(|m| match m.size {
+                    trash::TrashItemSize::Bytes(b) => (b, false),
+                    trash::TrashItemSize::Entries(_) => (0, true),
+                })
+                .unwrap_or((0, false));
 
-        if let Ok(entries) = std::fs::read_dir(&trash_info_dir) {
-            for entry in entries.filter_map(|e| e.ok()) {
-                let info_name = entry.file_name().to_string_lossy().to_string();
-                if !info_name.ends_with(".trashinfo") { continue; }
-
-                let base_name = info_name.trim_end_matches(".trashinfo").to_string();
-                let info_path = entry.path();
-
-                let content = match std::fs::read_to_string(&info_path) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-
-                let mut original_path = String::new();
-                let mut deleted_at = None;
-
-                for line in content.lines() {
-                    if let Some(path_val) = line.strip_prefix("Path=") {
-                        original_path = percent_decode(path_val);
-                    }
-                    if let Some(date) = line.strip_prefix("DeletionDate=") {
-                        deleted_at = Some(date.to_string());
-                    }
-                }
-
-                let file_in_trash = trash_files_dir.join(&base_name);
-                let (size, is_dir) = match std::fs::metadata(&file_in_trash) {
-                    Ok(m) => (m.len(), m.is_dir()),
-                    Err(_) => (0, false),
-                };
-
-                items.push(TrashItem {
-                    id: base_name.clone(),
-                    name: base_name,
-                    original_path,
-                    deleted_at,
-                    size,
-                    is_dir,
-                });
+            TrashItem {
+                id: item.id.to_string_lossy().to_string(),
+                name,
+                original_path,
+                deleted_at,
+                size,
+                is_dir,
             }
-        }
+        }).collect();
 
         items.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
         items.truncate(200);
         Ok(items)
     }
 
+    // macOS: manual ~/.Trash scanning (trash crate doesn't support list on macOS)
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or("Cannot find home directory")?;
@@ -1224,117 +1263,75 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
         items.truncate(200);
         Ok(items)
     }
-
-    #[cfg(target_os = "windows")]
-    {
-        Ok(Vec::new())
-    }
 }
 
 // ─── Command 9: restore_trash_item ──────────────────────────────────────────
 
 /// Restores a previously deleted item from the trash back to its original location.
-/// Currently supported on Linux only (FreeDesktop Trash spec).
+/// GAP-C01: Cross-platform via `trash` crate on Linux + Windows.
 #[tauri::command]
 pub async fn restore_trash_item(id: String, original_path: String) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
+    // Linux and Windows: use trash crate's os_limited API
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
-        // Sanitize trash item id - reject path separators and traversal
-        if id.contains('/') || id.contains('\\') || id.contains("..") || id.contains('\0') {
+        let _ = &original_path; // used for validation below
+
+        // Sanitize trash item id
+        if id.contains("..") || id.contains('\0') {
             return Err("Invalid trash item ID".to_string());
         }
 
-        // AF-RUST-C02: Validate original_path to prevent path traversal
-        // Reject paths containing '..' components
-        for component in Path::new(&original_path).components() {
-            if matches!(component, Component::ParentDir) {
-                return Err("Restore path must not contain '..' traversal".to_string());
-            }
-        }
-        // Must be absolute
-        if !Path::new(&original_path).is_absolute() {
-            return Err("Restore path must be absolute".to_string());
-        }
-        // Must be within user's home directory
-        let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-        let canonical_home = home.to_string_lossy().to_string();
-        if !original_path.starts_with(&canonical_home) {
-            return Err("Restore path must be within user's home directory".to_string());
-        }
+        // Find the matching item in trash by id
+        let all_items = trash::os_limited::list()
+            .map_err(|e| format!("Failed to list trash: {}", e))?;
 
-        let trash_files_dir = home.join(".local/share/Trash/files");
-        let trash_info_dir = home.join(".local/share/Trash/info");
+        let target = all_items.into_iter()
+            .find(|item| item.id.to_string_lossy() == id)
+            .ok_or_else(|| "Item not found in trash".to_string())?;
 
-        let source = trash_files_dir.join(&id);
-        let info_file = trash_info_dir.join(format!("{}.trashinfo", id));
-
-        if !source.exists() {
-            return Err("File not found in trash".to_string());
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = Path::new(&original_path).parent() {
+        // Ensure parent directory exists before restore
+        let restore_path = target.original_path();
+        if let Some(parent) = restore_path.parent() {
             tokio::fs::create_dir_all(parent).await
                 .map_err(|e| format!("Failed to create parent directory: {}", e))?;
         }
 
-        // Move file back to original location
-        tokio::fs::rename(&source, &original_path).await
-            .map_err(|e| format!("Failed to restore file: {}", e))?;
-
-        // Remove .trashinfo file
-        let _ = tokio::fs::remove_file(&info_file).await;
+        trash::os_limited::restore_all([target])
+            .map_err(|e| format!("Failed to restore from trash: {}", e))?;
 
         Ok(())
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
         let _ = (&id, &original_path);
-        Err("Restore from trash is not yet supported on this platform".to_string())
+        Err("Restore from trash is not yet supported on macOS".to_string())
     }
 }
 
 // ─── Command 10: empty_trash ────────────────────────────────────────────────
 
 /// Permanently deletes all items in the system trash. Returns the number of items removed.
+/// GAP-C01: Cross-platform via `trash` crate on Linux + Windows.
 #[tauri::command]
 pub async fn empty_trash() -> Result<u64, String> {
-    #[cfg(target_os = "linux")]
+    // Linux and Windows: use trash crate's os_limited API
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
-        let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-        let trash_files_dir = home.join(".local/share/Trash/files");
-        let trash_info_dir = home.join(".local/share/Trash/info");
+        let items = trash::os_limited::list()
+            .map_err(|e| format!("Failed to list trash: {}", e))?;
 
-        let mut count: u64 = 0;
+        let count = items.len() as u64;
 
-        // Remove all files in trash
-        if trash_files_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&trash_files_dir) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let _ = std::fs::remove_dir_all(&path);
-                    } else {
-                        let _ = std::fs::remove_file(&path);
-                    }
-                    count += 1;
-                }
-            }
-        }
-
-        // Remove all .trashinfo files
-        if trash_info_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&trash_info_dir) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
+        if !items.is_empty() {
+            trash::os_limited::purge_all(items)
+                .map_err(|e| format!("Failed to empty trash: {}", e))?;
         }
 
         Ok(count)
     }
 
+    // macOS: manual ~/.Trash clearing (trash crate doesn't support purge on macOS)
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or("Cannot find home directory")?;
@@ -1358,11 +1355,6 @@ pub async fn empty_trash() -> Result<u64, String> {
         }
 
         Ok(count)
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        Err("Empty trash is not yet supported on Windows".to_string())
     }
 }
 

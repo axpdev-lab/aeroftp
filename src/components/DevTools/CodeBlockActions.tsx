@@ -1,9 +1,32 @@
 import React, { useState, useCallback } from 'react';
-import { Copy, Check, Terminal, FileInput, AlertTriangle, FileDiff } from 'lucide-react';
+import { Copy, Check, Terminal, FileInput, AlertTriangle, FileDiff, ShieldAlert } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { DiffPreview } from './DiffPreview';
+
+// SEC: Command denylist matching backend ai_tools.rs DENIED_COMMAND_PATTERNS
+// Prevents destructive commands from being dispatched to PTY via "Run in Terminal"
+const DENIED_COMMAND_PATTERNS = [
+    /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\s*$/,
+    /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\s*$/,
+    /^\s*mkfs\b/,
+    /^\s*dd\s+.*of=\/dev\//,
+    /^\s*shutdown\b/,
+    /^\s*reboot\b/,
+    /^\s*halt\b/,
+    /^\s*init\s+[06]\b/,
+    /^\s*:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:/,
+    /^\s*>\s*\/dev\/sd[a-z]/,
+    /^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+\//,
+    /^\s*chown\s+.*\s+\/\s*$/,
+];
+
+function isCommandDenied(command: string): boolean {
+    return command.split('\n').some(line =>
+        DENIED_COMMAND_PATTERNS.some(rx => rx.test(line.trim()))
+    );
+}
 
 interface CodeBlockActionsProps {
     code: string;
@@ -23,6 +46,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
     const [applied, setApplied] = useState(false);
     const [applyError, setApplyError] = useState(false);
     const [confirmRun, setConfirmRun] = useState(false);
+    const [blocked, setBlocked] = useState(false);
     const [showDiff, setShowDiff] = useState(false);
     const [diffOriginal, setDiffOriginal] = useState<string | null>(null);
     const t = useTranslation();
@@ -75,6 +99,13 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
         if (confirmRun) {
             // Strip Unicode bidi override characters to prevent Trojan Source attacks
             const sanitizedCode = code.replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '');
+            // SEC: Check against denylist before PTY dispatch (mirrors backend ai_tools.rs)
+            if (isCommandDenied(sanitizedCode)) {
+                setBlocked(true);
+                setConfirmRun(false);
+                setTimeout(() => setBlocked(false), 3000);
+                return;
+            }
             window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command: sanitizedCode } }));
             window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
             setConfirmRun(false);
@@ -158,16 +189,23 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                     <FileDiff size={13} />
                 </button>
 
-                {/* Run in terminal (SEC-003: two-click confirmation, SEC-P4-001: command preview) */}
+                {/* Run in terminal (SEC-003: two-click confirmation, SEC-P4-001: command preview, GAP-B03: denylist) */}
                 <button
                     onClick={handleRunClick}
-                    className={`p-1 rounded transition-colors ${confirmRun ? 'bg-red-600/80 text-white hover:bg-red-500' : 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'}`}
-                    title={confirmRun
-                        ? `Confirm run: ${code.length > 200 ? code.slice(0, 200) + '...' : code}`
-                        : (t('ai.codeBlock.run') || 'Run in terminal')
+                    disabled={blocked}
+                    className={`p-1 rounded transition-colors ${
+                        blocked ? 'bg-orange-600/80 text-white cursor-not-allowed'
+                        : confirmRun ? 'bg-red-600/80 text-white hover:bg-red-500'
+                        : 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
+                    }`}
+                    title={blocked
+                        ? 'Command blocked: potentially destructive'
+                        : confirmRun
+                            ? `Confirm run: ${code.length > 200 ? code.slice(0, 200) + '...' : code}`
+                            : (t('ai.codeBlock.run') || 'Run in terminal')
                     }
                 >
-                    {confirmRun ? <AlertTriangle size={13} /> : <Terminal size={13} />}
+                    {blocked ? <ShieldAlert size={13} /> : confirmRun ? <AlertTriangle size={13} /> : <Terminal size={13} />}
                 </button>
             </div>
 

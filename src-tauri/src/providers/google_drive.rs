@@ -11,6 +11,7 @@ use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
+    sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -86,8 +87,10 @@ pub struct GoogleDriveProvider {
     connected: bool,
     current_folder_id: String,
     current_path: String,
-    /// Cache: path -> folder_id
-    folder_cache: HashMap<String, String>,
+    /// Cache: path -> (folder_id, last_access_counter) — LRU eviction by access counter
+    folder_cache: HashMap<String, (String, u64)>,
+    /// Monotonic access counter for LRU eviction
+    cache_access_counter: u64,
     /// Authenticated user email
     account_email: Option<String>,
 }
@@ -97,11 +100,15 @@ impl GoogleDriveProvider {
         Self {
             config,
             oauth_manager: OAuth2Manager::new(),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             connected: false,
             current_folder_id: "root".to_string(),
             current_path: "/".to_string(),
             folder_cache: HashMap::new(),
+            cache_access_counter: 0,
             account_email: None,
         }
     }
@@ -162,7 +169,7 @@ impl GoogleDriveProvider {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("API error {}: {}", status, text)));
+                return Err(ProviderError::Other(format!("API error {}: {}", status, sanitize_api_error(&text))));
             }
 
             let list: DriveFileList = response.json().await
@@ -204,9 +211,10 @@ impl GoogleDriveProvider {
 
     /// Find file/folder by name in parent
     async fn find_by_name(&self, name: &str, parent_id: &str) -> Result<Option<DriveFile>, ProviderError> {
+        let escaped_name = name.replace('\\', "\\\\").replace('\'', "\\'");
         let query = format!(
             "name='{}' and '{}' in parents and trashed=false",
-            name.replace("'", "\\'"), parent_id
+            escaped_name, parent_id
         );
 
         let url = format!(
@@ -227,10 +235,29 @@ impl GoogleDriveProvider {
         Ok(list.files.into_iter().next())
     }
 
+    /// P2-6: LRU eviction — remove least-recently-accessed half when cache exceeds max
+    fn trim_cache_if_needed(&mut self) {
+        const MAX_CACHE_SIZE: usize = 10_000;
+        if self.folder_cache.len() > MAX_CACHE_SIZE {
+            // Sort by access counter (ascending = least recently used first)
+            let mut entries: Vec<(String, u64)> = self.folder_cache.iter()
+                .map(|(k, (_, counter))| (k.clone(), *counter))
+                .collect();
+            entries.sort_by_key(|(_, counter)| *counter);
+            // Remove oldest half
+            let to_remove = entries.len() / 2;
+            for (key, _) in entries.into_iter().take(to_remove) {
+                self.folder_cache.remove(&key);
+            }
+        }
+    }
+
     /// Resolve path to folder ID
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
-        // Check cache
-        if let Some(id) = self.folder_cache.get(path) {
+        // Check cache (update LRU counter on hit)
+        if let Some((id, counter)) = self.folder_cache.get_mut(path) {
+            self.cache_access_counter += 1;
+            *counter = self.cache_access_counter;
             return Ok(id.clone());
         }
 
@@ -250,8 +277,10 @@ impl GoogleDriveProvider {
             current_path.push('/');
             current_path.push_str(part);
 
-            // Check cache for intermediate paths
-            if let Some(id) = self.folder_cache.get(&current_path) {
+            // Check cache for intermediate paths (update LRU counter on hit)
+            if let Some((id, counter)) = self.folder_cache.get_mut(&current_path) {
+                self.cache_access_counter += 1;
+                *counter = self.cache_access_counter;
                 current_id = id.clone();
                 continue;
             }
@@ -264,7 +293,9 @@ impl GoogleDriveProvider {
             }
 
             current_id = file.id;
-            self.folder_cache.insert(current_path.clone(), current_id.clone());
+            self.trim_cache_if_needed();
+            self.cache_access_counter += 1;
+            self.folder_cache.insert(current_path.clone(), (current_id.clone(), self.cache_access_counter));
         }
 
         Ok(current_id)
@@ -304,13 +335,144 @@ impl GoogleDriveProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Download failed {}: {}", status, text)));
+            return Err(ProviderError::Other(format!("Download failed {}: {}", status, sanitize_api_error(&text))));
         }
 
         let bytes = response.bytes().await
             .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
         Ok(bytes.to_vec())
+    }
+
+    /// List files in the trash
+    #[allow(dead_code)]
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let mut all_files = Vec::new();
+        let mut page_token: Option<String> = None;
+
+        loop {
+            let mut url = format!(
+                "{}/files?q=trashed=true&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=1000",
+                DRIVE_API_BASE
+            );
+
+            if let Some(ref token) = page_token {
+                url.push_str(&format!("&pageToken={}", token));
+            }
+
+            let response = self.client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("List trash error {}: {}", status, sanitize_api_error(&text))));
+            }
+
+            let list: DriveFileList = response.json().await
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+            for file in &list.files {
+                all_files.push(self.to_remote_entry(file, "/Trash"));
+            }
+
+            match list.next_page_token {
+                Some(token) => page_token = Some(token),
+                None => break,
+            }
+        }
+
+        info!("Listed {} trashed files", all_files.len());
+        Ok(all_files)
+    }
+
+    /// Move a file to trash by path
+    #[allow(dead_code)]
+    pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let body = serde_json::json!({ "trashed": true });
+
+        let response = self.client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Trash failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Trashed: {}", path);
+        Ok(())
+    }
+
+    /// Restore a file from trash by file ID
+    #[allow(dead_code)]
+    pub async fn restore_from_trash(&mut self, file_id: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
+        let body = serde_json::json!({ "trashed": false });
+
+        let response = self.client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Restore from trash failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Restored from trash: {}", file_id);
+        Ok(())
+    }
+
+    /// Permanently delete a file by file ID (bypasses trash)
+    #[allow(dead_code)]
+    pub async fn permanent_delete(&mut self, file_id: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
+
+        let response = self.client
+            .delete(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() && response.status().as_u16() != 404 {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Permanent delete failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Permanently deleted: {}", file_id);
+        Ok(())
     }
 
     /// Convert DriveFile to RemoteEntry
@@ -354,6 +516,8 @@ impl GoogleDriveProvider {
 
 #[async_trait]
 impl StorageProvider for GoogleDriveProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::GoogleDrive
     }
@@ -459,6 +623,9 @@ impl StorageProvider for GoogleDriveProvider {
         local_path: &str,
         _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -475,8 +642,6 @@ impl StorageProvider for GoogleDriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        let bytes = self.download_file_by_id(&file.id, &file.mime_type).await?;
-
         // For Workspace files, append the export extension to the local path
         let actual_local_path = if let Some((_, ext)) = Self::workspace_export_info(&file.mime_type) {
             if !local_path.ends_with(ext) {
@@ -488,8 +653,36 @@ impl StorageProvider for GoogleDriveProvider {
             local_path.to_string()
         };
 
-        tokio::fs::write(&actual_local_path, &bytes).await
-            .map_err(|e| ProviderError::Other(format!("Write error: {}", e)))?;
+        let url = if let Some((export_mime, _)) = Self::workspace_export_info(&file.mime_type) {
+            format!(
+                "{}/files/{}/export?mimeType={}",
+                DRIVE_API_BASE, file.id, urlencoding::encode(export_mime)
+            )
+        } else {
+            format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id)
+        };
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Download failed {}: {}", status, sanitize_api_error(&text))));
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut out_file = tokio::fs::File::create(&actual_local_path).await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            out_file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        }
 
         info!("Downloaded {} to {}", remote_path, actual_local_path);
         Ok(())
@@ -521,8 +714,8 @@ impl StorageProvider for GoogleDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let content = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?.len();
 
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -537,11 +730,10 @@ impl StorageProvider for GoogleDriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let total_size = content.len() as u64;
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
         if total_size > RESUMABLE_THRESHOLD {
-            // Resumable upload for large files
+            // Resumable upload for large files — stream from file handle
             let metadata = serde_json::json!({
                 "name": file_name,
                 "parents": [parent_id]
@@ -565,7 +757,7 @@ impl StorageProvider for GoogleDriveProvider {
 
             if !init_response.status().is_success() {
                 let text = init_response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Resumable init failed: {}", text)));
+                return Err(ProviderError::Other(format!("Resumable init failed: {}", sanitize_api_error(&text))));
             }
 
             let session_uri = init_response
@@ -575,21 +767,28 @@ impl StorageProvider for GoogleDriveProvider {
                 .ok_or_else(|| ProviderError::Other("No upload session URI returned".to_string()))?
                 .to_string();
 
-            // Step 2: Upload in 10MB chunks
+            // Step 2: Upload in 10MB chunks from file handle
             const CHUNK_SIZE: usize = 10 * 1024 * 1024;
-            let mut offset: usize = 0;
+            let mut file = tokio::fs::File::open(local_path).await
+                .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
+            let mut offset: u64 = 0;
 
-            while offset < content.len() {
-                let end = std::cmp::min(offset + CHUNK_SIZE, content.len());
-                let chunk = &content[offset..end];
+            while offset < total_size {
+                use tokio::io::AsyncReadExt;
+                let remaining = (total_size - offset) as usize;
+                let this_chunk = std::cmp::min(CHUNK_SIZE, remaining);
+                let mut chunk = vec![0u8; this_chunk];
+                file.read_exact(&mut chunk).await
+                    .map_err(|e| ProviderError::Other(format!("Read chunk error: {}", e)))?;
 
+                let end = offset + this_chunk as u64;
                 let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
                 let chunk_response = self.client
                     .put(&session_uri)
                     .header(CONTENT_TYPE, "application/octet-stream")
                     .header("Content-Range", &range)
-                    .body(chunk.to_vec())
+                    .body(chunk)
                     .send()
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -597,16 +796,19 @@ impl StorageProvider for GoogleDriveProvider {
                 let status = chunk_response.status().as_u16();
                 if status != 200 && status != 201 && status != 308 {
                     let text = chunk_response.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!("Chunk upload failed: {}", text)));
+                    return Err(ProviderError::Other(format!("Chunk upload failed: {}", sanitize_api_error(&text))));
                 }
 
                 offset = end;
                 if let Some(ref cb) = on_progress {
-                    cb(offset as u64, total_size);
+                    cb(offset, total_size);
                 }
             }
         } else {
-            // Simple multipart upload for small files
+            // Simple multipart upload for small files (<=5MB, OK to buffer)
+            let content = tokio::fs::read(local_path).await
+                .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
+
             let metadata = serde_json::json!({
                 "name": file_name,
                 "parents": [parent_id]
@@ -636,7 +838,7 @@ impl StorageProvider for GoogleDriveProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Upload failed: {}", text)));
+                return Err(ProviderError::Other(format!("Upload failed: {}", sanitize_api_error(&text))));
             }
 
             if let Some(ref cb) = on_progress {
@@ -681,7 +883,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("mkdir failed: {}", text)));
+            return Err(ProviderError::Other(format!("mkdir failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Created folder: {}", path);
@@ -733,29 +935,51 @@ impl StorageProvider for GoogleDriveProvider {
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_path = from.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
+        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
         } else {
             ("", from_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
+        let from_parent_id = if from_parent_path.is_empty() {
             self.current_folder_id.clone()
         } else {
-            self.resolve_path(parent_path).await?
+            self.resolve_path(from_parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self.find_by_name(file_name, &from_parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
-        let new_name = to.rsplit('/').next().unwrap_or(to);
-        
+        let to_path = to.trim_matches('/');
+        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+
+        let to_parent_id = if to_parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(to_parent_path).await?
+        };
+
+        // Determine if this is a cross-folder move or a simple rename
+        let is_move = from_parent_id != to_parent_id;
+
         let metadata = serde_json::json!({
             "name": new_name
         });
 
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
-        
+        let mut url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+
+        if is_move {
+            // Add move query parameters: addParents and removeParents
+            url = format!(
+                "{}?addParents={}&removeParents={}",
+                url, urlencoding::encode(&to_parent_id), urlencoding::encode(&from_parent_id)
+            );
+        }
+
         let response = self.client
             .patch(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -766,7 +990,8 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(ProviderError::Other(format!("Rename failed: {}", response.status())));
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Rename/move failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Renamed {} to {}", from, to);
@@ -842,10 +1067,17 @@ impl StorageProvider for GoogleDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // Create "anyone with link can view" permission
-        let permission = serde_json::json!({
+        // GAP-A12: Support expires_in_secs via Google Drive expirationTime
+        let mut permission = serde_json::json!({
             "role": "reader",
             "type": "anyone"
         });
+        if let Some(secs) = _expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            permission["expirationTime"] = serde_json::Value::String(
+                expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            );
+        }
 
         let perm_url = format!("{}/files/{}/permissions", DRIVE_API_BASE, file.id);
         
@@ -861,7 +1093,7 @@ impl StorageProvider for GoogleDriveProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Failed to create share permission: {} - {}", status, text)));
+            return Err(ProviderError::Other(format!("Failed to create share permission: {} - {}", status, sanitize_api_error(&text))));
         }
 
         // Get the web view link
@@ -949,7 +1181,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Copy failed: {}", text)));
+            return Err(ProviderError::Other(format!("Copy failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Copied {} to {}", from, to);
@@ -991,7 +1223,7 @@ impl StorageProvider for GoogleDriveProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Search failed: {}", text)));
+                return Err(ProviderError::Other(format!("Search failed: {}", sanitize_api_error(&text))));
             }
 
             let list: DriveFileList = response.json().await
@@ -1022,7 +1254,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("About failed: {}", text)));
+            return Err(ProviderError::Other(format!("About failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1089,7 +1321,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List revisions failed: {}", text)));
+            return Err(ProviderError::Other(format!("List revisions failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1157,7 +1389,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Download revision failed: {}", text)));
+            return Err(ProviderError::TransferFailed(format!("Download revision failed: {}", sanitize_api_error(&text))));
         }
 
         let bytes = response.bytes().await
@@ -1204,7 +1436,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Get thumbnail failed: {}", text)));
+            return Err(ProviderError::Other(format!("Get thumbnail failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1255,7 +1487,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List permissions failed: {}", text)));
+            return Err(ProviderError::Other(format!("List permissions failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1324,7 +1556,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Add permission failed: {}", text)));
+            return Err(ProviderError::Other(format!("Add permission failed: {}", sanitize_api_error(&text))));
         }
 
         Ok(())
@@ -1346,7 +1578,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Get start page token failed: {}", text)));
+            return Err(ProviderError::Other(format!("Get start page token failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1380,7 +1612,7 @@ impl StorageProvider for GoogleDriveProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("List changes failed: {}", text)));
+                return Err(ProviderError::Other(format!("List changes failed: {}", sanitize_api_error(&text))));
             }
 
             #[derive(Deserialize)]
@@ -1499,7 +1731,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !del_response.status().is_success() {
             let text = del_response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Remove permission failed: {}", text)));
+            return Err(ProviderError::Other(format!("Remove permission failed: {}", sanitize_api_error(&text))));
         }
 
         Ok(())

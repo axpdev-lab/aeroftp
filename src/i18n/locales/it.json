@@ -187,7 +187,9 @@
                 "enterClientSecret": "Inserisci Client Secret",
                 "continue": "Continua",
                 "configureCredentials": "Configura credenziali OAuth2",
-                "backToExistingAccount": "Torna all'account esistente"
+                "backToExistingAccount": "Torna all'account esistente",
+                "zohoRegion": "Regione Zoho",
+                "zohoRegionHelp": "Seleziona la regione corrispondente al tuo account Zoho (es. zoho.eu per l'Europa)."
             },
             "fourshared": {
                 "selectLocalFolder": "Seleziona Cartella Locale",
@@ -226,6 +228,8 @@
             "pcloudDesc": "Connetti con Account pCloud",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "Cloud Crittografato E2E",
+            "zohoworkdriveDesc": "Archiviazione Cloud di Squadra",
+            "zohoworkdriveTooltip": "Zoho WorkDrive - Gestione file team, OAuth2, 8 regioni",
             "sshAuth": "Autenticazione SSH (Opzionale)",
             "sshAuthHelp": "Lascia vuoto per usare l'autenticazione con password. Per auth con chiave, fornisci il percorso della chiave privata.",
             "privateKeyPath": "Percorso Chiave Privata",
@@ -285,7 +289,18 @@
             "azureTooltip": "Azure Blob Storage - Autenticazione con Shared Key o token SAS",
             "insecureCertTitle": "Avviso di Sicurezza",
             "insecureCertConfirmFirst": "Accettare certificati non validi o autofirmati indebolisce la sicurezza della connessione. Abilita questa opzione solo se ti fidi del server e comprendi i rischi.",
-            "insecureCertAccept": "Accetta Rischio"
+            "insecureCertAccept": "Accetta Rischio",
+            "hostKeyNewTitle": "Chiave host sconosciuta",
+            "hostKeyNewBody": "Il server ha presentato una chiave host non ancora presente nel file known hosts. Questo \u00e8 normale per una prima connessione. Verifica l'impronta digitale con l'amministratore del server prima di accettare.",
+            "hostKeyAlgorithm": "Algoritmo",
+            "hostKeyFingerprint": "Impronta digitale",
+            "hostKeyTrustAction": "Considera attendibile",
+            "hostKeyChangedTitle": "Chiave host modificata",
+            "hostKeyChangedBody": "La chiave host di questo server \u00e8 cambiata dall'ultima connessione. Questo potrebbe indicare un attacco man-in-the-middle oppure il server potrebbe essere stato riconfigurato.",
+            "hostKeyChangedWarning": "Se non ti aspettavi questa modifica, NON accettare la nuova chiave e contatta immediatamente l'amministratore del server.",
+            "hostKeyAcceptNewAction": "Accetta nuova chiave",
+            "hostKeyHost": "Host",
+            "hostKeyPort": "Porta"
         },
         "browser": {
             "remote": "Remoto",
@@ -395,7 +410,21 @@
             "selectAll": "Seleziona Tutto",
             "calculateSize": "Calcola Dimensione",
             "findDuplicates": "Trova Duplicati",
-            "diskUsage": "Uso Disco"
+            "diskUsage": "Uso Disco",
+            "moveToTrash": "Sposta nel Cestino",
+            "viewTrash": "Visualizza Cestino",
+            "permanentDelete": "Elimina Definitivamente",
+            "permanentDeleteConfirm": "Eliminare definitivamente {count} elemento/i? Questa azione non può essere annullata.",
+            "restoreFromTrash": "Ripristina",
+            "restoreSuccess": "{count} elemento/i ripristinato/i",
+            "permanentDeleteSuccess": "{count} elemento/i eliminato/i definitivamente",
+            "trashEmpty": "Il Cestino è vuoto",
+            "trashTitle": "Cestino",
+            "trashLoading": "Caricamento cestino...",
+            "trashSelectAll": "Seleziona Tutto",
+            "trashDeselectAll": "Deseleziona Tutto",
+            "trashOriginalLocation": "Posizione originale",
+            "trashDeletedDate": "Eliminato"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -972,7 +1001,9 @@
             "fillBucket": "Inserisci il nome del bucket",
             "fillServerUser": "Inserisci server e nome utente",
             "disconnectedTitle": "Disconnesso",
-            "disconnectedFrom": "Disconnesso dal server",
+            "disconnectedFrom": "Disconnesso da {server}",
+            "disconnectedTabClosed": "Sessione chiusa — disconnesso da {server}",
+            "disconnectedAllClosed": "Tutte le sessioni chiuse — disconnesso da {server}",
             "noSavedServers": "Nessun server salvato",
             "saveServerFirst": "Salva prima il server",
             "serverNotFound": "Server non trovato",
@@ -1428,7 +1459,17 @@
             "dayFri": "Ven",
             "daySat": "Sab",
             "daySun": "Dom",
-            "rollbackDeleteSnapshot": "Elimina snapshot"
+            "rollbackDeleteSnapshot": "Elimina snapshot",
+            "exportJSON": "Esporta JSON",
+            "exportCSV": "Esporta CSV",
+            "exportSuccess": "Report dry-run esportato",
+            "safetyScore": "Punteggio sicurezza",
+            "safetyLow": "Rischio basso",
+            "safetyMedium": "Rischio medio",
+            "safetyHigh": "Rischio alto",
+            "safetyConflicts": "{count} conflitti",
+            "safetyDangerous": "{count} file sensibili",
+            "safetyTotalSize": "Totale: {size}"
         },
         "ui": {
             "syncing": "Sincronizzazione...",

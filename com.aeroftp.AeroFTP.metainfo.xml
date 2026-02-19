@@ -12,8 +12,8 @@
     <p>
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
-      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, and Filen. 14 protocols,
-      30 presets, one app.
+      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, and Zoho WorkDrive.
+      16 protocols, 30+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.4.0" date="2026-02-19">
+      <description>
+        <p>Provider Integration Audit and Zoho WorkDrive: 16th protocol with full OAuth2 and 8 regional endpoints. Comprehensive 12-auditor provider integration audit (4 phases, grade A-). Streaming upload refactor across 5 providers eliminates OOM on large files. All provider credentials wrapped in SecretString for memory zeroization. XML parsing migrated from regex to quick-xml 0.39. StorageProvider trait expanded to 18 methods with trash management, versioning, search, and share links. Cross-audit gap analysis: 18 findings fixed — HTTP retry with exponential backoff, provider error sanitization (95 occurrences), SFTP symlink-safe rmdir, AeroVault chunk AAD hardening, vault key zeroize on drop, cross-platform trash API, Windows volume enumeration via WinAPI. Resource management: all 17 issues resolved including local file scan 1M cap, Google Drive LRU cache, transfer pool validation. AeroSync Enterprise Intelligence: dry-run export (JSON/CSV), safety score pre-sync indicator, explainable sync decisions. SFTP TOFU visual dialog (SEC-P1-06): PuTTY-style host key verification with SHA-256 fingerprint display, MITM warning on key change, silent acceptance removed. Branded Polkit update dialog with AeroFTP icon and localized messages (10 languages). Auto-update restart fix for deb/rpm via detached shell relaunch.</p>
+      </description>
+    </release>
     <release version="2.3.0" date="2026-02-19">
       <description>
         <p>Chat History SQLite Redesign: Complete rewrite of chat history persistence from JSON flat-file to SQLite WAL + FTS5 full-text search. 18 Tauri commands for CRUD, search, export/import, branches, stats, cleanup, and clear-all. Chat History Manager UI with retention policies (7/30/90/180/365 days or unlimited), full-text search with highlighted snippets, session browser, and statistics dashboard. In-memory fallback for graceful degradation. 55+ security audit findings resolved from 5 independent auditors. 24 new i18n keys translated across all 47 languages.</p>

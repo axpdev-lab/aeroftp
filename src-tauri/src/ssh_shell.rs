@@ -35,10 +35,13 @@ impl Handler for ShellSshHandler {
         match known_hosts::check_known_hosts(&self.host, self.port, server_public_key) {
             Ok(true) => Ok(true),
             Ok(false) => {
-                if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
-                    tracing::warn!("SSH Shell: Failed to save host key: {}", e);
-                }
-                Ok(true)
+                // SEC-P1-06: Host not in known_hosts — reject here.
+                // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
+                tracing::warn!(
+                    "SSH Shell: Host key for {} not pre-approved via TOFU dialog — rejecting",
+                    self.host
+                );
+                Ok(false)
             }
             Err(keys::Error::KeyChanged { line }) => {
                 tracing::error!(

@@ -62,7 +62,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'googledrive', 'dropbox', 'onedrive'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
@@ -202,6 +202,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         azure: 'from-blue-600 to-indigo-500',
         filen: 'from-emerald-500 to-green-400',
         fourshared: 'from-blue-500 to-cyan-400',
+        zohoworkdrive: 'from-yellow-500 to-orange-400',
     };
 
     useEffect(() => {
@@ -254,7 +255,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             credentials = await loadOAuthCredentials(server.protocol);
 
             if (!credentials) {
-                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud' };
+                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive' };
                 setOauthError(t('savedServers.oauthConfigError', { provider: providerNames[server.protocol] || server.protocol }));
                 return;
             }
@@ -263,10 +264,23 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             setOauthConnecting(server.id);
             try {
                 const oauthProvider = server.protocol === 'googledrive' ? 'google_drive' : server.protocol;
+                // Load region from server profile or credential store (for Zoho WorkDrive)
+                let region: string | undefined;
+                if (server.protocol === 'zohoworkdrive') {
+                    region = server.options?.region;
+                    if (!region) {
+                        try {
+                            region = await invoke<string>('get_credential', { account: `oauth_${server.protocol}_region` });
+                        } catch {
+                            // Default to 'us' via Rust default_region()
+                        }
+                    }
+                }
                 const params = {
                     provider: oauthProvider,
                     client_id: credentials.clientId,
                     client_secret: credentials.clientSecret,
+                    ...(region && { region }),
                 };
 
                 // Check if tokens already exist - if so, try to connect directly
@@ -539,7 +553,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
-                                        ? t('savedServers.oauthError', { username: server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' } as Record<string, string>)[server.protocol || ''] || server.protocol || '' })
+                                        ? t('savedServers.oauthError', { username: server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '' })
                                         : server.protocol === 'filen'
                                             ? t('savedServers.e2eAes256', { username: server.username || '' })
                                             : server.protocol === 'mega'

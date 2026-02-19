@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 2.3.x   | Yes (current) |
+| 2.4.x   | Yes (current) |
+| 2.3.x   | Security fixes only |
 | 2.2.x   | Security fixes only |
-| 2.1.x   | Security fixes only |
-| < 2.0   | No  |
+| < 2.2   | No  |
 
 ## Security Architecture
 
@@ -48,7 +48,9 @@ The previous dual-mode system (OS Keyring primary + encrypted vault fallback) su
 | Box | HTTPS + OAuth2 | PKCE flow with token refresh |
 | pCloud | HTTPS + OAuth2 | Token-based authentication |
 | Azure Blob | HTTPS | Shared Key HMAC-SHA256 or SAS token |
+| 4shared | HTTPS + OAuth 1.0 | HMAC-SHA1 signed requests (RFC 5849) |
 | Filen | Client-side AES-256-GCM | E2E encrypted, PBKDF2 key derivation |
+| Zoho WorkDrive | HTTPS + OAuth2 | PKCE flow with token refresh, 8 regional endpoints |
 
 ### FTPS Encryption Modes (v1.4.0)
 
@@ -185,7 +187,29 @@ Archive passwords are wrapped in `secrecy::SecretString` for automatic memory ze
 - Passwords are never logged or written to disk in plain text
 - Rust ownership model prevents use-after-free and buffer overflows
 - Archive passwords (ZIP/7z/RAR) wrapped in SecretString (v1.5.2)
-- OAuth tokens wrapped in SecretString across all 5 OAuth providers (v1.5.2)
+- All provider credentials (access tokens, refresh tokens, API keys) wrapped in SecretString across all 16 providers (v2.4.0)
+
+### Streaming Transfers (v2.4.0)
+
+All file transfers use chunked streaming to prevent memory exhaustion:
+
+| Provider | Download | Upload | Chunk Size |
+|----------|----------|--------|------------|
+| FTP/FTPS | Streaming (8KB) | Streaming | 8 KB |
+| SFTP | Streaming (32KB) | Streaming | 32 KB |
+| Filen | Streaming per-chunk | Streaming | Per-server chunk |
+| Dropbox | Streaming (bytes_stream) | Streaming session (128MB) | 128 MB |
+| Google Drive | Streaming | Streaming (10MB) | 10 MB |
+| OneDrive | Streaming | Resumable (>4MB) | 10 MB |
+| Box | Streaming | Chunked session | 20 MB |
+| S3 | Streaming | Multipart | 5 MB |
+| WebDAV | Streaming (GET) | Streaming (PUT) | Full |
+
+**Resource bounds**:
+- Parallel transfer streams: max 8 (Semaphore-controlled)
+- Progress event throttling: 150ms or 2% delta (all transfer paths including parallel sync)
+- Frontend transfer ID tracking: capped at 500 entries with FIFO eviction
+- Cloud Service conflict list: capped at 10,000 entries
 
 ### File System Hardening
 
@@ -193,15 +217,19 @@ Archive passwords are wrapped in `secrecy::SecretString` for automatic memory ze
 - Vault and token files: permissions `0600`
 - Applied recursively on startup
 
-### SFTP Host Key Verification
+### SFTP Host Key Verification (v2.4.0+)
 
-AeroFTP implements Trust On First Use (TOFU) for SFTP connections:
+AeroFTP implements Trust On First Use (TOFU) with visual fingerprint verification for SFTP connections:
 
-- On first connection, the server's public key is saved to `~/.ssh/known_hosts`
-- On subsequent connections, the stored key is compared against the server's key
+- **Pre-connection probe**: A lightweight SSH handshake probes the server's host key *before* the real connection is established
+- **Visual fingerprint dialog**: On first connection, a PuTTY-style dialog displays the server's SHA-256 fingerprint and algorithm, requiring explicit user approval (Accept/Reject)
+- **Key change detection**: If a known host's key changes, a red MITM warning dialog is shown — the user must explicitly accept the new key or abort
+- On subsequent connections with a trusted key, connection proceeds silently
 - **Key mismatch = connection rejected** (MITM protection)
 - Supports `[host]:port` format for non-standard ports
 - Creates `~/.ssh/` directory with `0700` and `known_hosts` with `0600` permissions automatically
+- Pending keys are held in memory with 5-minute TTL (never written to disk until accepted)
+- SSH Terminal sessions also require host key approval before opening
 
 ### FTP Insecure Connection Warning
 
@@ -240,6 +268,16 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - OAuth credentials resolved from OS keyring on session switch (no plaintext fallback)
 - Tokens refreshed automatically on tab switching with proper PKCE re-authentication
 - Stale quota/connection state cleared before reconnection
+
+### Auto-Update Security (v2.4.0)
+
+AeroFTP's in-app update for .deb/.rpm uses a branded Polkit authentication dialog:
+
+- **Custom Polkit policy** (`com.aeroftp.update.install`): Shows AeroFTP icon, vendor info, and localized description instead of generic "authenticate to run dpkg" prompt
+- **Helper script** (`/usr/lib/aeroftp/aeroftp-update-helper`): Path-validated wrapper that only accepts packages from `~/Downloads/`, `/tmp/`, or `/var/tmp/`. Rejects all other paths. Only `.deb` and `.rpm` extensions accepted
+- **Fallback**: If the Polkit helper is not installed (e.g., manual build), falls back to generic `pkexec dpkg -i`
+- **Restart isolation**: Post-install relaunch uses a detached shell process (`sh -c "sleep 1 && exec /usr/bin/aeroftp"`) to ensure the old process fully exits before the new one starts, preventing resource conflicts
+- **Snap/AppImage**: These formats do not use pkexec — Snap auto-updates via snapd, AppImage self-replaces user-owned file
 
 ---
 
@@ -307,6 +345,7 @@ AeroFTP is designed as a **privacy-enhanced** file manager. While no software ca
 | **TOTP 2FA for Vault** | Optional RFC 6238 TOTP second factor with rate limiting (exponential backoff), `setup_verified` gate, zeroized secret bytes, single Mutex atomic state |
 | **Remote Vault Security** | Null byte validation, path traversal rejection, symlink detection, `canonicalize()` verification, Unix 0o600 permissions, error propagation on all writes |
 | **Chat History SQLite** | SQLite WAL + FTS5 full-text search with XSS-safe snippet rendering, FTS query injection prevention, retention auto-apply, dedicated clear-all, in-memory fallback |
+| **Security Audit (v2.4.0)** | 12-auditor 4-phase provider integration audit (Capabilities, Security GPT-5.3, Integration Claude Opus, Bugs Terminator Counter-Audit). Grade: A-. Streaming upload OOM fix, SecretString for all 16 providers, quick-xml migration, FTP TLS downgrade detection |
 | **Security Audit (v2.3.0)** | 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — SQL injection prevention, XSS in FTS snippets, WAL mode hardening, retention enforcement |
 | **Security Audit (v2.2.4)** | 13 findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — TOTP, Remote Vault, modals, provider configs |
 | **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
@@ -337,4 +376,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.3.0 - 19 February 2026*
+*AeroFTP v2.4.0 - 19 February 2026*

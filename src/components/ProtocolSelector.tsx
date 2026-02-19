@@ -18,7 +18,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -232,6 +232,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.foursharedTooltip'),
     },
     {
+        type: 'zohoworkdrive',
+        name: 'Zoho WorkDrive',
+        icon: <ZohoWorkDriveLogo size={18} />,
+        description: t('protocol.zohoworkdriveDesc'),
+        defaultPort: 443,
+        badge: 'OAuth',
+        isOAuth: true,
+        isCloudStorage: true,
+        tooltip: t('protocol.zohoworkdriveTooltip'),
+    },
+    {
         type: 'azure',
         name: 'Azure Blob',
         icon: <AzureLogo size={18} />,
@@ -261,6 +272,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'Connect with pCloud Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '15 GB Free Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
+    { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Team Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
 ];
 
@@ -909,6 +921,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         filen: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
         fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
     };
 
     return (

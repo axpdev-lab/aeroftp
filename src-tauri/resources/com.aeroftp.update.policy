@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>AeroFTP</vendor>
+  <vendor_url>https://github.com/axpnet/aeroftp</vendor_url>
+
+  <action id="com.aeroftp.update.install">
+    <description>Install AeroFTP update</description>
+    <description xml:lang="it">Installa aggiornamento AeroFTP</description>
+    <description xml:lang="de">AeroFTP-Update installieren</description>
+    <description xml:lang="fr">Installer la mise à jour AeroFTP</description>
+    <description xml:lang="es">Instalar actualización de AeroFTP</description>
+    <description xml:lang="pt">Instalar atualização do AeroFTP</description>
+    <description xml:lang="ja">AeroFTPのアップデートをインストール</description>
+    <description xml:lang="zh">安装 AeroFTP 更新</description>
+    <description xml:lang="ru">Установить обновление AeroFTP</description>
+    <description xml:lang="ko">AeroFTP 업데이트 설치</description>
+
+    <message>Authentication is required to install an AeroFTP update</message>
+    <message xml:lang="it">Autenticazione richiesta per installare un aggiornamento di AeroFTP</message>
+    <message xml:lang="de">Authentifizierung erforderlich, um ein AeroFTP-Update zu installieren</message>
+    <message xml:lang="fr">Authentification requise pour installer une mise à jour AeroFTP</message>
+    <message xml:lang="es">Se requiere autenticación para instalar una actualización de AeroFTP</message>
+    <message xml:lang="pt">Autenticação necessária para instalar uma atualização do AeroFTP</message>
+    <message xml:lang="ja">AeroFTPのアップデートをインストールするには認証が必要です</message>
+    <message xml:lang="zh">安装 AeroFTP 更新需要身份验证</message>
+    <message xml:lang="ru">Для установки обновления AeroFTP требуется аутентификация</message>
+    <message xml:lang="ko">AeroFTP 업데이트를 설치하려면 인증이 필요합니다</message>
+
+    <icon_name>aeroftp</icon_name>
+
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/aeroftp/aeroftp-update-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+</policyconfig>

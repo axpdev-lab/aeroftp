@@ -924,14 +924,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             />
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
-                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud'}
+                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 saveConnection={saveConnection}
                                 onSaveConnectionChange={setSaveConnection}
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
-                                onConnected={async (displayName) => {
+                                onConnected={async (displayName, extraOptions) => {
                                     // Save OAuth connection if requested
                                     if (saveConnection) {
                                         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
@@ -948,12 +948,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 protocol: protocol as ProviderType,
                                                 initialPath: '/',
                                                 localInitialPath: quickConnectDirs.localDir,
+                                                ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
                                             secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
                                         } else {
                                             const updated = existingServers.map(s =>
-                                                s.id === duplicate.id ? { ...s, localInitialPath: quickConnectDirs.localDir, lastConnected: new Date().toISOString() } : s
+                                                s.id === duplicate.id ? {
+                                                    ...s,
+                                                    localInitialPath: quickConnectDirs.localDir,
+                                                    lastConnected: new Date().toISOString(),
+                                                    ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
+                                                } : s
                                             );
                                             secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                                         }

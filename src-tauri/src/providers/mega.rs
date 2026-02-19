@@ -103,6 +103,8 @@ impl MegaProvider {
 
 #[async_trait]
 impl StorageProvider for MegaProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::Mega
     }
@@ -314,20 +316,84 @@ impl StorageProvider for MegaProvider {
         Ok(())
     }
     
-    async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> { 
-        // Mock stat using list?
-        Ok(RemoteEntry {
-            name: Path::new(p).file_name().unwrap_or_default().to_string_lossy().to_string(),
-            path: p.into(), 
-            is_dir: false, 
-            size: 0,
-            modified: None, permissions: None, owner: None, group: None,
-            is_symlink: false, link_target: None, mime_type: None, 
-            metadata: Default::default()
-        })
+    async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+        let abs_path = self.resolve_path(p);
+        let target_name = Path::new(&abs_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // For root, return a synthetic directory entry
+        if abs_path == "/" || target_name.is_empty() {
+            return Ok(RemoteEntry {
+                name: "/".to_string(),
+                path: "/".to_string(),
+                is_dir: true,
+                size: 0,
+                modified: None,
+                is_symlink: false,
+                link_target: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                mime_type: None,
+                metadata: Default::default(),
+            });
+        }
+
+        // List the parent directory and find the matching entry by name
+        let parent = Path::new(&abs_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/".to_string());
+        let parent = if parent.is_empty() { "/".to_string() } else { parent };
+
+        let output = self.run_mega_cmd("mega-ls", &["-l", &parent])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("stat failed for '{}': {}", abs_path, e)))?;
+
+        for line in output.lines() {
+            if line.contains("FLAGS") && line.contains("VERS") { continue; }
+            if line.starts_with('/') && line.ends_with(':') { continue; }
+
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 6 { continue; }
+
+            let flags = parts[0];
+            let size_str = parts[2];
+            let date_str = parts[3];
+            let time_str = parts[4];
+            let name = parts[5..].join(" ");
+
+            if name == target_name {
+                let is_dir = flags.starts_with('d');
+                let size = size_str.parse::<u64>().unwrap_or(0);
+                let modified = format!("{} {}", date_str, time_str);
+
+                return Ok(RemoteEntry {
+                    name,
+                    path: abs_path,
+                    is_dir,
+                    size,
+                    modified: Some(modified),
+                    is_symlink: false,
+                    link_target: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    mime_type: None,
+                    metadata: Default::default(),
+                });
+            }
+        }
+
+        Err(ProviderError::NotFound(format!("Path not found: {}", abs_path)))
     }
-    
-    async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> { Ok(0) }
+
+    async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
+        let entry = self.stat(p).await?;
+        Ok(entry.size)
+    }
     
     async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> { 
         // Very basic check: try to ls the file

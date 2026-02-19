@@ -362,9 +362,9 @@ impl FtpManager {
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
-        // Read in chunks for progress tracking
-        let mut buf = Vec::new();
-        let mut chunk = [0u8; 8192]; // 8KB chunks
+        // Stream directly to disk in 8KB chunks (no full-file RAM buffering)
+        let mut local_file = tokio::fs::File::create(local_path).await?;
+        let mut chunk = [0u8; 8192];
         let mut total_read: u64 = 0;
         let mut cancelled = false;
 
@@ -373,7 +373,7 @@ impl FtpManager {
             if n == 0 {
                 break;
             }
-            buf.extend_from_slice(&chunk[..n]);
+            local_file.write_all(&chunk[..n]).await?;
             total_read += n as u64;
             if !on_progress(total_read) {
                 cancelled = true;
@@ -381,6 +381,8 @@ impl FtpManager {
                 break;
             }
         }
+
+        local_file.flush().await?;
 
         // Finalize the stream (must always finalize to keep FTP connection clean)
         // On cancel, FTP server sends 426 — ignore that error
@@ -391,9 +393,6 @@ impl FtpManager {
             return Err(FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into());
         }
         finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-
-        // Write to local file
-        tokio::fs::write(local_path, buf).await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
         Ok(())

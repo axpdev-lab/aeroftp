@@ -11,6 +11,7 @@ use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
+    sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig},
 };
 use super::types::BoxConfig;
@@ -116,7 +117,10 @@ impl BoxProvider {
         Self {
             config,
             oauth_manager: OAuth2Manager::new(),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             connected: false,
             current_path: "/".to_string(),
             current_folder_id: "0".to_string(),
@@ -228,12 +232,13 @@ impl BoxProvider {
     async fn chunked_upload_session(
         &self,
         session_resp: reqwest::Response,
-        data: &[u8],
+        local_path: &str,
         total_size: u64,
         on_progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>>,
     ) -> Result<(), ProviderError> {
         use sha1::{Sha1, Digest};
         use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+        use tokio::io::AsyncReadExt;
 
         #[derive(Deserialize)]
         struct UploadSession {
@@ -258,22 +263,29 @@ impl BoxProvider {
             .and_then(|e| e.commit.clone())
             .unwrap_or_else(|| format!("{}/files/upload_sessions/{}/commit", UPLOAD_BASE, session.id));
 
-        // Upload parts
+        // Stream from file handle instead of buffered &[u8]
+        let mut file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
         let mut parts: Vec<serde_json::Value> = Vec::new();
-        let mut offset: usize = 0;
+        let mut offset: u64 = 0;
         let mut whole_sha1 = Sha1::new();
 
-        while offset < data.len() {
-            let end = std::cmp::min(offset + chunk_size, data.len());
-            let chunk = &data[offset..end];
+        while offset < total_size {
+            let remaining = (total_size - offset) as usize;
+            let this_chunk = std::cmp::min(chunk_size, remaining);
+            let mut chunk = vec![0u8; this_chunk];
+            file.read_exact(&mut chunk).await
+                .map_err(|e| ProviderError::IoError(e))?;
+
             let chunk_sha1 = {
                 let mut h = Sha1::new();
-                h.update(chunk);
+                h.update(&chunk);
                 BASE64.encode(h.finalize())
             };
-            whole_sha1.update(chunk);
+            whole_sha1.update(&chunk);
 
             let token = self.get_token().await?;
+            let end = offset + this_chunk as u64;
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
             let resp = self.client.put(&upload_part_url)
@@ -281,13 +293,13 @@ impl BoxProvider {
                 .header(CONTENT_TYPE, "application/octet-stream")
                 .header("Content-Range", &content_range)
                 .header("Digest", format!("sha={}", chunk_sha1))
-                .body(chunk.to_vec())
+                .body(chunk)
                 .send().await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let t = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::TransferFailed(format!("Chunk upload failed: {}", t)));
+                return Err(ProviderError::TransferFailed(format!("Chunk upload failed: {}", sanitize_api_error(&t))));
             }
 
             let part_resp: serde_json::Value = resp.json().await
@@ -300,7 +312,7 @@ impl BoxProvider {
             offset = end;
             if let Some(ref cb) = on_progress {
                 if let Ok(f) = cb.lock() {
-                    f(offset as u64, total_size);
+                    f(offset, total_size);
                 }
             }
         }
@@ -320,7 +332,7 @@ impl BoxProvider {
 
         if !resp.status().is_success() && resp.status().as_u16() != 201 {
             let t = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Commit failed: {}", t)));
+            return Err(ProviderError::TransferFailed(format!("Commit failed: {}", sanitize_api_error(&t))));
         }
 
         Ok(())
@@ -329,6 +341,8 @@ impl BoxProvider {
 
 #[async_trait]
 impl StorageProvider for BoxProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType { ProviderType::Box }
 
     fn display_name(&self) -> String { "Box".to_string() }
@@ -378,41 +392,55 @@ impl StorageProvider for BoxProvider {
             self.resolve_folder_id(path).await?
         };
 
-        let token = self.get_token().await?;
-        let url = format!("{}/folders/{}/items?fields=name,type,id,size,modified_at&limit=1000", API_BASE, folder_id);
-
-        let resp = self.client.get(&url)
-            .header(AUTHORIZATION, Self::bearer_header(&token))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Box API error {}: {}", status, body)));
-        }
-
-        let items: BoxItemCollection = resp.json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
         let base_path = if path == "." || path.is_empty() {
             self.current_path.clone()
         } else {
             Self::normalize_path(path)
         };
 
-        let entries = items.entries.into_iter().map(|item| {
+        // Paginated listing: offset-based, 1000 items per page
+        let mut all_items: Vec<BoxItem> = Vec::new();
+        let mut offset: u64 = 0;
+        const PAGE_LIMIT: u64 = 1000;
+
+        loop {
+            let token = self.get_token().await?;
+            let url = format!(
+                "{}/folders/{}/items?fields=name,type,id,size,modified_at&limit={}&offset={}",
+                API_BASE, folder_id, PAGE_LIMIT, offset
+            );
+
+            let resp = self.client.get(&url)
+                .header(AUTHORIZATION, Self::bearer_header(&token))
+                .send().await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!("Box API error {}: {}", status, sanitize_api_error(&body))));
+            }
+
+            let page: BoxItemCollection = resp.json().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            let page_count = page.entries.len() as u64;
+            all_items.extend(page.entries);
+
+            // Stop if we've fetched all items or no more entries returned
+            if all_items.len() as u64 >= page.total_count || page_count == 0 {
+                break;
+            }
+            offset += page_count;
+        }
+
+        let entries = all_items.into_iter().map(|item| {
             let is_dir = item.item_type == "folder";
             let entry_path = if base_path == "/" {
                 format!("/{}", item.name)
             } else {
                 format!("{}/{}", base_path, item.name)
             };
-
-            // Cache folder IDs
-            if is_dir {
-                // Note: can't borrow self mutably here, cache outside
-            }
 
             RemoteEntry {
                 name: item.name,
@@ -477,6 +505,9 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
 
@@ -490,11 +521,14 @@ impl StorageProvider for BoxProvider {
             return Err(ProviderError::TransferFailed(format!("Download failed: {}", resp.status())));
         }
 
-        let bytes = resp.bytes().await
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        }
 
         Ok(())
     }
@@ -526,17 +560,15 @@ impl StorageProvider for BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let data = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
-        let total_size = data.len() as u64;
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?.len();
 
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
         if total_size > CHUNKED_THRESHOLD {
-            // Wrap callback in Arc<Mutex> for Send+Sync across awaits
+            // Chunked upload session for large files — stream from file handle
             let progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>> =
                 on_progress.map(|cb| std::sync::Arc::new(std::sync::Mutex::new(cb)));
-            // Chunked upload session for large files
             let token = self.get_token().await?;
 
             // Step 1: Create upload session
@@ -571,18 +603,20 @@ impl StorageProvider for BoxProvider {
 
                     if !ver_resp.status().is_success() {
                         let t = ver_resp.text().await.unwrap_or_default();
-                        return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", t)));
+                        return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", sanitize_api_error(&t))));
                     }
 
-                    return self.chunked_upload_session(ver_resp, &data, total_size, progress.clone()).await;
+                    return self.chunked_upload_session(ver_resp, local_path, total_size, progress.clone()).await;
                 }
-                return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", text)));
+                return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", sanitize_api_error(&text))));
             }
 
-            return self.chunked_upload_session(session_resp, &data, total_size, progress).await;
+            return self.chunked_upload_session(session_resp, local_path, total_size, progress).await;
         }
 
-        // Simple multipart upload for small files
+        // Simple multipart upload for small files (<=50MB, OK to buffer)
+        let data = tokio::fs::read(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
         let token = self.get_token().await?;
         let attributes = serde_json::json!({
             "name": file_name,
@@ -622,7 +656,7 @@ impl StorageProvider for BoxProvider {
                     return Err(ProviderError::TransferFailed(format!("Upload version failed: {}", resp2.status())));
                 }
             } else {
-                return Err(ProviderError::TransferFailed(format!("Upload failed: {}", body)));
+                return Err(ProviderError::TransferFailed(format!("Upload failed: {}", sanitize_api_error(&body))));
             }
         }
 
@@ -656,7 +690,7 @@ impl StorageProvider for BoxProvider {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("mkdir failed: {}", body)));
+            return Err(ProviderError::Other(format!("mkdir failed: {}", sanitize_api_error(&body))));
         }
 
         Ok(())

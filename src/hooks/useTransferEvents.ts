@@ -185,6 +185,15 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       } else if (data.event_type === 'complete') {
         completedTransferIds.current.add(data.transfer_id);
+        // Prevent unbounded growth: trim oldest entries when exceeding cap
+        if (completedTransferIds.current.size > 500) {
+          const iter = completedTransferIds.current.values();
+          for (let i = 0; i < 250; i++) iter.next();
+          // Keep only the last 250 entries
+          const keep = new Set<string>();
+          for (const v of iter) keep.add(v);
+          completedTransferIds.current = keep;
+        }
         // Debounce toast dismiss: wait 500ms before clearing to prevent flicker
         // between consecutive file transfers. If a new progress event arrives first,
         // the timer is cancelled and the toast stays visible.
@@ -316,6 +325,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         pendingDeleteLogIds.current.set(displayName, logId);
       } else if (data.event_type === 'delete_file_complete') {
         detailedDeleteCompletedIds.current.add(data.transfer_id);
+        // Prevent unbounded growth
+        if (detailedDeleteCompletedIds.current.size > 500) {
+          detailedDeleteCompletedIds.current.clear();
+        }
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const existingId = pendingDeleteLogIds.current.get(data.filename) || pendingDeleteLogIds.current.get(displayName);

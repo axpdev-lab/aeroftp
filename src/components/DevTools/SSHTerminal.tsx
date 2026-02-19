@@ -362,6 +362,8 @@ interface SSHTerminalProps {
     localPath?: string;
     sshConnection?: SshConnectionInfo | null;
     appTheme?: string;
+    /** SEC-P1-06: TOFU host key check before SSH shell open */
+    onCheckHostKey?: (host: string, port: number) => Promise<boolean>;
 }
 
 export const SSHTerminal: React.FC<SSHTerminalProps> = ({
@@ -369,6 +371,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     localPath = '~',
     sshConnection,
     appTheme,
+    onCheckHostKey,
 }) => {
     const t = useTranslation();
     // Settings
@@ -662,6 +665,14 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             let sessionId: string | undefined;
 
             if (tab.type === 'ssh' && sshConnection) {
+                // SEC-P1-06: TOFU host key check before SSH shell open
+                if (onCheckHostKey) {
+                    const accepted = await onCheckHostKey(sshConnection.host, sshConnection.port);
+                    if (!accepted) {
+                        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnecting: false } : t));
+                        return;
+                    }
+                }
                 // Open SSH remote shell
                 const result = await invoke<string>('ssh_shell_open', {
                     host: sshConnection.host,

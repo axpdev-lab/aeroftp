@@ -16,7 +16,8 @@ import {
     ArrowUp, ArrowDown, Plus, Minus, ArrowLeftRight,
     CheckCircle2, XCircle,
     Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
-    WifiOff, KeyRound, HardDrive, Timer, Ban
+    WifiOff, KeyRound, HardDrive, Timer, Ban,
+    Download, ShieldAlert
 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
@@ -456,6 +457,71 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    // #149: Dry-run export — JSON
+    const handleExportJSON = async () => {
+        if (comparisons.length === 0) return;
+        try {
+            const { save } = await import('@tauri-apps/plugin-dialog');
+            const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filePath = await save({
+                defaultPath: `aerosync-dryrun-${ts}.json`,
+                filters: [{ name: 'JSON', extensions: ['json'] }],
+            });
+            if (filePath) {
+                const data = comparisons.map(c => ({
+                    path: c.relative_path,
+                    status: c.status,
+                    is_dir: c.is_dir,
+                    sync_reason: c.sync_reason,
+                    local_size: c.local_info?.size ?? null,
+                    local_modified: c.local_info?.modified ?? null,
+                    remote_size: c.remote_info?.size ?? null,
+                    remote_modified: c.remote_info?.modified ?? null,
+                }));
+                await writeTextFile(filePath, JSON.stringify(data, null, 2));
+            }
+        } catch { /* dialog cancelled or write error */ }
+    };
+
+    // #149: Dry-run export — CSV
+    const handleExportCSV = async () => {
+        if (comparisons.length === 0) return;
+        try {
+            const { save } = await import('@tauri-apps/plugin-dialog');
+            const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filePath = await save({
+                defaultPath: `aerosync-dryrun-${ts}.csv`,
+                filters: [{ name: 'CSV', extensions: ['csv'] }],
+            });
+            if (filePath) {
+                const header = 'path,status,is_dir,sync_reason,local_size,local_modified,remote_size,remote_modified';
+                const escape = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
+                const rows = comparisons.map(c =>
+                    [escape(c.relative_path), c.status, c.is_dir, escape(c.sync_reason),
+                     c.local_info?.size ?? '', c.local_info?.modified ?? '',
+                     c.remote_info?.size ?? '', c.remote_info?.modified ?? ''].join(',')
+                );
+                await writeTextFile(filePath, [header, ...rows].join('\n'));
+            }
+        } catch { /* dialog cancelled or write error */ }
+    };
+
+    // #146: Safety Score — computed from comparisons
+    const safetyScore = React.useMemo(() => {
+        if (comparisons.length === 0) return null;
+        const files = comparisons.filter(c => !c.is_dir);
+        const conflicts = files.filter(c => c.status === 'conflict' || c.status === 'size_mismatch').length;
+        const dangerousExts = ['.exe', '.sh', '.bat', '.cmd', '.ps1', '.env', '.pem', '.key', '.p12'];
+        const dangerous = files.filter(c => dangerousExts.some(ext => c.relative_path.toLowerCase().endsWith(ext))).length;
+        const totalSize = files.reduce((sum, c) => sum + (c.local_info?.size ?? 0) + (c.remote_info?.size ?? 0), 0);
+        const level: 'low' | 'medium' | 'high' =
+            conflicts > 5 || dangerous > 10 ? 'high' :
+            conflicts > 0 || dangerous > 0 ? 'medium' : 'low';
+        return { conflicts, dangerous, totalSize, level };
+    }, [comparisons]);
+
     // Dismiss a pending journal (discard resume)
     const handleDismissJournal = async () => {
         try {
@@ -668,6 +734,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setError(null);
         setSyncReport(null);
         cancelledRef.current = false;
+        // P2-4: Clear stale conflict resolutions from previous syncs
+        setConflictResolutions(new Map());
 
         // CRITICAL: Reset backend cancel flag before starting sync
         // Without this, any previous cancel (from panels or sync) leaves the flag stuck on true
@@ -1753,6 +1821,22 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         ) : comparisons.length > 0 ? (
                             <span>{selectedPaths.size} / {comparisons.filter(c => !c.is_dir).length} {t('syncPanel.filesSelected')}</span>
                         ) : null}
+                        {/* #146: Safety Score badge */}
+                        {safetyScore && !isSyncing && !syncReport && (
+                            <span
+                                className={`sync-safety-badge ${safetyScore.level}`}
+                                title={[
+                                    safetyScore.conflicts > 0 ? t('syncPanel.safetyConflicts', { count: String(safetyScore.conflicts) }) : '',
+                                    safetyScore.dangerous > 0 ? t('syncPanel.safetyDangerous', { count: String(safetyScore.dangerous) }) : '',
+                                    t('syncPanel.safetyTotalSize', { size: formatSize(safetyScore.totalSize) }),
+                                ].filter(Boolean).join(' · ')}
+                            >
+                                {safetyScore.level === 'high' ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
+                                {safetyScore.level === 'low' ? t('syncPanel.safetyLow')
+                                    : safetyScore.level === 'medium' ? t('syncPanel.safetyMedium')
+                                    : t('syncPanel.safetyHigh')}
+                            </span>
+                        )}
                     </div>
                     <div className="sync-actions">
                         {isSyncing ? (
@@ -1766,6 +1850,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 </button>
                                 {!syncReport && (
                                     <>
+                                        {/* #149: Dry-run export buttons */}
+                                        <button onClick={handleExportJSON} disabled={comparisons.length === 0} title={t('syncPanel.exportJSON')}>
+                                            <Download size={14} /> JSON
+                                        </button>
+                                        <button onClick={handleExportCSV} disabled={comparisons.length === 0} title={t('syncPanel.exportCSV')}>
+                                            <Download size={14} /> CSV
+                                        </button>
                                         <button onClick={handleDeselectAll} disabled={selectedPaths.size === 0}>
                                             {t('syncPanel.deselect')}
                                         </button>

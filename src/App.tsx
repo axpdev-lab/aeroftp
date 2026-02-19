@@ -40,6 +40,7 @@ import { SyncPanel } from './components/SyncPanel';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
+import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
@@ -49,6 +50,7 @@ import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
+import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
@@ -252,6 +254,16 @@ const App: React.FC = () => {
   const [showVaultPanel, setShowVaultPanel] = useState(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
+  const [showZohoTrash, setShowZohoTrash] = useState(false);
+
+  // SEC-P1-06: TOFU host key dialog state
+  const [hostKeyDialog, setHostKeyDialog] = useState<{
+    visible: boolean;
+    info: HostKeyInfo | null;
+    host: string;
+    port: number;
+    resolve: ((accepted: boolean) => void) | null;
+  }>({ visible: false, info: null, host: '', port: 22, resolve: null });
   const [compressDialogState, setCompressDialogState] = useState<{ files: { name: string; path: string; size: number; isDir: boolean }[]; defaultName: string; outputDir: string } | null>(null);
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
@@ -414,11 +426,15 @@ const App: React.FC = () => {
 
     // Compare only relative paths under sync base — base folder names may differ
     // legitimately (e.g., FTP home "/home/user" vs local "/var/www/html/site.com")
+    // Strip leading "/" from relative portions to handle root-base providers (Zoho "/")
+    // where slicing by "/" (len 1) drops the leading slash but slicing by a longer
+    // base like "/home/user/Cloud" (no trailing /) preserves it.
+    const stripLead = (s: string) => s.startsWith('/') ? s.slice(1) : s;
     const localRel = norm(currentLocalPath).startsWith(norm(syncBasePaths.local))
-      ? norm(currentLocalPath).slice(norm(syncBasePaths.local).length)
+      ? stripLead(norm(currentLocalPath).slice(norm(syncBasePaths.local).length))
       : null;
     const remoteRel = norm(currentRemotePath).startsWith(norm(syncBasePaths.remote))
-      ? norm(currentRemotePath).slice(norm(syncBasePaths.remote).length)
+      ? stripLead(norm(currentRemotePath).slice(norm(syncBasePaths.remote).length))
       : null;
     const mismatch = localRel === null || remoteRel === null
       ? (localRel !== null || remoteRel !== null) // one navigated outside base, other didn't
@@ -1379,7 +1395,7 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'zohoworkdrive', 'azure'];
 
   const logConnectionSteps = async (
     server: string,
@@ -1387,16 +1403,20 @@ const App: React.FC = () => {
     protocol: string,
   ): Promise<{ resolvedIp: string | null; connectingLogId: string | null }> => {
     if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return { resolvedIp: null, connectingLogId: null };
-    const dnsLogId = humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname: server }, 'running');
+    // Extract pure hostname for DNS resolution — WebDAV servers are stored as full URLs
+    // e.g. "https://webdav.cloudme.com/path/" → "webdav.cloudme.com"
+    let hostname = server;
+    try { hostname = new URL(server).hostname; } catch { /* not a URL, use as-is */ }
+    const dnsLogId = humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname }, 'running');
     let resolvedIp: string | null = null;
     try {
-      resolvedIp = await invoke<string>('resolve_hostname', { hostname: server, port });
-      humanLog.updateEntry(dnsLogId, { status: 'success', message: t('activity.dns_resolved', { hostname: server, ip: resolvedIp }) });
+      resolvedIp = await invoke<string>('resolve_hostname', { hostname, port });
+      humanLog.updateEntry(dnsLogId, { status: 'success', message: t('activity.dns_resolved', { hostname, ip: resolvedIp }) });
     } catch (e) {
-      humanLog.updateEntry(dnsLogId, { status: 'error', message: t('activity.dns_failed', { hostname: server, error: String(e) }) });
+      humanLog.updateEntry(dnsLogId, { status: 'error', message: t('activity.dns_failed', { hostname, error: String(e) }) });
     }
     const connectingLogId = humanLog.logRaw('activity.connecting_to', 'CONNECT',
-      { ip: resolvedIp || server, port: String(port) }, 'running');
+      { ip: resolvedIp || hostname, port: String(port) }, 'running');
     return { resolvedIp, connectingLogId };
   };
 
@@ -1422,6 +1442,45 @@ const App: React.FC = () => {
 
   const logListingComplete = (path: string, count: number) => {
     humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success');
+  };
+
+  // SEC-P1-06: TOFU host key check — returns true if key is accepted or already known
+  const checkSftpHostKey = async (host: string, port: number): Promise<boolean> => {
+    try {
+      const info = await invoke<HostKeyInfo>('sftp_check_host_key', { host, port });
+      if (info.status === 'known') return true;
+      if (info.status === 'error') {
+        notify.error('Host key error', `Could not verify host key for ${host}:${port}`);
+        return false;
+      }
+      // Show TOFU or key-changed dialog
+      return new Promise<boolean>((resolve) => {
+        setHostKeyDialog({ visible: true, info, host, port, resolve });
+      });
+    } catch (error) {
+      notify.error('Host key check failed', String(error));
+      return false;
+    }
+  };
+
+  const handleHostKeyAccept = async () => {
+    const { info, host, port, resolve } = hostKeyDialog;
+    try {
+      if (info?.status === 'changed' && info.changed_line !== undefined) {
+        await invoke('sftp_remove_host_key', { host, port, line: info.changed_line });
+      }
+      await invoke('sftp_accept_host_key', { host, port });
+      resolve?.(true);
+    } catch (error) {
+      notify.error('Failed to save host key', String(error));
+      resolve?.(false);
+    }
+    setHostKeyDialog({ visible: false, info: null, host: '', port: 22, resolve: null });
+  };
+
+  const handleHostKeyReject = () => {
+    hostKeyDialog.resolve?.(false);
+    setHostKeyDialog({ visible: false, info: null, host: '', port: 22, resolve: null });
   };
 
   // FTP operations
@@ -1525,6 +1584,11 @@ const App: React.FC = () => {
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+        // SEC-P1-06: TOFU host key check for SFTP
+        if (protocol === 'sftp') {
+          const accepted = await checkSftpHostKey(connectionParams.server, connectionParams.port || 22);
+          if (!accepted) { setLoading(false); return; }
+        }
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connectionParams.server, connectionParams.port || 21, protocol);
         await invoke('provider_connect', { params: providerParams });
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connectionParams.server, port: String(connectionParams.port || 21) }) });
@@ -1654,7 +1718,7 @@ const App: React.FC = () => {
     finally { setLoading(false); }
   };
 
-  const disconnectFromFtp = async () => {
+  const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
     try {
       await invoke('disconnect_ftp');
@@ -1669,7 +1733,12 @@ const App: React.FC = () => {
       setDevToolsOpen(false);
       setDevToolsPreviewFile(null);
       humanLog.logSuccess('DISCONNECT', {}, logId);
-      notify.info(t('toast.disconnectedTitle'), t('toast.disconnectedFrom'));
+      if (showToastNotifications) {
+        const msgKey = reason === 'tab-close' ? 'toast.disconnectedTabClosed'
+                     : reason === 'close-all' ? 'toast.disconnectedAllClosed'
+                     : 'toast.disconnectedFrom';
+        toast.info(t('toast.disconnectedTitle'), t(msgKey, { server: connectionParams.server }));
+      }
     } catch (error) {
       humanLog.logError('DISCONNECT', {}, logId);
       notify.error(t('common.error'), t('toast.disconnectFailed', { error: String(error) }));
@@ -1828,13 +1897,25 @@ const App: React.FC = () => {
             params: { consumer_key: clientId, consumer_secret: clientSecret }
           });
         } else {
-          // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud)
+          // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho)
           const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
+
+          // Zoho requires region for correct API endpoints (us/eu/in/au/jp/ca/sa)
+          let region: string | undefined = targetSession.connectionParams?.options?.region;
+          if (!region && protocol === 'zohoworkdrive') {
+            try {
+              region = await invoke<string>('get_credential', { account: `oauth_${protocol}_region` });
+            } catch {
+              // Default "us" will be applied by Rust serde default
+            }
+          }
+
           await invoke('oauth2_connect', {
             params: {
               provider: oauthProvider,
               client_id: clientId,
               client_secret: clientSecret,
+              ...(region && { region }),
             }
           });
         }
@@ -1887,6 +1968,11 @@ const App: React.FC = () => {
         };
 
         logger.debug('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
+        // SEC-P1-06: TOFU host key check for SFTP
+        if (protocol === 'sftp') {
+          const accepted = await checkSftpHostKey(connectParams.server, connectParams.port || 22);
+          if (!accepted) throw new Error('Host key rejected by user');
+        }
         await invoke('provider_connect', { params: providerParams });
         if (targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
@@ -1967,16 +2053,13 @@ const App: React.FC = () => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
-    // Log the tab closure
-    humanLog.logRaw('activity.disconnect_success', 'DISCONNECT', {}, 'success');
-
     // If closing active session, switch to another or disconnect
     if (sessionId === activeSessionId) {
       const remaining = sessions.filter(s => s.id !== sessionId);
       if (remaining.length > 0) {
         await switchSession(remaining[0].id);
       } else {
-        await disconnectFromFtp();
+        await disconnectFromFtp('tab-close');
       }
     }
 
@@ -1984,7 +2067,7 @@ const App: React.FC = () => {
   };
 
   const closeAllSessions = async () => {
-    await disconnectFromFtp();
+    await disconnectFromFtp('close-all');
     setSessions([]);
   };
 
@@ -3623,7 +3706,7 @@ const App: React.FC = () => {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
+      { label: currentProtocol === 'zohoworkdrive' ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: true },
       {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
           const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
@@ -3778,6 +3861,16 @@ const App: React.FC = () => {
           },
         });
       }
+    }
+
+    // Zoho WorkDrive: View Trash
+    if (currentProtocol === 'zohoworkdrive') {
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} />,
+        action: () => setShowZohoTrash(true),
+        divider: true,
+      });
     }
 
     contextMenu.show(e, items);
@@ -4458,6 +4551,14 @@ const App: React.FC = () => {
       {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
+      <HostKeyDialog
+        visible={hostKeyDialog.visible}
+        info={hostKeyDialog.info}
+        host={hostKeyDialog.host}
+        port={hostKeyDialog.port}
+        onAccept={handleHostKeyAccept}
+        onReject={handleHostKeyReject}
+      />
       <OverwriteDialog
         isOpen={overwriteDialog.isOpen}
         source={overwriteDialog.source!}
@@ -4536,6 +4637,13 @@ const App: React.FC = () => {
           archiveType={archiveBrowserState.type}
           isEncrypted={archiveBrowserState.encrypted}
           onClose={() => setArchiveBrowserState(null)}
+        />
+      )}
+
+      {showZohoTrash && (
+        <ZohoTrashManager
+          onClose={() => setShowZohoTrash(false)}
+          onRefreshFiles={() => loadRemoteFiles(undefined, true)}
         />
       )}
 
@@ -4667,7 +4775,7 @@ const App: React.FC = () => {
                 <Settings size={18} className="text-gray-500 dark:text-gray-400" />
               </button>
               {isConnected ? (
-                <button onClick={disconnectFromFtp} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm hover:shadow-md flex items-center gap-2">
+                <button onClick={() => disconnectFromFtp('button')} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-sm hover:shadow-md flex items-center gap-2">
                   <LogOut size={16} /> {t('common.disconnect')}
                 </button>
               ) : !showConnectionScreen && (
@@ -4781,6 +4889,11 @@ const App: React.FC = () => {
                   };
 
                   logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+                  // SEC-P1-06: TOFU host key check for SFTP
+                  if (params.protocol === 'sftp') {
+                    const accepted = await checkSftpHostKey(params.server, params.port || 22);
+                    if (!accepted) return;
+                  }
                   const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(params.server, params.port || 21, params.protocol || 'ftp');
                   await invoke('provider_connect', { params: providerParams });
                   if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || params.server, port: String(params.port || 21) }) });
@@ -6260,6 +6373,7 @@ const App: React.FC = () => {
           privateKeyPath: connectionParams.options?.private_key_path,
           keyPassphrase: connectionParams.options?.key_passphrase,
         } : null}
+        onCheckHostKey={checkSftpHostKey}
         onFileMutation={(target) => {
           setTimeout(() => {
             if (target === 'remote' || target === 'both') {

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
+use secrecy::zeroize::Zeroize;
 use tracing::info;
 
 // Cached unlocked vault state: (vault.db path, vault_key)
@@ -236,6 +237,13 @@ pub struct CredentialStore {
     vault_key: [u8; 32],
 }
 
+/// GAP-E01: Zeroize vault key on drop to prevent key material lingering in memory
+impl Drop for CredentialStore {
+    fn drop(&mut self) {
+        self.vault_key.zeroize();
+    }
+}
+
 impl CredentialStore {
     // ---- Initialization ----
 
@@ -352,8 +360,8 @@ impl CredentialStore {
     pub fn clear_cache() {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             if let Some((_, ref mut key)) = *cache {
-                // Zeroize the vault key before dropping
-                key.fill(0);
+                // GAP-E01: Zeroize vault key via Zeroize trait (constant-time)
+                key.zeroize();
             }
             *cache = None;
         }

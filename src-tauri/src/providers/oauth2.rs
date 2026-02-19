@@ -95,6 +95,7 @@ pub enum OAuthProvider {
     OneDrive,
     Box,
     PCloud,
+    ZohoWorkdrive,
 }
 
 impl std::fmt::Display for OAuthProvider {
@@ -105,6 +106,7 @@ impl std::fmt::Display for OAuthProvider {
             OAuthProvider::OneDrive => write!(f, "OneDrive"),
             OAuthProvider::Box => write!(f, "Box"),
             OAuthProvider::PCloud => write!(f, "pCloud"),
+            OAuthProvider::ZohoWorkdrive => write!(f, "Zoho WorkDrive"),
         }
     }
 }
@@ -219,14 +221,20 @@ impl OAuthConfig {
         Self::box_cloud_with_port(client_id, client_secret, 0)
     }
 
-    /// Create pCloud OAuth config with dynamic callback port
-    pub fn pcloud_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
+    /// Create pCloud OAuth config with dynamic callback port and region
+    pub fn pcloud_with_port(client_id: &str, client_secret: &str, port: u16, region: &str) -> Self {
+        // GAP-A06: pCloud EU uses eapi.pcloud.com for API/token endpoint
+        let token_url = if region == "eu" {
+            "https://eapi.pcloud.com/oauth2_token"
+        } else {
+            "https://api.pcloud.com/oauth2_token"
+        };
         Self {
             provider: OAuthProvider::PCloud,
             client_id: client_id.to_string(),
             client_secret: Some(client_secret.to_string()),
             auth_url: "https://my.pcloud.com/oauth2/authorize".to_string(),
-            token_url: "https://api.pcloud.com/oauth2_token".to_string(),
+            token_url: token_url.to_string(),
             scopes: vec![],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
             extra_auth_params: vec![],
@@ -234,8 +242,55 @@ impl OAuthConfig {
     }
 
     /// Create pCloud OAuth config (default port for token refresh only)
-    pub fn pcloud(client_id: &str, client_secret: &str) -> Self {
-        Self::pcloud_with_port(client_id, client_secret, 0)
+    pub fn pcloud(client_id: &str, client_secret: &str, region: &str) -> Self {
+        Self::pcloud_with_port(client_id, client_secret, 0, region)
+    }
+
+    /// Get Zoho OAuth domain for a given region
+    fn zoho_domain(region: &str) -> &'static str {
+        match region {
+            "eu" => "accounts.zoho.eu",
+            "in" => "accounts.zoho.in",
+            "au" => "accounts.zoho.com.au",
+            "jp" => "accounts.zoho.jp",
+            "uk" => "accounts.zoho.uk",
+            "ca" => "accounts.zohocloud.ca",
+            "sa" => "accounts.zoho.sa",
+            "cn" => "accounts.zoho.com.cn",
+            "ae" => "accounts.zoho.ae",
+            _ => "accounts.zoho.com", // US default
+        }
+    }
+
+    /// Create Zoho WorkDrive OAuth config with dynamic callback port and region
+    pub fn zoho_with_port(client_id: &str, client_secret: &str, port: u16, region: &str) -> Self {
+        let domain = Self::zoho_domain(region);
+        Self {
+            provider: OAuthProvider::ZohoWorkdrive,
+            client_id: client_id.to_string(),
+            client_secret: Some(client_secret.to_string()),
+            auth_url: format!("https://{}/oauth/v2/auth", domain),
+            token_url: format!("https://{}/oauth/v2/token", domain),
+            scopes: vec![
+                "WorkDrive.files.ALL".to_string(),
+                "WorkDrive.team.ALL".to_string(),
+                "WorkDrive.workspace.ALL".to_string(),
+                "WorkDrive.teamfolders.ALL".to_string(),
+                "WorkDrive.links.CREATE".to_string(),
+                "WorkDrive.links.READ".to_string(),
+                "ZohoFiles.files.ALL".to_string(),
+            ],
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![
+                ("access_type".to_string(), "offline".to_string()),
+                ("prompt".to_string(), "consent".to_string()),
+            ],
+        }
+    }
+
+    /// Create Zoho WorkDrive OAuth config (default port for token refresh only)
+    pub fn zoho(client_id: &str, client_secret: &str, region: &str) -> Self {
+        Self::zoho_with_port(client_id, client_secret, 0, region)
     }
 }
 
@@ -268,6 +323,8 @@ pub struct OAuth2Manager {
     /// Callback server port (used in redirect URL generation)
     #[allow(dead_code)]
     callback_port: u16,
+    /// Guard to prevent concurrent token refresh (H-04: avoids invalid_grant race)
+    refresh_guard: tokio::sync::Mutex<()>,
 }
 
 impl OAuth2Manager {
@@ -275,6 +332,7 @@ impl OAuth2Manager {
         Self {
             pending_verifiers: Arc::new(RwLock::new(HashMap::new())),
             callback_port: 0, // Will be assigned dynamically by OS
+            refresh_guard: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -400,10 +458,12 @@ impl OAuth2Manager {
     }
 
     /// Get valid access token (refreshing if needed)
+    /// Uses refresh_guard mutex to prevent concurrent refresh races (H-04)
     pub async fn get_valid_token(
         &self,
         config: &OAuthConfig,
     ) -> Result<SecretString, ProviderError> {
+        let _guard = self.refresh_guard.lock().await;
         let mut tokens = self.load_tokens(config.provider)?;
 
         if tokens.is_expired() {

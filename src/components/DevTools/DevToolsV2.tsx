@@ -41,6 +41,8 @@ interface DevToolsV2Props {
     onMaximizeChange?: (maximized: boolean) => void;
     /** Callback to refresh file panels after AI tool mutations */
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
+    /** SEC-P1-06: TOFU host key check before SSH shell open */
+    onCheckHostKey?: (host: string, port: number) => Promise<boolean>;
 }
 
 type PanelVisibility = {
@@ -76,6 +78,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     isCloudConnection,
     onMaximizeChange,
     onFileMutation,
+    onCheckHostKey,
 }) => {
     const t = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -488,7 +491,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                     <span className={`text-xs ${theme.text}`}>{t('devtools.terminal')}</span>
                                 </div>
                                 <div className="flex-1 overflow-hidden bg-gray-900">
-                                    <SSHTerminal className="h-full" localPath={localPath} sshConnection={sshConnection} appTheme={appTheme} />
+                                    <SSHTerminal className="h-full" localPath={localPath} sshConnection={sshConnection} appTheme={appTheme} onCheckHostKey={onCheckHostKey} />
                                 </div>
                             </div>
                         )}

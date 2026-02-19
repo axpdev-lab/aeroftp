@@ -47,15 +47,13 @@ impl Handler for SshHandler {
                 Ok(true)
             }
             Ok(false) => {
-                // Host not found in known_hosts - Trust On First Use (TOFU)
+                // SEC-P1-06: Host not in known_hosts — reject here.
+                // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
                 tracing::warn!(
-                    "SFTP: Host key for {} not found in known_hosts - accepting on first use (TOFU)",
+                    "SFTP: Host key for {} not pre-approved via TOFU dialog — rejecting",
                     self.host
                 );
-                if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
-                    tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
-                }
-                Ok(true)
+                Ok(false)
             }
             Err(keys::Error::KeyChanged { line }) => {
                 tracing::error!(
@@ -240,6 +238,8 @@ fn format_permissions(mode: u32, is_dir: bool) -> String {
 
 #[async_trait]
 impl StorageProvider for SftpProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::Sftp
     }
@@ -623,9 +623,11 @@ impl StorageProvider for SftpProvider {
         // List all entries
         let entries = self.list(&full_path).await?;
 
-        // Delete all entries recursively
+        // Delete all entries recursively (GAP-A02: skip symlinks to prevent following into target dirs)
         for entry in entries {
-            if entry.is_dir {
+            if entry.is_symlink {
+                self.delete(&entry.path).await?;
+            } else if entry.is_dir {
                 // Use Box::pin to avoid infinite recursion type issues
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
             } else {
@@ -845,6 +847,14 @@ impl StorageProvider for SftpProvider {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
         file.seek(std::io::SeekFrom::Start(offset)).await
             .map_err(|e| ProviderError::ServerError(format!("Failed to seek: {}", e)))?;
+
+        // GAP-A03: Cap read_range allocation to prevent attacker-controlled OOM
+        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+        if len > MAX_READ_RANGE {
+            return Err(ProviderError::Other(
+                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
+            ));
+        }
 
         // Read exact len bytes
         let mut buf = vec![0u8; len as usize];

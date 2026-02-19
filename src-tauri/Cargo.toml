@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.3.0"
+version = "2.4.0"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -30,6 +30,7 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 suppaftp = { version = "=8.0.1", features = ["tokio", "tokio-async-native-tls"] }
 native-tls = "0.2"
 anyhow = "1"

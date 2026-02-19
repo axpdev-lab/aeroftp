@@ -14,6 +14,7 @@ use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Sha512, Digest};
 use std::collections::HashMap;
+use tokio::io::AsyncWriteExt;
 use tracing::debug;
 
 /// Debug logging through tracing infrastructure (no file I/O)
@@ -193,13 +194,19 @@ pub struct FilenProvider {
     root_uuid: String,
     /// Cache: path -> DirInfo
     dir_cache: HashMap<String, DirInfo>,
+    /// Backend-only cache: file UUID -> encryption key (never sent to frontend)
+    file_key_cache: HashMap<String, String>,
 }
 
 impl FilenProvider {
     pub fn new(config: FilenConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             config,
-            client: reqwest::Client::new(),
+            client,
             connected: false,
             api_key: String::new(),
             master_keys: Vec::new(),
@@ -207,6 +214,7 @@ impl FilenProvider {
             current_folder_uuid: String::new(),
             root_uuid: String::new(),
             dir_cache: HashMap::new(),
+            file_key_cache: HashMap::new(),
         }
     }
 
@@ -499,6 +507,8 @@ impl FilenProvider {
 
 #[async_trait]
 impl StorageProvider for FilenProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType { ProviderType::Filen }
 
     fn display_name(&self) -> String { format!("Filen ({})", self.config.email) }
@@ -710,9 +720,11 @@ impl StorageProvider for FilenProvider {
                         is_symlink: false, link_target: None,
                         mime_type: if meta.mime.is_empty() { None } else { Some(meta.mime) },
                         metadata: {
+                            let file_uuid = file.uuid.clone();
+                            // Store encryption key in backend-only cache (never sent to frontend via IPC)
+                            self.file_key_cache.insert(file_uuid.clone(), meta.key);
                             let mut m = HashMap::new();
-                            m.insert("uuid".to_string(), file.uuid);
-                            m.insert("key".to_string(), meta.key);
+                            m.insert("uuid".to_string(), file_uuid);
                             m.insert("bucket".to_string(), file.bucket);
                             m.insert("region".to_string(), file.region);
                             m.insert("chunks".to_string(), file.chunks.to_string());
@@ -757,7 +769,7 @@ impl StorageProvider for FilenProvider {
         Ok(self.current_path.clone())
     }
 
-    async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+    async fn download(&mut self, remote_path: &str, local_path: &str, on_progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         // Find the file to get its metadata (uuid, key, region, bucket, chunks)
         let normalized = Self::normalize_path(remote_path);
         let (parent_path, file_name) = match normalized.rfind('/') {
@@ -771,19 +783,28 @@ impl StorageProvider for FilenProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
 
         let uuid = file_entry.metadata.get("uuid")
-            .ok_or_else(|| ProviderError::Other("No UUID for file".to_string()))?;
-        let file_key = file_entry.metadata.get("key")
-            .ok_or_else(|| ProviderError::Other("No encryption key for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No UUID for file".to_string()))?
+            .clone();
+        // Look up encryption key from backend-only cache (not from IPC-visible metadata)
+        let file_key = self.file_key_cache.get(&uuid)
+            .ok_or_else(|| ProviderError::Other("No encryption key in cache (re-list directory first)".to_string()))?
+            .clone();
         let region = file_entry.metadata.get("region")
-            .ok_or_else(|| ProviderError::Other("No region for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No region for file".to_string()))?
+            .clone();
         let bucket = file_entry.metadata.get("bucket")
-            .ok_or_else(|| ProviderError::Other("No bucket for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No bucket for file".to_string()))?
+            .clone();
         let chunks: u32 = file_entry.metadata.get("chunks")
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
+        let total_size = file_entry.size;
 
-        // Download and decrypt each chunk
-        let mut all_data = Vec::new();
+        // Stream decrypted chunks directly to disk (no full-file RAM buffer)
+        let mut local_file = tokio::fs::File::create(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
+        let mut transferred: u64 = 0;
+
         for chunk_idx in 0..chunks {
             let download_url = format!("https://egest.filen.io/{}/{}/{}/{}", region, bucket, uuid, chunk_idx);
 
@@ -798,18 +819,23 @@ impl StorageProvider for FilenProvider {
             let encrypted = resp.bytes().await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-            let decrypted = Self::decrypt_file_content(&encrypted, file_key)?;
-            all_data.extend_from_slice(&decrypted);
+            let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
+            local_file.write_all(&decrypted).await
+                .map_err(|e| ProviderError::IoError(e))?;
+            transferred += decrypted.len() as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
         }
 
-        tokio::fs::write(local_path, &all_data).await
-            .map_err(|e| ProviderError::IoError(e))?;
+        local_file.flush().await.map_err(|e| ProviderError::IoError(e))?;
 
         Ok(())
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        // Find the file to get its metadata (uuid, key, region, bucket, chunks)
+        // Find the file to get its metadata (uuid, region, bucket, chunks)
         let normalized = Self::normalize_path(remote_path);
         let (parent_path, file_name) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
@@ -822,13 +848,18 @@ impl StorageProvider for FilenProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
 
         let uuid = file_entry.metadata.get("uuid")
-            .ok_or_else(|| ProviderError::Other("No UUID for file".to_string()))?;
-        let file_key = file_entry.metadata.get("key")
-            .ok_or_else(|| ProviderError::Other("No encryption key for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No UUID for file".to_string()))?
+            .clone();
+        // Look up encryption key from backend-only cache (not from IPC-visible metadata)
+        let file_key = self.file_key_cache.get(&uuid)
+            .ok_or_else(|| ProviderError::Other("No encryption key in cache (re-list directory first)".to_string()))?
+            .clone();
         let region = file_entry.metadata.get("region")
-            .ok_or_else(|| ProviderError::Other("No region for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No region for file".to_string()))?
+            .clone();
         let bucket = file_entry.metadata.get("bucket")
-            .ok_or_else(|| ProviderError::Other("No bucket for file".to_string()))?;
+            .ok_or_else(|| ProviderError::Other("No bucket for file".to_string()))?
+            .clone();
         let chunks: u32 = file_entry.metadata.get("chunks")
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
@@ -849,7 +880,7 @@ impl StorageProvider for FilenProvider {
             let encrypted = resp.bytes().await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-            let decrypted = Self::decrypt_file_content(&encrypted, file_key)?;
+            let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             all_data.extend_from_slice(&decrypted);
         }
 
@@ -1156,7 +1187,7 @@ impl StorageProvider for FilenProvider {
         } else {
             // File rename: need encrypted name + metadata JSON with updated name
             let encrypted_name = self.encrypt_metadata(&new_name)?;
-            let file_key = entry.metadata.get("key").cloned().unwrap_or_default();
+            let file_key = self.file_key_cache.get(uuid).cloned().unwrap_or_default();
             let mime = entry.mime_type.clone().unwrap_or_else(|| "application/octet-stream".to_string());
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;

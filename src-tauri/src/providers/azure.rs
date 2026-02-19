@@ -5,13 +5,19 @@
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
+use quick_xml::Reader;
+use quick_xml::events::Event;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
+use secrecy::ExposeSecret;
 use sha2::Sha256;
+use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry,
+    sanitize_api_error,
 };
 use super::types::AzureConfig;
 
@@ -39,9 +45,14 @@ pub struct AzureProvider {
 
 impl AzureProvider {
     pub fn new(config: AzureConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
         Self {
             config,
-            client: reqwest::Client::new(),
+            client,
             connected: false,
             current_prefix: String::new(),
         }
@@ -58,19 +69,39 @@ impl AzureProvider {
         }
     }
 
+    /// Build canonicalized headers string from a HeaderMap.
+    /// Collects all `x-ms-*` headers, sorts them alphabetically,
+    /// and formats as `headername:value\n`.
+    fn build_canonical_headers(headers: &HeaderMap) -> String {
+        let mut x_ms_headers: Vec<(String, String)> = Vec::new();
+        for (name, value) in headers.iter() {
+            let name_lower = name.as_str().to_lowercase();
+            if name_lower.starts_with("x-ms-") {
+                let val = value.to_str().unwrap_or("").trim().to_string();
+                x_ms_headers.push((name_lower, val));
+            }
+        }
+        x_ms_headers.sort_by(|a, b| a.0.cmp(&b.0));
+        x_ms_headers.iter()
+            .map(|(k, v)| format!("{}:{}\n", k, v))
+            .collect::<String>()
+    }
+
     /// Add SAS token or Shared Key auth to request
     fn sign_request(&self, method: &str, url: &str, headers: &HeaderMap, content_length: u64) -> Result<String, ProviderError> {
         if let Some(ref sas) = self.config.sas_token {
             // SAS token appended to URL
             let separator = if url.contains('?') { "&" } else { "?" };
-            return Ok(format!("{}{}{}", url, separator, sas));
+            return Ok(format!("{}{}{}", url, separator, sas.expose_secret()));
         }
 
         // Shared Key signing
-        let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
         let content_type = headers.get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
+
+        // Build canonical headers dynamically (sorted, lowercased, all x-ms-* headers)
+        let canonical_headers = Self::build_canonical_headers(headers);
 
         // Parse URL for canonicalized resource
         let parsed = url::Url::parse(url)
@@ -88,17 +119,16 @@ impl AzureProvider {
             .collect::<String>();
 
         let string_to_sign = format!(
-            "{}\n\n\n{}\n\n{}\n\n\n\n\n\n\nx-ms-date:{}\nx-ms-version:{}\n{}{}",
+            "{}\n\n\n{}\n\n{}\n\n\n\n\n\n\n{}{}{}",
             method,
             if content_length > 0 { content_length.to_string() } else { String::new() },
             content_type,
-            now,
-            API_VERSION,
+            canonical_headers,
             canonicalized_resource,
             query_str,
         );
 
-        let key_bytes = BASE64.decode(&self.config.access_key)
+        let key_bytes = BASE64.decode(self.config.access_key.expose_secret())
             .map_err(|e| ProviderError::Other(format!("Invalid access key: {}", e)))?;
 
         let mut mac = HmacSha256::new_from_slice(&key_bytes)
@@ -109,60 +139,165 @@ impl AzureProvider {
         Ok(format!("SharedKey {}:{}", self.config.account_name, signature))
     }
 
-    /// Parse XML blob list response
-    fn parse_blob_list(&self, xml: &str) -> Vec<BlobItem> {
+    /// Parse XML blob list response using quick-xml event-based parser.
+    /// Returns (items, next_marker) where next_marker is Some if pagination continues.
+    fn parse_blob_list(&self, xml: &str) -> (Vec<BlobItem>, Option<String>) {
         let mut items = Vec::new();
+        let mut next_marker: Option<String> = None;
 
-        // Parse BlobPrefix (virtual directories)
-        for prefix_match in xml.split("<BlobPrefix>").skip(1) {
-            if let Some(name_end) = prefix_match.find("</Name>") {
-                if let Some(name_start) = prefix_match.find("<Name>") {
-                    let name = &prefix_match[name_start + 6..name_end];
-                    let display_name = name.trim_end_matches('/');
-                    // Strip current prefix
-                    let relative = display_name.strip_prefix(&self.current_prefix).unwrap_or(display_name);
-                    let relative = relative.trim_start_matches('/');
-                    if !relative.is_empty() {
-                        items.push(BlobItem {
-                            name: relative.to_string(),
-                            size: 0,
-                            last_modified: None,
-                            is_prefix: true,
-                        });
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+
+        // State machine for XML parsing
+        #[derive(PartialEq)]
+        enum ParseState {
+            Root,
+            BlobPrefix,
+            BlobPrefixName,
+            Blob,
+            BlobName,
+            BlobProperties,
+            BlobContentLength,
+            BlobLastModified,
+            NextMarker,
+        }
+
+        let mut state = ParseState::Root;
+        let mut current_name = String::new();
+        let mut current_size: u64 = 0;
+        let mut current_modified: Option<String> = None;
+        let mut in_blob = false;
+        let mut in_prefix = false;
+        let mut buf = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    match e.name().as_ref() {
+                        b"BlobPrefix" => {
+                            state = ParseState::BlobPrefix;
+                            in_prefix = true;
+                            current_name.clear();
+                        }
+                        b"Blob" => {
+                            state = ParseState::Blob;
+                            in_blob = true;
+                            current_name.clear();
+                            current_size = 0;
+                            current_modified = None;
+                        }
+                        b"Name" if in_prefix => {
+                            state = ParseState::BlobPrefixName;
+                        }
+                        b"Name" if in_blob => {
+                            state = ParseState::BlobName;
+                        }
+                        b"Properties" if in_blob => {
+                            state = ParseState::BlobProperties;
+                        }
+                        b"Content-Length" if in_blob => {
+                            state = ParseState::BlobContentLength;
+                        }
+                        b"Last-Modified" if in_blob => {
+                            state = ParseState::BlobLastModified;
+                        }
+                        b"NextMarker" => {
+                            state = ParseState::NextMarker;
+                        }
+                        _ => {}
                     }
                 }
+                Ok(Event::Text(ref e)) => {
+                    let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                    match state {
+                        ParseState::BlobPrefixName => {
+                            current_name = text;
+                        }
+                        ParseState::BlobName => {
+                            current_name = text;
+                        }
+                        ParseState::BlobContentLength => {
+                            current_size = text.parse().unwrap_or(0);
+                        }
+                        ParseState::BlobLastModified => {
+                            if !text.is_empty() {
+                                current_modified = Some(text);
+                            }
+                        }
+                        ParseState::NextMarker => {
+                            if !text.is_empty() {
+                                next_marker = Some(text);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    match e.name().as_ref() {
+                        b"BlobPrefix" => {
+                            if in_prefix {
+                                let display_name = current_name.trim_end_matches('/');
+                                let relative = display_name.strip_prefix(&self.current_prefix).unwrap_or(display_name);
+                                let relative = relative.trim_start_matches('/');
+                                if !relative.is_empty() {
+                                    items.push(BlobItem {
+                                        name: relative.to_string(),
+                                        size: 0,
+                                        last_modified: None,
+                                        is_prefix: true,
+                                    });
+                                }
+                                in_prefix = false;
+                                state = ParseState::Root;
+                            }
+                        }
+                        b"Blob" => {
+                            if in_blob {
+                                let relative = current_name.strip_prefix(&self.current_prefix).unwrap_or(&current_name);
+                                let relative = relative.trim_start_matches('/');
+                                if !relative.is_empty() && !relative.contains('/') {
+                                    items.push(BlobItem {
+                                        name: relative.to_string(),
+                                        size: current_size,
+                                        last_modified: current_modified.clone(),
+                                        is_prefix: false,
+                                    });
+                                }
+                                in_blob = false;
+                                state = ParseState::Root;
+                            }
+                        }
+                        b"Name" => {
+                            if in_prefix {
+                                state = ParseState::BlobPrefix;
+                            } else if in_blob {
+                                state = ParseState::Blob;
+                            }
+                        }
+                        b"Properties" => {
+                            if in_blob {
+                                state = ParseState::Blob;
+                            }
+                        }
+                        b"Content-Length" | b"Last-Modified" => {
+                            if in_blob {
+                                state = ParseState::BlobProperties;
+                            }
+                        }
+                        b"NextMarker" => {
+                            state = ParseState::Root;
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
             }
+            buf.clear();
         }
 
-        // Parse Blob items (files)
-        for blob_match in xml.split("<Blob>").skip(1) {
-            let name = Self::extract_xml_tag(blob_match, "Name").unwrap_or_default();
-            let relative = name.strip_prefix(&self.current_prefix).unwrap_or(&name);
-            let relative = relative.trim_start_matches('/');
-            if relative.is_empty() || relative.contains('/') { continue; }
-
-            let size = Self::extract_xml_tag(blob_match, "Content-Length")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let modified = Self::extract_xml_tag(blob_match, "Last-Modified");
-
-            items.push(BlobItem {
-                name: relative.to_string(),
-                size,
-                last_modified: modified,
-                is_prefix: false,
-            });
-        }
-
-        items
-    }
-
-    fn extract_xml_tag(xml: &str, tag: &str) -> Option<String> {
-        let open = format!("<{}>", tag);
-        let close = format!("</{}>", tag);
-        let start = xml.find(&open)?;
-        let end = xml.find(&close)?;
-        Some(xml[start + open.len()..end].to_string())
+        (items, next_marker)
     }
 
     fn resolve_blob_path(&self, path: &str) -> String {
@@ -178,10 +313,52 @@ impl AzureProvider {
             }
         }
     }
+
+    /// Execute a paginated blob list request, returning all items across pages.
+    async fn list_blobs_paginated(&self, base_url: &str) -> Result<Vec<BlobItem>, ProviderError> {
+        let mut all_items = Vec::new();
+        let mut marker: Option<String> = None;
+
+        loop {
+            let url = match &marker {
+                Some(m) => format!("{}&marker={}", base_url, urlencoding::encode(m)),
+                None => base_url.to_string(),
+            };
+
+            let mut headers = HeaderMap::new();
+            let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+            headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+            headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+
+            let auth = self.sign_request("GET", &url, &headers, 0)?;
+
+            let resp = if self.config.sas_token.is_some() {
+                self.client.get(&auth).headers(headers).send().await
+            } else {
+                headers.insert("Authorization", HeaderValue::from_str(&auth).unwrap());
+                self.client.get(&url).headers(headers).send().await
+            }.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            let body = resp.text().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            let (items, next_marker) = self.parse_blob_list(&body);
+            all_items.extend(items);
+
+            match next_marker {
+                Some(m) if !m.is_empty() => { marker = Some(m); }
+                _ => break,
+            }
+        }
+
+        Ok(all_items)
+    }
 }
 
 #[async_trait]
 impl StorageProvider for AzureProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType { ProviderType::Azure }
 
     fn display_name(&self) -> String {
@@ -211,7 +388,7 @@ impl StorageProvider for AzureProvider {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(format!("Azure auth failed: {}", body)));
+            return Err(ProviderError::AuthenticationFailed(format!("Azure auth failed: {}", sanitize_api_error(&body))));
         }
 
         self.connected = true;
@@ -232,28 +409,11 @@ impl StorageProvider for AzureProvider {
             format!("&prefix={}", urlencoding::encode(&p))
         };
 
-        let url = format!("{}?restype=container&comp=list&delimiter=/{}",
+        let base_url = format!("{}?restype=container&comp=list&delimiter=/{}",
             format!("{}/{}", self.config.blob_endpoint(), self.config.container),
             prefix_param);
 
-        let mut headers = HeaderMap::new();
-        let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-
-        let auth = self.sign_request("GET", &url, &headers, 0)?;
-
-        let resp = if self.config.sas_token.is_some() {
-            self.client.get(&auth).headers(headers).send().await
-        } else {
-            headers.insert("Authorization", HeaderValue::from_str(&auth).unwrap());
-            self.client.get(&url).headers(headers).send().await
-        }.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let body = resp.text().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        let items = self.parse_blob_list(&body);
+        let items = self.list_blobs_paginated(&base_url).await?;
 
         let display_prefix = if prefix.is_empty() { "/" } else { &prefix };
         Ok(items.into_iter().map(|item| {
@@ -277,8 +437,12 @@ impl StorageProvider for AzureProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        if path == ".." || path == "/" {
+        if path == ".." {
             return self.cd_up().await;
+        }
+        if path == "/" {
+            self.current_prefix = String::new();
+            return Ok(());
         }
 
         let new_prefix = if path.starts_with('/') {
@@ -338,11 +502,16 @@ impl StorageProvider for AzureProvider {
             return Err(ProviderError::TransferFailed(format!("Download failed: {}", resp.status())));
         }
 
-        let bytes = resp.bytes().await
+        // H-01: Streaming download — chunked writes instead of buffering entire response
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        }
 
         Ok(())
     }
@@ -377,28 +546,36 @@ impl StorageProvider for AzureProvider {
     async fn upload(&mut self, local_path: &str, remote_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         let blob_path = self.resolve_blob_path(remote_path);
         let url = self.blob_url(&blob_path);
-        let data = tokio::fs::read(local_path).await
+
+        // Streaming upload: get file metadata for Content-Length, then stream body
+        let file_meta = tokio::fs::metadata(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
+        let file_len = file_meta.len();
+
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
         headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
         headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
-        headers.insert(CONTENT_LENGTH, HeaderValue::from_str(&data.len().to_string()).unwrap());
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_str(&file_len.to_string()).unwrap());
 
-        let auth = self.sign_request("PUT", &url, &headers, data.len() as u64)?;
+        let auth = self.sign_request("PUT", &url, &headers, file_len)?;
 
         let resp = if self.config.sas_token.is_some() {
-            self.client.put(&auth).headers(headers).body(data).send().await
+            self.client.put(&auth).headers(headers).body(body).send().await
         } else {
             headers.insert("Authorization", HeaderValue::from_str(&auth).unwrap());
-            self.client.put(&url).headers(headers).body(data).send().await
+            self.client.put(&url).headers(headers).body(body).send().await
         }.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Upload failed: {}", body)));
+            return Err(ProviderError::TransferFailed(format!("Upload failed: {}", sanitize_api_error(&body))));
         }
 
         Ok(())
@@ -586,7 +763,7 @@ impl StorageProvider for AzureProvider {
             signed_protocol,
         );
 
-        let key_bytes = BASE64.decode(&self.config.access_key)
+        let key_bytes = BASE64.decode(self.config.access_key.expose_secret())
             .map_err(|e| ProviderError::Other(format!("Invalid access key: {}", e)))?;
 
         let mut mac = HmacSha256::new_from_slice(&key_bytes)

@@ -7,12 +7,14 @@ import { VisionImage, MAX_IMAGE_SIZE, MAX_IMAGES, SUPPORTED_IMAGE_TYPES, MAX_DIM
 export function useAIChatImages() {
     const [attachedImages, setAttachedImages] = useState<VisionImage[]>([]);
 
-    // Resize image to max dimension using canvas
+    // Resize image to max dimension using canvas (B22: timeout prevents hanging Promise)
     const resizeImage = useCallback((dataUrl: string, maxDim: number): Promise<string> => {
         return new Promise((resolve) => {
+            const timeout = setTimeout(() => resolve(dataUrl), 10000); // 10s safety timeout
             const img = new Image();
-            img.onerror = () => resolve(dataUrl); // Fallback to original on error
+            img.onerror = () => { clearTimeout(timeout); resolve(dataUrl); };
             img.onload = () => {
+                clearTimeout(timeout);
                 if (img.width <= maxDim && img.height <= maxDim) {
                     resolve(dataUrl);
                     return;

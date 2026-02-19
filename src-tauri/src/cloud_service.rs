@@ -200,29 +200,38 @@ impl CloudService {
         };
 
         // Process each comparison
+        // P1-7: Throttle status updates to every 100 files or 500ms to reduce lock contention
+        let mut last_status_update = std::time::Instant::now();
+        let status_interval = std::time::Duration::from_millis(500);
         for (index, comparison) in comparisons.iter().enumerate() {
-            // Update progress
-            self.set_status(CloudSyncStatus::Syncing {
-                current_file: comparison.relative_path.clone(),
-                progress: (index as f64 / total_files.max(1) as f64) * 100.0,
-                files_done: index as u32,
-                files_total: total_files,
-            }).await;
+            // Update progress (throttled)
+            let is_last = index == comparisons.len() - 1;
+            if index % 100 == 0 || is_last || last_status_update.elapsed() >= status_interval {
+                self.set_status(CloudSyncStatus::Syncing {
+                    current_file: comparison.relative_path.clone(),
+                    progress: (index as f64 / total_files.max(1) as f64) * 100.0,
+                    files_done: index as u32,
+                    files_total: total_files,
+                }).await;
+                last_status_update = std::time::Instant::now();
+            }
 
             match self.process_comparison(ftp_manager, &config, comparison).await {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
                         result.conflicts += 1;
-                        // Add to conflicts list
+                        // Add to conflicts list (capped at 10K to prevent unbounded growth)
                         let mut conflicts = self.conflicts.write().await;
-                        conflicts.push(FileConflict {
-                            relative_path: comparison.relative_path.clone(),
-                            local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
-                            remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
-                            local_size: comparison.local_info.as_ref().map(|i| i.size).unwrap_or(0),
-                            remote_size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
-                            status: comparison.status.clone(),
-                        });
+                        if conflicts.len() < 10_000 {
+                            conflicts.push(FileConflict {
+                                relative_path: comparison.relative_path.clone(),
+                                local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
+                                remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
+                                local_size: comparison.local_info.as_ref().map(|i| i.size).unwrap_or(0),
+                                remote_size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
+                                status: comparison.status.clone(),
+                            });
+                        }
                     }
                     _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
@@ -315,29 +324,38 @@ impl CloudService {
         };
 
         // Process each comparison
+        // P1-7: Throttle status updates to every 100 files or 500ms to reduce lock contention
+        let mut last_status_update = std::time::Instant::now();
+        let status_interval = std::time::Duration::from_millis(500);
         for (index, comparison) in comparisons.iter().enumerate() {
-            // Update progress
-            self.set_status(CloudSyncStatus::Syncing {
-                current_file: comparison.relative_path.clone(),
-                progress: (index as f64 / total_files.max(1) as f64) * 100.0,
-                files_done: index as u32,
-                files_total: total_files,
-            }).await;
+            // Update progress (throttled)
+            let is_last = index == comparisons.len() - 1;
+            if index % 100 == 0 || is_last || last_status_update.elapsed() >= status_interval {
+                self.set_status(CloudSyncStatus::Syncing {
+                    current_file: comparison.relative_path.clone(),
+                    progress: (index as f64 / total_files.max(1) as f64) * 100.0,
+                    files_done: index as u32,
+                    files_total: total_files,
+                }).await;
+                last_status_update = std::time::Instant::now();
+            }
 
             match self.process_comparison_with_provider(provider, &config, comparison).await {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
                         result.conflicts += 1;
-                        // Add to conflicts list
+                        // Add to conflicts list (capped at 10K to prevent unbounded growth)
                         let mut conflicts = self.conflicts.write().await;
-                        conflicts.push(FileConflict {
-                            relative_path: comparison.relative_path.clone(),
-                            local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
-                            remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
-                            local_size: comparison.local_info.as_ref().map(|i| i.size).unwrap_or(0),
-                            remote_size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
-                            status: comparison.status.clone(),
-                        });
+                        if conflicts.len() < 10_000 {
+                            conflicts.push(FileConflict {
+                                relative_path: comparison.relative_path.clone(),
+                                local_modified: comparison.local_info.as_ref().and_then(|i| i.modified),
+                                remote_modified: comparison.remote_info.as_ref().and_then(|i| i.modified),
+                                local_size: comparison.local_info.as_ref().map(|i| i.size).unwrap_or(0),
+                                remote_size: comparison.remote_info.as_ref().map(|i| i.size).unwrap_or(0),
+                                status: comparison.status.clone(),
+                            });
+                        }
                     }
                     _ => Self::record_sync_action(&mut result, comparison, &action),
                 },
@@ -474,6 +492,12 @@ impl CloudService {
                     metadata.len()
                 };
 
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                if files.len() >= 100_000 {
+                    tracing::warn!("Local file index cap reached (100K), truncating scan");
+                    return Ok(());
+                }
+
                 files.insert(
                     relative.clone(),
                     FileInfo {
@@ -532,6 +556,12 @@ impl CloudService {
                 // Check exclusions
                 if crate::sync::should_exclude(&relative_path, &config.exclude_patterns) {
                     continue;
+                }
+
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                if files.len() >= 100_000 {
+                    tracing::warn!("Remote file index cap reached (100K), truncating scan");
+                    return Ok(files);
                 }
 
                 files.insert(
@@ -726,6 +756,12 @@ impl CloudService {
                 // Check exclusions
                 if crate::sync::should_exclude(&relative_path, &config.exclude_patterns) {
                     continue;
+                }
+
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                if files.len() >= 100_000 {
+                    tracing::warn!("Remote file index cap reached (100K), truncating scan");
+                    return Ok(files);
                 }
 
                 files.insert(

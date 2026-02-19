@@ -195,6 +195,13 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Encryption**: zero-knowledge, client-side AES-256.
 - **2FA**: supported (optional field in connection form).
 
+### Zoho WorkDrive
+- **Auth**: OAuth 2.0 with PKCE.
+- **Regions**: US, EU, IN, AU, JP, UK, CA, SA — endpoint auto-selected from \`accounts_server\`.
+- **Structure**: Team-based. Files live under team folders; team ID required for uploads.
+- **API**: \`https://workdrive.zoho.{tld}/api/v1/\` (JSON:API format).
+- **Features**: search, trash management (list/restore/permanent delete), folder hierarchy.
+
 ### Archives & Encryption
 - **ZIP**: AES-256 encryption, compression levels 0-9.
 - **7z**: LZMA2 compression, AES-256 encryption.
@@ -284,6 +291,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         azure: '### Azure Blob\n- **Required**: Account Name, Access Key, Container.',
         fourshared: '### 4shared\n- **Auth**: OAuth 1.0 (HMAC-SHA1). 15 GB free. Native REST API v1.2.',
         filen: '### Filen\n- **Auth**: email + password. Zero-knowledge AES-256.',
+        zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
     };
 
     const active = activeProvider ? sections[activeProvider.toLowerCase()] || '' : '';

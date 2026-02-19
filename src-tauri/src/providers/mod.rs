@@ -35,8 +35,13 @@ pub mod azure;
 pub mod filen;
 pub mod oauth1;
 pub mod fourshared;
+pub mod zoho_workdrive;
+pub mod http_retry;
 
 pub use types::*;
+// GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0
+#[allow(unused_imports)]
+pub use http_retry::{HttpRetryConfig, send_with_retry};
 pub use ftp::FtpProvider;
 pub use sftp::SftpProvider;
 pub use webdav::WebDavProvider;
@@ -50,11 +55,29 @@ pub use pcloud::PCloudProvider;
 pub use azure::AzureProvider;
 pub use filen::FilenProvider;
 pub use fourshared::FourSharedProvider;
+pub use zoho_workdrive::ZohoWorkdriveProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
+
+/// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
+/// Truncates to first line (max 200 chars), strips potential tokens/keys.
+pub fn sanitize_api_error(body: &str) -> String {
+    let first_line = body.lines().next().unwrap_or("unknown error");
+    let truncated = if first_line.len() > 200 {
+        format!("{}...", &first_line[..first_line.floor_char_boundary(200)])
+    } else {
+        first_line.to_string()
+    };
+    // Strip potential Bearer tokens or API keys from error messages
+    if truncated.contains("Bearer ") || truncated.contains("eyJ") {
+        "API error (response contained credentials — redacted)".to_string()
+    } else {
+        truncated
+    }
+}
 
 /// Transfer optimization hints — per-provider capability advertisement
 #[derive(Debug, Clone, Serialize)]
@@ -99,6 +122,9 @@ impl Default for TransferOptimizationHints {
 #[async_trait]
 #[allow(dead_code)]
 pub trait StorageProvider: Send + Sync {
+    /// Downcast to concrete provider type for provider-specific operations
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+
     /// Get the provider type identifier
     fn provider_type(&self) -> ProviderType;
     
@@ -450,7 +476,7 @@ impl ProviderFactory {
                 ))
             }
             ProviderType::GoogleDrive | ProviderType::Dropbox | ProviderType::OneDrive
-            | ProviderType::Box | ProviderType::PCloud => {
+            | ProviderType::Box | ProviderType::PCloud | ProviderType::ZohoWorkdrive => {
                 // OAuth2 providers require a different initialization flow
                 // Use oauth2_connect command instead
                 Err(ProviderError::NotSupported(
@@ -497,6 +523,7 @@ impl ProviderFactory {
             ProviderType::Azure,
             ProviderType::Filen,
             ProviderType::FourShared,
+            ProviderType::ZohoWorkdrive,
         ]
     }
 }

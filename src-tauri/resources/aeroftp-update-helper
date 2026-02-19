@@ -1,0 +1,41 @@
+#!/bin/bash
+# AeroFTP Update Helper
+# Executed via pkexec with Polkit policy com.aeroftp.update.install
+# Installs .deb or .rpm packages with proper authentication dialog.
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: aeroftp-update-helper <package-file>" >&2
+    exit 1
+fi
+
+FILE="$1"
+
+if [ ! -f "$FILE" ]; then
+    echo "Error: File not found: $FILE" >&2
+    exit 1
+fi
+
+# Only allow files from standard download/temp directories
+case "$FILE" in
+    /home/*/Downloads/*|/tmp/*|/var/tmp/*)
+        ;;
+    *)
+        echo "Error: Package must be in Downloads or temp directory" >&2
+        exit 1
+        ;;
+esac
+
+case "$FILE" in
+    *.deb)
+        exec dpkg -i "$FILE"
+        ;;
+    *.rpm)
+        exec rpm -U "$FILE"
+        ;;
+    *)
+        echo "Error: Unsupported package format (only .deb and .rpm)" >&2
+        exit 1
+        ;;
+esac

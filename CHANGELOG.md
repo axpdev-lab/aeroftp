@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-02-19
+
+### Provider Integration Audit & Zoho WorkDrive
+
+AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor provider integration audit (grade: A-), refactors streaming uploads across 5 providers, adds streaming downloads for FTP and Filen (eliminating full-file RAM buffering), wraps all 16 provider credentials in SecretString, migrates XML parsing to quick-xml, expands the StorageProvider trait to 18 methods, and resolves 8 resource management issues identified by a targeted memory/IPC audit.
+
+#### Added
+
+- **Zoho WorkDrive provider** (16th protocol): Full OAuth2 integration with 8 regional endpoints (US, EU, IN, AU, JP, UK, CA, SA). Automatic team ID detection on connect. File upload/download with streaming, rename, move, search, trash management (list/restore/permanent delete), share link creation, and storage quota display. Region selector in ConnectionScreen with default "us"
+- **StorageProvider trait expansion**: 11 new trait methods — `stat()` (file metadata), `search()` (name search), `move_file()` (cross-folder move), `list_trash()`, `restore_from_trash()`, `permanent_delete()`, `create_share_link()`, `get_storage_quota()`, `list_versions()`, `download_version()`, `restore_version()`. Implemented across Google Drive, Dropbox, OneDrive, Box, S3, Zoho WorkDrive
+- **FTP TLS downgrade detection**: New `tls_downgraded` flag on FTP connections. When `ExplicitIfAvailable` mode fails TLS upgrade, the flag is set and security warnings are logged: "SECURITY: TLS upgrade failed" and "Credentials will be sent unencrypted"
+- **OneDrive resumable auto-threshold**: Files >4MB automatically delegate to resumable upload session instead of simple PUT, matching Microsoft Graph API limits
+- **ZohoTrashManager component**: Dedicated trash management UI for Zoho WorkDrive with restore and permanent delete actions
+- **Zoho i18n keys**: Protocol name, description, and region selector labels translated in all 47 languages
+- **Dry-run export** (#149): Export comparison results as JSON or CSV after compare phase. Uses native save dialog via `@tauri-apps/plugin-dialog`. Includes path, status, sync_reason, sizes, and timestamps
+- **Safety Score indicator** (#146): Pre-sync risk assessment badge in footer — counts conflicts, sensitive file extensions (.exe/.sh/.env/.pem/.key), and total transfer size. Green (low), yellow (medium), red (high) with tooltip details
+- **10 i18n keys**: Export and safety score labels translated in all 47 languages
+- **SFTP TOFU visual dialog** (SEC-P1-06): PuTTY-style host key verification on first SFTP/SSH connection. Shows SHA-256 fingerprint and algorithm in a modal dialog with "Trust This Host" / "Cancel" buttons. Key-changed scenario shows red MITM warning with "Accept New Key" option. Pre-check probe via `host_key_check.rs` avoids silent key acceptance. Covers 3 SFTP connect paths + SSH Terminal
+- **11 i18n keys**: TOFU dialog labels translated in all 47 languages
+
+#### Fixed
+
+- **Streaming upload OOM** (BT-GPT-H01): FTP, Dropbox, OneDrive, Google Drive, and Box uploads now read from file handles in chunks instead of buffering the entire file in RAM. Eliminates out-of-memory crashes on large file uploads (100MB+)
+- **FTP/FTPS streaming download** (P0-1): Download now streams 8KB chunks directly to disk via `tokio::fs::File` instead of buffering the entire file in `Vec<u8>`. Eliminates multi-GB RAM spikes during parallel FTP transfers (8 streams x 100MB was 800MB peak, now 64KB)
+- **Filen streaming decrypt** (P0-3): Each encrypted chunk is decrypted and written to disk immediately instead of accumulating the entire decrypted file in RAM. Enables downloading large Filen files without OOM
+- **Parallel sync IPC throttle** (P0-4): Progress events in parallel sync closures now use 150ms/2% delta guards matching the standard transfer path. Eliminates IPC flooding during multi-stream sync operations
+- **Zoho WorkDrive client reuse** (P1-1): Download methods now reuse `self.client` connection pool with per-request `Accept: */*` header override instead of creating a new `reqwest::Client` per download (~5MB overhead per call eliminated)
+- **Dropbox upload session progress** (P1-3): Large file upload sessions (>150MB) now emit progress callbacks after each chunk append instead of appearing frozen
+- **Cloud Service conflicts cap** (P1-4): Conflict list capped at 10,000 entries to prevent unbounded memory growth during failed syncs
+- **Azure XML parser whitespace** (BT-API-012): Added `trim_text(true)` to quick-xml reader configuration for Azure Blob Storage, fixing blob name parsing issues with whitespace-containing names
+- **S3 pagination**: Continuation token loop now correctly handles `IsTruncated` flag for buckets with >1000 objects
+- **Azure pagination**: NextMarker loop for containers with >5000 blobs
+- **4shared pagination**: ID-based cursor pagination for large folder listings
+- **Zoho tracing** (BT-INT-030): Migrated from `log::` to `tracing::` macros for consistent structured logging
+- **SFTP symlink-safe rmdir** (GAP-A02): `rmdir_recursive` now uses `lstat` before recursion to prevent symlink-following deletes outside target tree
+- **SFTP read_range allocation cap** (GAP-A03): `Vec::with_capacity(size)` capped at 100MB to prevent attacker-controlled allocation via malicious server response
+- **S3 presigned URL encoding** (GAP-A04): Object key now properly URI-encoded in presigned URL path, separate from SigV4 canonical encoding
+- **pCloud OAuth2 region** (GAP-A06): Region parameter added to OAuth2 connect flow instead of hardcoded "us"
+- **Provider error sanitization** (GAP-A10): `sanitize_api_error()` applied to 95 error occurrences across 8 cloud providers — truncates to 200 chars, redacts Bearer/JWT tokens
+- **WebDAV verify_cert option** (GAP-A11): Added `verify_cert` field to `WebDavConfig` matching FTP's existing TLS verification toggle
+- **Share link expiry passthrough** (GAP-A12/A14): Zoho, Google Drive, Dropbox, and OneDrive share link creation now passes `expires_in_secs` parameter to API
+- **Cross-platform trash** (GAP-C01): Trash operations use `trash::os_limited` API on Linux and Windows instead of hardcoded `~/.local/share/Trash` path. macOS retains manual `~/.Trash` scanning
+- **Windows volume detection** (GAP-C02): Full WinAPI volume enumeration via `GetLogicalDrives`, `GetVolumeInformationW`, `GetDiskFreeSpaceExW`, `GetDriveTypeW` replacing single-drive stub
+- **AeroVault chunk AAD** (GAP-D03): Chunk index included as little-endian u32 in AES-GCM-SIV Additional Authenticated Data, preventing chunk reordering attacks
+- **Vault key zeroize on drop** (GAP-E01): `CredentialStore` now implements `Drop` with `zeroize()` on vault key material. `clear_cache()` hardened from `fill(0)` to `zeroize()`
+- **Cloud Filter cleanup on exit** (P1-5): Windows Cloud Filter root registrations now deregistered via `cleanup_all_roots()` when app exits without AeroCloud enabled, preventing orphaned Explorer badges
+- **File index 100K cap** (P1-6): Local and remote file scan HashMaps capped at 100,000 entries to prevent unbounded memory growth on massive directory trees
+- **Status update throttle** (P1-7): Cloud sync status updates throttled to every 100 files or 500ms (whichever comes first), reducing RwLock contention and IPC overhead during large syncs
+- **Local file scan 1M cap** (P2-1): `get_local_files_recursive` and parallel variant capped at 1,000,000 entries with clear error message to prevent OOM on massive project trees
+- **SyncPanel conflict map reset** (P2-4): `conflictResolutions` Map now cleared at sync start, preventing stale conflict resolutions from previous syncs from affecting new operations
+- **Transfer pool config validation** (P2-5): `validate_config()` now called before parallel sync execution, ensuring max_streams clamped to 1-8 and acquire_timeout_ms defaults to 30s
+- **Google Drive LRU cache** (P2-6): Folder cache eviction upgraded from non-deterministic FIFO to proper LRU tracking via monotonic access counter — evicts least-recently-used entries first
+- **Zoho sync path mismatch false positive**: Sync navigation warning incorrectly triggered in every Zoho folder because root-base `/` slicing produced inconsistent leading slashes (`"General"` vs `"/General"`). Fixed by stripping leading `/` from relative path comparison
+- **Zoho session switch reconnection**: Switching to a Zoho WorkDrive session tab failed with "Riconnessione fallita" because `oauth2_connect` was called without the `region` parameter. Now retrieves region from session profile or credential store, falling back to Rust default `"us"`
+- **DNS resolution for API providers**: Filen, Zoho WorkDrive, and Azure Blob connections showed spurious DNS resolution errors because they weren't excluded from hostname resolution (cloud API providers don't need it). WebDAV connections showed errors because full URLs (`https://host/path/`) were passed to the DNS resolver instead of extracting the hostname
+
+#### Security
+
+- **HTTP retry infrastructure** (GAP-A01): New `http_retry.rs` module with exponential backoff, jitter, and `Retry-After` header parsing for rate-limited provider APIs (429/503/502/500)
+- **Cross-audit gap analysis**: 14 provider/vault/keystore + 4 AeroAgent findings resolved from 10-audit cross-reference. See `docs/dev/audit/CROSS-AUDIT-GAP-ANALYSIS-v2.4.0.md`
+- **RAG auto-index opt-in** (GAP-B07): Workspace auto-indexing now gated by `enableAutoRAGIndexing` setting (default: true). Previously bypassed tool approval entirely
+- **AI settings resilient save** (GAP-B14): `saveSettings` upgraded from fire-and-forget to awaited async with structured error logging. Vault persist failure retains localStorage as fallback
+- **testProvider stale closure** (GAP-B21): State updates use functional updater pattern to prevent race conditions during rapid provider testing
+- **resizeImage timeout** (GAP-B22): Image resize Promise now has 10s safety timeout preventing indefinite hang if neither onload nor onerror fires
+- **SFTP TOFU hardening** (SEC-P1-06): Silent host key acceptance removed from `SshHandler` and `ShellSshHandler`. Unknown keys now rejected unless explicitly pre-approved via frontend dialog. `host_key_check.rs` module with `PENDING_KEYS` cache (5-min TTL), atomic known_hosts line removal for key-changed case
+- **Branded Polkit update dialog**: Custom Polkit policy (`com.aeroftp.update.install`) replaces generic "authenticate to run dpkg" prompt. Dialog shows AeroFTP icon, branded message ("Authentication is required to install an AeroFTP update"), and vendor info. Localized in 10 languages (en, it, de, fr, es, pt, ja, zh, ru, ko). Helper script (`aeroftp-update-helper`) validates package path (Downloads/tmp only) and format (.deb/.rpm). Falls back to generic pkexec if helper not installed
+- **Auto-update restart fix**: Post-install relaunch for .deb/.rpm now uses detached shell process (`sh -c "sleep 1 && exec aeroftp"`) instead of direct `spawn()` + `exit()`. The 1-second delay ensures the old process fully exits before the new one starts, preventing port/lock/DBus conflicts that caused silent restart failure
+
+#### Changed
+
+- **All provider credentials**: Access tokens, refresh tokens, and API keys now wrapped in `secrecy::SecretString` across all 16 providers — automatic memory zeroization on drop
+- **XML parsing**: All regex-based XML parsing (WebDAV PROPFIND, S3 ListBucketResult, Azure ListBlobs) replaced with proper `quick-xml 0.39` event-based parsing
+- **Google Drive upload**: Resumable path (>5MB) reads 10MB chunks from file handle instead of loading entire file. Simple multipart path (<=5MB) unchanged
+- **Box chunked upload**: Session signature changed from `data: &[u8]` to `local_path: &str` — reads chunks from file handle with per-chunk SHA-1
+- **Dropbox upload session**: Large files (>150MB) read chunks from file handle with Tokio `AsyncReadExt`
+- **Provider count**: 15 → 16 protocols (+ Zoho WorkDrive)
+- **Security audit**: 12-auditor 4-phase provider integration audit (Capabilities, Security GPT-5.3, Integration Claude Opus, Bugs Terminator Counter-Audit). Final grade: A-. All findings resolved
+- **Resource management audit**: 5-agent targeted analysis of memory/cache/IPC during massive transfers + GPT-5.3 cross-reference. 17 findings (4 P0, 7 P1, 6 P2), 8 fixed pre-release. See `docs/dev/RESOURCE-ANALYSIS-v2.4.0.md`
+- **Frontend transfer state cleanup**: `completedTransferIds` and `detailedDeleteCompletedIds` Sets capped at 500 entries with FIFO eviction to prevent unbounded memory growth during sustained transfer sessions
+
 ## [2.3.0] - 2026-02-19
 
 ### Chat History SQLite Redesign

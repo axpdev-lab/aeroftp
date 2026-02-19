@@ -4,6 +4,7 @@
 //! Uses OAuth 1.0a (HMAC-SHA1) for authentication.
 
 use async_trait::async_trait;
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use tracing::info;
@@ -163,9 +164,13 @@ pub struct FourSharedProvider {
 
 impl FourSharedProvider {
     pub fn new(config: FourSharedConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             config,
-            client: reqwest::Client::new(),
+            client,
             connected: false,
             current_path: "/".to_string(),
             current_folder_id: String::new(),
@@ -180,9 +185,9 @@ impl FourSharedProvider {
     fn credentials(&self) -> OAuth1Credentials {
         OAuth1Credentials {
             consumer_key: self.config.consumer_key.clone(),
-            consumer_secret: self.config.consumer_secret.clone(),
-            token: self.config.access_token.clone(),
-            token_secret: self.config.access_token_secret.clone(),
+            consumer_secret: self.config.consumer_secret.expose_secret().to_string(),
+            token: self.config.access_token.expose_secret().to_string(),
+            token_secret: self.config.access_token_secret.expose_secret().to_string(),
         }
     }
 
@@ -297,6 +302,17 @@ impl FourSharedProvider {
         }
     }
 
+    /// Evict cache if it grows beyond the limit to prevent unbounded memory growth
+    fn enforce_cache_limit(cache: &mut HashMap<String, String>) {
+        if cache.len() > 10_000 {
+            // Trim half instead of clearing all — preserves hot entries
+            let keys: Vec<String> = cache.keys().take(cache.len() / 2).cloned().collect();
+            for k in keys {
+                cache.remove(&k);
+            }
+        }
+    }
+
     /// Resolve a path to its folder ID, walking from root and caching
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -339,6 +355,7 @@ impl FourSharedProvider {
                 Some(folder) => {
                     let fid = folder.id.clone().unwrap_or_default();
                     current_id = fid.clone();
+                    Self::enforce_cache_limit(&mut self.folder_cache);
                     self.folder_cache.insert(built_path.clone(), fid);
                 }
                 None => return Err(ProviderError::NotFound(format!("Folder not found: {}", part))),
@@ -373,6 +390,7 @@ impl FourSharedProvider {
             .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
         let files = Self::parse_file_list(&body);
 
+        Self::enforce_cache_limit(&mut self.file_cache);
         for file in &files {
             if let (Some(name), Some(id)) = (&file.name, &file.id) {
                 let fpath = if parent_path == "/" {
@@ -416,6 +434,7 @@ impl FourSharedProvider {
     }
 
     /// Upload bytes to 4shared folder
+    #[allow(dead_code)]
     async fn upload_bytes(
         &self,
         folder_id: &str,
@@ -540,6 +559,8 @@ impl FourSharedProvider {
 
 #[async_trait]
 impl StorageProvider for FourSharedProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::FourShared
     }
@@ -632,6 +653,7 @@ impl StorageProvider for FourSharedProvider {
                 };
 
                 if let Some(ref id) = f.id {
+                    Self::enforce_cache_limit(&mut self.folder_cache);
                     self.folder_cache.insert(entry_path.clone(), id.clone());
                 }
 
@@ -680,6 +702,7 @@ impl StorageProvider for FourSharedProvider {
                 };
 
                 if let Some(ref id) = f.id {
+                    Self::enforce_cache_limit(&mut self.file_cache);
                     self.file_cache.insert(entry_path.clone(), id.clone());
                 }
 
@@ -738,13 +761,49 @@ impl StorageProvider for FourSharedProvider {
         &mut self,
         remote_path: &str,
         local_path: &str,
-        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let file_id = self.resolve_file_id(&resolved).await?;
-        let bytes = self.download_bytes(&file_id).await?;
-        tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::Other(format!("Write local file: {}", e)))?;
+
+        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let auth = oauth1::authorization_header("GET", &url, &self.credentials(), &[]);
+
+        let resp = self.client
+            .get(&url)
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(
+                format!("Download failed ({}): {}", status, body),
+            ));
+        }
+
+        // Streaming download: write chunks to file as they arrive
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
+        let total_size = resp.content_length().unwrap_or(0);
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let mut downloaded: u64 = 0;
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            downloaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(downloaded, total_size);
+            }
+        }
+
         Ok(())
     }
 
@@ -764,11 +823,49 @@ impl StorageProvider for FourSharedProvider {
         let (parent_path, file_name) = Self::split_path(&normalized);
         let folder_id = self.resolve_folder_id(&parent_path).await?;
 
-        let content = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::Other(format!("Read local file: {}", e)))?;
+        // Streaming upload: read file as a stream instead of loading into memory
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::Other(format!("Open local file: {}", e)))?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
 
-        if let Some(file_id) = self.upload_bytes(&folder_id, &file_name, content).await? {
-            self.file_cache.insert(normalized, file_id);
+        let sign_url = format!("{}/files", UPLOAD_BASE);
+        let extra = [
+            ("folderId", folder_id.as_str()),
+            ("fileName", file_name.as_str()),
+        ];
+        let auth = oauth1::authorization_header("POST", &sign_url, &self.credentials(), &extra);
+
+        let url = format!(
+            "{}/files?folderId={}&fileName={}",
+            UPLOAD_BASE,
+            folder_id,
+            oauth1::percent_encode(&file_name)
+        );
+
+        let resp = self.client
+            .post(&url)
+            .header("Authorization", &auth)
+            .header("Content-Type", "application/octet-stream")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let resp_body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(
+                format!("Upload failed ({}): {}", status, resp_body),
+            ));
+        }
+
+        let file_id: Option<String> = resp.json::<FourSharedUploadResponse>().await
+            .ok()
+            .and_then(|r| r.id);
+
+        if let Some(fid) = file_id {
+            self.file_cache.insert(normalized, fid);
         }
 
         Ok(())
@@ -847,20 +944,55 @@ impl StorageProvider for FourSharedProvider {
     async fn rename(&mut self, old_path: &str, new_path: &str) -> Result<(), ProviderError> {
         let old_normalized = self.resolve_path(old_path);
         let new_normalized = self.resolve_path(new_path);
-        let (_, new_name) = Self::split_path(&new_normalized);
+        let (old_parent, old_name) = Self::split_path(&old_normalized);
+        let (new_parent, new_name) = Self::split_path(&new_normalized);
+
+        let is_cross_folder = old_parent != new_parent;
 
         // Try as file first, then as folder
         if let Ok(file_id) = self.resolve_file_id(&old_normalized).await {
-            let url = format!("{}/files/{}", API_BASE, file_id);
-            let form = [("name", new_name.as_str())];
-            let resp = self.signed_put_form(&url, &form).await?;
+            // Step 1: Move to new folder if cross-folder operation
+            if is_cross_folder {
+                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
+                let move_base_url = format!("{}/files/{}/move", API_BASE, file_id);
+                let extra = [("folderId", target_folder_id.as_str())];
+                let auth = oauth1::authorization_header("PUT", &move_base_url, &self.credentials(), &extra);
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(
-                    format!("Rename failed ({}): {}", status, body),
-                ));
+                let move_url = format!(
+                    "{}/files/{}/move?folderId={}",
+                    API_BASE, file_id, oauth1::percent_encode(&target_folder_id)
+                );
+
+                let resp = self.client
+                    .put(&move_url)
+                    .header("Authorization", &auth)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(
+                        format!("Move file failed ({}): {}", status, &body[..body.len().min(300)]),
+                    ));
+                }
+                info!("4shared moved file {} to folder {}", old_normalized, new_parent);
+            }
+
+            // Step 2: Rename if the name changed
+            if old_name != new_name {
+                let url = format!("{}/files/{}", API_BASE, file_id);
+                let form = [("name", new_name.as_str())];
+                let resp = self.signed_put_form(&url, &form).await?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(
+                        format!("Rename failed ({}): {}", status, body),
+                    ));
+                }
             }
 
             if let Some(id) = self.file_cache.remove(&old_normalized) {
@@ -868,16 +1000,49 @@ impl StorageProvider for FourSharedProvider {
             }
         } else {
             let folder_id = self.resolve_folder_id(&old_normalized).await?;
-            let url = format!("{}/folders/{}", API_BASE, folder_id);
-            let form = [("name", new_name.as_str())];
-            let resp = self.signed_put_form(&url, &form).await?;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(
-                    format!("Rename folder failed ({}): {}", status, body),
-                ));
+            // Step 1: Move to new parent folder if cross-folder operation
+            if is_cross_folder {
+                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
+                let move_base_url = format!("{}/folders/{}/move", API_BASE, folder_id);
+                let extra = [("folderId", target_folder_id.as_str())];
+                let auth = oauth1::authorization_header("PUT", &move_base_url, &self.credentials(), &extra);
+
+                let move_url = format!(
+                    "{}/folders/{}/move?folderId={}",
+                    API_BASE, folder_id, oauth1::percent_encode(&target_folder_id)
+                );
+
+                let resp = self.client
+                    .put(&move_url)
+                    .header("Authorization", &auth)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(
+                        format!("Move folder failed ({}): {}", status, &body[..body.len().min(300)]),
+                    ));
+                }
+                info!("4shared moved folder {} to {}", old_normalized, new_parent);
+            }
+
+            // Step 2: Rename if the name changed
+            if old_name != new_name {
+                let url = format!("{}/folders/{}", API_BASE, folder_id);
+                let form = [("name", new_name.as_str())];
+                let resp = self.signed_put_form(&url, &form).await?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(
+                        format!("Rename folder failed ({}): {}", status, body),
+                    ));
+                }
             }
 
             if let Some(id) = self.folder_cache.remove(&old_normalized) {
@@ -994,5 +1159,73 @@ impl StorageProvider for FourSharedProvider {
             total: user.total_space.unwrap_or(0) as u64,
             free: user.free_space.unwrap_or(0) as u64,
         })
+    }
+
+    fn supports_find(&self) -> bool { true }
+
+    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        info!("4shared find: searching for '{}'", pattern);
+
+        // Sign against the base URL, with searchName as extra param for OAuth signature
+        let base_url = format!("{}/files", API_BASE);
+        let extra = [("searchName", pattern)];
+        let auth = oauth1::authorization_header("GET", &base_url, &self.credentials(), &extra);
+
+        // Build full URL with query parameter
+        let url = format!(
+            "{}/files?searchName={}",
+            API_BASE,
+            oauth1::percent_encode(pattern)
+        );
+
+        let resp = self.client
+            .get(&url)
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Search failed ({}): {}", status, &body[..body.len().min(300)]
+            )));
+        }
+
+        let body = resp.text().await
+            .map_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
+        let files = Self::parse_file_list(&body);
+
+        let entries = files.iter()
+            .filter(|f| !matches!(f.status.as_deref(), Some("deleted") | Some("trashed") | Some("incomplete")))
+            .filter_map(|f| {
+                let name = f.name.as_ref()?;
+                if name.is_empty() { return None; }
+                Some(RemoteEntry {
+                    name: name.clone(),
+                    path: String::new(), // Search results don't have reliable full paths
+                    is_dir: false,
+                    size: f.size.unwrap_or(0) as u64,
+                    modified: f.modified.clone(),
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: {
+                        let mut m = std::collections::HashMap::new();
+                        if let Some(ref id) = f.id {
+                            m.insert("id".to_string(), id.clone());
+                        }
+                        m
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+
+        info!("4shared find '{}': {} results", pattern, entries.len());
+        Ok(entries)
     }
 }

@@ -114,29 +114,27 @@ pub struct PCloudProvider {
 
 impl PCloudProvider {
     pub fn new(config: PCloudConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             config,
             oauth_manager: OAuth2Manager::new(),
-            client: reqwest::Client::new(),
+            client,
             connected: false,
             current_path: "/".to_string(),
             account_email: None,
         }
     }
 
-    /// Get access token (SecretString for memory zeroization, exposed for API calls)
-    async fn get_token_str(&self) -> Result<String, ProviderError> {
+    /// Get Authorization header with Bearer token (token never exposed in URL)
+    async fn auth_header(&self) -> Result<String, ProviderError> {
         use secrecy::ExposeSecret;
-        let config = OAuthConfig::pcloud(&self.config.client_id, &self.config.client_secret);
+        let config = OAuthConfig::pcloud(&self.config.client_id, &self.config.client_secret, &self.config.region);
         let secret = self.oauth_manager.get_valid_token(&config).await
             .map_err(|e| ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e)))?;
-        Ok(secret.expose_secret().to_string())
-    }
-
-    /// Build API URL with auth token
-    async fn api_url(&self, method: &str) -> Result<String, ProviderError> {
-        let token = self.get_token_str().await?;
-        Ok(format!("{}/{}?access_token={}", self.config.api_base(), method, token))
+        Ok(format!("Bearer {}", secret.expose_secret()))
     }
 
     fn normalize_path(path: &str) -> String {
@@ -202,6 +200,8 @@ impl PCloudProvider {
 
 #[async_trait]
 impl StorageProvider for PCloudProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType { ProviderType::PCloud }
 
     fn display_name(&self) -> String {
@@ -213,8 +213,10 @@ impl StorageProvider for PCloudProvider {
     fn is_connected(&self) -> bool { self.connected }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        let url = self.api_url("userinfo").await?;
-        let resp = self.client.get(&url).send().await
+        let url = format!("{}/userinfo", self.config.api_base());
+        let resp = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -241,12 +243,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/listfolder?access_token={}&path={}",
+        let url = format!("{}/listfolder?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -282,12 +285,13 @@ impl StorageProvider for PCloudProvider {
         let new_path = self.resolve_path(path);
 
         // Verify folder exists
-        let url = format!("{}/listfolder?access_token={}&path={}&nofiles=1",
+        let url = format!("{}/listfolder?path={}&nofiles=1",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&new_path));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -312,15 +316,17 @@ impl StorageProvider for PCloudProvider {
         Ok(self.current_path.clone())
     }
 
-    async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+    async fn download(&mut self, remote_path: &str, local_path: &str, on_progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
-        let token = self.get_token_str().await?;
+        let auth = self.auth_header().await?;
 
         // Step 1: Get download link
-        let url = format!("{}/getfilelink?access_token={}&path={}",
-            self.config.api_base(), token, urlencoding::encode(&resolved));
+        let url = format!("{}/getfilelink?path={}",
+            self.config.api_base(), urlencoding::encode(&resolved));
 
-        let link_resp: PCloudFileLink = self.client.get(&url).send().await
+        let link_resp: PCloudFileLink = self.client.get(&url)
+            .header("Authorization", &auth)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -338,28 +344,43 @@ impl StorageProvider for PCloudProvider {
 
         let download_url = format!("https://{}{}", host, path);
 
-        // Step 2: Download
+        // Step 2: Streaming download
         let resp = self.client.get(&download_url).send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
 
-        tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+        let total_size = resp.content_length().unwrap_or(0);
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let mut downloaded: u64 = 0;
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            downloaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(downloaded, total_size);
+            }
+        }
 
         Ok(())
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let resolved = self.resolve_path(remote_path);
-        let token = self.get_token_str().await?;
+        let auth = self.auth_header().await?;
 
         // Step 1: Get download link
-        let url = format!("{}/getfilelink?access_token={}&path={}",
-            self.config.api_base(), token, urlencoding::encode(&resolved));
+        let url = format!("{}/getfilelink?path={}",
+            self.config.api_base(), urlencoding::encode(&resolved));
 
-        let link_resp: PCloudFileLink = self.client.get(&url).send().await
+        let link_resp: PCloudFileLink = self.client.get(&url)
+            .header("Authorization", &auth)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -394,19 +415,24 @@ impl StorageProvider for PCloudProvider {
             _ => ("/", resolved.trim_start_matches('/')),
         };
 
-        let token = self.get_token_str().await?;
-        let data = tokio::fs::read(local_path).await
+        let auth = self.auth_header().await?;
+
+        // Streaming upload: read file as a stream instead of loading into memory
+        let file = tokio::fs::File::open(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
 
         let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::bytes(data).file_name(file_name.to_string()));
+            .part("file", reqwest::multipart::Part::stream(body).file_name(file_name.to_string()));
 
-        let url = format!("{}/uploadfile?access_token={}&path={}&filename={}&nopartial=1",
-            self.config.api_base(), token,
+        let url = format!("{}/uploadfile?path={}&filename={}&nopartial=1",
+            self.config.api_base(),
             urlencoding::encode(dir_path),
             urlencoding::encode(file_name));
 
         let resp = self.client.post(&url)
+            .header("Authorization", auth)
             .multipart(form)
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -420,12 +446,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/createfolder?access_token={}&path={}",
+        let url = format!("{}/createfolder?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -436,12 +463,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/deletefile?access_token={}&path={}",
+        let url = format!("{}/deletefile?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -452,12 +480,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/deletefolderrecursive?access_token={}&path={}",
+        let url = format!("{}/deletefolderrecursive?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -475,13 +504,14 @@ impl StorageProvider for PCloudProvider {
         let to_resolved = self.resolve_path(to);
 
         // Try file rename first
-        let url = format!("{}/renamefile?access_token={}&path={}&topath={}",
+        let url = format!("{}/renamefile?path={}&topath={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -491,13 +521,14 @@ impl StorageProvider for PCloudProvider {
         }
 
         // Try folder rename
-        let url = format!("{}/renamefolder?access_token={}&path={}&topath={}",
+        let url = format!("{}/renamefolder?path={}&topath={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -508,12 +539,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/stat?access_token={}&path={}",
+        let url = format!("{}/stat?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -555,8 +587,10 @@ impl StorageProvider for PCloudProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = self.api_url("userinfo").await?;
-        let info: PCloudUserInfo = self.client.get(&url).send().await
+        let url = format!("{}/userinfo", self.config.api_base());
+        let info: PCloudUserInfo = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -575,12 +609,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn create_share_link(&mut self, path: &str, _expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/getfilepublink?access_token={}&path={}",
+        let url = format!("{}/getfilepublink?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudPubLink = self.client.get(&url).send().await
+        let resp: PCloudPubLink = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -595,12 +630,13 @@ impl StorageProvider for PCloudProvider {
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         // Try file first, then folder
-        let url = format!("{}/deletepublink?access_token={}&path={}",
+        let url = format!("{}/deletepublink?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -608,12 +644,13 @@ impl StorageProvider for PCloudProvider {
         if resp.result == 0 { return Ok(()); }
 
         // Try folder variant
-        let url = format!("{}/deletepublink?access_token={}&path={}",
+        let url = format!("{}/deletepublink?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -629,13 +666,14 @@ impl StorageProvider for PCloudProvider {
         let to_resolved = self.resolve_path(to);
 
         // Try copyfile first
-        let url = format!("{}/copyfile?access_token={}&path={}&topath={}",
+        let url = format!("{}/copyfile?path={}&topath={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -643,13 +681,14 @@ impl StorageProvider for PCloudProvider {
         if resp.result == 0 { return Ok(()); }
 
         // Try copyfolder
-        let url = format!("{}/copyfolder?access_token={}&path={}&topath={}",
+        let url = format!("{}/copyfolder?path={}&topath={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -662,12 +701,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/getthumblink?access_token={}&path={}&size=256x256",
+        let url = format!("{}/getthumblink?path={}&size=256x256",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudThumbLink = self.client.get(&url).send().await
+        let resp: PCloudThumbLink = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -698,12 +738,13 @@ impl StorageProvider for PCloudProvider {
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/listrevisions?access_token={}&path={}",
+        let url = format!("{}/listrevisions?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudRevisions = self.client.get(&url).send().await
+        let resp: PCloudRevisions = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -729,14 +770,16 @@ impl StorageProvider for PCloudProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let token = self.get_token_str().await?;
+        let auth = self.auth_header().await?;
 
         // Get download link for specific revision
-        let url = format!("{}/getfilelink?access_token={}&path={}&revisionid={}",
-            self.config.api_base(), token,
+        let url = format!("{}/getfilelink?path={}&revisionid={}",
+            self.config.api_base(),
             urlencoding::encode(&resolved), version_id);
 
-        let link_resp: PCloudFileLink = self.client.get(&url).send().await
+        let link_resp: PCloudFileLink = self.client.get(&url)
+            .header("Authorization", &auth)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -768,9 +811,8 @@ impl StorageProvider for PCloudProvider {
 
     async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/checksumfile?access_token={}&path={}",
+        let url = format!("{}/checksumfile?path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
         #[derive(Debug, Deserialize)]
@@ -783,7 +825,9 @@ impl StorageProvider for PCloudProvider {
             md5: Option<String>,
         }
 
-        let resp: ChecksumResponse = self.client.get(&url).send().await
+        let resp: ChecksumResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -806,13 +850,14 @@ impl StorageProvider for PCloudProvider {
     async fn remote_upload(&mut self, url: &str, dest_path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(dest_path);
         // pCloud's downloadfile tells the server to fetch a URL and save it
-        let api_url = format!("{}/downloadfile?access_token={}&url={}&path={}",
+        let api_url = format!("{}/downloadfile?url={}&path={}",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(url),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&api_url).send().await
+        let resp: PCloudResponse = self.client.get(&api_url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -829,12 +874,13 @@ impl StorageProvider for PCloudProvider {
         let pattern_lower = pattern.to_lowercase();
 
         // Use recursive listfolder and filter client-side
-        let url = format!("{}/listfolder?access_token={}&path={}&recursive=1",
+        let url = format!("{}/listfolder?path={}&recursive=1",
             self.config.api_base(),
-            self.get_token_str().await?,
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url).send().await
+        let resp: PCloudResponse = self.client.get(&url)
+            .header("Authorization", self.auth_header().await?)
+            .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;

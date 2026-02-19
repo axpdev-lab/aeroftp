@@ -41,6 +41,8 @@ pub enum ProviderType {
     Filen,
     /// 4shared (OAuth 1.0)
     FourShared,
+    /// Zoho WorkDrive (OAuth2)
+    ZohoWorkdrive,
 }
 
 impl fmt::Display for ProviderType {
@@ -61,6 +63,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Azure => write!(f, "Azure Blob"),
             ProviderType::Filen => write!(f, "Filen"),
             ProviderType::FourShared => write!(f, "4shared"),
+            ProviderType::ZohoWorkdrive => write!(f, "Zoho WorkDrive"),
         }
     }
 }
@@ -84,6 +87,7 @@ impl ProviderType {
             ProviderType::Azure => 443,
             ProviderType::Filen => 443,
             ProviderType::FourShared => 443,
+            ProviderType::ZohoWorkdrive => 443,
         }
     }
     
@@ -104,7 +108,8 @@ impl ProviderType {
             ProviderType::PCloud |
             ProviderType::Azure |
             ProviderType::Filen |
-            ProviderType::FourShared
+            ProviderType::FourShared |
+            ProviderType::ZohoWorkdrive
         )
     }
 
@@ -116,7 +121,8 @@ impl ProviderType {
             ProviderType::Dropbox |
             ProviderType::OneDrive |
             ProviderType::Box |
-            ProviderType::PCloud
+            ProviderType::PCloud |
+            ProviderType::ZohoWorkdrive
         )
     }
 
@@ -230,8 +236,10 @@ pub struct WebDavConfig {
     /// Full URL to WebDAV endpoint (e.g., https://cloud.example.com/remote.php/dav/files/user/)
     pub url: String,
     pub username: String,
-    pub password: String,
+    pub password: secrecy::SecretString,
     pub initial_path: Option<String>,
+    /// Whether to verify TLS certificates (default: true). Set to false for self-signed certs.
+    pub verify_cert: bool,
 }
 
 impl WebDavConfig {
@@ -254,11 +262,16 @@ impl WebDavConfig {
         let username = config.username.clone().unwrap_or_default();
         let url = raw_url.replace("{username}", &username);
 
+        let verify_cert = config.extra.get("verify_cert")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+
         Ok(Self {
             url,
             username,
-            password: config.password.clone().unwrap_or_default(),
+            password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             initial_path: config.initial_path.clone(),
+            verify_cert,
         })
     }
 }
@@ -272,8 +285,8 @@ pub struct S3Config {
     pub region: String,
     /// Access key ID
     pub access_key_id: String,
-    /// Secret access key
-    pub secret_access_key: String,
+    /// Secret access key (SecretString for memory zeroization)
+    pub secret_access_key: secrecy::SecretString,
     /// Bucket name
     pub bucket: String,
     /// Path prefix within bucket
@@ -312,7 +325,7 @@ impl S3Config {
             endpoint,
             region,
             access_key_id: config.username.clone().unwrap_or_default(),
-            secret_access_key: config.password.clone().unwrap_or_default(),
+            secret_access_key: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
@@ -469,12 +482,12 @@ impl PCloudConfig {
 pub struct AzureConfig {
     /// Storage account name
     pub account_name: String,
-    /// Shared Key for HMAC signing
-    pub access_key: String,
+    /// Shared Key for HMAC signing (SecretString for memory zeroization)
+    pub access_key: secrecy::SecretString,
     /// Container name
     pub container: String,
     /// Optional SAS token (alternative to access_key)
-    pub sas_token: Option<String>,
+    pub sas_token: Option<secrecy::SecretString>,
     /// Custom endpoint (for Azure Stack, Azurite emulator, etc.)
     pub endpoint: Option<String>,
 }
@@ -485,14 +498,15 @@ impl AzureConfig {
             .or_else(|| config.username.as_ref())
             .ok_or_else(|| ProviderError::InvalidConfig("Account name required for Azure".to_string()))?
             .clone();
-        let access_key = config.extra.get("access_key")
+        let access_key: secrecy::SecretString = config.extra.get("access_key")
             .or_else(|| config.password.as_ref())
             .ok_or_else(|| ProviderError::InvalidConfig("Access key required for Azure".to_string()))?
-            .clone();
+            .clone()
+            .into();
         let container = config.extra.get("container")
             .ok_or_else(|| ProviderError::InvalidConfig("Container name required for Azure".to_string()))?
             .clone();
-        let sas_token = config.extra.get("sas_token").cloned();
+        let sas_token: Option<secrecy::SecretString> = config.extra.get("sas_token").map(|s| s.clone().into());
         let endpoint = if config.host.is_empty() || config.host == "blob.core.windows.net" {
             None
         } else {
@@ -535,9 +549,9 @@ impl FilenConfig {
 #[derive(Debug, Clone)]
 pub struct FourSharedConfig {
     pub consumer_key: String,
-    pub consumer_secret: String,
-    pub access_token: String,
-    pub access_token_secret: String,
+    pub consumer_secret: secrecy::SecretString,
+    pub access_token: secrecy::SecretString,
+    pub access_token_secret: secrecy::SecretString,
 }
 
 /// Remote file/directory entry

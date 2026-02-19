@@ -6,7 +6,7 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud';
+export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive';
 
 interface OAuthFlowStarted {
   auth_url: string;
@@ -17,6 +17,7 @@ interface OAuthConnectionParams {
   provider: OAuthProvider;
   client_id: string;
   client_secret: string;
+  region?: string;
 }
 
 interface UseOAuth2Return {
@@ -159,5 +160,11 @@ export const OAUTH_APPS = {
     client_id: '',
     client_secret: '',
     help_url: 'https://docs.pcloud.com/methods/oauth_2.0/authorize.html',
+  },
+  zoho_workdrive: {
+    // Users need to create a Server-based Application at api-console.zoho.com
+    client_id: '',
+    client_secret: '',
+    help_url: 'https://api-console.zoho.com/',
   },
 };

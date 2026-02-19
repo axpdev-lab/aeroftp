@@ -6,8 +6,7 @@
 use async_trait::async_trait;
 use suppaftp::tokio::{AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
 use suppaftp::types::FileType;
-use std::io::Cursor;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, FtpConfig,
@@ -21,6 +20,8 @@ pub struct FtpProvider {
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
+    /// Set to true if ExplicitIfAvailable mode fell back to plaintext
+    pub tls_downgraded: bool,
 }
 
 impl FtpProvider {
@@ -31,6 +32,7 @@ impl FtpProvider {
             stream: None,
             current_path: "/".to_string(),
             mlsd_supported: false,
+            tls_downgraded: false,
         }
     }
     
@@ -265,6 +267,8 @@ impl FtpProvider {
 
 #[async_trait]
 impl StorageProvider for FtpProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         if self.config.tls_mode != FtpTlsMode::None {
             ProviderType::Ftps
@@ -316,10 +320,18 @@ impl StorageProvider for FtpProvider {
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = self.make_tls_connector()?;
                 match stream.into_secure(connector, &domain).await {
-                    Ok(secure) => secure,
-                    Err(_) => {
-                        // TLS not supported, reconnect as plain
-                        tracing::warn!("TLS upgrade not supported by server, falling back to plain FTP");
+                    Ok(secure) => {
+                        self.tls_downgraded = false;
+                        secure
+                    }
+                    Err(e) => {
+                        // TLS not supported — fall back to plain with security warning
+                        tracing::warn!(
+                            "SECURITY: TLS upgrade failed for {}:{} ({}), falling back to PLAINTEXT FTP. \
+                             Credentials will be sent unencrypted.",
+                            self.config.host, self.config.port, e
+                        );
+                        self.tls_downgraded = true;
                         AsyncNativeTlsFtpStream::connect(&addr)
                             .await
                             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
@@ -484,34 +496,46 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         
-        // Download using retr_as_stream
+        // Download using retr_as_stream — stream directly to disk (no full-file RAM buffer)
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
-        // Read all data
-        let mut data = Vec::new();
-        data_stream
-            .read_to_end(&mut data)
+
+        let mut local_file = tokio::fs::File::create(local_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
+            .map_err(|e| ProviderError::IoError(e))?;
+
+        let mut chunk = [0u8; 8192];
+        let mut transferred: u64 = 0;
+
+        loop {
+            let n = data_stream
+                .read(&mut chunk)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if n == 0 {
+                break;
+            }
+            local_file
+                .write_all(&chunk[..n])
+                .await
+                .map_err(|e| ProviderError::IoError(e))?;
+            transferred += n as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+        }
+
+        local_file.flush().await.map_err(|e| ProviderError::IoError(e))?;
+
         // Finalize the stream - need to get stream again after the borrow
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
             .finalize_retr_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
-        if let Some(progress) = on_progress {
-            progress(data.len() as u64, total_size);
-        }
-        
-        // Write to local file
-        tokio::fs::write(local_path, &data)
-            .await
-            .map_err(|e| ProviderError::IoError(e))?;
         
         Ok(())
     }
@@ -554,18 +578,17 @@ impl StorageProvider for FtpProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
-        
-        // Read local file
-        let data = tokio::fs::read(local_path)
-            .await
+
+        // Stream from file instead of reading entire file into memory
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?.len();
+
+        let mut file = tokio::fs::File::open(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
-        
-        let total_size = data.len() as u64;
-        
-        // Upload
-        let mut cursor = Cursor::new(data);
+
+        // Upload using AsyncRead
         stream
-            .put_file(remote_path, &mut cursor)
+            .put_file(remote_path, &mut file)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         
@@ -827,19 +850,20 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let data = tokio::fs::read(local_path)
-            .await
-            .map_err(|e| ProviderError::IoError(e))?;
+        use tokio::io::AsyncSeekExt;
 
-        let total_size = data.len() as u64;
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?.len();
 
         if offset >= total_size {
             return Ok(()); // Nothing to upload
         }
 
-        // Send remaining data via APPE (append)
-        let remaining = &data[offset as usize..];
-        let mut cursor = Cursor::new(remaining);
+        // Open file and seek to offset for streaming append
+        let mut file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
+        file.seek(std::io::SeekFrom::Start(offset)).await
+            .map_err(|e| ProviderError::IoError(e))?;
 
         let stream = self.stream_mut()?;
         stream
@@ -848,7 +872,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         stream
-            .append_file(remote_path, &mut cursor)
+            .append_file(remote_path, &mut file)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 

@@ -11,6 +11,7 @@ use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
+    sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
 };
 
@@ -112,7 +113,10 @@ impl OneDriveProvider {
         Self {
             config,
             oauth_manager: OAuth2Manager::new(),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             connected: false,
             current_path: "/".to_string(),
             current_item_id: "root".to_string(),
@@ -219,7 +223,7 @@ impl OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("API error: {}", text)));
+            return Err(ProviderError::Other(format!("API error: {}", sanitize_api_error(&text))));
         }
 
         response.json().await
@@ -260,7 +264,7 @@ impl OneDriveProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("List error: {}", text)));
+                return Err(ProviderError::Other(format!("List error: {}", sanitize_api_error(&text))));
             }
 
             let result: ChildrenResponse = response.json().await
@@ -277,10 +281,47 @@ impl OneDriveProvider {
         Ok(all_items)
     }
 
+    /// Evict oldest half of cache when it exceeds the maximum size
+    fn trim_cache_if_needed(&mut self) {
+        const MAX_CACHE_SIZE: usize = 10_000;
+        if self.path_cache.len() > MAX_CACHE_SIZE {
+            let keys: Vec<String> = self.path_cache.keys().take(MAX_CACHE_SIZE / 2).cloned().collect();
+            for key in keys {
+                self.path_cache.remove(&key);
+            }
+        }
+    }
+
+    /// Permanently delete an item by ID
+    ///
+    /// OneDrive's DELETE endpoint moves items to the recycle bin.
+    /// Items already in the recycle bin are permanently deleted when
+    /// DELETE is called on them again.
+    #[allow(dead_code)]
+    pub async fn permanent_delete(&mut self, item_id: &str) -> Result<(), ProviderError> {
+        let url = self.api_item(item_id);
+
+        let response = self.client
+            .delete(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        // 204 No Content is success, 404 means already gone
+        if !response.status().is_success() && response.status().as_u16() != 404 {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Permanent delete failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Permanently deleted item: {}", item_id);
+        Ok(())
+    }
+
     /// Resolve path to item ID
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
         let path = path.trim_matches('/');
-        
+
         if path.is_empty() {
             return Ok("root".to_string());
         }
@@ -291,14 +332,17 @@ impl OneDriveProvider {
         }
 
         let item = self.get_item(path).await?;
+        self.trim_cache_if_needed();
         self.path_cache.insert(path.to_string(), item.id.clone());
-        
+
         Ok(item.id)
     }
 }
 
 #[async_trait]
 impl StorageProvider for OneDriveProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::OneDrive
     }
@@ -451,18 +495,24 @@ impl StorageProvider for OneDriveProvider {
             }
         };
 
-        // Download content
+        // Download content with streaming
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
         let response = self.client
             .get(&download_url)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        let _: () = tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::Other(format!("Write error: {}", e)))?;
+        let mut stream = response.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        }
 
         info!("Downloaded {} to {}", remote_path, local_path);
         Ok(())
@@ -495,10 +545,21 @@ impl StorageProvider for OneDriveProvider {
         &mut self,
         local_path: &str,
         remote_path: &str,
-        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let content = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
+        let file_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?.len();
+
+        // OneDrive simple PUT limit is 4MB; use resumable session for larger files
+        const SIMPLE_UPLOAD_LIMIT: u64 = 4 * 1024 * 1024;
+        if file_size > SIMPLE_UPLOAD_LIMIT {
+            return self.resume_upload(local_path, remote_path, 0, on_progress).await;
+        }
+
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
 
         let path = if remote_path.starts_with('/') {
             remote_path.to_string()
@@ -507,19 +568,20 @@ impl StorageProvider for OneDriveProvider {
         };
 
         let url = format!("{}:/content", self.api_path(&path));
-        
+
         let response = self.client
             .put(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/octet-stream")
-            .body(content)
+            .header("Content-Length", file_size.to_string())
+            .body(body)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Upload failed: {}", text)));
+            return Err(ProviderError::Other(format!("Upload failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -559,7 +621,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("mkdir failed: {}", text)));
+            return Err(ProviderError::Other(format!("mkdir failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Created folder: {}", path);
@@ -611,15 +673,46 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), from)
         };
 
+        let to_path = if to.starts_with('/') {
+            to.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), to)
+        };
+
         let item_id = self.resolve_path(&from_path).await?;
-        let new_name = to.rsplit('/').next().unwrap_or(to);
-        
-        let body = serde_json::json!({
-            "name": new_name
-        });
+        let new_name = to_path.rsplit('/').next().unwrap_or(&to_path);
+
+        // Determine source and destination parent paths
+        let from_parent = from_path.trim_matches('/').rsplit_once('/')
+            .map(|(p, _)| format!("/{}", p))
+            .unwrap_or_else(|| self.current_path.clone());
+        let to_parent = to_path.trim_matches('/').rsplit_once('/')
+            .map(|(p, _)| format!("/{}", p))
+            .unwrap_or_else(|| self.current_path.clone());
+
+        let is_move = from_parent != to_parent;
+
+        let body = if is_move {
+            let to_parent_clean = to_parent.trim_matches('/');
+            let parent_ref_path = if to_parent_clean.is_empty() {
+                "/drive/root:".to_string()
+            } else {
+                format!("/drive/root:/{}", to_parent_clean)
+            };
+            serde_json::json!({
+                "name": new_name,
+                "parentReference": {
+                    "path": parent_ref_path
+                }
+            })
+        } else {
+            serde_json::json!({
+                "name": new_name
+            })
+        };
 
         let url = self.api_item(&item_id);
-        
+
         let response = self.client
             .patch(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -630,8 +723,12 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(ProviderError::Other(format!("Rename failed: {}", response.status())));
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Rename/move failed: {}", sanitize_api_error(&text))));
         }
+
+        // Invalidate old path from cache
+        self.path_cache.remove(&from_path.trim_matches('/').to_string());
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -693,10 +790,17 @@ impl StorageProvider for OneDriveProvider {
         // POST /me/drive/items/{item-id}/createLink
         let url = format!("{}/createLink", self.api_item(&item_id));
         
-        let body = serde_json::json!({
+        // GAP-A12: Support expires_in_secs via OneDrive expirationDateTime (ISO 8601)
+        let mut body = serde_json::json!({
             "type": "view",
             "scope": "anonymous"
         });
+        if let Some(secs) = _expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            body["expirationDateTime"] = serde_json::Value::String(
+                expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            );
+        }
 
         let response = self.client
             .post(&url)
@@ -711,7 +815,7 @@ impl StorageProvider for OneDriveProvider {
         
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Failed to create share link: {} - {}", status, text)));
+            return Err(ProviderError::Other(format!("Failed to create share link: {} - {}", status, sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -784,7 +888,7 @@ impl StorageProvider for OneDriveProvider {
         // OneDrive copy returns 202 Accepted (async operation)
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Copy failed: {}", text)));
+            return Err(ProviderError::Other(format!("Copy failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Copied {} to {}", from, to);
@@ -821,7 +925,7 @@ impl StorageProvider for OneDriveProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Search failed: {}", text)));
+                return Err(ProviderError::Other(format!("Search failed: {}", sanitize_api_error(&text))));
             }
 
             let result: ChildrenResponse = response.json().await
@@ -852,7 +956,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Drive info failed: {}", text)));
+            return Err(ProviderError::Other(format!("Drive info failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -897,7 +1001,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List versions failed: {}", text)));
+            return Err(ProviderError::Other(format!("List versions failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -953,7 +1057,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Download version failed: {}", text)));
+            return Err(ProviderError::TransferFailed(format!("Download version failed: {}", sanitize_api_error(&text))));
         }
 
         let bytes = response.bytes().await
@@ -978,7 +1082,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Restore version failed: {}", text)));
+            return Err(ProviderError::Other(format!("Restore version failed: {}", sanitize_api_error(&text))));
         }
 
         info!("Restored {} to version {}", path, version_id);
@@ -1027,7 +1131,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List permissions failed: {}", text)));
+            return Err(ProviderError::Other(format!("List permissions failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1097,7 +1201,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Add permission failed: {}", text)));
+            return Err(ProviderError::Other(format!("Add permission failed: {}", sanitize_api_error(&text))));
         }
 
         Ok(())
@@ -1114,10 +1218,13 @@ impl StorageProvider for OneDriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // OneDrive resumable upload via upload session
-        let data = tokio::fs::read(local_path).await
+        use tokio::io::AsyncReadExt;
+
+        // OneDrive resumable upload via upload session — read chunks from file, not all in memory
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?.len();
+        let mut file = tokio::fs::File::open(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
-        let total_size = data.len() as u64;
 
         let path_str = remote_path.trim_matches('/');
         let url = format!(
@@ -1142,7 +1249,7 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Create upload session failed: {}", text)));
+            return Err(ProviderError::TransferFailed(format!("Create upload session failed: {}", sanitize_api_error(&text))));
         }
 
         #[derive(Deserialize)]
@@ -1154,21 +1261,24 @@ impl StorageProvider for OneDriveProvider {
         let session: UploadSession = response.json().await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        // Upload in 10MB chunks
-        let chunk_size = 10 * 1024 * 1024usize;
-        let mut offset = 0usize;
+        // Upload in 10MB chunks — read each chunk from file
+        let chunk_size = 10 * 1024 * 1024u64;
+        let mut offset = 0u64;
 
-        while offset < data.len() {
-            let end = std::cmp::min(offset + chunk_size, data.len());
-            let chunk = &data[offset..end];
+        while offset < total_size {
+            let end = std::cmp::min(offset + chunk_size, total_size);
+            let this_chunk_size = (end - offset) as usize;
+            let mut chunk = vec![0u8; this_chunk_size];
+            file.read_exact(&mut chunk).await
+                .map_err(|e| ProviderError::IoError(e))?;
 
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
             let resp = self.client
                 .put(&session.upload_url)
                 .header("Content-Range", &content_range)
-                .header("Content-Length", chunk.len().to_string())
-                .body(chunk.to_vec())
+                .header("Content-Length", this_chunk_size.to_string())
+                .body(chunk)
                 .send()
                 .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -1176,12 +1286,12 @@ impl StorageProvider for OneDriveProvider {
             let status = resp.status();
             if !status.is_success() && status.as_u16() != 202 {
                 let text = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::TransferFailed(format!("Upload chunk failed ({}): {}", status, text)));
+                return Err(ProviderError::TransferFailed(format!("Upload chunk failed ({}): {}", status, sanitize_api_error(&text))));
             }
 
             offset = end;
             if let Some(ref progress) = on_progress {
-                progress(offset as u64, total_size);
+                progress(offset, total_size);
             }
         }
 

@@ -13,7 +13,7 @@
 //! File extension: .aerovault (backwards compatible detection via magic bytes)
 
 use aes_gcm_siv::{
-    aead::{Aead, KeyInit},
+    aead::{Aead, KeyInit, Payload},
     Aes256GcmSiv, Nonce,
 };
 use aes_kw::KekAes256;
@@ -409,8 +409,9 @@ fn decrypt_filename(key: &[u8], encrypted: &str) -> Result<String, String> {
 // Content Encryption (AES-256-GCM-SIV)
 // ============================================================================
 
-/// Encrypt a chunk using AES-256-GCM-SIV
-fn encrypt_chunk(key: &[u8], chunk: &[u8]) -> Result<Vec<u8>, String> {
+/// Encrypt a chunk using AES-256-GCM-SIV with chunk index in AAD.
+/// GAP-D03: Chunk index bound to AAD prevents chunk reordering/duplication attacks.
+fn encrypt_chunk(key: &[u8], chunk: &[u8], chunk_index: u32) -> Result<Vec<u8>, String> {
     let cipher = Aes256GcmSiv::new_from_slice(key)
         .map_err(|_| "Invalid encryption key")?;
 
@@ -419,7 +420,11 @@ fn encrypt_chunk(key: &[u8], chunk: &[u8]) -> Result<Vec<u8>, String> {
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    let ciphertext = cipher.encrypt(nonce, chunk)
+    // AAD: chunk index as little-endian u32 (prevents reordering attacks)
+    let aad = chunk_index.to_le_bytes();
+    let payload = Payload { msg: chunk, aad: &aad };
+
+    let ciphertext = cipher.encrypt(nonce, payload)
         .map_err(|e| format!("Encryption failed: {:?}", e))?;
 
     // Output: nonce || ciphertext (includes tag)
@@ -430,8 +435,9 @@ fn encrypt_chunk(key: &[u8], chunk: &[u8]) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-/// Decrypt a chunk using AES-256-GCM-SIV
-fn decrypt_chunk(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, String> {
+/// Decrypt a chunk using AES-256-GCM-SIV with chunk index in AAD.
+/// GAP-D03: Chunk index verified via AAD — tampered index causes auth failure.
+fn decrypt_chunk(key: &[u8], encrypted: &[u8], chunk_index: u32) -> Result<Vec<u8>, String> {
     if encrypted.len() < NONCE_SIZE + TAG_SIZE {
         return Err("Encrypted chunk too small".into());
     }
@@ -442,15 +448,19 @@ fn decrypt_chunk(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, String> {
     let nonce = Nonce::from_slice(&encrypted[..NONCE_SIZE]);
     let ciphertext = &encrypted[NONCE_SIZE..];
 
-    cipher.decrypt(nonce, ciphertext)
+    // AAD: chunk index as little-endian u32 (must match encryption AAD)
+    let aad = chunk_index.to_le_bytes();
+    let payload = Payload { msg: ciphertext, aad: &aad };
+
+    cipher.decrypt(nonce, payload)
         .map_err(|_| "Decryption failed - corrupted or wrong password".into())
 }
 
 /// Apply cascade encryption (AES-GCM-SIV then ChaCha20-Poly1305)
 #[allow(dead_code)]
-fn encrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], chunk: &[u8]) -> Result<Vec<u8>, String> {
-    // First layer: AES-256-GCM-SIV
-    let aes_encrypted = encrypt_chunk(aes_key, chunk)?;
+fn encrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], chunk: &[u8], chunk_index: u32) -> Result<Vec<u8>, String> {
+    // First layer: AES-256-GCM-SIV (with chunk index AAD)
+    let aes_encrypted = encrypt_chunk(aes_key, chunk, chunk_index)?;
 
     // Second layer: ChaCha20-Poly1305
     let cipher = ChaCha20Poly1305::new_from_slice(chacha_key)
@@ -472,7 +482,7 @@ fn encrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], chunk: &[u8]) -> Res
 
 /// Decrypt cascade (ChaCha20-Poly1305 then AES-GCM-SIV)
 #[allow(dead_code)]
-fn decrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, String> {
+fn decrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], encrypted: &[u8], chunk_index: u32) -> Result<Vec<u8>, String> {
     if encrypted.len() < 12 + 16 {
         return Err("Encrypted chunk too small".into());
     }
@@ -486,8 +496,8 @@ fn decrypt_chunk_cascade(aes_key: &[u8], chacha_key: &[u8], encrypted: &[u8]) ->
     let aes_encrypted = ChaChaAead::decrypt(&cipher, nonce, ciphertext)
         .map_err(|_| "ChaCha decryption failed".to_string())?;
 
-    // Second: remove AES-GCM-SIV layer
-    decrypt_chunk(aes_key, &aes_encrypted)
+    // Second: remove AES-GCM-SIV layer (with chunk index AAD)
+    decrypt_chunk(aes_key, &aes_encrypted, chunk_index)
 }
 
 // ============================================================================
@@ -855,11 +865,11 @@ pub async fn vault_v2_add_files(
             }
             chunk.truncate(bytes_read);
 
-            // Encrypt chunk (with cascade if enabled)
+            // Encrypt chunk (with cascade if enabled, chunk index in AAD)
             let encrypted_chunk = if cascade_mode {
-                encrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &chunk)?
+                encrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &chunk, chunk_count)?
             } else {
-                encrypt_chunk(master_key.expose_secret(), &chunk)?
+                encrypt_chunk(master_key.expose_secret(), &chunk, chunk_count)?
             };
 
             // Chunk format: length (4 bytes) + encrypted data
@@ -1039,8 +1049,8 @@ pub async fn vault_v2_extract_entry(
         .map_err(|e| format!("Failed to create output: {}", e))?;
     let mut writer = BufWriter::new(out_file);
 
-    // Read and decrypt each chunk
-    for _ in 0..entry.chunk_count {
+    // Read and decrypt each chunk (chunk index in AAD for integrity)
+    for chunk_idx in 0..entry.chunk_count {
         // Read chunk length
         let mut len_buf = [0u8; 4];
         reader.read_exact(&mut len_buf)
@@ -1052,11 +1062,11 @@ pub async fn vault_v2_extract_entry(
         reader.read_exact(&mut encrypted_chunk)
             .map_err(|e| format!("Failed to read chunk: {}", e))?;
 
-        // Decrypt chunk
+        // Decrypt chunk (chunk index verified via AAD)
         let mut plaintext = if cascade_mode {
-            decrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &encrypted_chunk)?
+            decrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &encrypted_chunk, chunk_idx)?
         } else {
-            decrypt_chunk(master_key.expose_secret(), &encrypted_chunk)?
+            decrypt_chunk(master_key.expose_secret(), &encrypted_chunk, chunk_idx)?
         };
 
         // Write to output
@@ -1426,9 +1436,9 @@ pub async fn vault_v2_add_files_to_dir(
             chunk.truncate(bytes_read);
 
             let encrypted_chunk = if cascade_mode {
-                encrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &chunk)?
+                encrypt_chunk_cascade(master_key.expose_secret(), &chacha_key, &chunk, chunk_count)?
             } else {
-                encrypt_chunk(master_key.expose_secret(), &chunk)?
+                encrypt_chunk(master_key.expose_secret(), &chunk, chunk_count)?
             };
 
             let chunk_len = encrypted_chunk.len() as u32;

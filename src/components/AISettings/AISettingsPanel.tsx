@@ -377,17 +377,25 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     }, []);
 
     // Save settings: API keys go to OS Keyring, rest to localStorage + vault (debounced)
+    // B14: async persistence with error logging instead of fire-and-forget
     const saveSettings = useCallback((newSettings: AISettings) => {
         setSettings(newSettings);
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = setTimeout(async () => {
             // Store API keys in OS Keyring
+            const keyringErrors: string[] = [];
             for (const provider of newSettings.providers) {
                 if (provider.apiKey) {
-                    invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey })
-                        .catch(e => console.warn(`Failed to store API key for ${provider.name}:`, e));
+                    try {
+                        await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
+                    } catch (e) {
+                        keyringErrors.push(`${provider.name}: ${e}`);
+                    }
                 }
+            }
+            if (keyringErrors.length > 0) {
+                console.error('[AISettings] Failed to persist API keys:', keyringErrors);
             }
 
             // Strip API keys from localStorage copy
@@ -398,9 +406,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
 
             // Persist stripped settings to encrypted vault, then clear localStorage copy
-            secureStoreAndClean('ai_settings', AI_SETTINGS_KEY, stripped)
-                .then(() => localStorage.removeItem(AI_SETTINGS_KEY))
-                .catch(() => {});
+            try {
+                await secureStoreAndClean('ai_settings', AI_SETTINGS_KEY, stripped);
+                localStorage.removeItem(AI_SETTINGS_KEY);
+            } catch (e) {
+                console.error('[AISettings] Vault persist failed, localStorage retained as fallback:', e);
+            }
         }, 300);
     }, []);
 
@@ -466,7 +477,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
     // Test provider connection (calls real backend API validation)
     const testProvider = async (provider: AIProvider) => {
-        setTestingProvider(provider.id);
+        // B21: Use functional updater to avoid stale closure
+        setTestingProvider(() => provider.id);
         setTestResults(prev => ({ ...prev, [provider.id]: null }));
 
         try {
@@ -489,7 +501,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             const msg = typeof error === 'string' ? error : error?.message || 'Connection failed';
             setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: msg } }));
         } finally {
-            setTestingProvider(null);
+            setTestingProvider(() => null);
         }
     };
 

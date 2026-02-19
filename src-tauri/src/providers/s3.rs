@@ -8,12 +8,18 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures_util::StreamExt;
+use quick_xml::events::Event;
+use quick_xml::Reader;
+use secrecy::ExposeSecret;
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, info};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
 
 use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, S3Config,
+    StorageProvider, ProviderError, ProviderType, RemoteEntry, S3Config, FileVersion,
+    sanitize_api_error,
 };
 
 /// S3 Storage Provider
@@ -28,7 +34,7 @@ impl S3Provider {
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
         
@@ -138,9 +144,23 @@ impl S3Provider {
             }
         }
         
-        // URI-encode the path (but keep / as is)
-        let canonical_path = if path.is_empty() { "/" } else { path };
-        
+        // URI-encode each path segment individually (H-10: SigV4 requires encoded segments)
+        let canonical_path = if path.is_empty() || path == "/" {
+            "/".to_string()
+        } else {
+            let encoded_segments: Vec<String> = path
+                .split('/')
+                .map(|segment| {
+                    if segment.is_empty() {
+                        String::new()
+                    } else {
+                        urlencoding::encode(segment).into_owned()
+                    }
+                })
+                .collect();
+            encoded_segments.join("/")
+        };
+
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
             method,
@@ -174,14 +194,14 @@ impl S3Provider {
         }
         
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.config.secret_access_key).as_bytes(),
+            format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
             date_stamp.as_bytes()
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
         let k_service = hmac_sha256(&k_region, b"s3");
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
-        
+
         // Create authorization header
         let authorization = format!(
             "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
@@ -190,7 +210,7 @@ impl S3Provider {
             signed_headers_str,
             signature
         );
-        
+
         Ok(authorization)
     }
     
@@ -256,121 +276,214 @@ impl S3Provider {
         Ok(response)
     }
     
-    /// Parse S3 ListObjectsV2 XML response
-    fn parse_list_response(&self, xml: &str) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
+    /// Parse S3 ListObjectsV2 XML response using quick-xml (M-11/M-12)
+    fn parse_list_response(&self, xml_str: &str) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
-        
-        debug!("Parsing S3 ListObjectsV2 XML response, {} bytes", xml.len());
-        
-        // Parse common prefixes (directories)
-        // Note: (?s) enables DOTALL mode so . matches newlines in multi-line XML
-        let prefix_pattern = regex::Regex::new(r"(?s)<CommonPrefixes>\s*<Prefix>([^<]+)</Prefix>\s*</CommonPrefixes>")
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        
-        for cap in prefix_pattern.captures_iter(xml) {
-            if let Some(prefix_match) = cap.get(1) {
-                let full_prefix = prefix_match.as_str();
-                let name = full_prefix
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(full_prefix)
-                    .to_string();
-                
-                if !name.is_empty() {
-                    entries.push(RemoteEntry::directory(
-                        name,
-                        format!("/{}", full_prefix.trim_end_matches('/')),
-                    ));
-                }
-            }
+
+        debug!("Parsing S3 ListObjectsV2 XML response, {} bytes", xml_str.len());
+
+        let mut reader = Reader::from_str(xml_str);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        // State machine for tracking current element context
+        enum Context {
+            None,
+            CommonPrefixes,
+            Contents,
         }
-        
-        // Parse objects (files)
-        let contents_pattern = regex::Regex::new(r"(?s)<Contents>(.*?)</Contents>")
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        
-        for cap in contents_pattern.captures_iter(xml) {
-            if let Some(content) = cap.get(1) {
-                let content_str = content.as_str();
-                
-                // Extract key
-                let key = self.extract_xml_tag(content_str, "Key");
-                if key.is_none() {
-                    continue;
-                }
-                let key = key.unwrap();
-                
-                // Skip if key ends with / (it's a directory marker)
-                if key.ends_with('/') {
-                    continue;
-                }
-                
-                // Skip if key equals current prefix
-                if key == self.current_prefix || key.trim_start_matches('/') == self.current_prefix.trim_start_matches('/') {
-                    continue;
-                }
-                
-                let name = key.rsplit('/').next().unwrap_or(&key).to_string();
-                
-                if name.is_empty() {
-                    continue;
-                }
-                
-                let size: u64 = self.extract_xml_tag(content_str, "Size")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                
-                let modified = self.extract_xml_tag(content_str, "LastModified");
-                
-                let etag = self.extract_xml_tag(content_str, "ETag")
-                    .map(|s| s.trim_matches('"').to_string());
-                
-                let storage_class = self.extract_xml_tag(content_str, "StorageClass");
-                
-                let mut metadata = HashMap::new();
-                if let Some(etag) = etag {
-                    metadata.insert("etag".to_string(), etag);
-                }
-                if let Some(sc) = storage_class {
-                    metadata.insert("storage_class".to_string(), sc);
-                }
-                
-                entries.push(RemoteEntry {
-                    name,
-                    path: format!("/{}", key),
-                    is_dir: false,
-                    size,
-                    modified,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type: None,
-                    metadata,
-                });
-            }
-        }
-        
-        // Check for continuation token
-        let continuation_token = self.extract_xml_tag(xml, "NextContinuationToken");
-        
-        Ok((entries, continuation_token))
-    }
-    
-    /// Extract content from an XML tag
-    fn extract_xml_tag(&self, xml: &str, tag: &str) -> Option<String> {
-        let pattern = format!(r"<{}[^>]*>([^<]*)</{}>", tag, tag);
-        if let Ok(re) = regex::Regex::new(&pattern) {
-            if let Some(cap) = re.captures(xml) {
-                if let Some(content) = cap.get(1) {
-                    let text = content.as_str().trim().to_string();
-                    if !text.is_empty() {
-                        return Some(text);
+        let mut context = Context::None;
+        let mut current_tag = String::new();
+
+        // Fields for CommonPrefixes
+        let mut cp_prefix: Option<String> = None;
+
+        // Fields for Contents
+        let mut c_key: Option<String> = None;
+        let mut c_size: Option<String> = None;
+        let mut c_modified: Option<String> = None;
+        let mut c_etag: Option<String> = None;
+        let mut c_storage_class: Option<String> = None;
+
+        // Top-level field
+        let mut top_next_token: Option<String> = None;
+        let mut in_next_token = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    match tag_name.as_str() {
+                        "CommonPrefixes" => {
+                            context = Context::CommonPrefixes;
+                            cp_prefix = None;
+                        }
+                        "Contents" => {
+                            context = Context::Contents;
+                            c_key = None;
+                            c_size = None;
+                            c_modified = None;
+                            c_etag = None;
+                            c_storage_class = None;
+                        }
+                        "NextContinuationToken" => {
+                            in_next_token = true;
+                        }
+                        _ => {
+                            current_tag = tag_name;
+                        }
                     }
                 }
+                Ok(Event::Text(ref e)) => {
+                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+
+                    if text.is_empty() {
+                        buf.clear();
+                        continue;
+                    }
+
+                    if in_next_token {
+                        top_next_token = Some(text.clone());
+                    }
+
+                    match context {
+                        Context::CommonPrefixes => {
+                            if current_tag == "Prefix" {
+                                cp_prefix = Some(text);
+                            }
+                        }
+                        Context::Contents => match current_tag.as_str() {
+                            "Key" => c_key = Some(text),
+                            "Size" => c_size = Some(text),
+                            "LastModified" => c_modified = Some(text),
+                            "ETag" => c_etag = Some(text),
+                            "StorageClass" => c_storage_class = Some(text),
+                            _ => {}
+                        },
+                        Context::None => {}
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    match tag_name.as_str() {
+                        "CommonPrefixes" => {
+                            if let Some(ref full_prefix) = cp_prefix {
+                                let name = full_prefix
+                                    .trim_end_matches('/')
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or(full_prefix)
+                                    .to_string();
+
+                                if !name.is_empty() {
+                                    entries.push(RemoteEntry::directory(
+                                        name,
+                                        format!("/{}", full_prefix.trim_end_matches('/')),
+                                    ));
+                                }
+                            }
+                            context = Context::None;
+                        }
+                        "Contents" => {
+                            if let Some(ref key) = c_key {
+                                // Skip directory markers
+                                if !key.ends_with('/') {
+                                    // Skip if key equals current prefix
+                                    let dominated = key == &self.current_prefix
+                                        || key.trim_start_matches('/') == self.current_prefix.trim_start_matches('/');
+                                    if !dominated {
+                                        let name = key.rsplit('/').next().unwrap_or(key).to_string();
+                                        if !name.is_empty() {
+                                            let size: u64 = c_size.as_ref()
+                                                .and_then(|s| s.parse().ok())
+                                                .unwrap_or(0);
+
+                                            let etag = c_etag.as_ref()
+                                                .map(|s| s.trim_matches('"').to_string());
+
+                                            let mut metadata = HashMap::new();
+                                            if let Some(etag) = etag {
+                                                metadata.insert("etag".to_string(), etag);
+                                            }
+                                            if let Some(ref sc) = c_storage_class {
+                                                metadata.insert("storage_class".to_string(), sc.clone());
+                                            }
+
+                                            entries.push(RemoteEntry {
+                                                name,
+                                                path: format!("/{}", key),
+                                                is_dir: false,
+                                                size,
+                                                modified: c_modified.clone(),
+                                                permissions: None,
+                                                owner: None,
+                                                group: None,
+                                                is_symlink: false,
+                                                link_target: None,
+                                                mime_type: None,
+                                                metadata,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            context = Context::None;
+                        }
+                        "NextContinuationToken" => {
+                            in_next_token = false;
+                        }
+                        _ => {}
+                    }
+                    current_tag.clear();
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => {
+                    return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                }
+                _ => {}
             }
+            buf.clear();
+        }
+
+        Ok((entries, top_next_token))
+    }
+
+    /// Extract content from an XML tag using quick-xml (M-11/M-12)
+    fn extract_xml_tag(&self, xml_str: &str, tag: &str) -> Option<String> {
+        let mut reader = Reader::from_str(xml_str);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut inside_target = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    let name = e.name();
+                    let tag_name = String::from_utf8_lossy(name.as_ref());
+                    if tag_name == tag {
+                        inside_target = true;
+                    }
+                }
+                Ok(Event::Text(ref e)) => {
+                    if inside_target {
+                        let trimmed = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !trimmed.is_empty() {
+                            return Some(trimmed);
+                        }
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let name = e.name();
+                    let tag_name = String::from_utf8_lossy(name.as_ref());
+                    if tag_name == tag {
+                        inside_target = false;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
         }
         None
     }
@@ -394,7 +507,7 @@ impl S3Provider {
 
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(
-                format!("CreateMultipartUpload failed ({}): {}", status, body),
+                format!("CreateMultipartUpload failed ({}): {}", status, sanitize_api_error(&body)),
             ));
         }
 
@@ -422,7 +535,7 @@ impl S3Provider {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(
-                format!("UploadPart {} failed ({}): {}", part_number, status, body),
+                format!("UploadPart {} failed ({}): {}", part_number, status, sanitize_api_error(&body)),
             ));
         }
 
@@ -465,7 +578,7 @@ impl S3Provider {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(
-                format!("CompleteMultipartUpload failed ({}): {}", status, body),
+                format!("CompleteMultipartUpload failed ({}): {}", status, sanitize_api_error(&body)),
             ));
         }
 
@@ -527,34 +640,100 @@ impl S3Provider {
 
     /// List all object keys under a given prefix (non-recursive, no delimiter).
     /// Used by rename (folder) and rmdir_recursive.
+    /// Includes pagination via continuation-token (H-05).
     async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, ProviderError> {
-        let response = self.s3_request(
-            Method::GET,
-            "",
-            Some(&[("list-type", "2"), ("prefix", prefix)]),
-            None,
-        ).await?;
+        let mut all_keys = Vec::new();
+        let mut continuation_token: Option<String> = None;
 
-        if response.status() != StatusCode::OK {
-            return Err(ProviderError::ServerError("Failed to list objects by prefix".to_string()));
+        loop {
+            let mut params: Vec<(&str, &str)> = vec![
+                ("list-type", "2"),
+                ("prefix", prefix),
+                ("max-keys", "1000"),
+            ];
+
+            let token_str: String;
+            if let Some(ref token) = continuation_token {
+                token_str = token.clone();
+                params.push(("continuation-token", &token_str));
+            }
+
+            let response = self.s3_request(
+                Method::GET,
+                "",
+                Some(&params),
+                None,
+            ).await?;
+
+            if response.status() != StatusCode::OK {
+                return Err(ProviderError::ServerError("Failed to list objects by prefix".to_string()));
+            }
+
+            let xml_str = response.text().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            // Parse keys and next token using quick-xml
+            let mut reader = Reader::from_str(&xml_str);
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+            let mut inside_key = false;
+            let mut inside_next_token = false;
+            let mut next_token: Option<String> = None;
+
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(Event::Start(ref e)) => {
+                        let name = e.name();
+                        let tag = String::from_utf8_lossy(name.as_ref());
+                        match tag.as_ref() {
+                            "Key" => inside_key = true,
+                            "NextContinuationToken" => inside_next_token = true,
+                            _ => {}
+                        }
+                    }
+                    Ok(Event::Text(ref e)) => {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !text.is_empty() {
+                            if inside_key {
+                                all_keys.push(text);
+                            } else if inside_next_token {
+                                next_token = Some(text);
+                            }
+                        }
+                    }
+                    Ok(Event::End(ref e)) => {
+                        let name = e.name();
+                        let tag = String::from_utf8_lossy(name.as_ref());
+                        match tag.as_ref() {
+                            "Key" => inside_key = false,
+                            "NextContinuationToken" => inside_next_token = false,
+                            _ => {}
+                        }
+                    }
+                    Ok(Event::Eof) => break,
+                    Err(e) => {
+                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                    }
+                    _ => {}
+                }
+                buf.clear();
+            }
+
+            if let Some(token) = next_token {
+                continuation_token = Some(token);
+            } else {
+                break;
+            }
         }
 
-        let xml = response.text().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        let key_pattern = regex::Regex::new(r"<Key>([^<]+)</Key>")
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        let keys: Vec<String> = key_pattern.captures_iter(&xml)
-            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .collect();
-
-        Ok(keys)
+        Ok(all_keys)
     }
 }
 
 #[async_trait]
 impl StorageProvider for S3Provider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
     fn provider_type(&self) -> ProviderType {
         ProviderType::S3
     }
@@ -598,14 +777,14 @@ impl StorageProvider for S3Provider {
                 } else {
                     body.clone()
                 };
-                Err(ProviderError::AuthenticationFailed(format!("S3 auth error: {}", error_msg)))
+                Err(ProviderError::AuthenticationFailed(format!("S3 auth error: {}", sanitize_api_error(&error_msg))))
             }
             StatusCode::NOT_FOUND => {
                 Err(ProviderError::NotFound(format!("Bucket '{}' not found", self.config.bucket)))
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ConnectionFailed(format!("S3 error ({}): {}", status, body)))
+                Err(ProviderError::ConnectionFailed(format!("S3 error ({}): {}", status, sanitize_api_error(&body))))
             }
         }
     }
@@ -669,7 +848,7 @@ impl StorageProvider for S3Provider {
                     } else {
                         xml.clone()
                     };
-                    info!("S3 LIST response XML:\n{}", xml_preview);
+                    debug!("S3 LIST response XML:\n{}", xml_preview);
                     
                     let (entries, next_token) = self.parse_list_response(&xml)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
@@ -698,7 +877,7 @@ impl StorageProvider for S3Provider {
                     } else {
                         body
                     };
-                    return Err(ProviderError::ServerError(format!("List failed ({}): {}", status, error_msg)));
+                    return Err(ProviderError::ServerError(format!("List failed ({}): {}", status, sanitize_api_error(&error_msg))));
                 }
             }
         }
@@ -781,20 +960,29 @@ impl StorageProvider for S3Provider {
         
         let key = remote_path.trim_start_matches('/');
         let response = self.s3_request(Method::GET, key, None, None).await?;
-        
+
         match response.status() {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
-                let bytes = response.bytes().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                
-                if let Some(progress) = on_progress {
-                    progress(bytes.len() as u64, total_size);
-                }
-                
-                tokio::fs::write(local_path, &bytes).await
+
+                // H-01: Streaming download — write chunks as they arrive
+                let mut stream = response.bytes_stream();
+                let mut file = tokio::fs::File::create(local_path).await
                     .map_err(|e| ProviderError::IoError(e))?;
-                
+                let mut downloaded: u64 = 0;
+
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    file.write_all(&chunk).await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    downloaded += chunk.len() as u64;
+                    if let Some(ref progress) = on_progress {
+                        progress(downloaded, total_size);
+                    }
+                }
+                file.flush().await
+                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
                 Ok(())
             }
             StatusCode::NOT_FOUND => {
@@ -839,18 +1027,43 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let data = tokio::fs::read(local_path).await
+        let file_meta = tokio::fs::metadata(local_path).await
             .map_err(|e| ProviderError::IoError(e))?;
-
-        let total_size = data.len() as u64;
+        let total_size = file_meta.len();
         let key = remote_path.trim_start_matches('/');
 
         // Use multipart upload for files larger than 5MB
-        if data.len() > Self::MULTIPART_THRESHOLD {
+        if total_size > Self::MULTIPART_THRESHOLD as u64 {
+            // Multipart still needs buffered data for chunking
+            let data = tokio::fs::read(local_path).await
+                .map_err(|e| ProviderError::IoError(e))?;
             return self.upload_multipart(key, data, on_progress).await;
         }
 
-        let response = self.s3_request(Method::PUT, key, None, Some(data)).await?;
+        // Streaming upload for small files (< 5MB)
+        use tokio_util::io::ReaderStream;
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::IoError(e))?;
+        let stream = ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+
+        // Build the request manually with streaming body (cannot use s3_request helper for streaming)
+        let url = self.build_url(key);
+        // For streaming, we use UNSIGNED-PAYLOAD since we cannot hash the stream upfront
+        let payload_hash = "UNSIGNED-PAYLOAD";
+        let mut headers = HashMap::new();
+        let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", total_size.to_string());
+        request = request.body(body);
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -861,7 +1074,7 @@ impl StorageProvider for S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::TransferFailed(format!("Upload failed ({}): {}", status, body)))
+                Err(ProviderError::TransferFailed(format!("Upload failed ({}): {}", status, sanitize_api_error(&body))))
             }
         }
     }
@@ -1090,29 +1303,45 @@ impl StorageProvider for S3Provider {
         expires_in_secs: Option<u64>,
     ) -> Result<String, ProviderError> {
         // Generate a presigned URL
-        // This is a simplified implementation
         use sha2::{Sha256, Digest};
         use hmac::{Hmac, Mac};
-        
+
         type HmacSha256 = Hmac<Sha256>;
-        
+
         let key = path.trim_start_matches('/');
         let expires = expires_in_secs.unwrap_or(3600); // Default 1 hour
-        
+
         let now: DateTime<Utc> = Utc::now();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
-        
+
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, self.config.region);
         let credential = format!("{}/{}", self.config.access_key_id, credential_scope);
-        
+
         let url = self.build_url(key);
         let parsed = url::Url::parse(&url)
             .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-        
+
         let host = parsed.host_str().unwrap_or("");
-        let path_part = parsed.path();
-        
+        let raw_path = parsed.path();
+
+        // M-13: URI-encode each path segment for the canonical URI
+        let canonical_path = if raw_path.is_empty() || raw_path == "/" {
+            "/".to_string()
+        } else {
+            let encoded_segments: Vec<String> = raw_path
+                .split('/')
+                .map(|segment| {
+                    if segment.is_empty() {
+                        String::new()
+                    } else {
+                        urlencoding::encode(segment).into_owned()
+                    }
+                })
+                .collect();
+            encoded_segments.join("/")
+        };
+
         // Build canonical query string
         let signed_headers = "host";
         let query_params = format!(
@@ -1122,22 +1351,22 @@ impl StorageProvider for S3Provider {
             expires,
             signed_headers
         );
-        
+
         // Canonical request
         let canonical_request = format!(
             "GET\n{}\n{}\nhost:{}\n\n{}\nUNSIGNED-PAYLOAD",
-            path_part,
+            canonical_path,
             query_params,
             host,
             signed_headers
         );
-        
+
         let canonical_hash = {
             let mut hasher = Sha256::new();
             hasher.update(canonical_request.as_bytes());
             hex::encode(hasher.finalize())
         };
-        
+
         // String to sign
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
@@ -1145,23 +1374,23 @@ impl StorageProvider for S3Provider {
             credential_scope,
             canonical_hash
         );
-        
+
         // Calculate signature
         fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
             let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
             mac.update(data);
             mac.finalize().into_bytes().to_vec()
         }
-        
+
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.config.secret_access_key).as_bytes(),
+            format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
             date_stamp.as_bytes()
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
         let k_service = hmac_sha256(&k_region, b"s3");
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
-        
+
         Ok(format!("{}?{}&X-Amz-Signature={}", url, query_params, signature))
     }
 
@@ -1206,55 +1435,100 @@ impl StorageProvider for S3Provider {
 
             if response.status() != StatusCode::OK {
                 let body = response.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Search failed: {}", body)));
+                return Err(ProviderError::ServerError(format!("Search failed: {}", sanitize_api_error(&body))));
             }
 
-            let xml = response.text().await
+            let xml_str = response.text().await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-            // Parse keys and filter by pattern
-            let key_pattern = regex::Regex::new(r"<Key>([^<]+)</Key>")
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            // Parse keys, sizes, and filter by pattern using quick-xml
+            let mut find_reader = Reader::from_str(&xml_str);
+            find_reader.config_mut().trim_text(true);
+            let mut find_buf = Vec::new();
+            let mut in_contents = false;
+            let mut in_next_tok = false;
+            let mut find_tag = String::new();
+            let mut find_key: Option<String> = None;
+            let mut find_size: Option<String> = None;
+            let mut find_modified: Option<String> = None;
+            let mut next_tok_val: Option<String> = None;
 
-            for cap in key_pattern.captures_iter(&xml) {
-                if let Some(key_match) = cap.get(1) {
-                    let key = key_match.as_str();
-                    let name = key.rsplit('/').next().unwrap_or(key);
-
-                    if name.to_lowercase().contains(&pattern_lower) && !key.ends_with('/') {
-                        let size_str = {
-                            // Extract size for this key from the Contents block
-                            let contents_re = regex::Regex::new(&format!(
-                                r"(?s)<Contents>.*?<Key>{}</Key>.*?<Size>(\d+)</Size>.*?</Contents>",
-                                regex::escape(key)
-                            )).ok();
-                            contents_re.and_then(|re| {
-                                re.captures(&xml).and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
-                            })
-                        };
-
-                        let size: u64 = size_str.and_then(|s| s.parse().ok()).unwrap_or(0);
-
-                        all_entries.push(RemoteEntry {
-                            name: name.to_string(),
-                            path: format!("/{}", key),
-                            is_dir: false,
-                            size,
-                            modified: None,
-                            permissions: None,
-                            owner: None,
-                            group: None,
-                            is_symlink: false,
-                            link_target: None,
-                            mime_type: None,
-                            metadata: HashMap::new(),
-                        });
+            loop {
+                match find_reader.read_event_into(&mut find_buf) {
+                    Ok(Event::Start(ref e)) => {
+                        let tn = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        match tn.as_str() {
+                            "Contents" => {
+                                in_contents = true;
+                                find_key = None;
+                                find_size = None;
+                                find_modified = None;
+                            }
+                            "NextContinuationToken" => in_next_tok = true,
+                            _ => find_tag = tn,
+                        }
                     }
+                    Ok(Event::Text(ref e)) => {
+                        let t = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !t.is_empty() {
+                            if in_next_tok {
+                                next_tok_val = Some(t.clone());
+                            }
+                            if in_contents {
+                                match find_tag.as_str() {
+                                    "Key" => find_key = Some(t),
+                                    "Size" => find_size = Some(t),
+                                    "LastModified" => find_modified = Some(t),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Ok(Event::End(ref e)) => {
+                        let tn = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        match tn.as_str() {
+                            "Contents" => {
+                                if let Some(ref key) = find_key {
+                                    if !key.ends_with('/') {
+                                        let name = key.rsplit('/').next().unwrap_or(key);
+                                        if name.to_lowercase().contains(&pattern_lower) {
+                                            let size: u64 = find_size.as_ref()
+                                                .and_then(|s| s.parse().ok())
+                                                .unwrap_or(0);
+                                            all_entries.push(RemoteEntry {
+                                                name: name.to_string(),
+                                                path: format!("/{}", key),
+                                                is_dir: false,
+                                                size,
+                                                modified: find_modified.clone(),
+                                                permissions: None,
+                                                owner: None,
+                                                group: None,
+                                                is_symlink: false,
+                                                link_target: None,
+                                                mime_type: None,
+                                                metadata: HashMap::new(),
+                                            });
+                                        }
+                                    }
+                                }
+                                in_contents = false;
+                            }
+                            "NextContinuationToken" => in_next_tok = false,
+                            _ => {}
+                        }
+                        find_tag.clear();
+                    }
+                    Ok(Event::Eof) => break,
+                    Err(e) => {
+                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                    }
+                    _ => {}
                 }
+                find_buf.clear();
             }
 
-            let next_token = self.extract_xml_tag(&xml, "NextContinuationToken");
-            match next_token {
+            match next_tok_val {
                 Some(token) if all_entries.len() < 500 => continuation_token = Some(token),
                 _ => break,
             }
@@ -1306,7 +1580,7 @@ impl StorageProvider for S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(format!("Copy failed ({}): {}", status, body)))
+                Err(ProviderError::ServerError(format!("Copy failed ({}): {}", status, sanitize_api_error(&body))))
             }
         }
     }
@@ -1322,6 +1596,287 @@ impl StorageProvider for S3Provider {
             ..Default::default()
         }
     }
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let key = path.trim_start_matches('/');
+        let mut all_versions = Vec::new();
+        let mut key_marker: Option<String> = None;
+        let mut version_id_marker: Option<String> = None;
+
+        loop {
+            let mut params: Vec<(&str, &str)> = vec![
+                ("versions", ""),
+                ("prefix", key),
+            ];
+
+            let km_str: String;
+            let vm_str: String;
+            if let Some(ref km) = key_marker {
+                km_str = km.clone();
+                params.push(("key-marker", &km_str));
+            }
+            if let Some(ref vm) = version_id_marker {
+                vm_str = vm.clone();
+                params.push(("version-id-marker", &vm_str));
+            }
+
+            let response = self.s3_request(Method::GET, "", Some(&params), None).await?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(
+                    format!("ListObjectVersions failed ({}): {}", status, sanitize_api_error(&body)),
+                ));
+            }
+
+            let xml_str = response.text().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
+
+            // Parse ListVersionsResult XML using quick-xml
+            let mut reader = Reader::from_str(&xml_str);
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+
+            let mut in_version = false;
+            let mut _in_delete_marker = false;
+            let mut current_tag = String::new();
+
+            // Fields for <Version> elements
+            let mut v_key: Option<String> = None;
+            let mut v_version_id: Option<String> = None;
+            let mut v_is_latest: Option<String> = None;
+            let mut v_last_modified: Option<String> = None;
+            let mut v_size: Option<String> = None;
+
+            // Pagination fields
+            let mut is_truncated = false;
+            let mut next_key_marker: Option<String> = None;
+            let mut next_version_id_marker: Option<String> = None;
+            let mut in_is_truncated = false;
+            let mut in_next_key_marker = false;
+            let mut in_next_version_id_marker = false;
+
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(Event::Start(ref e)) => {
+                        let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        match tag_name.as_str() {
+                            "Version" => {
+                                in_version = true;
+                                v_key = None;
+                                v_version_id = None;
+                                v_is_latest = None;
+                                v_last_modified = None;
+                                v_size = None;
+                            }
+                            "DeleteMarker" => {
+                                _in_delete_marker = true;
+                            }
+                            "IsTruncated" => in_is_truncated = true,
+                            "NextKeyMarker" => in_next_key_marker = true,
+                            "NextVersionIdMarker" => in_next_version_id_marker = true,
+                            _ => {
+                                current_tag = tag_name;
+                            }
+                        }
+                    }
+                    Ok(Event::Text(ref e)) => {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if text.is_empty() {
+                            buf.clear();
+                            continue;
+                        }
+
+                        if in_is_truncated {
+                            is_truncated = text == "true";
+                        }
+                        if in_next_key_marker {
+                            next_key_marker = Some(text.clone());
+                        }
+                        if in_next_version_id_marker {
+                            next_version_id_marker = Some(text.clone());
+                        }
+
+                        if in_version {
+                            match current_tag.as_str() {
+                                "Key" => v_key = Some(text),
+                                "VersionId" => v_version_id = Some(text),
+                                "IsLatest" => v_is_latest = Some(text),
+                                "LastModified" => v_last_modified = Some(text),
+                                "Size" => v_size = Some(text),
+                                _ => {}
+                            }
+                        }
+                    }
+                    Ok(Event::End(ref e)) => {
+                        let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        match tag_name.as_str() {
+                            "Version" => {
+                                // Only include versions whose key exactly matches
+                                if let Some(ref vk) = v_key {
+                                    if vk == key {
+                                        let version_id = v_version_id.clone().unwrap_or_default();
+                                        let is_latest = v_is_latest.as_deref() == Some("true");
+                                        let size: u64 = v_size.as_ref()
+                                            .and_then(|s| s.parse().ok())
+                                            .unwrap_or(0);
+
+                                        let mut modified_by_str = None;
+                                        if is_latest {
+                                            modified_by_str = Some("(latest)".to_string());
+                                        }
+
+                                        all_versions.push(FileVersion {
+                                            id: version_id,
+                                            modified: v_last_modified.clone(),
+                                            size,
+                                            modified_by: modified_by_str,
+                                        });
+                                    }
+                                }
+                                in_version = false;
+                            }
+                            "DeleteMarker" => {
+                                _in_delete_marker = false;
+                            }
+                            "IsTruncated" => in_is_truncated = false,
+                            "NextKeyMarker" => in_next_key_marker = false,
+                            "NextVersionIdMarker" => in_next_version_id_marker = false,
+                            _ => {}
+                        }
+                        current_tag.clear();
+                    }
+                    Ok(Event::Eof) => break,
+                    Err(e) => {
+                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                    }
+                    _ => {}
+                }
+                buf.clear();
+            }
+
+            if is_truncated {
+                key_marker = next_key_marker;
+                version_id_marker = next_version_id_marker;
+            } else {
+                break;
+            }
+        }
+
+        info!("S3 ListObjectVersions: found {} versions for '{}'", all_versions.len(), key);
+        Ok(all_versions)
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let key = path.trim_start_matches('/');
+        let response = self.s3_request(
+            Method::GET,
+            key,
+            Some(&[("versionId", version_id)]),
+            None,
+        ).await?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let mut stream = response.bytes_stream();
+                let mut file = tokio::fs::File::create(local_path).await
+                    .map_err(|e| ProviderError::IoError(e))?;
+
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    file.write_all(&chunk).await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                }
+                file.flush().await
+                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+                info!("Downloaded version '{}' of '{}' to '{}'", version_id, key, local_path);
+                Ok(())
+            }
+            StatusCode::NOT_FOUND => {
+                Err(ProviderError::NotFound(
+                    format!("Version '{}' of '{}' not found", version_id, path),
+                ))
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::TransferFailed(
+                    format!("Download version failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let key = path.trim_start_matches('/');
+        // Restore by copying the old version to itself
+        let copy_source = format!(
+            "/{}/{}?versionId={}",
+            self.config.bucket,
+            urlencoding::encode(key),
+            urlencoding::encode(version_id)
+        );
+
+        let url = self.build_url(key);
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(b"");
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("x-amz-copy-source".to_string(), copy_source);
+        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", "0");
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                info!("Restored '{}' to version '{}'", key, version_id);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("Restore version failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1334,30 +1889,30 @@ mod tests {
             endpoint: Some("http://localhost:9000".to_string()),
             region: "us-east-1".to_string(),
             access_key_id: "minioadmin".to_string(),
-            secret_access_key: "minioadmin".to_string(),
+            secret_access_key: secrecy::SecretString::from("minioadmin".to_string()),
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
         });
-        
+
         assert_eq!(
             provider.build_url("path/to/file.txt"),
             "http://localhost:9000/test-bucket/path/to/file.txt"
         );
     }
-    
+
     #[test]
     fn test_build_url_virtual_hosted() {
         let provider = S3Provider::new(S3Config {
             endpoint: None,
             region: "us-west-2".to_string(),
             access_key_id: "key".to_string(),
-            secret_access_key: "secret".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
         });
-        
+
         assert_eq!(
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"

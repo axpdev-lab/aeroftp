@@ -601,7 +601,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, []);
 
     // Auto-index workspace for RAG context (fix M-011: debounce + cache by path)
+    // B07: Gated by enableAutoRAGIndexing setting (default: true for backward compat)
     useEffect(() => {
+        const autoRAG = cachedAiSettings?.advancedSettings?.enableAutoRAGIndexing ?? true;
+        if (!autoRAG) { ragIndexRef.current = null; ragIndexedPathRef.current = null; return; }
         const indexPath = localPath; // Only index local paths - remote paths are not accessible to rag_index
         if (!indexPath) { ragIndexRef.current = null; ragIndexedPathRef.current = null; return; }
         // Cache: don't re-index same path
@@ -620,7 +623,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             });
         }, 1000);
         return () => clearTimeout(timer);
-    }, [localPath]);
+    }, [localPath, cachedAiSettings?.advancedSettings?.enableAutoRAGIndexing]);
 
     // Phase 3: Auto-detect project context (#66)
     useEffect(() => {

@@ -32,6 +32,7 @@ mod profile_export;
 mod keystore_export;
 mod pty;
 mod ssh_shell;
+mod host_key_check;
 mod ai_tools;
 mod context_intelligence;
 mod plugins;
@@ -56,6 +57,7 @@ use filesystem::validate_path;
 use ftp::{FtpManager, RemoteFile};
 use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
 use ssh_shell::{create_ssh_shell_state, ssh_shell_open, ssh_shell_write, ssh_shell_resize, ssh_shell_close};
+use host_key_check::{sftp_check_host_key, sftp_accept_host_key, sftp_remove_host_key};
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
 pub struct SpeedLimits {
@@ -538,7 +540,9 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
     Ok(())
 }
 
-/// Install a .deb package via pkexec (graphical sudo) and restart the app
+/// Install a .deb package via pkexec with branded Polkit dialog and restart the app.
+/// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
+/// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
 async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
     let downloaded = std::path::Path::new(&downloaded_path);
@@ -546,12 +550,19 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
         return Err("Downloaded file not found".to_string());
     }
 
-    info!("Installing .deb update via pkexec: {}", downloaded_path);
-
-    let status = std::process::Command::new("pkexec")
-        .args(["dpkg", "-i", &downloaded_path])
-        .status()
-        .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+    let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
+    let status = if helper.exists() {
+        info!("Installing .deb update via branded Polkit helper: {}", downloaded_path);
+        std::process::Command::new("pkexec")
+            .args(["/usr/lib/aeroftp/aeroftp-update-helper", &downloaded_path])
+            .status()
+    } else {
+        info!("Installing .deb update via generic pkexec: {}", downloaded_path);
+        std::process::Command::new("pkexec")
+            .args(["dpkg", "-i", &downloaded_path])
+            .status()
+    }
+    .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
 
     if !status.success() {
         return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo dpkg -i {}",
@@ -561,16 +572,29 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
     info!(".deb installed successfully, restarting...");
     let _ = std::fs::remove_file(downloaded);
 
-    // Restart via current exe
+    // Restart via detached shell process — delay ensures old process exits
+    // fully before new one starts (avoids port/lock/DBus conflicts)
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Cannot find current exe: {}", e))?;
-    let _ = std::process::Command::new(&current_exe).spawn();
+    let exe_path = current_exe.display().to_string();
+    info!("Spawning delayed relaunch: {}", exe_path);
+    if let Err(e) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("sleep 1 && exec '{}'", exe_path))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        tracing::warn!("Failed to spawn relaunch process: {}", e);
+    }
     app.exit(0);
 
     Ok(())
 }
 
-/// Install an .rpm package via pkexec and restart the app
+/// Install an .rpm package via pkexec with branded Polkit dialog and restart the app.
+/// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
 async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
     let downloaded = std::path::Path::new(&downloaded_path);
@@ -578,12 +602,19 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
         return Err("Downloaded file not found".to_string());
     }
 
-    info!("Installing .rpm update via pkexec: {}", downloaded_path);
-
-    let status = std::process::Command::new("pkexec")
-        .args(["rpm", "-U", &downloaded_path])
-        .status()
-        .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+    let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
+    let status = if helper.exists() {
+        info!("Installing .rpm update via branded Polkit helper: {}", downloaded_path);
+        std::process::Command::new("pkexec")
+            .args(["/usr/lib/aeroftp/aeroftp-update-helper", &downloaded_path])
+            .status()
+    } else {
+        info!("Installing .rpm update via generic pkexec: {}", downloaded_path);
+        std::process::Command::new("pkexec")
+            .args(["rpm", "-U", &downloaded_path])
+            .status()
+    }
+    .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
 
     if !status.success() {
         return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo rpm -U {}",
@@ -593,9 +624,21 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
     info!(".rpm installed successfully, restarting...");
     let _ = std::fs::remove_file(downloaded);
 
+    // Restart via detached shell process (same pattern as deb)
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Cannot find current exe: {}", e))?;
-    let _ = std::process::Command::new(&current_exe).spawn();
+    let exe_path = current_exe.display().to_string();
+    info!("Spawning delayed relaunch: {}", exe_path);
+    if let Err(e) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("sleep 1 && exec '{}'", exe_path))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        tracing::warn!("Failed to spawn relaunch process: {}", e);
+    }
     app.exit(0);
 
     Ok(())
@@ -4053,6 +4096,11 @@ pub async fn get_local_files_recursive(
                 checksum,
             };
 
+            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
+            if files.len() >= 1_000_000 {
+                return Err("File scan exceeded 1,000,000 entries. Consider narrowing the scan scope.".to_string());
+            }
+
             files.insert(relative_path, file_info);
 
             // Add subdirectories to process
@@ -4118,6 +4166,11 @@ pub async fn get_local_files_recursive_parallel(
             });
             let size = if is_dir { 0 } else { metadata.as_ref().map(|m| m.len()).unwrap_or(0) };
             let abs_path = path.to_string_lossy().to_string();
+
+            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
+            if file_entries.len() >= 1_000_000 {
+                return Err("File scan exceeded 1,000,000 entries. Consider narrowing the scan scope.".to_string());
+            }
 
             file_entries.push((relative_path, abs_path, size, modified, is_dir));
 
@@ -4609,7 +4662,13 @@ async fn parallel_sync_execute(
     }
 
     let start = Instant::now();
-    let max_streams = max_streams.clamp(1, 8) as usize;
+    // P2-5: Use validate_config for consistent validation (clamp streams + default timeout)
+    let mut pool_config = transfer_pool::ParallelTransferConfig {
+        max_streams,
+        acquire_timeout_ms: 30000,
+    };
+    transfer_pool::validate_config(&mut pool_config);
+    let max_streams = pool_config.max_streams as usize;
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_streams));
     let result = Arc::new(Mutex::new(transfer_pool::ParallelSyncResult::new()));
     let total_count = transfers.len();
@@ -4798,6 +4857,8 @@ async fn execute_single_transfer(
             let app_ref = app.clone();
             let transfer_id = format!("psync-{}-{}", stream_id, index);
             let filename = entry.relative_path.clone();
+            let mut last_emit_time_ul = Instant::now();
+            let mut last_emit_pct_ul: u8 = 0;
 
             ftp.upload_file_with_progress(
                 &entry.local_path,
@@ -4810,19 +4871,27 @@ async fn execute_single_transfer(
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                     } else { 0 };
 
-                    let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
-                        "phase": "transfer_progress",
-                        "stream_id": stream_id,
-                        "transfer_id": transfer_id,
-                        "relative_path": filename,
-                        "direction": "upload",
-                        "transferred": transferred,
-                        "total": file_size,
-                        "percentage": pct,
-                        "speed_bps": speed,
-                        "index": index,
-                        "total_files": total,
-                    }));
+                    // Throttle: emit every 150ms or 2% delta (matches standard transfer path)
+                    let is_complete = transferred >= file_size && file_size > 0;
+                    let time_ok = last_emit_time_ul.elapsed().as_millis() >= 150;
+                    let pct_ok = pct.saturating_sub(last_emit_pct_ul) >= 2;
+                    if time_ok || pct_ok || is_complete {
+                        last_emit_time_ul = Instant::now();
+                        last_emit_pct_ul = pct;
+                        let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
+                            "phase": "transfer_progress",
+                            "stream_id": stream_id,
+                            "transfer_id": transfer_id,
+                            "relative_path": filename,
+                            "direction": "upload",
+                            "transferred": transferred,
+                            "total": file_size,
+                            "percentage": pct,
+                            "speed_bps": speed,
+                            "index": index,
+                            "total_files": total,
+                        }));
+                    }
                     true // continue
                 },
             ).await.map_err(|e| format!("Upload failed: {}", e))?;
@@ -4843,6 +4912,8 @@ async fn execute_single_transfer(
             let app_ref = app.clone();
             let transfer_id = format!("psync-{}-{}", stream_id, index);
             let filename = entry.relative_path.clone();
+            let mut last_emit_time_dl = Instant::now();
+            let mut last_emit_pct_dl: u8 = 0;
 
             ftp.download_file_with_progress(
                 &entry.remote_path,
@@ -4854,19 +4925,27 @@ async fn execute_single_transfer(
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                     } else { 0 };
 
-                    let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
-                        "phase": "transfer_progress",
-                        "stream_id": stream_id,
-                        "transfer_id": transfer_id,
-                        "relative_path": filename,
-                        "direction": "download",
-                        "transferred": transferred,
-                        "total": file_size,
-                        "percentage": pct,
-                        "speed_bps": speed,
-                        "index": index,
-                        "total_files": total,
-                    }));
+                    // Throttle: emit every 150ms or 2% delta (matches standard transfer path)
+                    let is_complete = transferred >= file_size && file_size > 0;
+                    let time_ok = last_emit_time_dl.elapsed().as_millis() >= 150;
+                    let pct_ok = pct.saturating_sub(last_emit_pct_dl) >= 2;
+                    if time_ok || pct_ok || is_complete {
+                        last_emit_time_dl = Instant::now();
+                        last_emit_pct_dl = pct;
+                        let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
+                            "phase": "transfer_progress",
+                            "stream_id": stream_id,
+                            "transfer_id": transfer_id,
+                            "relative_path": filename,
+                            "direction": "download",
+                            "transferred": transferred,
+                            "total": file_size,
+                            "percentage": pct,
+                            "speed_bps": speed,
+                            "index": index,
+                            "total_files": total,
+                        }));
+                    }
                     true // continue
                 },
             ).await.map_err(|e| format!("Download failed: {}", e))?;
@@ -6441,6 +6520,13 @@ pub fn run() {
                     let _ = window.hide();
                     api.prevent_close();
                 } else {
+                    // P1-5: Cleanup Cloud Filter root registrations on app exit
+                    #[cfg(windows)]
+                    {
+                        if let Err(e) = crate::cloud_filter_badge::cleanup_all_roots() {
+                            warn!("Cloud Filter cleanup on exit: {}", e);
+                        }
+                    }
                     info!("Window close requested, AeroCloud not enabled, exiting");
                 }
             }
@@ -6691,6 +6777,9 @@ pub fn run() {
             provider_commands::fourshared_connect,
             provider_commands::fourshared_has_tokens,
             provider_commands::fourshared_logout,
+            provider_commands::zoho_list_trash,
+            provider_commands::zoho_permanent_delete,
+            provider_commands::zoho_restore_from_trash,
             provider_commands::provider_create_share_link,
             provider_commands::provider_remove_share_link,
             provider_commands::provider_import_link,
@@ -6742,6 +6831,10 @@ pub fn run() {
             ssh_shell_write,
             ssh_shell_resize,
             ssh_shell_close,
+            // Host key verification (TOFU UX)
+            sftp_check_host_key,
+            sftp_accept_host_key,
+            sftp_remove_host_key,
             // Plugin system
             plugins::list_plugins,
             plugins::execute_plugin_tool,
