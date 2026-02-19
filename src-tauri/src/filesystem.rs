@@ -536,9 +536,14 @@ async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
     use std::os::windows::ffi::OsStringExt;
     use windows::Win32::Storage::FileSystem::{
         GetLogicalDrives, GetVolumeInformationW, GetDiskFreeSpaceExW, GetDriveTypeW,
-        DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_REMOTE, DRIVE_CDROM,
     };
     use windows::core::PCWSTR;
+
+    // Win32 drive type constants (windows-rs 0.58 returns u32, not enum)
+    const DRIVE_REMOVABLE: u32 = 2;
+    const DRIVE_FIXED: u32 = 3;
+    const DRIVE_REMOTE: u32 = 4;
+    const DRIVE_CDROM: u32 = 5;
 
     let drive_mask = unsafe { GetLogicalDrives() };
     if drive_mask == 0 {
