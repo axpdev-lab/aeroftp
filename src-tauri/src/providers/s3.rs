@@ -32,18 +32,18 @@ pub struct S3Provider {
 
 impl S3Provider {
     /// Create a new S3 provider with the given configuration
-    pub fn new(config: S3Config) -> Self {
+    pub fn new(config: S3Config) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
-        
-        Self {
+            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;
+
+        Ok(Self {
             config,
             client,
             current_prefix: String::new(),
             connected: false,
-        }
+        })
     }
     
     /// Get the S3 endpoint URL
@@ -1893,7 +1893,7 @@ mod tests {
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
-        });
+        }).expect("Failed to create S3Provider");
 
         assert_eq!(
             provider.build_url("path/to/file.txt"),
@@ -1911,7 +1911,7 @@ mod tests {
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
-        });
+        }).expect("Failed to create S3Provider");
 
         assert_eq!(
             provider.build_url("path/to/file.txt"),

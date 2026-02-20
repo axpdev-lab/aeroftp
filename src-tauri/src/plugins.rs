@@ -84,17 +84,18 @@ fn default_true() -> bool {
 }
 
 /// Get the plugins directory path
-fn plugins_dir(app: &tauri::AppHandle) -> PathBuf {
-    app.path()
+fn plugins_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
         .app_config_dir()
-        .expect("app config dir")
-        .join("plugins")
+        .map_err(|e| format!("Failed to resolve app config dir: {e}"))?
+        .join("plugins"))
 }
 
 /// List all installed plugins by scanning the plugins directory
 #[tauri::command]
 pub async fn list_plugins(app: tauri::AppHandle) -> Result<Vec<PluginManifest>, String> {
-    let dir = plugins_dir(&app);
+    let dir = plugins_dir(&app)?;
     if !dir.exists() {
         return Ok(vec![]);
     }
@@ -162,7 +163,7 @@ pub async fn execute_plugin_tool(
         return Err("Invalid plugin ID".to_string());
     }
 
-    let plugin_dir = plugins_dir(&app).join(&plugin_id);
+    let plugin_dir = plugins_dir(&app)?.join(&plugin_id);
     let manifest_path = plugin_dir.join("plugin.json");
 
     if !manifest_path.exists() {
@@ -343,7 +344,7 @@ pub async fn install_plugin(
         return Err("Plugin ID must be non-empty alphanumeric with underscores".to_string());
     }
 
-    let dir = plugins_dir(&app).join(&manifest.id);
+    let dir = plugins_dir(&app)?.join(&manifest.id);
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
 
@@ -387,7 +388,7 @@ pub async fn remove_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(
         return Err("Invalid plugin ID".to_string());
     }
 
-    let dir = plugins_dir(&app).join(&plugin_id);
+    let dir = plugins_dir(&app)?.join(&plugin_id);
     if !dir.exists() {
         return Err(format!("Plugin '{}' not found", plugin_id));
     }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 type KeyHandler = (e: KeyboardEvent) => void;
 
@@ -6,7 +6,7 @@ interface ShortcutConfig {
     [key: string]: KeyHandler;
 }
 
-export const useKeyboardShortcuts = (config: ShortcutConfig, deps: any[] = []) => {
+export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.DependencyList = []) => {
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             // Ignore if input/textarea is active (unless it's a global shortcut like F-keys)

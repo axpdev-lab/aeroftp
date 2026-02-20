@@ -230,8 +230,9 @@ impl VaultHeader {
         // Zero out the MAC field before computing
         bytes[HEADER_SIZE - 64..].fill(0);
 
+        // SAFETY: HMAC-SHA512 accepts keys of any size per RFC 2104 — new_from_slice never fails
         let mut mac = <Hmac<Sha512> as Mac>::new_from_slice(mac_key)
-            .expect("HMAC can take key of any size");
+            .expect("HMAC-SHA512 accepts any key size");
         mac.update(&bytes);
         let result = mac.finalize();
 
@@ -313,6 +314,7 @@ fn derive_kek_pair(base_kek: &[u8]) -> ([u8; 32], [u8; 32]) {
     let mut kek_master = [0u8; 32];
     let mut kek_mac = [0u8; 32];
 
+    // SAFETY: HKDF-SHA256 output up to 255*32=8160 bytes; 32 bytes always succeeds
     hk.expand(b"AeroVault v2 KEK for master key", &mut kek_master)
         .expect("32 bytes is valid HKDF-SHA256 output length");
     hk.expand(b"AeroVault v2 KEK for MAC key", &mut kek_mac)
@@ -356,7 +358,7 @@ fn unwrap_key(kek: &[u8], wrapped: &[u8]) -> Result<SecretBox<Vec<u8>>, String> 
 fn derive_siv_key(master_key: &[u8]) -> [u8; 64] {
     let hk = Hkdf::<Sha256>::new(None, master_key);
     let mut full_key = [0u8; 64];
-    // info string provides domain separation for this specific use
+    // SAFETY: 64 bytes < HKDF-SHA256 max (8160 bytes). Info string provides domain separation.
     hk.expand(b"AeroVault v2 AES-SIV filename encryption", &mut full_key)
         .expect("64 bytes is valid HKDF-SHA256 output length");
     full_key
@@ -750,6 +752,7 @@ pub async fn vault_v2_security_info() -> serde_json::Value {
 fn derive_chacha_key(master_key: &[u8]) -> [u8; 32] {
     let hk = Hkdf::<Sha256>::new(None, master_key);
     let mut chacha_key = [0u8; 32];
+    // SAFETY: 32 bytes < HKDF-SHA256 max (8160 bytes); expand never fails for this size
     hk.expand(b"AeroVault v2 ChaCha20-Poly1305 cascade", &mut chacha_key)
         .expect("32 bytes is valid HKDF-SHA256 output length");
     chacha_key
@@ -1921,4 +1924,722 @@ pub async fn vault_v2_extract_all(
         "extracted": extracted,
         "total": total
     }))
+}
+
+// ============================================================================
+// Vault Compaction
+// ============================================================================
+
+/// Result of a vault compaction operation
+#[derive(Serialize)]
+pub struct CompactResult {
+    /// Original vault file size in bytes
+    pub original_size: u64,
+    /// Compacted vault file size in bytes
+    pub compacted_size: u64,
+    /// Bytes saved by compaction
+    pub saved_bytes: u64,
+    /// Number of file entries preserved
+    pub file_count: usize,
+}
+
+/// Compact an AeroVault v2 by rewriting it without orphaned data.
+///
+/// When files are deleted from a vault, their encrypted data remains in the file
+/// (only the manifest entry is removed). Compaction rewrites the vault with only
+/// the data referenced by current manifest entries, reclaiming the orphaned space.
+///
+/// The operation is crash-safe: data is written to a temporary file first, then
+/// atomically renamed over the original via a `.bak` intermediate.
+#[tauri::command]
+pub async fn vault_v2_compact(
+    vault_path: String,
+    password: String,
+) -> Result<CompactResult, String> {
+    let pwd = SecretString::from(password);
+
+    // Get original file size before any work
+    let original_size = std::fs::metadata(&vault_path)
+        .map_err(|e| format!("Failed to stat vault: {}", e))?
+        .len();
+
+    // Open and read the vault
+    let file = File::open(&vault_path)
+        .map_err(|e| format!("Failed to open vault: {}", e))?;
+    let mut reader = BufReader::new(file);
+
+    // Read header
+    let mut header_buf = [0u8; HEADER_SIZE];
+    reader.read_exact(&mut header_buf)
+        .map_err(|e| format!("Failed to read header: {}", e))?;
+
+    let header = VaultHeader::from_bytes(&header_buf)?;
+    let cascade_mode = header.flags.cascade_mode;
+
+    // Derive keys
+    let base_kek = derive_key(&pwd, &header.salt)?;
+    let (mut kek_master, mut kek_mac) = derive_kek_pair(base_kek.expose_secret());
+
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+
+    // Zeroize KEKs
+    kek_master.zeroize();
+    kek_mac.zeroize();
+
+    // Verify header MAC
+    let computed_mac = header.compute_mac(mac_key.expose_secret());
+    if computed_mac != header.header_mac {
+        return Err("Header integrity check failed - wrong password?".into());
+    }
+
+    // Derive ChaCha key for cascade mode if needed
+    let mut chacha_key = if cascade_mode {
+        derive_chacha_key(master_key.expose_secret())
+    } else {
+        [0u8; 32]
+    };
+
+    // Read manifest
+    let mut manifest_len_buf = [0u8; 4];
+    reader.read_exact(&mut manifest_len_buf)
+        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
+    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
+
+    // Prevent OOM from corrupted or malicious manifest_len
+    if manifest_len > 64 * 1024 * 1024 {
+        return Err("Manifest exceeds maximum allowed size (64 MB)".to_string());
+    }
+
+    let mut manifest_encrypted = vec![0u8; manifest_len];
+    reader.read_exact(&mut manifest_encrypted)
+        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+
+    let manifest_json = decrypt_filename(
+        master_key.expose_secret(),
+        &String::from_utf8_lossy(&manifest_encrypted),
+    )?;
+    manifest_encrypted.zeroize();
+
+    let mut manifest: VaultManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    // Calculate where the data section starts in the original file
+    let data_start = HEADER_SIZE as u64 + 4 + manifest_len as u64;
+
+    // Drop the sequential reader — we will use seek-based reads per entry
+    drop(reader);
+
+    // Prepare the temporary compacted vault file
+    let tmp_path = format!("{}.compact.tmp", vault_path);
+    let tmp_file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut writer = BufWriter::new(tmp_file);
+
+    // Write header (unchanged)
+    writer.write_all(&header_buf)
+        .map_err(|e| format!("Failed to write header to temp: {}", e))?;
+
+    // Reserve space for manifest (we will come back and write it after we know offsets)
+    // Strategy: write a placeholder manifest length + empty bytes, then rewrite later.
+    // But it is simpler to: first write all data, then compute manifest, then write
+    // the complete file. We will buffer the new data section in memory.
+    //
+    // Actually, a cleaner approach: accumulate all new data, then write header + manifest + data.
+    // This avoids seeking back. The vault should fit in memory since we already read it.
+
+    // Reset writer — we will write the complete file at the end
+    drop(writer);
+
+    // Re-open the original vault for seek-based chunk reading
+    let orig_file = File::open(&vault_path)
+        .map_err(|e| format!("Failed to reopen vault: {}", e))?;
+    let mut orig_reader = BufReader::new(orig_file);
+
+    // Accumulate compacted data section
+    let mut compacted_data: Vec<u8> = Vec::new();
+    let mut new_data_offset: u64 = 0;
+    let file_count = manifest.entries.len();
+
+    use std::io::Seek;
+
+    for entry in &mut manifest.entries {
+        // Directory entries have no data — just reset offset
+        if entry.is_dir || entry.chunk_count == 0 {
+            entry.offset = 0;
+            continue;
+        }
+
+        // Record new offset for this entry
+        let entry_new_offset = new_data_offset;
+
+        // Seek to the entry's data in the original vault
+        orig_reader.seek(std::io::SeekFrom::Start(data_start + entry.offset))
+            .map_err(|e| format!("Failed to seek to entry data: {}", e))?;
+
+        // Read each chunk, decrypt, re-encrypt, write to compacted data
+        for chunk_idx in 0..entry.chunk_count {
+            // Read chunk length (4 bytes)
+            let mut len_buf = [0u8; 4];
+            orig_reader.read_exact(&mut len_buf)
+                .map_err(|e| format!("Failed to read chunk length: {}", e))?;
+            let encrypted_chunk_len = u32::from_le_bytes(len_buf) as usize;
+
+            // Read encrypted chunk
+            let mut encrypted_chunk = vec![0u8; encrypted_chunk_len];
+            orig_reader.read_exact(&mut encrypted_chunk)
+                .map_err(|e| format!("Failed to read chunk data: {}", e))?;
+
+            // Decrypt chunk
+            let mut plaintext = if cascade_mode {
+                decrypt_chunk_cascade(
+                    master_key.expose_secret(),
+                    &chacha_key,
+                    &encrypted_chunk,
+                    chunk_idx,
+                )?
+            } else {
+                decrypt_chunk(master_key.expose_secret(), &encrypted_chunk, chunk_idx)?
+            };
+
+            encrypted_chunk.zeroize();
+
+            // Re-encrypt chunk with fresh nonces
+            let new_encrypted = if cascade_mode {
+                encrypt_chunk_cascade(
+                    master_key.expose_secret(),
+                    &chacha_key,
+                    &plaintext,
+                    chunk_idx,
+                )?
+            } else {
+                encrypt_chunk(master_key.expose_secret(), &plaintext, chunk_idx)?
+            };
+
+            plaintext.zeroize();
+
+            // Write chunk to compacted data: length (4 bytes) + encrypted data
+            let new_chunk_len = new_encrypted.len() as u32;
+            compacted_data.extend_from_slice(&new_chunk_len.to_le_bytes());
+            compacted_data.extend_from_slice(&new_encrypted);
+
+            new_data_offset += 4 + new_encrypted.len() as u64;
+        }
+
+        // Update entry offset to point to its new position
+        entry.offset = entry_new_offset;
+    }
+
+    drop(orig_reader);
+
+    // Update manifest timestamp
+    manifest.modified = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Re-encrypt manifest with updated offsets
+    let new_manifest_json = serde_json::to_string(&manifest)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+    let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
+    let new_manifest_bytes = new_encrypted_manifest.as_bytes();
+
+    // Zeroize ChaCha key
+    chacha_key.zeroize();
+
+    // Write complete compacted vault to temp file
+    let tmp_file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut writer = BufWriter::new(tmp_file);
+
+    // Write header (unchanged — same salt, wrapped keys, MAC)
+    writer.write_all(&header_buf)
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+
+    // Write manifest length + manifest
+    let new_manifest_len = new_manifest_bytes.len() as u32;
+    writer.write_all(&new_manifest_len.to_le_bytes())
+        .map_err(|e| format!("Failed to write manifest length: {}", e))?;
+    writer.write_all(new_manifest_bytes)
+        .map_err(|e| format!("Failed to write manifest: {}", e))?;
+
+    // Write compacted data section
+    writer.write_all(&compacted_data)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    writer.flush()
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        // Rollback: restore original from backup
+        let _ = std::fs::rename(&bak_path, &vault_path);
+        return Err(format!("Failed to replace vault with compacted file: {}", e));
+    }
+
+    // Remove backup (non-fatal if this fails)
+    let _ = std::fs::remove_file(&bak_path);
+
+    // Get compacted size
+    let compacted_size = std::fs::metadata(&vault_path)
+        .map_err(|e| format!("Failed to stat compacted vault: {}", e))?
+        .len();
+
+    let saved_bytes = original_size.saturating_sub(compacted_size);
+
+    Ok(CompactResult {
+        original_size,
+        compacted_size,
+        saved_bytes,
+        file_count,
+    })
+}
+
+// ============================================================================
+// Vault Bidirectional Sync
+// ============================================================================
+
+/// A conflict entry where the file exists in both vault and local with different content
+#[derive(Serialize)]
+pub struct VaultSyncConflict {
+    pub name: String,
+    pub vault_modified: String,
+    pub local_modified: String,
+    pub vault_size: u64,
+    pub local_size: u64,
+}
+
+/// Comparison result between vault contents and a local directory
+#[derive(Serialize)]
+pub struct VaultSyncComparison {
+    pub vault_only: Vec<String>,
+    pub local_only: Vec<String>,
+    pub conflicts: Vec<VaultSyncConflict>,
+    pub unchanged: usize,
+}
+
+/// Compare vault contents with a local directory to determine sync actions
+#[tauri::command]
+pub async fn vault_v2_sync_compare(
+    vault_path: String,
+    password: String,
+    local_dir: String,
+) -> Result<VaultSyncComparison, String> {
+    // Validate local_dir
+    let local_dir_path = std::path::Path::new(&local_dir);
+    if !local_dir_path.is_dir() {
+        return Err(format!("Local directory does not exist: {}", local_dir));
+    }
+    let local_dir_canonical = local_dir_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve local directory: {}", e))?;
+
+    let pwd = SecretString::from(password);
+
+    // Open vault and decrypt manifest
+    let file = File::open(&vault_path)
+        .map_err(|e| format!("Failed to open vault: {}", e))?;
+    let mut reader = BufReader::new(file);
+
+    let mut header_buf = [0u8; HEADER_SIZE];
+    reader.read_exact(&mut header_buf)
+        .map_err(|e| format!("Failed to read header: {}", e))?;
+
+    let header = VaultHeader::from_bytes(&header_buf)?;
+
+    let base_kek = derive_key(&pwd, &header.salt)?;
+    let (mut kek_master, mut kek_mac) = derive_kek_pair(base_kek.expose_secret());
+
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+
+    kek_master.zeroize();
+    kek_mac.zeroize();
+
+    let computed_mac = header.compute_mac(mac_key.expose_secret());
+    if computed_mac != header.header_mac {
+        return Err("Header integrity check failed - wrong password?".into());
+    }
+
+    let mut manifest_len_buf = [0u8; 4];
+    reader.read_exact(&mut manifest_len_buf)
+        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
+    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
+
+    let mut manifest_encrypted = vec![0u8; manifest_len];
+    reader.read_exact(&mut manifest_encrypted)
+        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+
+    let manifest_json = decrypt_filename(
+        master_key.expose_secret(),
+        &String::from_utf8_lossy(&manifest_encrypted),
+    )?;
+    manifest_encrypted.zeroize();
+
+    let manifest: VaultManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    // Build vault entries map: name -> (size, modified)
+    let mut vault_files: std::collections::HashMap<String, (u64, String)> = std::collections::HashMap::new();
+    for entry in &manifest.entries {
+        if entry.is_dir {
+            continue;
+        }
+        let name = decrypt_filename(master_key.expose_secret(), &entry.encrypted_name)?;
+        vault_files.insert(name, (entry.size, entry.modified.clone()));
+    }
+
+    // Walk local directory
+    let mut local_files: std::collections::HashMap<String, (u64, String)> = std::collections::HashMap::new();
+    for dir_entry in walkdir::WalkDir::new(&local_dir_canonical)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if dir_entry.file_type().is_dir() {
+            continue;
+        }
+        let full_path = dir_entry.path();
+        let rel_path = full_path.strip_prefix(&local_dir_canonical)
+            .map_err(|_| "Failed to compute relative path")?;
+
+        // Normalize path separators to forward slash
+        let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+        if rel_str.is_empty() {
+            continue;
+        }
+
+        let metadata = std::fs::metadata(full_path)
+            .map_err(|e| format!("Failed to read metadata for {}: {}", rel_str, e))?;
+
+        let modified = metadata.modified()
+            .map(|t| {
+                let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                datetime.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            })
+            .unwrap_or_default();
+
+        local_files.insert(rel_str, (metadata.len(), modified));
+    }
+
+    // Compare
+    let mut vault_only = Vec::new();
+    let mut local_only = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut unchanged: usize = 0;
+
+    for (name, (v_size, v_modified)) in &vault_files {
+        match local_files.get(name) {
+            Some((l_size, l_modified)) => {
+                if v_size == l_size && v_modified == l_modified {
+                    unchanged += 1;
+                } else {
+                    conflicts.push(VaultSyncConflict {
+                        name: name.clone(),
+                        vault_modified: v_modified.clone(),
+                        local_modified: l_modified.clone(),
+                        vault_size: *v_size,
+                        local_size: *l_size,
+                    });
+                }
+            }
+            None => {
+                vault_only.push(name.clone());
+            }
+        }
+    }
+
+    for name in local_files.keys() {
+        if !vault_files.contains_key(name) {
+            local_only.push(name.clone());
+        }
+    }
+
+    // Sort for deterministic output
+    vault_only.sort();
+    local_only.sort();
+    conflicts.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(VaultSyncComparison {
+        vault_only,
+        local_only,
+        conflicts,
+        unchanged,
+    })
+}
+
+/// Action to apply during vault sync
+#[derive(Deserialize)]
+pub struct VaultSyncAction {
+    pub name: String,
+    pub action: String, // "to_vault" | "to_local" | "skip"
+}
+
+/// Result of applying vault sync actions
+#[derive(Serialize)]
+pub struct VaultSyncResult {
+    pub to_vault: usize,
+    pub to_local: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+/// Apply sync decisions between vault and local directory
+#[tauri::command]
+pub async fn vault_v2_sync_apply(
+    vault_path: String,
+    password: String,
+    local_dir: String,
+    actions: Vec<VaultSyncAction>,
+) -> Result<VaultSyncResult, String> {
+    let local_dir_path = std::path::Path::new(&local_dir);
+    if !local_dir_path.is_dir() {
+        return Err(format!("Local directory does not exist: {}", local_dir));
+    }
+    let local_dir_canonical = local_dir_path.canonicalize()
+        .map_err(|e| format!("Failed to resolve local directory: {}", e))?;
+
+    let mut to_vault_count: usize = 0;
+    let mut to_local_count: usize = 0;
+    let mut skipped_count: usize = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // Separate actions by type
+    let mut to_vault_files: Vec<String> = Vec::new();
+    let mut to_local_files: Vec<String> = Vec::new();
+
+    for action in &actions {
+        match action.action.as_str() {
+            "to_vault" => to_vault_files.push(action.name.clone()),
+            "to_local" => to_local_files.push(action.name.clone()),
+            "skip" => skipped_count += 1,
+            other => errors.push(format!("Unknown action '{}' for '{}'", other, action.name)),
+        }
+    }
+
+    // Process to_vault: add local files to vault
+    if !to_vault_files.is_empty() {
+        // Build absolute paths for all to_vault files
+        let mut abs_paths: Vec<String> = Vec::new();
+        // Group files by their parent directory within the vault
+        let mut root_files: Vec<String> = Vec::new();
+        let mut dir_files: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+
+        for name in &to_vault_files {
+            let local_path = local_dir_canonical.join(name);
+            if !local_path.exists() {
+                errors.push(format!("Local file not found: {}", name));
+                continue;
+            }
+            // Validate the path is within local_dir (prevent traversal)
+            let canonical = local_path.canonicalize()
+                .map_err(|e| format!("Failed to resolve path {}: {}", name, e))?;
+            if !canonical.starts_with(&local_dir_canonical) {
+                errors.push(format!("Path traversal detected: {}", name));
+                continue;
+            }
+
+            let abs_str = canonical.to_string_lossy().to_string();
+
+            // Check if the file goes into a subdirectory
+            if let Some(parent) = std::path::Path::new(name).parent() {
+                let parent_str = parent.to_string_lossy().replace('\\', "/");
+                if parent_str.is_empty() {
+                    root_files.push(abs_str);
+                } else {
+                    dir_files.entry(parent_str).or_default().push(abs_str);
+                }
+            } else {
+                root_files.push(abs_str);
+            }
+        }
+
+        // First, ensure all parent directories exist in the vault
+        // We collect all unique parent dirs and create them
+        for dir_path in dir_files.keys() {
+            match vault_v2_create_directory(
+                vault_path.clone(),
+                password.clone(),
+                dir_path.clone(),
+            ).await {
+                Ok(_) => {} // Created or already exists
+                Err(e) => errors.push(format!("Failed to create vault dir '{}': {}", dir_path, e)),
+            }
+        }
+
+        // Add root-level files
+        if !root_files.is_empty() {
+            match vault_v2_add_files(
+                vault_path.clone(),
+                password.clone(),
+                root_files.clone(),
+            ).await {
+                Ok(result) => {
+                    if let Some(added) = result.get("added").and_then(|v| v.as_u64()) {
+                        to_vault_count += added as usize;
+                    }
+                }
+                Err(e) => errors.push(format!("Failed to add root files to vault: {}", e)),
+            }
+        }
+
+        // Add directory-grouped files
+        for (dir, file_paths) in &dir_files {
+            match vault_v2_add_files_to_dir(
+                vault_path.clone(),
+                password.clone(),
+                file_paths.clone(),
+                dir.clone(),
+            ).await {
+                Ok(result) => {
+                    if let Some(added) = result.get("added").and_then(|v| v.as_u64()) {
+                        to_vault_count += added as usize;
+                    }
+                }
+                Err(e) => errors.push(format!("Failed to add files to vault dir '{}': {}", dir, e)),
+            }
+        }
+
+        // If files were added, we also need to handle vault entries that already exist
+        // (conflicts resolved as to_vault). The existing add_files skips duplicates,
+        // so we need to first delete the existing entry, then re-add.
+        // For simplicity and safety, we handle this by deleting then re-adding.
+        // But vault_v2_add_files skips duplicates by encrypted_name comparison.
+        // Since the filename hasn't changed, it will be skipped.
+        // We need to delete existing entries first for conflicts going to_vault.
+        // Let's handle this: for to_vault files that already exist in the vault,
+        // delete them first, then re-add.
+        // We already collected to_vault_files. Let's check which ones exist in vault.
+        abs_paths.clear();
+
+        // Re-open vault to check what exists
+        let pwd_check = SecretString::from(password.clone());
+        let check_file = File::open(&vault_path)
+            .map_err(|e| format!("Failed to open vault for conflict check: {}", e))?;
+        let mut check_reader = BufReader::new(check_file);
+
+        let mut hdr_buf = [0u8; HEADER_SIZE];
+        check_reader.read_exact(&mut hdr_buf)
+            .map_err(|e| format!("Failed to read header: {}", e))?;
+        let hdr = VaultHeader::from_bytes(&hdr_buf)?;
+
+        let base_kek = derive_key(&pwd_check, &hdr.salt)?;
+        let (mut km, mut kc) = derive_kek_pair(base_kek.expose_secret());
+        let mk = unwrap_key(&km, &hdr.wrapped_master_key)?;
+        km.zeroize();
+        kc.zeroize();
+
+        // Check which to_vault files already have vault entries (these are conflicts)
+        let mut ml_buf = [0u8; 4];
+        check_reader.read_exact(&mut ml_buf).ok();
+        let ml = u32::from_le_bytes(ml_buf) as usize;
+        let mut me = vec![0u8; ml];
+        check_reader.read_exact(&mut me).ok();
+
+        if let Ok(mj) = decrypt_filename(mk.expose_secret(), &String::from_utf8_lossy(&me)) {
+            if let Ok(mf) = serde_json::from_str::<VaultManifest>(&mj) {
+                let mut existing_names: Vec<String> = Vec::new();
+                for entry in &mf.entries {
+                    if !entry.is_dir {
+                        if let Ok(n) = decrypt_filename(mk.expose_secret(), &entry.encrypted_name) {
+                            existing_names.push(n);
+                        }
+                    }
+                }
+
+                // Delete existing entries that are being overwritten
+                let mut to_delete: Vec<String> = Vec::new();
+                for name in &to_vault_files {
+                    if existing_names.contains(name) {
+                        to_delete.push(name.clone());
+                    }
+                }
+
+                if !to_delete.is_empty() {
+                    match vault_v2_delete_entries(
+                        vault_path.clone(),
+                        password.clone(),
+                        to_delete.clone(),
+                        false,
+                    ).await {
+                        Ok(_) => {
+                            // Now re-add these files
+                            let mut re_root: Vec<String> = Vec::new();
+                            let mut re_dir: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+
+                            for name in &to_delete {
+                                let local_path = local_dir_canonical.join(name);
+                                if let Ok(canonical) = local_path.canonicalize() {
+                                    let abs_str = canonical.to_string_lossy().to_string();
+                                    if let Some(parent) = std::path::Path::new(name).parent() {
+                                        let ps = parent.to_string_lossy().replace('\\', "/");
+                                        if ps.is_empty() {
+                                            re_root.push(abs_str);
+                                        } else {
+                                            re_dir.entry(ps).or_default().push(abs_str);
+                                        }
+                                    } else {
+                                        re_root.push(abs_str);
+                                    }
+                                }
+                            }
+
+                            if !re_root.is_empty() {
+                                if let Err(e) = vault_v2_add_files(vault_path.clone(), password.clone(), re_root).await {
+                                    errors.push(format!("Failed to re-add conflict files: {}", e));
+                                }
+                            }
+                            for (d, fps) in &re_dir {
+                                if let Err(e) = vault_v2_add_files_to_dir(vault_path.clone(), password.clone(), fps.clone(), d.clone()).await {
+                                    errors.push(format!("Failed to re-add conflict files to '{}': {}", d, e));
+                                }
+                            }
+                        }
+                        Err(e) => errors.push(format!("Failed to delete existing entries for overwrite: {}", e)),
+                    }
+                }
+            }
+        }
+        me.zeroize();
+    }
+
+    // Process to_local: extract vault entries to local dir
+    for name in &to_local_files {
+        // Validate name has no path traversal
+        if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
+            errors.push(format!("Invalid file name blocked: {}", name));
+            skipped_count += 1;
+            continue;
+        }
+
+        let dest = local_dir_canonical.join(name);
+
+        // Create parent directories if needed
+        if let Some(parent) = dest.parent() {
+            if !parent.exists() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    errors.push(format!("Failed to create directory for '{}': {}", name, e));
+                    continue;
+                }
+            }
+        }
+
+        match vault_v2_extract_entry(
+            vault_path.clone(),
+            password.clone(),
+            name.clone(),
+            dest.to_string_lossy().to_string(),
+        ).await {
+            Ok(_) => to_local_count += 1,
+            Err(e) => errors.push(format!("Failed to extract '{}': {}", name, e)),
+        }
+    }
+
+    Ok(VaultSyncResult {
+        to_vault: to_vault_count,
+        to_local: to_local_count,
+        skipped: skipped_count,
+        errors,
+    })
 }

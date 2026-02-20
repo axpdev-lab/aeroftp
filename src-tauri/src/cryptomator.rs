@@ -7,6 +7,7 @@
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use aes_gcm::aead::generic_array::GenericArray;
 use data_encoding::BASE32;
+use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use sha1::{Sha1, Digest};
 use std::collections::HashMap;
@@ -101,6 +102,17 @@ fn unwrap_key(kek: &[u8; 32], wrapped: &[u8]) -> Result<[u8; 32], String> {
     kek_obj.unwrap(wrapped, &mut buf)
         .map_err(|e| format!("AES-KW unwrap: {}", e))?;
     Ok(buf)
+}
+
+/// Wrap a 256-bit key with AES Key Wrap (RFC 3394)
+fn wrap_key(kek: &[u8; 32], key: &[u8; 32]) -> Result<Vec<u8>, String> {
+    use aes_kw::Kek;
+
+    let kek_obj: Kek<aes_gcm::aes::Aes256> = Kek::from(*kek);
+    let mut buf = [0u8; 40]; // 32 + 8 byte integrity check
+    kek_obj.wrap(key, &mut buf)
+        .map_err(|e| format!("AES-KW wrap: {}", e))?;
+    Ok(buf.to_vec())
 }
 
 /// Encrypt data with AES-SIV (deterministic authenticated encryption)
@@ -450,10 +462,10 @@ fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) ->
     let mut outfile = fs::File::create(&file_path)
         .map_err(|e| format!("Failed to create encrypted file: {}", e))?;
 
-    // Generate random content key and header nonce
+    // Generate random content key and header nonce (using OsRng for cryptographic security)
     let mut content_key = [0u8; 32];
     let mut header_nonce_bytes = [0u8; 12];
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rngs::OsRng;
     rng.fill_bytes(&mut content_key);
     rng.fill_bytes(&mut header_nonce_bytes);
 
@@ -588,4 +600,140 @@ pub async fn cryptomator_encrypt_file(
     let vault = vaults.get(&vault_id)
         .ok_or("Vault not unlocked")?;
     encrypt_file_inner(vault, &dir_id, Path::new(&input_path))
+}
+
+#[tauri::command]
+pub async fn cryptomator_create(vault_path: String, password: String) -> Result<String, String> {
+    use base64::Engine;
+    use hmac::{Hmac, Mac};
+    use rand::RngCore;
+    use sha2::Sha256;
+
+    let b64 = base64::engine::general_purpose::STANDARD;
+
+    // Validate path: reject traversal components
+    use std::path::Component;
+    for component in std::path::Path::new(&vault_path).components() {
+        if matches!(component, Component::ParentDir) {
+            return Err("Path traversal not allowed".to_string());
+        }
+    }
+
+    // Validate password minimum length
+    if password.len() < 8 {
+        return Err("Password must be at least 8 characters".to_string());
+    }
+
+    let vault_dir = Path::new(&vault_path);
+
+    // Check that a vault doesn't already exist at this path
+    if vault_dir.join("masterkey.cryptomator").exists() {
+        return Err("A Cryptomator vault already exists at this path".to_string());
+    }
+
+    // Step 1: Create vault directory
+    fs::create_dir_all(vault_dir)
+        .map_err(|e| format!("Failed to create vault directory: {}", e))?;
+
+    // Step 2: Generate two random 256-bit master keys (using OsRng for cryptographic security)
+    let mut enc_key = [0u8; 32];
+    let mut mac_key = [0u8; 32];
+    let mut rng = rand::rngs::OsRng;
+    rng.fill_bytes(&mut enc_key);
+    rng.fill_bytes(&mut mac_key);
+
+    // Step 3: Generate random 32-byte scrypt salt
+    let mut salt = [0u8; 32];
+    rng.fill_bytes(&mut salt);
+
+    // Step 4: Derive KEK via scrypt (N=32768, r=8, p=1)
+    let mut kek = derive_kek(&password, &salt, 32768, 8)?;
+
+    // Step 5: Wrap both keys with AES-KW
+    let wrapped_enc = wrap_key(&kek, &enc_key)?;
+    let wrapped_mac = wrap_key(&kek, &mac_key)?;
+
+    // Step 6: Compute versionMac = HMAC-SHA256(mac_key, version_bytes)
+    let version: i32 = 999;
+    let version_bytes = version.to_be_bytes();
+    let mut hmac_obj = <Hmac<Sha256> as Mac>::new_from_slice(&mac_key)
+        .map_err(|e| format!("HMAC init: {}", e))?;
+    hmac_obj.update(&version_bytes);
+    let version_mac = hmac_obj.finalize().into_bytes();
+
+    // Step 7: Write masterkey.cryptomator JSON
+    let masterkey_json = serde_json::json!({
+        "version": 999,
+        "scryptSalt": b64.encode(&salt),
+        "scryptCostParam": 32768,
+        "scryptBlockSize": 8,
+        "primaryMasterKey": b64.encode(&wrapped_enc),
+        "hmacMasterKey": b64.encode(&wrapped_mac),
+        "versionMac": b64.encode(&version_mac)
+    });
+
+    let masterkey_path = vault_dir.join("masterkey.cryptomator");
+    fs::write(&masterkey_path, serde_json::to_string_pretty(&masterkey_json)
+        .map_err(|e| format!("JSON serialize: {}", e))?)
+        .map_err(|e| format!("Failed to write masterkey.cryptomator: {}", e))?;
+
+    // Step 8: Generate JWT vault.cryptomator
+    // Header: {"kid":"masterkeyfile:masterkey.cryptomator","typ":"JWT","alg":"HS256"}
+    // Payload: {"format":8,"cipherCombo":"SIV_GCM","shorteningThreshold":220}
+    // Sign with raw 512-bit key (enc_key || mac_key)
+    let mut jwt_signing_key = [0u8; 64];
+    jwt_signing_key[..32].copy_from_slice(&enc_key);
+    jwt_signing_key[32..].copy_from_slice(&mac_key);
+
+    let mut jwt_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
+    jwt_header.kid = Some("masterkeyfile:masterkey.cryptomator".to_string());
+    jwt_header.typ = Some("JWT".to_string());
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct VaultJwtPayload {
+        format: u32,
+        cipher_combo: String,
+        shortening_threshold: u32,
+    }
+
+    let payload = VaultJwtPayload {
+        format: 8,
+        cipher_combo: "SIV_GCM".to_string(),
+        shortening_threshold: 220,
+    };
+
+    let encoding_key = jsonwebtoken::EncodingKey::from_secret(&jwt_signing_key);
+    let jwt_token = jsonwebtoken::encode(&jwt_header, &payload, &encoding_key)
+        .map_err(|e| format!("JWT encode: {}", e))?;
+
+    let vault_config_path = vault_dir.join("vault.cryptomator");
+    fs::write(&vault_config_path, &jwt_token)
+        .map_err(|e| format!("Failed to write vault.cryptomator: {}", e))?;
+
+    // Step 9: Create d/ directory
+    let d_dir = vault_dir.join("d");
+    fs::create_dir_all(&d_dir)
+        .map_err(|e| format!("Failed to create d/ directory: {}", e))?;
+
+    // Step 10: Create root directory using hash_dir_id with empty dir_id
+    let temp_vault = UnlockedVault {
+        enc_key,
+        mac_key,
+        vault_path: vault_dir.to_path_buf(),
+        shortening_threshold: 220,
+    };
+
+    let root_dir_path = hash_dir_id(&temp_vault, "")?;
+    fs::create_dir_all(&root_dir_path)
+        .map_err(|e| format!("Failed to create root directory: {}", e))?;
+
+    // Zeroize all key material before returning
+    enc_key.zeroize();
+    mac_key.zeroize();
+    kek.zeroize();
+    salt.zeroize();
+    jwt_signing_key.zeroize();
+
+    Ok("Vault created successfully".to_string())
 }

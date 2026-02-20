@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown, ChevronRight, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { VaultIcon } from './icons/VaultIcon';
+import VaultSyncDialog from './VaultSyncDialog';
 import { ArchiveEntry, AeroVaultMeta } from '../types';
 import { useTranslation } from '../i18n';
 import { formatDate, formatSize } from '../utils/formatters';
@@ -11,6 +13,8 @@ import { formatDate, formatSize } from '../utils/formatters';
 interface VaultPanelProps {
     onClose: () => void;
     isConnected?: boolean;
+    initialPath?: string;
+    initialFiles?: string[];
 }
 
 type VaultMode = 'home' | 'create' | 'open' | 'browse';
@@ -73,10 +77,10 @@ const securityLevels = {
     }
 };
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<VaultMode>('home');
-    const [vaultPath, setVaultPath] = useState('');
+    const [mode, setMode] = useState<VaultMode>(initialPath ? 'open' : initialFiles?.length ? 'create' : 'home');
+    const [vaultPath, setVaultPath] = useState(initialPath || '');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [description, setDescription] = useState('');
@@ -95,6 +99,9 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     const [newDirName, setNewDirName] = useState('');
     const [showNewDirDialog, setShowNewDirDialog] = useState(false);
 
+    // Vault sync state
+    const [showSyncDialog, setShowSyncDialog] = useState(false);
+
     // Remote vault state
     const [remoteVaultPath, setRemoteVaultPath] = useState('');
     const [remoteLocalPath, setRemoteLocalPath] = useState('');
@@ -105,6 +112,10 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
+
+    // Drag-and-drop state
+    const [dragOver, setDragOver] = useState(false);
+    const [dragTargetDir, setDragTargetDir] = useState<string | null>(null);
 
     const resetState = () => {
         setPassword('');
@@ -121,6 +132,8 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         setCurrentDir('');
         setNewDirName('');
         setShowNewDirDialog(false);
+        setDragOver(false);
+        setDragTargetDir(null);
     };
 
     const detectVaultVersion = async (path: string): Promise<VaultSecurityInfo> => {
@@ -362,6 +375,66 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         }
     };
 
+    const handleDropFiles = useCallback(async (paths: string[]) => {
+        if (!paths.length || !vaultPath || !password) return;
+
+        setLoading(true);
+        setError(null);
+        try {
+            const targetDir = dragTargetDir || currentDir;
+            if (vaultSecurity?.version === 2) {
+                const result = targetDir
+                    ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                        targetDir
+                    })
+                    : await invoke<{ added: number; total: number }>('vault_v2_add_files', {
+                        vaultPath,
+                        password,
+                        filePaths: paths
+                    });
+                await refreshVaultEntries();
+                setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
+            } else {
+                await invoke('vault_add_files', { vaultPath, password, filePaths: paths });
+                await refreshVaultEntries();
+                setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+            }
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setLoading(false);
+            setDragTargetDir(null);
+        }
+    }, [vaultPath, password, currentDir, dragTargetDir, vaultSecurity, t]);
+
+    // Listen for OS file drag-and-drop events via Tauri webview API
+    useEffect(() => {
+        if (mode !== 'browse') return;
+
+        const webview = getCurrentWebview();
+        const unlisten = webview.onDragDropEvent((event) => {
+            if (event.payload.type === 'over' || event.payload.type === 'enter') {
+                setDragOver(true);
+            } else if (event.payload.type === 'drop') {
+                setDragOver(false);
+                const paths = event.payload.paths;
+                if (paths.length > 0) {
+                    handleDropFiles(paths);
+                }
+            } else if (event.payload.type === 'leave') {
+                setDragOver(false);
+                setDragTargetDir(null);
+            }
+        });
+
+        return () => {
+            unlisten.then(fn => fn());
+        };
+    }, [mode, handleDropFiles]);
+
     const handleCreateDirectory = async () => {
         const trimmed = newDirName.trim();
         if (!trimmed) return;
@@ -481,7 +554,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     const LevelIcon = currentLevelConfig?.icon || Shield;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="AeroVault">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[680px] max-h-[85vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -764,6 +837,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             <button onClick={() => setChangingPassword(!changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                                 <Key size={14} /> {t('vault.changePassword')}
                             </button>
+                            {vaultSecurity?.version === 2 && (
+                                <button onClick={() => setShowSyncDialog(true)} className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 rounded text-white">
+                                    <ArrowUpDown size={14} /> {t('vaultSync.title') || 'Sync'}
+                                </button>
+                            )}
                             {/* Remote vault: Save & Close */}
                             {remoteLocalPath && (
                                 <button
@@ -867,7 +945,19 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                         )}
 
                         {/* File list */}
-                        <div className="flex-1 overflow-auto">
+                        <div className="flex-1 overflow-auto relative">
+                            {/* Drag-and-drop overlay */}
+                            {dragOver && (
+                                <div className="absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 border-2 border-dashed border-emerald-500 rounded-lg pointer-events-none">
+                                    <div className="flex flex-col items-center gap-2 text-emerald-500">
+                                        <Plus size={32} />
+                                        <span className="text-sm font-medium">{t('vault.dropFiles')}</span>
+                                        {currentDir && (
+                                            <span className="text-xs opacity-70">/{currentDir}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             {sortedEntries.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
                                     <VaultIcon size={32} className="mb-2 opacity-50" />
@@ -922,6 +1012,16 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     </>
                     );
                 })()}
+
+                {/* Vault Sync Dialog */}
+                {showSyncDialog && (
+                    <VaultSyncDialog
+                        vaultPath={vaultPath}
+                        password={password}
+                        onClose={() => setShowSyncDialog(false)}
+                        onSynced={refreshVaultEntries}
+                    />
+                )}
 
                 {/* Loading overlay */}
                 {loading && mode === 'browse' && (

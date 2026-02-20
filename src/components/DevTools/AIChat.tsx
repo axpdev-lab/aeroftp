@@ -1777,7 +1777,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             {/* Extreme Mode security warning modal */}
             {showExtremeWarning && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)}>
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)} role="dialog" aria-modal="true" aria-label="Extreme Mode Warning">
                     <div
                         className="w-[380px] rounded-xl border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5"
                         onClick={(e) => e.stopPropagation()}
@@ -1919,7 +1919,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     {message.images && message.images.length > 0 && (
                                         <div className="flex gap-1.5 mb-2 flex-wrap">
                                             {message.images.map((img, i) => (
-                                                <img key={i} src={img.preview} alt="" className="h-16 w-16 object-cover rounded border border-white/20" />
+                                                <img key={i} src={img.preview} alt="Attached image" className="h-16 w-16 object-cover rounded border border-white/20" />
                                             ))}
                                         </div>
                                     )}
@@ -2166,7 +2166,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         <div className={`flex gap-2 px-3 py-2 border-b ${ct.border} overflow-x-auto`}>
                             {attachedImages.map((img, i) => (
                                 <div key={i} className="relative group shrink-0">
-                                    <img src={img.preview} alt="" className={`h-12 w-12 object-cover rounded border ${ct.borderSolid}`} />
+                                    <img src={img.preview} alt="Attached image" className={`h-12 w-12 object-cover rounded border ${ct.borderSolid}`} />
                                     <button
                                         onClick={() => removeImage(i)}
                                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

@@ -751,7 +751,7 @@ async fn notify_update(_path: &Path) {
 // ============================================================================
 
 /// Set GIO emblem for a file (pub(crate) — callers must pre-validate path)
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), String> {
     let emblem_name = state.to_emblem_name();
     let path_str = path
@@ -774,7 +774,7 @@ pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), S
 }
 
 /// Clear GIO emblem for a file
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub(crate) fn clear_gio_emblem(path: &Path) -> Result<(), String> {
     let path_str = path
         .to_str()
@@ -799,8 +799,8 @@ pub(crate) fn clear_gio_emblem(path: &Path) -> Result<(), String> {
 // Shell Extension Installation
 // ============================================================================
 
-/// Install Nautilus/Nemo Python extensions
-#[cfg(unix)]
+/// Install Nautilus/Nemo Python extensions (Linux only)
+#[cfg(target_os = "linux")]
 pub fn install_shell_extension() -> Result<String, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let home_path = PathBuf::from(home);
@@ -847,6 +847,12 @@ pub fn install_shell_extension() -> Result<String, String> {
     Ok("Shell extensions installed successfully! Click \"Restart File Manager\" below to activate badges, or restart it manually later.".to_string())
 }
 
+/// Install FinderSync extension guide (macOS)
+#[cfg(target_os = "macos")]
+pub fn install_shell_extension() -> Result<String, String> {
+    Ok("FinderSync extension is bundled with AeroFTP. Enable it in System Settings > Extensions > Finder Extensions > AeroFTP Finder Sync. The extension communicates with AeroFTP via Unix socket to display sync status badges in Finder.".to_string())
+}
+
 #[cfg(windows)]
 pub fn install_shell_extension() -> Result<String, String> {
     Ok("Sync badges are managed automatically via Windows Cloud Filter API. No manual installation needed.".to_string())
@@ -857,8 +863,8 @@ pub fn install_shell_extension() -> Result<String, String> {
     Err("Shell extensions not supported on this platform".to_string())
 }
 
-/// Uninstall shell extensions
-#[cfg(unix)]
+/// Uninstall Nautilus/Nemo shell extensions (Linux only)
+#[cfg(target_os = "linux")]
 pub fn uninstall_shell_extension() -> Result<String, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let home_path = PathBuf::from(home);
@@ -884,6 +890,12 @@ pub fn uninstall_shell_extension() -> Result<String, String> {
     Ok("Shell extensions removed. Click \"Restart File Manager\" below or restart it manually.".to_string())
 }
 
+/// Disable FinderSync extension guide (macOS)
+#[cfg(target_os = "macos")]
+pub fn uninstall_shell_extension() -> Result<String, String> {
+    Ok("Disable AeroFTP Finder Sync in System Settings > Extensions > Finder Extensions. The extension will stop showing sync badges in Finder.".to_string())
+}
+
 #[cfg(windows)]
 pub fn uninstall_shell_extension() -> Result<String, String> {
     crate::cloud_filter_badge::cleanup_all_roots()?;
@@ -895,7 +907,7 @@ pub fn uninstall_shell_extension() -> Result<String, String> {
     Err("Shell extensions not supported on this platform".to_string())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn install_emblems(home_path: &Path) -> Result<(), String> {
     let emblem_dir = home_path.join(".local/share/icons/hicolor/scalable/emblems");
     std::fs::create_dir_all(&emblem_dir)
@@ -923,7 +935,7 @@ fn install_emblems(home_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn uninstall_emblems(home_path: &Path) -> Result<(), String> {
     let emblem_dir = home_path.join(".local/share/icons/hicolor/scalable/emblems");
 
@@ -1020,8 +1032,8 @@ pub async fn set_file_badge(path: String, state: String) -> Result<(), String> {
 
     update_file_state(&path_buf, badge_state).await;
 
-    // Also set GIO emblem as fallback (Linux only — gio command doesn't exist on Windows)
-    #[cfg(unix)]
+    // Also set GIO emblem as fallback (Linux only — gio command doesn't exist on macOS/Windows)
+    #[cfg(target_os = "linux")]
     { let _ = set_gio_emblem(&path_buf, badge_state); }
 
     Ok(())
@@ -1036,7 +1048,7 @@ pub async fn clear_file_badge(path: String) -> Result<(), String> {
         tracker.remove_state(&path_buf);
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     { let _ = clear_gio_emblem(&path_buf); }
 
     notify_update(&path_buf).await;
@@ -1067,7 +1079,7 @@ pub async fn uninstall_shell_extension_cmd() -> Result<String, String> {
 /// Gracefully restart the user's file manager (Nautilus/Nemo) to pick up extension changes.
 /// Uses `nautilus -q` / `nemo -q` which ask Nautilus/Nemo to quit cleanly
 /// (the desktop environment auto-restarts them when a folder is opened).
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn restart_file_manager_cmd() -> Result<String, String> {
     let mut restarted = Vec::new();
@@ -1098,6 +1110,27 @@ pub async fn restart_file_manager_cmd() -> Result<String, String> {
         Ok("No file manager found to restart. Open a folder to load the extensions.".to_string())
     } else {
         Ok(format!("{} restarted. Open a folder to see the badges!", restarted.join(" & ")))
+    }
+}
+
+/// Restart Finder to reload FinderSync extension.
+/// `killall Finder` is the standard macOS way to restart Finder (it auto-relaunches).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn restart_file_manager_cmd() -> Result<String, String> {
+    let status = std::process::Command::new("killall")
+        .arg("Finder")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            Ok("Finder restarted. FinderSync extension will reload automatically.".to_string())
+        }
+        _ => {
+            Ok("Could not restart Finder. Open a Finder window to reload the extension.".to_string())
+        }
     }
 }
 

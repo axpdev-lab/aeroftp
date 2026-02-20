@@ -459,11 +459,11 @@ impl ProviderFactory {
             }
             ProviderType::WebDav => {
                 let webdav_config = WebDavConfig::from_provider_config(config)?;
-                Ok(Box::new(WebDavProvider::new(webdav_config)))
+                Ok(Box::new(WebDavProvider::new(webdav_config)?))
             }
             ProviderType::S3 => {
                 let s3_config = S3Config::from_provider_config(config)?;
-                Ok(Box::new(S3Provider::new(s3_config)))
+                Ok(Box::new(S3Provider::new(s3_config)?))
             }
             ProviderType::Sftp => {
                 let sftp_config = SftpConfig::from_provider_config(config)?;

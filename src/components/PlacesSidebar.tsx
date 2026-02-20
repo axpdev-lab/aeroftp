@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
   Home, Monitor, FileText, Image, Music, Download, Video,
   Trash2, Folder, HardDrive, Usb, Disc, Globe,
@@ -8,7 +9,7 @@ import {
   Plus, X, Power, Loader2, Clock, Play,
   type LucideIcon,
 } from 'lucide-react';
-import { UserDirectory, VolumeInfo, UnmountedPartition, SidebarMode } from '../types/aerofile';
+import { UserDirectory, VolumeInfo, UnmountedPartition, SidebarMode, LabelCount } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
 
@@ -18,7 +19,7 @@ import { formatBytes } from '../utils/formatters';
 
 const SIDEBAR_MODE_KEY = 'aerofile_sidebar_mode';
 const CUSTOM_LOCATIONS_KEY = 'aerofile_custom_locations';
-const VOLUME_REFRESH_MS = 5000;
+const VOLUME_POLL_FALLBACK_MS = 30000; // Fallback polling for macOS/Windows (watcher handles Linux)
 
 /** Map icon name strings (from Rust) to Lucide components */
 const iconMap: Record<string, LucideIcon> = {
@@ -58,6 +59,10 @@ interface PlacesSidebarProps {
   onRemoveRecent?: (path: string) => void;
   isTrashView?: boolean;
   onNavigateTrash?: () => void;
+  // Tags
+  labelCounts?: LabelCount[];
+  activeTagFilter?: number | null;
+  onTagFilter?: (labelId: number | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +85,7 @@ const SidebarItem: React.FC<SidebarItemProps> = React.memo(({
   const isActive = currentPath === path;
   return (
     <button
+      aria-current={isActive ? 'page' : undefined}
       className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
         isActive
           ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
@@ -143,6 +149,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   onRemoveRecent,
   isTrashView = false,
   onNavigateTrash,
+  labelCounts = [],
+  activeTagFilter = null,
+  onTagFilter,
 }) => {
   // -----------------------------------------------------------------------
   // State
@@ -220,7 +229,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, []);
 
   // -----------------------------------------------------------------------
-  // Fetch volumes when expanded + auto-refresh every 5s
+  // Fetch volumes when expanded + change-detection polling (#113)
   // -----------------------------------------------------------------------
 
   const fetchVolumes = useCallback(async () => {
@@ -239,19 +248,34 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, []);
 
   useEffect(() => {
-    if (showVolumes) {
-      setVolumesLoading(true);
-      fetchVolumes().finally(() => {
-        if (mountedRef.current) setVolumesLoading(false);
-      });
-      volumeIntervalRef.current = setInterval(fetchVolumes, VOLUME_REFRESH_MS);
-    } else {
-      if (volumeIntervalRef.current) {
-        clearInterval(volumeIntervalRef.current);
-        volumeIntervalRef.current = null;
+    if (!showVolumes) return;
+
+    setVolumesLoading(true);
+    fetchVolumes().finally(() => {
+      if (mountedRef.current) setVolumesLoading(false);
+    });
+
+    // Event-driven: backend mount watcher (poll + inotify on Linux) emits
+    // 'volumes-changed' immediately when /proc/mounts or GVFS dir changes.
+    // Fallback polling at 30s for macOS/Windows where no watcher exists.
+    let unlisten: UnlistenFn | null = null;
+
+    listen<void>('volumes-changed', () => {
+      if (mountedRef.current) fetchVolumes();
+    }).then((fn) => { unlisten = fn; });
+
+    // Fallback poll for non-Linux platforms (watcher is Linux-only)
+    volumeIntervalRef.current = setInterval(async () => {
+      try {
+        const changed = await invoke<boolean>('volumes_changed');
+        if (changed && mountedRef.current) fetchVolumes();
+      } catch {
+        if (mountedRef.current) fetchVolumes();
       }
-    }
+    }, VOLUME_POLL_FALLBACK_MS);
+
     return () => {
+      if (unlisten) unlisten();
       if (volumeIntervalRef.current) {
         clearInterval(volumeIntervalRef.current);
         volumeIntervalRef.current = null;
@@ -389,6 +413,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {/* Trash */}
       <div className="py-0.5">
         <button
+          aria-current={isTrashView ? 'page' : undefined}
           onClick={() => onNavigateTrash ? onNavigateTrash() : undefined}
           className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             isTrashView
@@ -484,6 +509,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {/* Other Locations toggle */}
       <div className="py-1">
         <button
+          aria-expanded={showVolumes}
           className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             showVolumes
               ? 'text-blue-600 dark:text-blue-400'
@@ -541,6 +567,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                   </div>
                   {vol.is_ejectable && (
                     <button
+                      aria-label={`${t('sidebar.eject')} ${vol.name}`}
                       className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
                       onClick={(e) => handleEject(vol.mount_point, e)}
                       title={t('sidebar.eject')}
@@ -577,6 +604,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                     </div>
                   </div>
                   <button
+                    aria-label={`${t('sidebar.mount')} ${part.name}`}
                     className="p-0.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
                     onClick={(e) => handleMount(part.device, e)}
                     title={t('sidebar.mount')}
@@ -594,6 +622,33 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
           })}
         </div>
       )}
+
+      {/* Tags */}
+      {labelCounts.length > 0 && onTagFilter && (
+        <div className="py-1 border-t border-gray-200 dark:border-gray-700/50">
+          <div className="px-3 py-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              {t('tags.tags')}
+            </span>
+          </div>
+          {labelCounts.map(lc => (
+            <button
+              key={lc.id}
+              className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+                activeTagFilter === lc.id
+                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
+              }`}
+              onClick={() => onTagFilter(activeTagFilter === lc.id ? null : lc.id)}
+              title={`${lc.name} (${lc.count})`}
+            >
+              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: lc.color }} />
+              <span className="truncate flex-1">{lc.name}</span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{lc.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 
@@ -602,14 +657,15 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // -----------------------------------------------------------------------
 
   return (
-    <div className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none">
+    <div role="navigation" aria-label="Places sidebar" className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none">
       {/* Header with mode toggle */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700/50">
         <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
           {sidebarMode === 'places' ? t('sidebar.places') : t('sidebar.folders')}
         </span>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5" role="group" aria-label="Sidebar mode">
           <button
+            aria-pressed={sidebarMode === 'places'}
             className={`p-1 rounded transition-colors ${
               sidebarMode === 'places'
                 ? 'bg-blue-100 text-blue-600 dark:bg-gray-700 dark:text-blue-400'
@@ -621,6 +677,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             <LayoutList size={14} />
           </button>
           <button
+            aria-pressed={sidebarMode === 'tree'}
             className={`p-1 rounded transition-colors ${
               sidebarMode === 'tree'
                 ? 'bg-blue-100 text-blue-600 dark:bg-gray-700 dark:text-blue-400'
@@ -653,10 +710,12 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {removeMenu.visible && (
         <div
           ref={removeMenuRef}
+          role="menu"
           className="fixed z-50 bg-white/95 border-gray-200 dark:bg-gray-800/95 backdrop-blur-lg rounded-lg shadow-2xl border dark:border-gray-700/50 py-1 min-w-[180px]"
           style={{ left: removeMenu.x, top: removeMenu.y }}
         >
           <button
+            role="menuitem"
             className="w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2 text-red-500 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40"
             onClick={() => {
               removeCustomLocation(removeMenu.index);

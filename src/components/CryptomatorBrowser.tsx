@@ -8,6 +8,7 @@ import { formatSize } from '../utils/formatters';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
+    initialVaultPath?: string;
 }
 
 interface CryptomatorEntry {
@@ -28,12 +29,12 @@ interface BreadcrumbItem {
     dirId: string;
 }
 
-export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose }) => {
+export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose, initialVaultPath }) => {
     const t = useTranslation();
     const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [vaultPath, setVaultPath] = useState('');
+    const [vaultPath, setVaultPath] = useState(initialVaultPath || '');
     const [entries, setEntries] = useState<CryptomatorEntry[]>([]);
     const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: t('cryptomator.root'), dirId: '' }]);
     const [loading, setLoading] = useState(false);

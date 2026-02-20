@@ -496,6 +496,16 @@ export interface SyncJournal {
   completed: boolean;
 }
 
+export interface JournalSummary {
+  local_path: string;
+  remote_path: string;
+  created_at: string;
+  updated_at: string;
+  total_entries: number;
+  completed_entries: number;
+  completed: boolean;
+}
+
 // Archive browsing types
 export interface ArchiveEntry {
   name: string;

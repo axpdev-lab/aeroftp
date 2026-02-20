@@ -91,13 +91,17 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
     return (
         // UX-004: ARIA dialog attributes
         <div
+            className="absolute inset-0 z-50 flex items-start justify-center pt-12 bg-black/40"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
+        <div
             role="dialog"
             aria-modal="true"
             aria-label={t('ai.history.manager')}
-            className="absolute inset-0 z-50 flex flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]"
+            className="flex flex-col w-[90%] max-w-2xl max-h-[70vh] rounded-lg shadow-2xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]"
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] rounded-t-lg">
                 <div className="flex items-center gap-2">
                     <Database size={14} className="text-purple-400" />
                     <span className="text-xs font-medium">{t('ai.history.manager')}</span>
@@ -252,6 +256,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                     </>
                 )}
             </div>
+        </div>
         </div>
     );
 };

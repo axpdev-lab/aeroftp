@@ -1,6 +1,6 @@
 //! Filesystem utilities for AeroFile Places Sidebar
 //!
-//! Provides 12 Tauri commands for local filesystem navigation and management:
+//! Provides 13 Tauri commands for local filesystem navigation and management:
 //! - `get_user_directories`: Standard XDG user directories (cross-platform via `dirs` crate)
 //! - `list_mounted_volumes`: Mounted filesystem volumes with space info
 //! - `list_subdirectories`: Subdirectories of a given path (for tree/breadcrumb)
@@ -13,10 +13,13 @@
 //! - `empty_trash`: Permanently delete all items in system trash
 //! - `find_duplicate_files`: Scan directory for duplicate files (MD5 hash)
 //! - `scan_disk_usage`: Disk usage tree for treemap visualization
+//! - `volumes_changed`: Fast change detection for mounted volumes (hash-based)
 
 use serde::Serialize;
 use std::path::{Path, PathBuf, Component};
-use tracing::{info, warn};
+use std::sync::{LazyLock, Mutex};
+use tauri::Emitter;
+use tracing::{error, info, warn};
 
 // ─── Path validation ────────────────────────────────────────────────────────
 
@@ -174,7 +177,8 @@ async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
         }
 
         let device = parts[0];
-        let mount_point = parts[1];
+        let mount_point_raw = parts[1];
+        let mount_point = &unescape_octal(mount_point_raw);
         let fs_type = parts[2];
 
         // Skip pseudo-filesystems
@@ -187,12 +191,12 @@ async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
             continue;
         }
 
-        // Get disk space via df
+        // Get disk space via statvfs(2)
         let (total_bytes, free_bytes) = get_disk_space(mount_point);
 
         // Determine volume type
         let volume_type = classify_volume(mount_point, fs_type);
-        let is_ejectable = volume_type == "removable";
+        let is_ejectable = volume_type == "removable" || volume_type == "network";
 
         // Determine volume name
         let name = resolve_volume_name(device, mount_point, &label_map);
@@ -360,29 +364,27 @@ fn classify_volume(mount_point: &str, fs_type: &str) -> String {
     "internal".to_string()
 }
 
-/// Get disk space (total, free) in bytes for a mount point using `df -B1`.
+/// Get disk space (total, free) in bytes for a mount point using `statvfs(2)`.
+/// Uses the `libc` crate directly — no subprocess spawning.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn get_disk_space(mount_point: &str) -> (u64, u64) {
-    let output = std::process::Command::new("df")
-        .args(["-B1", mount_point])
-        .output();
-
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            // df -B1 output: Filesystem 1B-blocks Used Available Use% Mounted on
-            // Second line contains the data
-            if let Some(data_line) = stdout.lines().nth(1) {
-                let fields: Vec<&str> = data_line.split_whitespace().collect();
-                if fields.len() >= 4 {
-                    let total = fields[1].parse::<u64>().unwrap_or(0);
-                    let free = fields[3].parse::<u64>().unwrap_or(0);
-                    return (total, free);
-                }
-            }
+    // Unescape octal sequences in mount point (e.g. \040 for space)
+    let unescaped = unescape_octal(mount_point);
+    let c_path = match std::ffi::CString::new(unescaped.as_bytes()) {
+        Ok(p) => p,
+        Err(_) => return (0, 0),
+    };
+    // SAFETY: c_path is a valid NUL-terminated CString, stat is zero-initialized
+    // and passed by mutable pointer. statvfs only writes to the provided buffer.
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
+            let total = stat.f_blocks as u64 * stat.f_frsize as u64;
+            let free = stat.f_bavail as u64 * stat.f_frsize as u64;
+            (total, free)
+        } else {
             (0, 0)
         }
-        Err(_) => (0, 0),
     }
 }
 
@@ -435,41 +437,55 @@ fn resolve_volume_name(
     }
 }
 
-/// Unescape octal-encoded characters in volume labels (e.g. `\040` → space).
-#[cfg(target_os = "linux")]
-fn unescape_label(label: &str) -> String {
-    let mut result = String::with_capacity(label.len());
-    let mut chars = label.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            // Try to read 3 octal digits
-            let mut octal = String::new();
-            for _ in 0..3 {
-                if let Some(&next) = chars.as_str().chars().collect::<Vec<_>>().first() {
-                    if next.is_ascii_digit() && next < '8' {
-                        octal.push(next);
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-            }
-            if octal.len() == 3 {
-                if let Ok(byte) = u8::from_str_radix(&octal, 8) {
-                    result.push(byte as char);
-                } else {
-                    result.push('\\');
-                    result.push_str(&octal);
-                }
-            } else {
-                result.push('\\');
-                result.push_str(&octal);
-            }
+/// Unescape octal-encoded characters (e.g. `\040` → space, `\011` → tab).
+/// Used for both /proc/mounts mount points and /dev/disk/by-label/ entries.
+///
+/// Multi-byte UTF-8 characters (e.g. "é" = `\303\251`) are handled correctly
+/// by accumulating consecutive escaped bytes and decoding them as UTF-8.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn unescape_octal(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    // Buffer for accumulating consecutive octal-escaped bytes (UTF-8 sequences)
+    let mut byte_buf: Vec<u8> = Vec::new();
+
+    while i < len {
+        if bytes[i] == b'\\' && i + 3 < len
+            && bytes[i + 1].is_ascii_digit() && bytes[i + 1] < b'8'
+            && bytes[i + 2].is_ascii_digit() && bytes[i + 2] < b'8'
+            && bytes[i + 3].is_ascii_digit() && bytes[i + 3] < b'8'
+        {
+            // Parse 3 octal digits
+            let o1 = (bytes[i + 1] - b'0') as u8;
+            let o2 = (bytes[i + 2] - b'0') as u8;
+            let o3 = (bytes[i + 3] - b'0') as u8;
+            let byte_val = (o1 << 6) | (o2 << 3) | o3;
+            byte_buf.push(byte_val);
+            i += 4;
         } else {
-            result.push(c);
+            // Flush accumulated byte buffer as UTF-8
+            if !byte_buf.is_empty() {
+                result.push_str(&String::from_utf8_lossy(&byte_buf));
+                byte_buf.clear();
+            }
+            result.push(bytes[i] as char);
+            i += 1;
         }
     }
+    // Flush any remaining bytes
+    if !byte_buf.is_empty() {
+        result.push_str(&String::from_utf8_lossy(&byte_buf));
+    }
     result
+}
+
+/// Unescape octal-encoded characters in volume labels.
+/// Delegates to `unescape_octal` for backward compatibility.
+#[cfg(target_os = "linux")]
+fn unescape_label(label: &str) -> String {
+    unescape_octal(label)
 }
 
 // ─── macOS implementation ───────────────────────────────────────────────────
@@ -811,11 +827,25 @@ async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
     if result.status.success() {
         let msg = format!("Volume unmounted successfully: {}", mount_point);
         info!("{}", msg);
-        Ok(msg)
-    } else {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        Err(format!("Failed to unmount {}: {}", mount_point, stderr.trim()))
+        return Ok(msg);
     }
+
+    // For FUSE-based network mounts (sshfs, rclone, etc.), try fusermount
+    for cmd in &["fusermount3", "fusermount"] {
+        if let Ok(output) = std::process::Command::new(cmd)
+            .args(["-u", mount_point])
+            .output()
+        {
+            if output.status.success() {
+                let msg = format!("Volume unmounted successfully via {}: {}", cmd, mount_point);
+                info!("{}", msg);
+                return Ok(msg);
+            }
+        }
+    }
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    Err(format!("Failed to unmount {}: {}", mount_point, stderr.trim()))
 }
 
 /// Find the device path associated with a mount point by reading /proc/mounts.
@@ -824,7 +854,7 @@ fn find_device_for_mount(mount_point: &str) -> Option<String> {
     let content = std::fs::read_to_string("/proc/mounts").ok()?;
     for line in content.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 && parts[1] == mount_point {
+        if parts.len() >= 2 && unescape_octal(parts[1]) == mount_point {
             return Some(parts[0].to_string());
         }
     }
@@ -1606,4 +1636,180 @@ fn build_usage_tree(
         is_dir: true,
         children: Some(children),
     })
+}
+
+// ─── Volume change detection ─────────────────────────────────────────────────
+
+/// Cached hash of last known mount state. Used by `volumes_changed` to detect
+/// changes without spawning subprocesses or querying disk space.
+static LAST_MOUNTS_HASH: LazyLock<Mutex<u64>> = LazyLock::new(|| Mutex::new(0));
+
+/// DJB2 hash function — fast, deterministic, no crypto needed.
+fn djb2_hash(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 5381;
+    for &b in bytes {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+    }
+    hash
+}
+
+/// Returns true if mounted volumes have changed since the last call.
+///
+/// Uses a fast hash of `/proc/mounts` content combined with the GVFS directory
+/// listing to detect changes without spawning subprocesses or doing disk space
+/// queries. The frontend polls this cheaply and only performs a full volume
+/// refresh when it returns true.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub fn volumes_changed() -> bool {
+    let content = match std::fs::read_to_string("/proc/mounts") {
+        Ok(c) => c,
+        Err(_) => return true, // On error, assume changed
+    };
+
+    // Also check GVFS directory listing for network mounts
+    let gvfs_listing = if let Some(uid) = get_current_uid() {
+        let gvfs_dir = format!("/run/user/{}/gvfs", uid);
+        std::fs::read_dir(&gvfs_dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let combined = format!("{}{}", content, gvfs_listing);
+    let hash = djb2_hash(combined.as_bytes());
+
+    let mut last = LAST_MOUNTS_HASH.lock().unwrap_or_else(|e| e.into_inner());
+    if *last == hash {
+        false
+    } else {
+        *last = hash;
+        true
+    }
+}
+
+/// Non-Linux platforms always report changed (fall back to regular polling).
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn volumes_changed() -> bool {
+    true
+}
+
+// ─── Mount watcher (event-driven, replaces 5s setInterval) ──────────────────
+
+/// Start a background thread that watches `/proc/mounts` (via `poll()`) and
+/// the GVFS directory (via `inotify`) for mount table changes. Emits a
+/// `volumes-changed` Tauri event when either source changes, so the frontend
+/// can react immediately instead of polling every 5 seconds.
+///
+/// On non-Linux platforms this is a no-op — frontend falls back to polling.
+#[cfg(target_os = "linux")]
+pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
+    use std::io::{Read, Seek, SeekFrom};
+    use std::os::fd::AsRawFd;
+
+    std::thread::Builder::new()
+        .name("mount-watcher".to_string())
+        .spawn(move || {
+            // Open /proc/mounts — poll() returns POLLPRI|POLLERR on mount table changes
+            let mut mounts_file = match std::fs::File::open("/proc/mounts") {
+                Ok(f) => f,
+                Err(e) => {
+                    warn!("mount-watcher: cannot open /proc/mounts: {}", e);
+                    return;
+                }
+            };
+
+            // Initial read to establish baseline (required before first poll)
+            let mut buf = String::new();
+            let _ = mounts_file.read_to_string(&mut buf);
+
+            // Set up inotify for GVFS directory changes (network mounts via Nautilus/gio)
+            let gvfs_dir = get_current_uid()
+                .map(|uid| format!("/run/user/{}/gvfs", uid))
+                .unwrap_or_default();
+
+            // SAFETY: inotify_init1 with IN_NONBLOCK|IN_CLOEXEC creates a non-blocking fd
+            // that is automatically closed on exec. Returns -1 on failure (checked below).
+            let inotify_fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+            if inotify_fd >= 0 && !gvfs_dir.is_empty() {
+                if let Ok(c_path) = std::ffi::CString::new(gvfs_dir.as_str()) {
+                    // SAFETY: inotify_fd is valid (checked >= 0), c_path is NUL-terminated
+                    unsafe {
+                        libc::inotify_add_watch(
+                            inotify_fd,
+                            c_path.as_ptr(),
+                            (libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO) as u32,
+                        );
+                    }
+                }
+            }
+
+            let mounts_fd = mounts_file.as_raw_fd();
+
+            loop {
+                // Build pollfd array: /proc/mounts + optional inotify
+                let mut fds = [
+                    libc::pollfd { fd: mounts_fd, events: libc::POLLPRI | libc::POLLERR, revents: 0 },
+                    libc::pollfd { fd: inotify_fd, events: libc::POLLIN, revents: 0 },
+                ];
+                let nfds: libc::nfds_t = if inotify_fd >= 0 { 2 } else { 1 };
+
+                let ret = unsafe { libc::poll(fds.as_mut_ptr(), nfds, -1) };
+
+                if ret < 0 {
+                    let err = std::io::Error::last_os_error();
+                    if err.kind() == std::io::ErrorKind::Interrupted {
+                        continue; // EINTR — retry
+                    }
+                    error!("mount-watcher poll error: {}", err);
+                    break;
+                }
+                if ret == 0 {
+                    continue; // Spurious wakeup
+                }
+
+                // /proc/mounts changed — seek to 0 and re-read to reset the event
+                if fds[0].revents != 0 {
+                    let _ = mounts_file.seek(SeekFrom::Start(0));
+                    buf.clear();
+                    let _ = mounts_file.read_to_string(&mut buf);
+                }
+
+                // Drain inotify events (GVFS directory changed)
+                if inotify_fd >= 0 && fds[1].revents != 0 {
+                    let mut event_buf = [0u8; 4096];
+                    while unsafe {
+                        libc::read(inotify_fd, event_buf.as_mut_ptr() as *mut libc::c_void, event_buf.len())
+                    } > 0 {}
+                }
+
+                // Debounce: wait 300ms for rapid mount events to settle
+                std::thread::sleep(std::time::Duration::from_millis(300));
+
+                // Emit event to frontend
+                let _ = app_handle.emit("volumes-changed", ());
+            }
+
+            // Cleanup
+            if inotify_fd >= 0 {
+                unsafe { libc::close(inotify_fd); }
+            }
+
+            info!("mount-watcher thread exited");
+        })
+        .ok();
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn start_mount_watcher(_app_handle: tauri::AppHandle) {
+    // No-op — macOS/Windows rely on frontend polling fallback
 }

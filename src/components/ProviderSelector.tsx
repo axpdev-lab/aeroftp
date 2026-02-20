@@ -10,6 +10,7 @@ import {
     Cloud, Database, Globe, HardDrive, Flame, Server,
     ChevronRight, Sparkles, CheckCircle
 } from 'lucide-react';
+import { useTranslation } from '../i18n';
 import { providerRegistry, ProviderConfig } from '../providers';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 
@@ -68,6 +69,8 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
     stableOnly = false,
     compact = false,
 }) => {
+    const t = useTranslation();
+
     // Get providers based on filters
     const allProviders = providerRegistry.getAll();
 
@@ -95,7 +98,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                     rounded-xl border-2 transition-all duration-200
                     ${isSelected
                         ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20'
-                        : 'border-gray-700 hover:border-gray-500 hover:bg-gray-800/50'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800/50'
                     }
                     ${!provider.stable ? 'opacity-70' : ''}
                 `}
@@ -110,7 +113,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 {/* Beta badge */}
                 {!provider.stable && (
                     <div className="absolute top-1 left-1">
-                        <span className="px-1.5 py-0.5 text-[9px] font-medium bg-yellow-500/20 text-yellow-400 rounded">
+                        <span className="px-1.5 py-0.5 text-[9px] font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded">
                             BETA
                         </span>
                     </div>
@@ -120,7 +123,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 <div className={`
                     flex items-center justify-center
                     ${compact ? 'w-8 h-8' : 'w-12 h-12'}
-                    rounded-lg bg-gray-800 group-hover:bg-gray-700 transition-colors
+                    rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors
                 `}>
                     {getProviderIcon(provider.icon, provider.color, provider.id)}
                 </div>
@@ -129,22 +132,22 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 <span className={`
                     font-medium text-center
                     ${compact ? 'text-xs' : 'text-sm'}
-                    ${isSelected ? 'text-blue-300' : 'text-gray-300'}
+                    ${isSelected ? 'text-blue-600 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}
                 `}>
                     {provider.name}
                 </span>
 
                 {/* Description (only in non-compact mode) */}
                 {!compact && provider.description && (
-                    <span className="text-[10px] text-gray-500 text-center line-clamp-2">
+                    <span className="text-[10px] text-gray-500 dark:text-gray-500 text-center line-clamp-2">
                         {provider.description}
                     </span>
                 )}
 
                 {/* Custom/generic indicator */}
                 {provider.isGeneric && (
-                    <span className="text-[9px] text-gray-500 uppercase tracking-wider">
-                        Custom
+                    <span className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                        {t('protocol.custom')}
                     </span>
                 )}
             </button>
@@ -156,9 +159,9 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             {/* Specific Providers */}
             {specificProviders.length > 0 && (
                 <div>
-                    <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Sparkles size={12} />
-                        Pre-configured Providers
+                        {t('protocol.preconfiguredProviders')}
                     </h4>
                     <div className={`grid gap-2 ${compact ? 'grid-cols-4' : 'grid-cols-3'}`}>
                         {specificProviders.map(renderProviderCard)}
@@ -169,9 +172,9 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             {/* Generic/Custom Providers */}
             {genericProviders.length > 0 && (
                 <div>
-                    <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Server size={12} />
-                        Custom Connection
+                        {t('protocol.customConnection')}
                     </h4>
                     <div className={`grid gap-2 ${compact ? 'grid-cols-4' : 'grid-cols-2'}`}>
                         {genericProviders.map(renderProviderCard)}
@@ -200,7 +203,7 @@ export const ProviderTabs: React.FC<ProviderTabsProps> = ({ selected, onChange }
     ];
 
     return (
-        <div className="flex gap-1 p-1 bg-gray-800/50 rounded-lg">
+        <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
             {tabs.map(tab => (
                 <button
                     key={tab.id}
@@ -209,7 +212,7 @@ export const ProviderTabs: React.FC<ProviderTabsProps> = ({ selected, onChange }
                         flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                         ${selected === tab.id
                             ? 'bg-blue-600 text-white shadow-lg'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                         }
                     `}
                 >

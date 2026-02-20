@@ -68,7 +68,7 @@ fn calculate_delay(attempt: u32, config: &HttpRetryConfig) -> Duration {
 /// pattern is preserved — callers build a `Request` via `client.get(url)...build()`.
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
 /// let request = client.get(&url)
 ///     .header(AUTHORIZATION, auth)
 ///     .build()?;

@@ -78,7 +78,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     const t = useTranslation();
 
     return (
-        <div className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">
+        <div role="status" aria-label="Status bar" className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">
             {/* Left: Connection Status */}
             <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">

@@ -101,7 +101,8 @@ impl DigestState {
     }
 
     fn generate_cnonce() -> String {
-        let bytes: [u8; 8] = rand::thread_rng().gen();
+        use rand::rngs::OsRng;
+        let bytes: [u8; 8] = OsRng.gen();
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
@@ -168,20 +169,20 @@ pub struct WebDavProvider {
 
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
-    pub fn new(config: WebDavConfig) -> Self {
+    pub fn new(config: WebDavConfig) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .danger_accept_invalid_certs(!config.verify_cert)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
-        
-        Self {
+            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;
+
+        Ok(Self {
             config,
             client,
             current_path: "/".to_string(),
             connected: false,
             digest_auth: None,
-        }
+        })
     }
     
     /// Build full URL for a path
@@ -1285,6 +1286,7 @@ mod tests {
             username: "user".to_string(),
             password: secrecy::SecretString::from("pass".to_string()),
             initial_path: None,
+            verify_cert: true,
         }
     }
 
@@ -1292,7 +1294,7 @@ mod tests {
     fn test_build_url() {
         let provider = WebDavProvider::new(
             test_config("https://cloud.example.com/remote.php/dav/files/user/"),
-        );
+        ).expect("Failed to create WebDavProvider");
 
         assert_eq!(
             provider.build_url("/Documents"),
@@ -1302,7 +1304,8 @@ mod tests {
 
     #[test]
     fn test_extract_xml_properties() {
-        let provider = WebDavProvider::new(test_config("https://example.com"));
+        let provider = WebDavProvider::new(test_config("https://example.com"))
+            .expect("Failed to create WebDavProvider");
 
         // Test with d: prefix
         let xml = r#"<d:multistatus xmlns:d="DAV:">
@@ -1348,7 +1351,8 @@ mod tests {
 
     #[test]
     fn test_parse_propfind_response() {
-        let provider = WebDavProvider::new(test_config("https://example.com/dav"));
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
 
         let xml = r#"<?xml version="1.0"?>
         <d:multistatus xmlns:d="DAV:">

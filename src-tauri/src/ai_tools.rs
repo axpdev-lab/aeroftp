@@ -119,6 +119,8 @@ fn emit_tool_progress(app: &tauri::AppHandle, tool: &str, current: u32, total: u
     }));
 }
 
+const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024; // 50MB
+
 /// Download a remote file to bytes via StorageProvider or FTP fallback
 async fn download_from_provider(
     state: &State<'_, ProviderState>,
@@ -127,7 +129,20 @@ async fn download_from_provider(
 ) -> Result<Vec<u8>, String> {
     if has_provider(state).await {
         let mut provider = state.provider.lock().await;
-        let provider = provider.as_mut().unwrap();
+        let provider = match provider.as_mut() {
+            Some(p) => p,
+            None => return Err("No active provider connection".into()),
+        };
+        // Check file size before downloading
+        if let Ok(entry) = provider.stat(path).await {
+            if entry.size > MAX_AI_DOWNLOAD_SIZE {
+                return Err(format!(
+                    "File too large to download ({:.1} MB). Limit is {} MB.",
+                    entry.size as f64 / 1_048_576.0,
+                    MAX_AI_DOWNLOAD_SIZE / 1_048_576
+                ));
+            }
+        }
         provider.download_to_bytes(path).await.map_err(|e| e.to_string())
     } else if has_ftp(app_state).await {
         let mut manager = app_state.ftp_manager.lock().await;
@@ -621,7 +636,10 @@ pub async fn execute_ai_tool(
             // Try provider first, fall back to FTP
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 let entries = provider.list(&path).await.map_err(|e| e.to_string())?;
 
                 let items: Vec<Value> = entries.iter().take(100).map(|e| json!({
@@ -682,7 +700,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.upload(&local_path, &remote_path, None).await.map_err(|e| e.to_string())?;
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -702,7 +723,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.download(&remote_path, &local_path, None).await.map_err(|e| e.to_string())?;
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -720,7 +744,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.delete(&path).await.map_err(|e| e.to_string())?;
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -740,7 +767,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.rename(&from, &to).await.map_err(|e| e.to_string())?;
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -758,7 +788,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.mkdir(&path).await.map_err(|e| e.to_string())?;
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -777,7 +810,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 let results = provider.find(&path, &pattern).await.map_err(|e| e.to_string())?;
 
                 let items: Vec<Value> = results.iter().take(100).map(|e| json!({
@@ -828,7 +864,10 @@ pub async fn execute_ai_tool(
 
             if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 let entry = provider.stat(&path).await.map_err(|e| e.to_string())?;
 
                 Ok(json!({
@@ -1593,7 +1632,10 @@ pub async fn execute_ai_tool(
 
             let upload_result = if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 provider.upload(&tmp_path, &path, None).await.map_err(|e| e.to_string())
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
@@ -1638,7 +1680,10 @@ pub async fn execute_ai_tool(
 
                 let result = if has_provider(&state).await {
                     let mut provider = state.provider.lock().await;
-                    let provider = provider.as_mut().unwrap();
+                    let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                     provider.upload(local_path, &remote_path, None).await.map_err(|e| e.to_string())
                 } else if has_ftp(&app_state).await {
                     let mut manager = app_state.ftp_manager.lock().await;
@@ -1689,7 +1734,10 @@ pub async fn execute_ai_tool(
 
                 let result = if has_provider(&state).await {
                     let mut provider = state.provider.lock().await;
-                    let provider = provider.as_mut().unwrap();
+                    let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                     provider.download(remote_path, &local_path, None).await.map_err(|e| e.to_string())
                 } else if has_ftp(&app_state).await {
                     let mut manager = app_state.ftp_manager.lock().await;
@@ -1735,7 +1783,10 @@ pub async fn execute_ai_tool(
             // Collect remote files
             let remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = provider.as_mut().unwrap();
+                let provider = match provider.as_mut() {
+                    Some(p) => p,
+                    None => return Err("No active provider connection".into()),
+                };
                 let entries = provider.list(&remote_path).await.map_err(|e| e.to_string())?;
                 entries.iter().filter(|e| !e.is_dir).map(|e| (e.name.clone(), e.size)).collect()
             } else if has_ftp(&app_state).await {

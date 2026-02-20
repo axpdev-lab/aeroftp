@@ -73,10 +73,11 @@ pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<[u8; 32], String
     Ok(key)
 }
 
-/// Generate cryptographically secure random bytes
+/// Generate cryptographically secure random bytes using OS entropy
 pub fn random_bytes(len: usize) -> Vec<u8> {
+    use rand::rngs::OsRng;
     use rand::RngCore;
     let mut buf = vec![0u8; len];
-    rand::thread_rng().fill_bytes(&mut buf);
+    OsRng.fill_bytes(&mut buf);
     buf
 }

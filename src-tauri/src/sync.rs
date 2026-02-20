@@ -1532,6 +1532,110 @@ pub fn delete_sync_snapshot(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// Canary Sync — Sample-based dry-run analysis
+// ============================================================================
+
+/// Configuration for canary (sample) sync
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanaryConfig {
+    /// Percentage of files to sample (5-50, default 10)
+    pub percent: u8,
+    /// Selection strategy: "random", "newest", "largest"
+    pub selection: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanarySampleResult {
+    pub relative_path: String,
+    pub action: String, // "upload", "download", "delete"
+    pub success: bool,
+    pub error: Option<String>,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanarySummary {
+    pub would_upload: usize,
+    pub would_download: usize,
+    pub would_delete: usize,
+    pub conflicts: usize,
+    pub errors: usize,
+    pub estimated_transfer_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanaryResult {
+    pub sampled_files: usize,
+    pub total_files: usize,
+    pub results: Vec<CanarySampleResult>,
+    pub summary: CanarySummary,
+}
+
+/// Select a sample of files based on the given strategy.
+/// Returns the selected files as (relative_path, FileInfo) tuples.
+pub fn select_canary_sample(
+    files: &HashMap<String, FileInfo>,
+    sample_size: usize,
+    selection: &str,
+) -> Vec<(String, FileInfo)> {
+    let mut file_list: Vec<(String, FileInfo)> = files
+        .iter()
+        .filter(|(_, info)| !info.is_dir)
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    if file_list.is_empty() {
+        return Vec::new();
+    }
+
+    match selection {
+        "newest" => {
+            file_list.sort_by(|a, b| {
+                let a_mod = a.1.modified.unwrap_or_else(|| chrono::DateTime::<Utc>::MIN_UTC);
+                let b_mod = b.1.modified.unwrap_or_else(|| chrono::DateTime::<Utc>::MIN_UTC);
+                b_mod.cmp(&a_mod)
+            });
+        }
+        "largest" => {
+            file_list.sort_by(|a, b| b.1.size.cmp(&a.1.size));
+        }
+        _ => {
+            // "random" or default: shuffle using Fisher-Yates via rand
+            use rand::seq::SliceRandom;
+            let mut rng = rand::thread_rng();
+            file_list.shuffle(&mut rng);
+        }
+    }
+
+    file_list.truncate(sample_size);
+    file_list
+}
+
+// ============================================================================
+// Signed Audit Log — HMAC-SHA256 journal signing and verification
+// ============================================================================
+
+/// Sign a sync journal with HMAC-SHA256
+pub fn sign_journal(journal: &SyncJournal, key: &[u8]) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let canonical = serde_json::to_string(journal)
+        .map_err(|e| format!("Failed to serialize journal: {}", e))?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(key)
+        .map_err(|e| format!("HMAC key error: {}", e))?;
+    mac.update(canonical.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+/// Generate the .sig filename for a journal path pair
+pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
+    let combined = format!("{}|{}", local_path, remote_path);
+    format!("journal_{:016x}.sig", stable_path_hash(&combined))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -12,6 +12,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (14 protocols) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
+| **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent 6-domain security and quality audit report (v2.5.0) |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 
 ---
@@ -66,9 +67,11 @@ Currently supported: **47 languages** at 100% coverage
 
 ---
 
-## Security (v2.0.6)
+## Security Audit (v2.5.0)
 
-AeroFTP v2.0.5 adds **WebDAV HTTP Digest Authentication (RFC 2617)** with auto-detection — the password is never transmitted, only MD5 challenge-response hashes. CloudMe is the only cloud service requiring Digest auth, and AeroFTP is one of the few clients that support it correctly. The **Unified Encrypted Keystore** (v1.9.0) stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md), [SECURITY.md](../SECURITY.md), and [security-evidence/README.md](./security-evidence/README.md) for full details.
+AeroFTP v2.5.0 underwent a **comprehensive 6-domain independent audit** covering Security & Cryptography, Rust Code Quality, CI/CD, Documentation & OpenSSF, Performance, and Frontend Quality. All 86 findings (9 Critical, 17 High, 28 Medium, 19 Low, 13 Info) were remediated. Post-remediation composite grade: **A-**. See **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** for the full report.
+
+The **Unified Encrypted Keystore** stores all sensitive data in the AES-256-GCM encrypted vault. See [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md), [SECURITY.md](../SECURITY.md), and [security-evidence/README.md](./security-evidence/README.md) for full details.
 
 ## AeroVault Directory Support (v1.9.0)
 
@@ -80,8 +83,8 @@ AeroAgent now features **27 tools** (up from 25), including **RAG integration** 
 
 ---
 
-- **Documentation Version**: 2.2.0
-- **Last Update**: 2026-02-15
+- **Documentation Version**: 2.5.0
+- **Last Update**: 2026-02-20
 
 ---
 

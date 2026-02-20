@@ -36,6 +36,9 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={onReject}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Host Key Verification"
         >
             <div
                 className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden"

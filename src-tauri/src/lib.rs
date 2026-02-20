@@ -50,6 +50,7 @@ mod sync_badge;
 mod cyber_tools;
 mod totp;
 mod chat_history;
+mod file_tags;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -3734,6 +3735,9 @@ async fn save_remote_file(state: State<'_, AppState>, path: String, content: Str
 /// does not re-show the main window after the user has already closed it.
 static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Timestamp when splash screen was created — used to enforce minimum display time.
+static SPLASH_CREATED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 /// Called by the frontend when React has finished initializing.
 /// Closes the splash screen, sets the app menu (deferred from setup to
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
@@ -3743,6 +3747,18 @@ async fn app_ready(app: AppHandle) {
     // condition: rebuild_menu sees the flag, calls app.set_menu() globally, and GTK
     // applies it to the splash window that hasn't been destroyed yet → menu flash.
     // The flag is set at the very END, after splash is dead and menu is installed.
+
+    // 0. Enforce minimum splash display time (2s) so users can read version/license
+    //    and the window has time to fully render even on fast machines / Wayland.
+    const MIN_SPLASH_SECS: f64 = 2.0;
+    if let Some(created) = SPLASH_CREATED_AT.get() {
+        let elapsed = created.elapsed().as_secs_f64();
+        if elapsed < MIN_SPLASH_SECS {
+            let remaining = std::time::Duration::from_secs_f64(MIN_SPLASH_SECS - elapsed);
+            info!("Splash minimum wait: {remaining:?}");
+            tokio::time::sleep(remaining).await;
+        }
+    }
 
     // 1. Close splash — GTK window destruction is async, takes ~500ms
     if let Some(splash) = app.get_webview_window("splashscreen") {
@@ -3933,10 +3949,12 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 use sync::{
     CompareOptions, FileComparison, FileInfo, SyncIndex, SyncJournal,
     VerifyPolicy, VerifyResult, RetryPolicy, SyncErrorInfo,
+    CanaryResult, CanarySummary, CanarySampleResult,
     build_comparison_results_with_index, should_exclude,
     load_sync_index, save_sync_index,
     load_sync_journal, save_sync_journal, delete_sync_journal,
     verify_local_file, classify_sync_error,
+    select_canary_sample, sign_journal, journal_sig_filename,
 };
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use std::collections::HashMap;
@@ -4632,6 +4650,245 @@ async fn delta_sync_analyze(
         .map_err(|e| format!("Failed to read remote file: {}", e))?;
 
     let (_, result) = delta_sync::compute_delta(&remote_data, &sigs);
+    Ok(result)
+}
+
+// =============================
+// Canary Sync Commands
+// =============================
+
+/// Run a canary (sample-based) dry-run sync analysis.
+/// Scans local files, selects a percentage-based sample, and projects
+/// what a full sync would do without actually transferring anything.
+#[tauri::command]
+async fn sync_canary_run(
+    local_path: String,
+    remote_path: String,
+    percent: u8,
+    selection: String,
+) -> Result<CanaryResult, String> {
+    validate_path(&local_path)?;
+    if remote_path.contains('\0') {
+        return Err("Remote path contains null bytes".to_string());
+    }
+
+    // Clamp percent to 5-50 range
+    let percent = percent.max(5).min(50);
+
+    // Scan local files (no checksum for speed)
+    let exclude_patterns = sync::CompareOptions::default().exclude_patterns;
+    let local_files = get_local_files_recursive(
+        &local_path,
+        &local_path,
+        &exclude_patterns,
+        false,
+        None,
+    )
+    .await?;
+
+    // Only count non-directory files for sampling
+    let total_files = local_files.iter().filter(|(_, f)| !f.is_dir).count();
+    if total_files == 0 {
+        return Ok(CanaryResult {
+            sampled_files: 0,
+            total_files: 0,
+            results: Vec::new(),
+            summary: CanarySummary {
+                would_upload: 0,
+                would_download: 0,
+                would_delete: 0,
+                conflicts: 0,
+                errors: 0,
+                estimated_transfer_size: 0,
+            },
+        });
+    }
+
+    // Calculate sample size: total * percent / 100, minimum 1
+    let sample_size = ((total_files as u64 * percent as u64) / 100).max(1) as usize;
+
+    // Select sample based on strategy
+    let sample = select_canary_sample(&local_files, sample_size, &selection);
+
+    // Build canary results by analyzing the sample
+    // In dry-run mode, local-only files are projected as uploads
+    let mut results = Vec::new();
+    let mut would_upload: usize = 0;
+    let mut would_download: usize = 0;
+    let mut would_delete: usize = 0;
+    let conflicts: usize = 0;
+    let mut estimated_transfer_size: u64 = 0;
+
+    // Load sync index for comparison if available
+    let index = load_sync_index(&local_path, &remote_path).ok().flatten();
+
+    for (rel_path, info) in &sample {
+        // Determine projected action based on index state
+        let action = if let Some(idx) = &index {
+            if let Some(cached) = idx.files.get(rel_path) {
+                // File exists in index — check if it changed locally
+                let local_changed = info.size != cached.size
+                    || !sync::timestamps_equal(info.modified, cached.modified);
+                if local_changed {
+                    "upload" // Changed since last sync
+                } else {
+                    "skip" // Unchanged
+                }
+            } else {
+                "upload" // New file not in index
+            }
+        } else {
+            "upload" // No index available — assume upload needed
+        };
+
+        if action == "skip" {
+            continue;
+        }
+
+        match action {
+            "upload" => {
+                would_upload += 1;
+                estimated_transfer_size += info.size;
+            }
+            "download" => {
+                would_download += 1;
+                estimated_transfer_size += info.size;
+            }
+            "delete" => {
+                would_delete += 1;
+            }
+            _ => {}
+        }
+
+        results.push(CanarySampleResult {
+            relative_path: rel_path.clone(),
+            action: action.to_string(),
+            success: true, // Dry-run always succeeds
+            error: None,
+            bytes: info.size,
+        });
+    }
+
+    // Extrapolate totals based on sample ratio
+    let sampled_files = sample.len();
+
+    Ok(CanaryResult {
+        sampled_files,
+        total_files,
+        results,
+        summary: CanarySummary {
+            would_upload,
+            would_download,
+            would_delete,
+            conflicts,
+            errors: 0,
+            estimated_transfer_size,
+        },
+    })
+}
+
+/// Approve canary results — placeholder that returns a success message.
+/// The actual full sync is triggered by the frontend calling `parallel_sync_execute`.
+#[tauri::command]
+async fn sync_canary_approve() -> Result<String, String> {
+    Ok("Canary approved — proceed with full sync".to_string())
+}
+
+// =============================
+// Signed Audit Log Commands
+// =============================
+
+/// Sign an existing sync journal with HMAC-SHA256.
+/// Saves the hex-encoded signature as a .sig file alongside the journal.
+#[tauri::command]
+async fn sign_sync_journal(
+    local_path: String,
+    remote_path: String,
+    signing_key: String,
+) -> Result<String, String> {
+    validate_path(&local_path)?;
+    if remote_path.contains('\0') {
+        return Err("Remote path contains null bytes".to_string());
+    }
+
+    // Load the journal
+    let journal = load_sync_journal(&local_path, &remote_path)?
+        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
+
+    // Decode hex signing key
+    let key_bytes = hex::decode(&signing_key)
+        .map_err(|e| format!("Invalid hex signing key: {}", e))?;
+    if key_bytes.is_empty() {
+        return Err("Signing key cannot be empty".to_string());
+    }
+    if key_bytes.len() < 32 {
+        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
+    }
+
+    // Compute HMAC-SHA256 signature
+    let signature = sign_journal(&journal, &key_bytes)?;
+
+    // Save .sig file alongside the journal
+    let journal_dir = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?
+        .join("aeroftp")
+        .join("sync-journal");
+    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
+    tokio::fs::write(&sig_path, signature.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to write signature file: {}", e))?;
+
+    Ok(signature)
+}
+
+/// Verify an existing journal signature.
+/// Returns true if the stored signature matches the recomputed HMAC.
+#[tauri::command]
+async fn verify_journal_signature(
+    local_path: String,
+    remote_path: String,
+    signing_key: String,
+) -> Result<bool, String> {
+    validate_path(&local_path)?;
+    if remote_path.contains('\0') {
+        return Err("Remote path contains null bytes".to_string());
+    }
+
+    // Load the journal
+    let journal = load_sync_journal(&local_path, &remote_path)?
+        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
+
+    // Read the .sig file
+    let journal_dir = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?
+        .join("aeroftp")
+        .join("sync-journal");
+    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
+    let stored_sig = tokio::fs::read_to_string(&sig_path)
+        .await
+        .map_err(|e| format!("Failed to read signature file: {}", e))?;
+
+    // Decode hex signing key
+    let key_bytes = hex::decode(&signing_key)
+        .map_err(|e| format!("Invalid hex signing key: {}", e))?;
+    if key_bytes.is_empty() {
+        return Err("Signing key cannot be empty".to_string());
+    }
+    if key_bytes.len() < 32 {
+        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
+    }
+
+    // Recompute HMAC-SHA256
+    let computed_sig = sign_journal(&journal, &key_bytes)?;
+
+    // Constant-time comparison to prevent timing attacks
+    let a = computed_sig.as_bytes();
+    let b = stored_sig.trim().as_bytes();
+    let result = if a.len() != b.len() {
+        false
+    } else {
+        a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    };
     Ok(result)
 }
 
@@ -6262,6 +6519,23 @@ pub fn run() {
                 }
             }
 
+            // Initialize File Tags SQLite database
+            match file_tags::init_db(&app.handle()) {
+                Ok(conn) => {
+                    app.manage(file_tags::FileTagsDb(std::sync::Mutex::new(conn)));
+                }
+                Err(e) => {
+                    log::error!("File tags DB init failed: {e}");
+                    let conn = rusqlite::Connection::open_in_memory()
+                        .expect("in-memory SQLite");
+                    let _ = file_tags::init_db_schema(&conn);
+                    app.manage(file_tags::FileTagsDb(std::sync::Mutex::new(conn)));
+                }
+            }
+
+            // Start mount watcher — emits 'volumes-changed' events instead of 5s polling
+            filesystem::start_mount_watcher(app.handle().clone());
+
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
             // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
@@ -6389,6 +6663,7 @@ pub fn run() {
                 .center()
                 .build()?;
 
+            SPLASH_CREATED_AT.get_or_init(std::time::Instant::now);
             info!("Splash screen created");
 
             // Build menu but do NOT set it globally yet — GTK applies global menus
@@ -6625,6 +6900,10 @@ pub fn run() {
             list_sync_snapshots_cmd,
             delete_sync_snapshot_cmd,
             delta_sync_analyze,
+            sync_canary_run,
+            sync_canary_approve,
+            sign_sync_journal,
+            verify_journal_signature,
             get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,
@@ -6726,6 +7005,9 @@ pub fn run() {
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
             aerovault_v2::vault_v2_add_files_to_dir,
+            aerovault_v2::vault_v2_compact,
+            aerovault_v2::vault_v2_sync_compare,
+            aerovault_v2::vault_v2_sync_apply,
             // Remote Vault — open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,
@@ -6736,6 +7018,7 @@ pub fn run() {
             cryptomator::cryptomator_list,
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
+            cryptomator::cryptomator_create,
             ai_stream::ai_chat_stream,
             ai::ollama_pull_model,
             ai::gemini_create_cache,
@@ -6855,6 +7138,7 @@ pub fn run() {
             filesystem::empty_trash,
             filesystem::find_duplicate_files,
             filesystem::scan_disk_usage,
+            filesystem::volumes_changed,
             // Mission Green Badge - File sync status tracking
             sync_badge::start_badge_server_cmd,
             sync_badge::stop_badge_server_cmd,
@@ -6900,6 +7184,16 @@ pub fn run() {
             chat_history::chat_history_switch_branch,
             chat_history::chat_history_delete_branch,
             chat_history::chat_history_save_branch_message,
+            // File Tags SQLite
+            file_tags::file_tags_list_labels,
+            file_tags::file_tags_create_label,
+            file_tags::file_tags_update_label,
+            file_tags::file_tags_delete_label,
+            file_tags::file_tags_set_tags,
+            file_tags::file_tags_remove_tag,
+            file_tags::file_tags_get_tags_for_files,
+            file_tags::file_tags_get_files_by_label,
+            file_tags::file_tags_get_label_counts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

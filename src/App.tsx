@@ -42,6 +42,7 @@ import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
+import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
@@ -60,16 +61,20 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, PanelTop, Shield, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
-  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
+  MoreHorizontal, Tag
 } from 'lucide-react';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
+import { LocalFilePanel } from './components/LocalFilePanel';
 import { QuickLookOverlay } from './components/QuickLookOverlay';
 import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
-import type { TrashItem, FolderSizeResult } from './types/aerofile';
+import { LocalPathTabs } from './components/LocalPathTabs';
+import { FileTagBadge } from './components/FileTagBadge';
+import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
@@ -83,6 +88,7 @@ import { useTranslation } from './i18n';
 // Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast } from './components/Transfer/TransferToastContainer';
+import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
@@ -103,6 +109,7 @@ import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTransferEvents } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
+import { useFileTags } from './hooks/useFileTags';
 
 // ============================================================================
 // Main App Component
@@ -217,6 +224,9 @@ const App: React.FC = () => {
   const [selectedRemoteFiles, setSelectedRemoteFiles] = useState<Set<string>>(new Set());
   const [lastSelectedRemoteIndex, setLastSelectedRemoteIndex] = useState<number | null>(null);
   const [lastSelectedLocalIndex, setLastSelectedLocalIndex] = useState<number | null>(null);
+  // Refs for keyboard navigation (sorted arrays defined later via useMemo)
+  const sortedLocalFilesRef = useRef<LocalFile[]>([]);
+  const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
@@ -265,6 +275,7 @@ const App: React.FC = () => {
     resolve: ((accepted: boolean) => void) | null;
   }>({ visible: false, info: null, host: '', port: 22, resolve: null });
   const [compressDialogState, setCompressDialogState] = useState<{ files: { name: string; path: string; size: number; isDir: boolean }[]; defaultName: string; outputDir: string } | null>(null);
+  const [cryptomatorCreateDialog, setCryptomatorCreateDialog] = useState<{ outputDir: string } | null>(null);
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
@@ -302,6 +313,22 @@ const App: React.FC = () => {
   // Duplicate Finder & Disk Usage dialogs
   const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
   const [diskUsagePath, setDiskUsagePath] = useState<string | null>(null);
+
+  // Local Path Tabs (AeroFile multi-tab browsing)
+  const [localTabs, setLocalTabs] = useState<LocalTab[]>(() => {
+    try {
+      const stored = localStorage.getItem('aerofile_local_tabs');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [activeLocalTabId, setActiveLocalTabId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('aerofile_active_tab') || null;
+    } catch { return null; }
+  });
+
+  // File Tags (Finder-style color labels)
+  const fileTags = useFileTags();
 
   // Multi-Session Tabs (Hybrid Cache Architecture)
   const [sessions, setSessions] = useState<FtpSession[]>([]);
@@ -654,9 +681,14 @@ const App: React.FC = () => {
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
 
   // Filtered files (search filter applied)
-  const filteredLocalFiles = localFiles.filter(f =>
-    f.name.toLowerCase().includes(localSearchFilter.toLowerCase())
-  );
+  const filteredLocalFiles = localFiles.filter(f => {
+    if (!f.name.toLowerCase().includes(localSearchFilter.toLowerCase())) return false;
+    if (fileTags.activeTagFilter) {
+      const tags = fileTags.getTagsForFile(f.path);
+      if (!tags.some(t => t.label_id === fileTags.activeTagFilter)) return false;
+    }
+    return true;
+  });
 
   // Keyboard Shortcuts
   useKeyboardShortcuts({
@@ -842,6 +874,112 @@ const App: React.FC = () => {
       }
     },
 
+    // Arrow Down: select next file
+    'ArrowDown': () => {
+      if (activePanel === 'local') {
+        const files = sortedLocalFilesRef.current;
+        if (files.length === 0) return;
+        const currentName = [...selectedLocalFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
+        const nextIdx = Math.min(currentIdx + 1, files.length - 1);
+        const next = files[nextIdx];
+        if (next && next.name !== '..') {
+          setSelectedLocalFiles(new Set([next.name]));
+          setLastSelectedLocalIndex(nextIdx);
+          setPreviewFile(next);
+        }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        if (files.length === 0) return;
+        const currentName = [...selectedRemoteFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
+        const nextIdx = Math.min(currentIdx + 1, files.length - 1);
+        const next = files[nextIdx];
+        if (next && next.name !== '..') {
+          setSelectedRemoteFiles(new Set([next.name]));
+          setLastSelectedRemoteIndex(nextIdx);
+        }
+      }
+    },
+
+    // Arrow Up: select previous file
+    'ArrowUp': () => {
+      if (activePanel === 'local') {
+        const files = sortedLocalFilesRef.current;
+        if (files.length === 0) return;
+        const currentName = [...selectedLocalFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        const prev = files[prevIdx];
+        if (prev && prev.name !== '..') {
+          setSelectedLocalFiles(new Set([prev.name]));
+          setLastSelectedLocalIndex(prevIdx);
+          setPreviewFile(prev);
+        }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        if (files.length === 0) return;
+        const currentName = [...selectedRemoteFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        const prev = files[prevIdx];
+        if (prev && prev.name !== '..') {
+          setSelectedRemoteFiles(new Set([prev.name]));
+          setLastSelectedRemoteIndex(prevIdx);
+        }
+      }
+    },
+
+    // Shift+Arrow Down: extend selection downward
+    'Shift+ArrowDown': () => {
+      if (activePanel === 'local') {
+        const files = sortedLocalFilesRef.current;
+        const currentName = [...selectedLocalFiles].pop();
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
+        const nextIdx = Math.min(currentIdx + 1, files.length - 1);
+        const next = files[nextIdx];
+        if (next && next.name !== '..') {
+          setSelectedLocalFiles(prev => new Set([...prev, next.name]));
+          setLastSelectedLocalIndex(nextIdx);
+        }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        const currentName = [...selectedRemoteFiles].pop();
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
+        const nextIdx = Math.min(currentIdx + 1, files.length - 1);
+        const next = files[nextIdx];
+        if (next && next.name !== '..') {
+          setSelectedRemoteFiles(prev => new Set([...prev, next.name]));
+          setLastSelectedRemoteIndex(nextIdx);
+        }
+      }
+    },
+
+    // Shift+Arrow Up: extend selection upward
+    'Shift+ArrowUp': () => {
+      if (activePanel === 'local') {
+        const files = sortedLocalFilesRef.current;
+        const currentName = [...selectedLocalFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        const prev = files[prevIdx];
+        if (prev && prev.name !== '..') {
+          setSelectedLocalFiles(prev2 => new Set([prev.name, ...prev2]));
+          setLastSelectedLocalIndex(prevIdx);
+        }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        const currentName = [...selectedRemoteFiles][0];
+        const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        const prev = files[prevIdx];
+        if (prev && prev.name !== '..') {
+          setSelectedRemoteFiles(prev2 => new Set([prev.name, ...prev2]));
+          setLastSelectedRemoteIndex(prevIdx);
+        }
+      }
+    },
+
     'Escape': () => {
       if (quickLookOpen) setQuickLookOpen(false);
       else if (universalPreviewOpen) closeUniversalPreview();
@@ -972,6 +1110,9 @@ const App: React.FC = () => {
     return sortFiles(source, remoteSortField, remoteSortOrder);
   }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder, sortFoldersFirst]);
   const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFoldersFirst]);
+  // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
+  sortedLocalFilesRef.current = sortedLocalFiles;
+  sortedRemoteFilesRef.current = sortedRemoteFiles;
 
   const handleRemoteSort = (field: SortField) => {
     if (remoteSortField === field) setRemoteSortOrder(remoteSortOrder === 'asc' ? 'desc' : 'asc');
@@ -982,6 +1123,76 @@ const App: React.FC = () => {
     if (localSortField === field) setLocalSortOrder(localSortOrder === 'asc' ? 'desc' : 'asc');
     else { setLocalSortField(field); setLocalSortOrder('asc'); }
   };
+
+  // === Local Path Tabs ===
+  // Persist tabs to localStorage
+  useEffect(() => {
+    localStorage.setItem('aerofile_local_tabs', JSON.stringify(localTabs));
+  }, [localTabs]);
+  useEffect(() => {
+    if (activeLocalTabId) localStorage.setItem('aerofile_active_tab', activeLocalTabId);
+  }, [activeLocalTabId]);
+
+  const createLocalTab = useCallback(async () => {
+    if (localTabs.length >= 12) return;
+    const home = await homeDir().catch(() => '/');
+    const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const label = home.split(/[\\/]/).filter(Boolean).pop() || '/';
+    const newTab: LocalTab = { id, path: home, label, scrollTop: 0 };
+    setLocalTabs(prev => [...prev, newTab]);
+    setActiveLocalTabId(id);
+    changeLocalDirectory(home);
+  }, [localTabs.length]);
+
+  const switchLocalTab = useCallback((tabId: string) => {
+    // Save current tab state
+    if (activeLocalTabId) {
+      setLocalTabs(prev => prev.map(tab =>
+        tab.id === activeLocalTabId ? { ...tab, path: currentLocalPath, label: currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/' } : tab
+      ));
+    }
+    // Switch to target tab
+    const target = localTabs.find(t => t.id === tabId);
+    if (target) {
+      setActiveLocalTabId(tabId);
+      changeLocalDirectory(target.path);
+    }
+  }, [activeLocalTabId, currentLocalPath, localTabs]);
+
+  const closeLocalTab = useCallback((tabId: string) => {
+    setLocalTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId);
+      const next = prev.filter(t => t.id !== tabId);
+      if (tabId === activeLocalTabId && next.length > 0) {
+        // Switch to adjacent tab
+        const newIdx = Math.min(idx, next.length - 1);
+        setActiveLocalTabId(next[newIdx].id);
+        changeLocalDirectory(next[newIdx].path);
+      } else if (next.length === 0) {
+        setActiveLocalTabId(null);
+      }
+      return next;
+    });
+  }, [activeLocalTabId]);
+
+  // Sync tab path when navigating
+  useEffect(() => {
+    if (activeLocalTabId && currentLocalPath) {
+      setLocalTabs(prev => prev.map(tab =>
+        tab.id === activeLocalTabId
+          ? { ...tab, path: currentLocalPath, label: currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/' }
+          : tab
+      ));
+    }
+  }, [activeLocalTabId, currentLocalPath]);
+
+  // Load tags for visible files
+  useEffect(() => {
+    if (sortedLocalFiles.length > 0) {
+      const paths = sortedLocalFiles.map(f => f.path);
+      fileTags.loadTagsForFiles(paths);
+    }
+  }, [sortedLocalFiles, fileTags.loadTagsForFiles]);
 
   // Quick Look toggle
   const toggleQuickLook = useCallback(() => {
@@ -4136,13 +4347,108 @@ const App: React.FC = () => {
       });
     }
 
-    // Cryptomator vault option for folders (legacy format support)
-    if (file.is_dir && count === 1) {
+    // ─── Encrypted container detection ───────────────────────────────
+    const isAeroVault = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
+    const isCryptomatorMarker = count === 1 && !file.is_dir &&
+      /^(vault\.cryptomator|masterkey\.cryptomator)$/i.test(file.name);
+
+    // .aerovault file → Open with AeroVault
+    if (isAeroVault) {
       items.push({
-        label: t('cryptomator.openAsVault') || 'Open as Cryptomator Vault',
+        label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
+        icon: <Shield size={14} className="text-emerald-500" />,
+        action: () => {
+          setShowVaultPanel(true);
+          // VaultPanel will handle opening the vault file
+        },
+      });
+    }
+
+    // vault.cryptomator / masterkey.cryptomator → Open as Cryptomator Vault
+    if (isCryptomatorMarker) {
+      items.push({
+        label: t('contextMenu.openAsCryptomator') || 'Open as Cryptomator Vault',
         icon: <Lock size={14} className="text-emerald-500" />,
         action: () => setShowCryptomatorBrowser(true),
-        divider: true
+      });
+    }
+
+    // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
+    if (!isAeroVault && !isCryptomatorMarker) {
+      items.push({
+        label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
+        icon: <Shield size={14} className="text-emerald-500" />,
+        action: () => {
+          setShowVaultPanel(true);
+          // VaultPanel opens in create mode
+        },
+      });
+
+      // "More" sub-menu with Cryptomator create
+      items.push({
+        label: t('contextMenu.more') || 'More',
+        icon: <MoreHorizontal size={14} />,
+        action: () => {},
+        children: [
+          {
+            label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
+            icon: <Lock size={14} />,
+            action: () => setCryptomatorCreateDialog({ outputDir: currentLocalPath }),
+          },
+        ],
+      });
+    }
+
+    // Tags submenu — Finder-style color labels
+    if (fileTags.labels.length > 0) {
+      const selectedPaths = Array.from(selection).map(name => {
+        const f = localFiles.find(lf => lf.name === name);
+        return f ? f.path : `${currentLocalPath}/${name}`;
+      });
+
+      const tagChildren: ContextMenuItem[] = fileTags.labels.map(label => {
+        // Check if ALL selected files already have this tag
+        const allHaveTag = selectedPaths.every(p =>
+          fileTags.getTagsForFile(p).some(t => t.label_id === label.id)
+        );
+        return {
+          label: `${allHaveTag ? '✓ ' : ''}${label.name}`,
+          icon: <span className="w-3 h-3 rounded-full inline-block shrink-0" style={{ backgroundColor: label.color }} />,
+          action: async () => {
+            if (allHaveTag) {
+              // Remove tag from all selected files
+              for (const p of selectedPaths) {
+                await fileTags.removeTag(p, label.id);
+              }
+            } else {
+              // Add tag to all selected files
+              await fileTags.setTags(selectedPaths, [label.id]);
+            }
+          },
+        };
+      });
+
+      // Clear All Tags option
+      tagChildren.push({
+        label: t('tags.clearAll') || 'Clear All Tags',
+        icon: <X size={14} className="text-gray-400" />,
+        action: async () => {
+          for (const p of selectedPaths) {
+            const tags = fileTags.getTagsForFile(p);
+            for (const tag of tags) {
+              await fileTags.removeTag(p, tag.label_id);
+            }
+          }
+        },
+        divider: true,
+      });
+
+      items.push({
+        label: t('tags.tags') || 'Tags',
+        icon: <Tag size={14} />,
+        action: () => {},
+        children: tagChildren,
+        divider: true,
       });
     }
 
@@ -4416,6 +4722,7 @@ const App: React.FC = () => {
       />
       {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
       <TransferToastContainer onCancel={cancelTransfer} />
+      <GlobalTooltip />
       {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
       {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
       {batchRenameDialog && (
@@ -4676,6 +4983,14 @@ const App: React.FC = () => {
               notify.error(t('contextMenu.compressionFailed'), String(err));
             }
           }}
+        />
+      )}
+
+      {cryptomatorCreateDialog && (
+        <CryptomatorCreateDialog
+          outputDir={cryptomatorCreateDialog.outputDir}
+          onClose={() => setCryptomatorCreateDialog(null)}
+          onCreated={() => loadLocalFiles(currentLocalPath)}
         />
       )}
 
@@ -5044,7 +5359,7 @@ const App: React.FC = () => {
               />
             )}
             {/* Toolbar */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
                 {(() => {
                   const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
@@ -5167,7 +5482,7 @@ const App: React.FC = () => {
                         ? 'bg-purple-500 hover:bg-purple-600 text-white'
                         : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                         }`}
-                      title={isSyncNavigation ? t('common.synced') : t('common.sync')}
+                      title={isSyncNavigation ? t('common.syncNavigationActive') : t('common.syncNavigation')}
                     >
                       {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
                       {isSyncNavigation ? t('common.synced') : t('common.sync')}
@@ -5220,6 +5535,8 @@ const App: React.FC = () => {
             <div className="flex flex-1 min-h-0">
               {/* Remote — hidden when not connected or local-only mode */}
               {isConnected && showRemotePanel && <div
+                role="region"
+                aria-label="Remote files"
                 className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                 onDragOver={(e) => handlePanelDragOver(e, true)}
                 onDrop={(e) => handlePanelDrop(e, true)}
@@ -5273,51 +5590,51 @@ const App: React.FC = () => {
                       title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
                       placeholder="/path/to/directory"
                     />
-                    <button
-                      onClick={(e) => {
-                        const btn = e.currentTarget;
-                        btn.querySelector('svg')?.classList.add('animate-spin');
-                        setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
-                        loadRemoteFiles();
-                      }}
-                      className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      title={t('common.refresh')}
-                    >
-                      <RefreshCw size={13} />
-                    </button>
-                    {isConnected && (
-                      <button
-                        onClick={() => {
-                          if (remoteSearchResults !== null) {
-                            setRemoteSearchResults(null);
-                            setRemoteSearchQuery('');
-                          } else {
-                            setShowRemoteSearchBar(prev => !prev);
-                          }
-                        }}
-                        className={`flex-shrink-0 px-2 flex items-center transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
-                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
-                      >
-                        {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
-                      </button>
-                    )}
-                    {debugMode && isConnected && (
-                      <button
-                        onClick={() => {
-                          const lines = sortedRemoteFiles.map(f =>
-                            `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
-                          );
-                          const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
-                          navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
-                          notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
-                        }}
-                        className="flex-shrink-0 px-2 flex items-center text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-                        title={t('debug.copyFileListToClipboard')}
-                      >
-                        <ClipboardList size={13} />
-                      </button>
-                    )}
                   </div>
+                  <button
+                    onClick={(e) => {
+                      const btn = e.currentTarget;
+                      btn.querySelector('svg')?.classList.add('animate-spin');
+                      setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                      loadRemoteFiles();
+                    }}
+                    className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    title={t('common.refresh')}
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                  {isConnected && (
+                    <button
+                      onClick={() => {
+                        if (remoteSearchResults !== null) {
+                          setRemoteSearchResults(null);
+                          setRemoteSearchQuery('');
+                        } else {
+                          setShowRemoteSearchBar(prev => !prev);
+                        }
+                      }}
+                      className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                      title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                    >
+                      {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                    </button>
+                  )}
+                  {debugMode && isConnected && (
+                    <button
+                      onClick={() => {
+                        const lines = sortedRemoteFiles.map(f =>
+                          `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
+                        );
+                        const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
+                        navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
+                        notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
+                      }}
+                      className="flex-shrink-0 p-1.5 rounded text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                      title={t('debug.copyFileListToClipboard')}
+                    >
+                      <ClipboardList size={13} />
+                    </button>
+                  )}
                 </div>
                 {/* Remote Search Bar */}
                 {showRemoteSearchBar && isConnected && (
@@ -5371,9 +5688,9 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   ) : viewMode === 'list' ? (
-                    <table className="w-full">
-                      <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
-                        <tr>
+                    <table className="w-full" role="grid" aria-label="Remote files">
+                      <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
+                        <tr role="row">
                           <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
                           {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                           {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
@@ -5381,13 +5698,14 @@ const App: React.FC = () => {
                           {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700" role="rowgroup">
                         {/* Go Up Row - always visible, disabled at root or sync base */}
                         {(() => {
                           const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
                           const canGoUp = currentRemotePath !== '/' && !(isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote));
                           return (
                             <tr
+                              role="row"
                               className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
                               onClick={() => canGoUp && changeRemoteDirectory('..')}
                             >
@@ -5406,6 +5724,8 @@ const App: React.FC = () => {
                           <tr
                             key={`${file.name}-${i}`}
                             data-file-row
+                            role="row"
+                            aria-selected={selectedRemoteFiles.has(file.name)}
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
@@ -5601,562 +5921,94 @@ const App: React.FC = () => {
                 </div>
               </div>}
 
-              {/* Local — full width when remote panel is hidden */}
-              <div
-                className={`${(!isConnected || !showRemotePanel) ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
-                onDragOver={(e) => handlePanelDragOver(e, false)}
-                onDrop={(e) => handlePanelDrop(e, false)}
-                onDragLeave={handlePanelDragLeave}
-              >
-                <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  {(!isConnected || !showRemotePanel) ? (
-                    /* AeroFile mode: BreadcrumbBar with search button */
-                    <div className="flex-1 flex items-center gap-1.5 min-w-0">
-                      <div className="flex-1 min-w-0">
-                        <BreadcrumbBar
-                          currentPath={currentLocalPath}
-                          onNavigate={changeLocalDirectory}
-                          isCoherent={isLocalPathCoherent}
-                          minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.local : undefined}
-                          t={t}
-                        />
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          const btn = e.currentTarget;
-                          btn.querySelector('svg')?.classList.add('animate-spin');
-                          setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
-                          loadLocalFiles(currentLocalPath);
-                        }}
-                        className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                        title={t('common.refresh')}
-                      >
-                        <RefreshCw size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (localSearchFilter) {
-                            setLocalSearchFilter('');
-                            setShowLocalSearchBar(false);
-                          } else {
-                            setShowLocalSearchBar(prev => !prev);
-                          }
-                        }}
-                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                        title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
-                      >
-                        <Search size={13} />
-                      </button>
-                    </div>
-                  ) : (
-                    /* Connected mode: classic input address bar */
-                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${(!isLocalPathCoherent || isSyncPathMismatch) ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-                      {/* Local icon inside address bar (like Chrome favicon) */}
-                      <div
-                        className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
-                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isLocalPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
-                      >
-                        {(!isLocalPathCoherent || isSyncPathMismatch) ? (
-                          <AlertTriangle size={14} className="text-amber-500" />
-                        ) : (
-                          <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        value={currentLocalPath}
-                        onChange={(e) => setCurrentLocalPath(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && changeLocalDirectory((e.target as HTMLInputElement).value)}
-                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${(!isLocalPathCoherent || isSyncPathMismatch) ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isLocalPathCoherent ? t('browser.editPathHint') : `\u26a0\ufe0f ${t('browser.localPathMismatch')}`}
-                        placeholder="/path/to/local/directory"
-                      />
-                      <button
-                        onClick={(e) => {
-                          const btn = e.currentTarget;
-                          btn.querySelector('svg')?.classList.add('animate-spin');
-                          setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
-                          loadLocalFiles(currentLocalPath);
-                        }}
-                        className="flex-shrink-0 px-2 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                        title={t('common.refresh')}
-                      >
-                        <RefreshCw size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (localSearchFilter) {
-                            setLocalSearchFilter('');
-                            setShowLocalSearchBar(false);
-                          } else {
-                            setShowLocalSearchBar(prev => !prev);
-                          }
-                        }}
-                        className={`flex-shrink-0 px-2 flex items-center transition-colors ${localSearchFilter ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
-                        title={localSearchFilter ? t('search.clear') || 'Clear search' : t('search.search_files') || 'Search files'}
-                      >
-                        <Search size={13} />
-                      </button>
-                      {debugMode && (
-                        <button
-                          onClick={() => {
-                            const lines = sortedLocalFiles.map(f =>
-                              `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
-                            );
-                            const header = `# Local files: ${currentLocalPath} (${sortedLocalFiles.length} entries)\n# type\tsize\tmodified\tname`;
-                            navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
-                            notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedLocalFiles.length }));
-                          }}
-                          className="flex-shrink-0 px-2 flex items-center text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-                          title={t('debug.copyFileListToClipboard')}
-                        >
-                          <ClipboardList size={13} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {showLocalSearchBar && (
-                  <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
-                    <Search size={14} className="text-blue-500 flex-shrink-0" />
-                    <input
-                      autoFocus
-                      ref={localSearchRef}
-                      type="text"
-                      placeholder={t('search.local_placeholder') || 'Filter local files...'}
-                      value={localSearchFilter}
-                      onChange={e => setLocalSearchFilter(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Escape') {
-                          setShowLocalSearchBar(false);
-                          setLocalSearchFilter('');
-                        }
-                      }}
-                      className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
-                    />
-                    {localSearchFilter && (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                        {t('search.resultsCount', { count: localFiles.filter(f => f.name.toLowerCase().includes(localSearchFilter.toLowerCase())).length })}
-                      </span>
-                    )}
-                    <button
-                      onClick={() => { setShowLocalSearchBar(false); setLocalSearchFilter(''); }}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                {/* Sidebar + Content flex row */}
-                <div className="flex flex-1 overflow-hidden">
-                  {/* AeroFile Places Sidebar */}
-                  {showSidebar && (!isConnected || !showRemotePanel) && (
-                    <PlacesSidebar
-                      currentPath={currentLocalPath}
-                      onNavigate={changeLocalDirectory}
-                      t={t}
-                      recentPaths={recentPaths}
-                      onClearRecent={() => setRecentPaths([])}
-                      onRemoveRecent={(path) => setRecentPaths(prev => prev.filter(p => p !== path))}
-                      isTrashView={isTrashView}
-                      onNavigateTrash={handleNavigateTrash}
-                    />
-                  )}
-                  <div className="flex-1 overflow-auto" onContextMenu={(e) => {
-                    const target = e.target as HTMLElement;
-                    const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
-                    if (!isFileRow) showLocalEmptyContextMenu(e);
-                  }}>
-                  {isTrashView ? (
-                    <div className="flex-1 overflow-auto">
-                      {/* Trash toolbar */}
-                      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {t('trash.title')} — {t('trash.itemCount', { count: trashItems.length })}
-                        </span>
-                        <div className="flex-1" />
-                        {trashItems.length > 0 && (
-                          <button
-                            onClick={handleEmptyTrash}
-                            className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                          >
-                            {t('trash.empty')}
-                          </button>
-                        )}
-                      </div>
+              {/* Local Path Tabs — visible in AeroFile mode when tabs exist */}
+              {(!isConnected || !showRemotePanel) && localTabs.length > 0 && (
+                <LocalPathTabs
+                  tabs={localTabs}
+                  activeTabId={activeLocalTabId}
+                  onTabClick={switchLocalTab}
+                  onTabClose={closeLocalTab}
+                  onNewTab={createLocalTab}
+                  onReorder={setLocalTabs}
+                />
+              )}
 
-                      {trashItems.length === 0 ? (
-                        <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
-                          {t('trash.emptyTrash')}
-                        </div>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                              <th className="text-left px-4 py-2 font-medium">{t('browser.name')}</th>
-                              <th className="text-left px-4 py-2 font-medium">{t('trash.originalPath')}</th>
-                              <th className="text-right px-4 py-2 font-medium">{t('browser.size')}</th>
-                              <th className="text-left px-4 py-2 font-medium">{t('trash.deletedAt')}</th>
-                              <th className="text-center px-4 py-2 font-medium">{t('common.actions')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {trashItems.map((item) => (
-                              <tr key={item.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                <td className="px-4 py-2 flex items-center gap-2">
-                                  {item.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(item.name, 16).icon}
-                                  <span className="truncate">{item.name}</span>
-                                </td>
-                                <td className="px-4 py-2 text-gray-500 text-xs truncate max-w-[200px]" title={item.original_path}>
-                                  {item.original_path}
-                                </td>
-                                <td className="px-4 py-2 text-right text-gray-500">
-                                  {item.is_dir ? '\u2014' : formatBytes(item.size)}
-                                </td>
-                                <td className="px-4 py-2 text-gray-500 text-xs">
-                                  {item.deleted_at ? new Date(item.deleted_at).toLocaleString() : '\u2014'}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  <button
-                                    onClick={() => handleRestoreTrashItem(item)}
-                                    className="px-2 py-0.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                                  >
-                                    {t('trash.restore')}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  ) : viewMode === 'list' ? (
-                    <table className="w-full">
-                      <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
-                        <tr>
-                          <SortableHeader label={t('browser.name')} field="name" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />
-                          {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
-                          {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} className="hidden xl:table-cell" />}
-                          {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={localSortField} order={localSortOrder} onClick={handleLocalSort} />}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {/* Go Up Row - always visible, disabled at root */}
-                        <tr
-                          className={`${currentLocalPath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                          onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
-                        >
-                          <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
-                            {iconProvider.getFolderUpIcon(16).icon}
-                            <span className="italic">{t('browser.parentFolder')}</span>
-                          </td>
-                          {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
-                          {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>}
-                          {visibleColumns.includes('modified') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
-                        </tr>
-                        {sortedLocalFiles.map((file, i) => (
-                          <tr
-                            key={`${file.name}-${i}`}
-                            data-file-row
-                            draggable={file.name !== '..'}
-                            onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, false)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => file.is_dir && handleDrop(e, file.path, false)}
-                            onClick={(e) => {
-                              if (file.name === '..') return;
-                              setActivePanel('local');
-                              if (e.shiftKey && lastSelectedLocalIndex !== null) {
-                                const start = Math.min(lastSelectedLocalIndex, i);
-                                const end = Math.max(lastSelectedLocalIndex, i);
-                                const rangeNames = sortedLocalFiles.slice(start, end + 1).map(f => f.name);
-                                setSelectedLocalFiles(new Set(rangeNames));
-                              } else if (e.ctrlKey || e.metaKey) {
-                                setSelectedLocalFiles(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(file.name)) next.delete(file.name);
-                                  else next.add(file.name);
-                                  return next;
-                                });
-                                setLastSelectedLocalIndex(i);
-                              } else {
-                                if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
-                                  setSelectedLocalFiles(new Set());
-                                  setPreviewFile(null);
-                                } else {
-                                  setSelectedLocalFiles(new Set([file.name]));
-                                  setPreviewFile(file);
-                                }
-                                setLastSelectedLocalIndex(i);
-                              }
-                            }}
-                            onDoubleClick={() => {
-                              if (file.is_dir) {
-                                changeLocalDirectory(file.path);
-                              } else {
-                                // Respect double-click action setting
-                                if (doubleClickAction === 'preview') {
-                                  const category = getPreviewCategory(file.name);
-                                  if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-                                    openUniversalPreview(file, false);
-                                  } else if (isPreviewable(file.name)) {
-                                    openDevToolsPreview(file, false);
-                                  }
-                                } else {
-                                  if (isConnected) {
-                                    uploadFile(file.path, file.name, false);
-                                  } else {
-                                    openInFileManager(file.path);
-                                  }
-                                }
-                              }
-                            }}
-                            onContextMenu={(e: React.MouseEvent) => showLocalContextMenu(e, file)}
-                            className={`cursor-pointer transition-colors ${
-                              dropTargetPath === file.path && file.is_dir
-                                ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
-                                : selectedLocalFiles.has(file.name)
-                                  ? 'bg-blue-100 dark:bg-blue-900/40'
-                                  : 'hover:bg-blue-50 dark:hover:bg-gray-700'
-                            } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
-                          >
-                            <td className="px-4 py-2 flex items-center gap-2">
-                              {file.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(file.name, 16).icon}
-                              {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
-                                <input
-                                  ref={inlineRenameRef}
-                                  type="text"
-                                  value={inlineRenameValue}
-                                  onChange={(e) => setInlineRenameValue(e.target.value)}
-                                  onKeyDown={handleInlineRenameKeyDown}
-                                  onBlur={commitInlineRename}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="px-1 py-0.5 text-sm bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none min-w-[120px]"
-                                />
-                              ) : (
-                                <span
-                                  className="cursor-text"
-                                  onClick={(e) => {
-                                    if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name) && file.name !== '..') {
-                                      e.stopPropagation();
-                                      startInlineRename(file.path, file.name, false);
-                                    }
-                                  }}
-                                >
-                                  {displayName(file.name, file.is_dir)}
-                                </span>
-                              )}
-                              {getSyncBadge(file.path, file.modified || undefined, true)}
-                            </td>
-                            {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>}
-                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                            {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : viewMode === 'grid' ? (
-                    /* Grid View */
-                    <div className="file-grid">
-                      {/* Go Up Item - always visible, disabled at root */}
-                      <div
-                        className={`file-grid-item file-grid-go-up ${currentLocalPath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        onClick={() => currentLocalPath !== '/' && changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
-                      >
-                        <div className="file-grid-icon">
-                          {iconProvider.getFolderUpIcon(32).icon}
-                        </div>
-                        <span className="file-grid-name italic text-gray-500">{t('browser.goUp')}</span>
-                      </div>
-                      {sortedLocalFiles.map((file, i) => (
-                        <div
-                          key={`${file.name}-${i}`}
-                          data-file-card
-                          draggable={file.name !== '..'}
-                          onDragStart={(e) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
-                          onDragEnd={handleDragEnd}
-                          onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, false)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => file.is_dir && handleDrop(e, file.path, false)}
-                          className={`file-grid-item ${
-                            dropTargetPath === file.path && file.is_dir
-                              ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
-                              : selectedLocalFiles.has(file.name) ? 'selected' : ''
-                          } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
-                          onClick={(e) => {
-                            if (file.name === '..') return;
-                            setActivePanel('local');
-                            if (e.shiftKey && lastSelectedLocalIndex !== null) {
-                              const start = Math.min(lastSelectedLocalIndex, i);
-                              const end = Math.max(lastSelectedLocalIndex, i);
-                              const rangeNames = sortedLocalFiles.slice(start, end + 1).map(f => f.name);
-                              setSelectedLocalFiles(new Set(rangeNames));
-                            } else if (e.ctrlKey || e.metaKey) {
-                              setSelectedLocalFiles(prev => {
-                                const next = new Set(prev);
-                                if (next.has(file.name)) next.delete(file.name);
-                                else next.add(file.name);
-                                return next;
-                              });
-                              setLastSelectedLocalIndex(i);
-                            } else {
-                              if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
-                                setSelectedLocalFiles(new Set());
-                                setPreviewFile(null);
-                              } else {
-                                setSelectedLocalFiles(new Set([file.name]));
-                                setPreviewFile(file);
-                              }
-                              setLastSelectedLocalIndex(i);
-                            }
-                          }}
-                          onDoubleClick={() => {
-                            if (file.is_dir) {
-                              changeLocalDirectory(file.path);
-                            } else {
-                              // Respect double-click action setting
-                              if (doubleClickAction === 'preview') {
-                                const category = getPreviewCategory(file.name);
-                                if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-                                  openUniversalPreview(file, false);
-                                } else if (isPreviewable(file.name)) {
-                                  openDevToolsPreview(file, false);
-                                }
-                              } else {
-                                if (isConnected) {
-                                  uploadFile(file.path, file.name, false);
-                                } else {
-                                  openInFileManager(file.path);
-                                }
-                              }
-                            }
-                          }}
-                          onContextMenu={(e: React.MouseEvent) => showLocalContextMenu(e, file)}
-                        >
-                          {file.is_dir ? (
-                            <div className="file-grid-icon">
-                              {iconProvider.getFolderIcon(32).icon}
-                            </div>
-                          ) : isImageFile(file.name) ? (
-                            <ImageThumbnail
-                              path={file.path}
-                              name={file.name}
-                              fallbackIcon={iconProvider.getFileIcon(file.name).icon}
-                            />
-                          ) : (
-                            <div className="file-grid-icon">
-                              {iconProvider.getFileIcon(file.name).icon}
-                            </div>
-                          )}
-                          {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
-                            <input
-                              ref={inlineRenameRef}
-                              type="text"
-                              value={inlineRenameValue}
-                              onChange={(e) => setInlineRenameValue(e.target.value)}
-                              onKeyDown={handleInlineRenameKeyDown}
-                              onBlur={commitInlineRename}
-                              onClick={(e) => e.stopPropagation()}
-                              className="file-grid-name px-1 bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none text-center"
-                            />
-                          ) : (
-                            <span
-                              className="file-grid-name cursor-text"
-                              onClick={(e) => {
-                                if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name) && file.name !== '..') {
-                                  e.stopPropagation();
-                                  startInlineRename(file.path, file.name, false);
-                                }
-                              }}
-                            >
-                              {displayName(file.name, file.is_dir)}
-                            </span>
-                          )}
-                          {!file.is_dir && file.size !== null && (
-                            <span className="file-grid-size">{formatBytes(file.size)}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    /* Large Icons View */
-                    <LargeIconsGrid
-                      files={sortedLocalFiles}
-                      selectedFiles={selectedLocalFiles}
-                      currentPath={currentLocalPath}
-                      onFileClick={(file, e) => {
-                        setActivePanel('local');
-                        const i = sortedLocalFiles.indexOf(file);
-                        if (e.shiftKey && lastSelectedLocalIndex !== null) {
-                          const start = Math.min(lastSelectedLocalIndex, i);
-                          const end = Math.max(lastSelectedLocalIndex, i);
-                          const rangeNames = sortedLocalFiles.slice(start, end + 1).map(f => f.name);
-                          setSelectedLocalFiles(new Set(rangeNames));
-                        } else if (e.ctrlKey || e.metaKey) {
-                          setSelectedLocalFiles(prev => {
-                            const next = new Set(prev);
-                            if (next.has(file.name)) next.delete(file.name);
-                            else next.add(file.name);
-                            return next;
-                          });
-                          setLastSelectedLocalIndex(i);
-                        } else {
-                          if (selectedLocalFiles.size === 1 && selectedLocalFiles.has(file.name)) {
-                            setSelectedLocalFiles(new Set());
-                            setPreviewFile(null);
-                          } else {
-                            setSelectedLocalFiles(new Set([file.name]));
-                            setPreviewFile(file);
-                          }
-                          setLastSelectedLocalIndex(i);
-                        }
-                      }}
-                      onFileDoubleClick={(file) => {
-                        if (file.is_dir) {
-                          changeLocalDirectory(file.path);
-                        } else {
-                          if (doubleClickAction === 'preview') {
-                            const category = getPreviewCategory(file.name);
-                            if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-                              openUniversalPreview(file, false);
-                            } else if (isPreviewable(file.name)) {
-                              openDevToolsPreview(file, false);
-                            }
-                          } else {
-                            if (isConnected) {
-                              uploadFile(file.path, file.name, false);
-                            } else {
-                              openInFileManager(file.path);
-                            }
-                          }
-                        }
-                      }}
-                      onNavigateUp={() => changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/')}
-                      isAtRoot={currentLocalPath === '/' || !!(isSyncNavigation && syncBasePaths && (currentLocalPath.endsWith('/') && currentLocalPath.length > 1 ? currentLocalPath.slice(0, -1) : currentLocalPath) === (syncBasePaths.local.endsWith('/') && syncBasePaths.local.length > 1 ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local))}
-                      getFileIcon={(name, isDir) => {
-                        if (isDir) return iconProvider.getFolderIcon(64);
-                        return iconProvider.getFileIcon(name, 48);
-                      }}
-                      getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
-                      onContextMenu={(e, file) => file ? showLocalContextMenu(e, file) : showLocalEmptyContextMenu(e)}
-                      onDragStart={(e, file) => handleDragStart(e, file, false, selectedLocalFiles, sortedLocalFiles)}
-                      onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, false)}
-                      onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, false)}
-                      onDragLeave={handleDragLeave}
-                      onDragEnd={handleDragEnd}
-                      dragOverTarget={dropTargetPath}
-                      inlineRename={inlineRename}
-                      onInlineRenameChange={setInlineRenameValue}
-                      onInlineRenameCommit={commitInlineRename}
-                      onInlineRenameCancel={() => setInlineRename(null)}
-                      formatBytes={formatBytes}
-                      showFileExtensions={showFileExtensions}
-                    />
-                  )}
-                </div>
-                </div>{/* close sidebar+content flex row */}
-              </div>
+              {/* Local — full width when remote panel is hidden */}
+              <LocalFilePanel
+                isAeroFileMode={!isConnected || !showRemotePanel}
+                isConnected={isConnected}
+                currentPath={currentLocalPath}
+                setCurrentPath={setCurrentLocalPath}
+                onNavigate={changeLocalDirectory}
+                onRefresh={loadLocalFiles}
+                isPathCoherent={isLocalPathCoherent}
+                isSyncPathMismatch={isSyncPathMismatch}
+                isSyncNavigation={isSyncNavigation}
+                syncBasePaths={syncBasePaths}
+                localFiles={localFiles}
+                sortedFiles={sortedLocalFiles}
+                selectedFiles={selectedLocalFiles}
+                setSelectedFiles={setSelectedLocalFiles}
+                lastSelectedIndex={lastSelectedLocalIndex}
+                setLastSelectedIndex={setLastSelectedLocalIndex}
+                setActivePanel={setActivePanel}
+                setPreviewFile={setPreviewFile}
+                sortField={localSortField}
+                sortOrder={localSortOrder}
+                onSort={handleLocalSort}
+                searchFilter={localSearchFilter}
+                setSearchFilter={setLocalSearchFilter}
+                showSearchBar={showLocalSearchBar}
+                setShowSearchBar={setShowLocalSearchBar}
+                searchRef={localSearchRef}
+                viewMode={viewMode}
+                visibleColumns={visibleColumns}
+                showFileExtensions={showFileExtensions}
+                debugMode={debugMode}
+                doubleClickAction={doubleClickAction}
+                inlineRename={inlineRename}
+                inlineRenameValue={inlineRenameValue}
+                setInlineRenameValue={setInlineRenameValue}
+                inlineRenameRef={inlineRenameRef}
+                onInlineRenameKeyDown={handleInlineRenameKeyDown}
+                onInlineRenameCommit={commitInlineRename}
+                onInlineRenameStart={startInlineRename}
+                onInlineRenameCancel={() => setInlineRename(null)}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                dropTargetPath={dropTargetPath}
+                dragSourcePaths={dragData?.sourcePaths || []}
+                crossPanelTarget={crossPanelTarget}
+                onPanelDragOver={handlePanelDragOver}
+                onPanelDrop={handlePanelDrop}
+                onPanelDragLeave={handlePanelDragLeave}
+                onContextMenu={showLocalContextMenu}
+                onEmptyContextMenu={showLocalEmptyContextMenu}
+                onOpenUniversalPreview={openUniversalPreview}
+                onOpenDevToolsPreview={openDevToolsPreview}
+                onUploadFile={uploadFile}
+                onOpenInFileManager={openInFileManager}
+                isTrashView={isTrashView}
+                trashItems={trashItems}
+                onEmptyTrash={handleEmptyTrash}
+                onRestoreTrashItem={handleRestoreTrashItem}
+                onNavigateTrash={handleNavigateTrash}
+                showSidebar={showSidebar}
+                recentPaths={recentPaths}
+                setRecentPaths={setRecentPaths}
+                iconProvider={iconProvider}
+                displayName={displayName}
+                getSyncBadge={getSyncBadge}
+                getTagsForFile={fileTags.getTagsForFile}
+                labelCounts={fileTags.labelCounts}
+                activeTagFilter={fileTags.activeTagFilter}
+                onTagFilter={fileTags.setActiveTagFilter}
+                t={t}
+                notify={notify}
+              />
 
               {/* Preview Panel - only in local-only (AeroFile) mode */}
               {showLocalPreview && (!isConnected || !showRemotePanel) && (

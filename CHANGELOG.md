@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-02-20
+
+### AeroFile Pro: Modularization, Tabs & Tags
+
+AeroFile mode gets a major upgrade with modular architecture, tabbed local browsing, and Finder-style color labels. App.tsx is refactored by extracting the local file panel into a standalone component, local path tabs enable multi-directory browsing with drag-to-reorder, and a full file tagging system provides 7 preset color labels with SQLite persistence, context menu integration, and sidebar filtering.
+
+#### Added
+
+- **LocalFilePanel component extraction**: Extracted ~730 lines of local panel rendering from App.tsx into `src/components/LocalFilePanel.tsx`. Pure rendering extraction — all state and business logic remain in App.tsx for maintainability
+- **Multiple local path tabs**: Tabbed directory browsing in AeroFile mode with up to 12 concurrent tabs. Drag-to-reorder, context menu (Close/Close Others/Close All), middle-click close, new tab (+) button. Tab state persisted in localStorage across sessions
+- **File tags backend**: SQLite-backed file tagging system (`file_tags.rs`) with WAL mode, 7 preset Finder-style color labels (Red, Orange, Yellow, Green, Blue, Purple, Gray), and 9 Tauri commands for label CRUD, batch tag operations, and label count queries
+- **File tag badges**: Colored dot badges next to filenames in list and grid views via `FileTagBadge` component. Shows up to 3 dots with "+N" overflow indicator. React.memo optimized for large file lists
+- **Tags context menu submenu**: Right-click any file(s) to access Tags submenu with all 7 color labels. Toggle semantics: if all selected files have a tag it removes it, otherwise adds it. "Clear All Tags" option included
+- **Tags sidebar section**: PlacesSidebar shows tag labels with colored dots, names, and file counts. Click to filter file listing by tag, click again to clear filter
+- **Tag filter in file listing**: Active tag filter integrates with search filter — files must match both the search query and the selected tag
+- **useFileTags hook**: React hook for tag management with debounced batch queries (150ms), Map cache for quick lookups, label CRUD operations, and sidebar filter state
+- **Keyboard navigation**: Arrow Up/Down to select files in both local and remote panels. Shift+Arrow for range selection. Works across list, grid, and large icon views
+- **ARIA accessibility baseline**: `role="grid"`, `role="row"`, `aria-selected` on file tables (local and remote). `role="region"` on file panels, `role="toolbar"` on main toolbar, `role="status"` on status bar. `role="navigation"` on PlacesSidebar
+- **macOS FinderSync extension**: Native `.appex` Finder extension (~230 lines Swift) for sync status badges in Finder. 6 badge types (OK, SYNC, ERROR, CONFLICT, NEW, IGNORED) via `FIFinderSyncController`. Connects to AeroFTP daemon via Unix socket (Nextcloud-compatible protocol). Universal binary build script (arm64 + x86_64), code signing support, `Info.plist` and entitlements included
+- **macOS Finder restart handler**: `restart_file_manager_cmd` uses `killall Finder` on macOS (auto-relaunches) for extension reload
+- **Platform-specific cfg gating**: GIO emblems and Nautilus/Nemo restart now correctly gated to `#[cfg(target_os = "linux")]` instead of `#[cfg(unix)]`, preventing dead code on macOS
+- **Event-driven volume detection** (#113): Replaced 5-second `setInterval` polling with a dedicated background thread that watches `/proc/mounts` via `poll()` and GVFS directory via `inotify`. Mount/unmount events are detected instantly and pushed to the frontend via Tauri events. Non-Linux platforms retain a 30-second fallback poll
+- **Network volume eject** (#114): Manual NFS/CIFS/SSHFS mounts now show Eject button and unmount correctly. Added `fusermount3`/`fusermount` fallback for FUSE-based network mounts (sshfs, rclone) when `umount` fails
+- **23 new i18n keys**: Local tabs (6 keys) and tags (17 keys including 7 color names) translated in all 47 languages
+
+#### Fixed
+
+- **Mount point octal escaping** (#111): Rewrote `unescape_octal()` in `filesystem.rs` to correctly handle multi-byte UTF-8 sequences in mount point paths from `/proc/mounts`. Previous implementation used `byte as char` which corrupted non-ASCII characters (e.g. accented folder names). New implementation accumulates consecutive escaped bytes and decodes as UTF-8
+
+#### Security
+
+- **6-domain independent security audit**: 86 findings (9 Critical, 17 High, 28 Medium, 19 Low, 13 Info) identified and remediated across Security & Cryptography, Rust Quality, CI/CD, Docs & OpenSSF, Performance, and Frontend. Post-remediation grade: A-. Full report in `docs/SECURITY-AUDIT-SUMMARY.md`
+- **CSPRNG enforcement**: Replaced `thread_rng()` with `OsRng` in all cryptographic contexts (`crypto.rs`, `webdav.rs` cnonce generation) per NIST SP 800-90A
+- **Download size limit**: AI tool file downloads capped at 50MB with pre-check `stat()` to prevent memory exhaustion
+- **Unsafe unwrap elimination**: 12+ `.as_mut().unwrap()` calls in `ai_tools.rs` replaced with safe `match` pattern returning descriptive errors
+- **Fallible HTTP client init**: `S3Provider::new()` and `WebDavProvider::new()` now return `Result` instead of panicking on `reqwest::Client::builder().build()`
+- **Plugin directory safety**: `plugins_dir()` returns `Result<PathBuf>` instead of panicking with `.expect()`
+- **ARIA accessibility**: Added `role="dialog"`, `aria-modal="true"`, `aria-label` to 17 modal overlays across 12 component files
+- **CI quality gates**: Added `cargo clippy -D warnings`, `cargo test`, `tsc --noEmit`, `i18n:validate` to GitHub Actions pipeline
+- **Dependabot**: Configured weekly dependency scanning for Cargo, npm, and GitHub Actions
+- **Connection pool tuning**: Added `pool_idle_timeout(300s)` to AI streaming HTTP client
+
+#### Changed
+
+- **App.tsx modularization**: Reduced from ~6600 to ~6200 lines by extracting local panel rendering. Cleaner separation of concerns between state management (App.tsx) and rendering (LocalFilePanel.tsx)
+
 ## [2.4.0] - 2026-02-19
 
 ### Provider Integration Audit & Zoho WorkDrive

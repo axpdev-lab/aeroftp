@@ -70,6 +70,41 @@ export interface DiskUsageNode {
   children?: DiskUsageNode[] | null;
 }
 
+/** Local path tab for multi-tab file browsing in AeroFile mode */
+export interface LocalTab {
+  id: string;
+  path: string;
+  label: string;           // last path segment (folder name)
+  scrollTop: number;
+}
+
+/** Tag label (preset or custom color label) */
+export interface TagLabel {
+  id: number;
+  name: string;
+  color: string;
+  sort_order: number;
+  is_preset: boolean;
+}
+
+/** File-tag association (joined with label info) */
+export interface FileTag {
+  id: number;
+  file_path: string;
+  label_id: number;
+  label_name: string;
+  label_color: string;
+  created_at: number;
+}
+
+/** Label with file count for sidebar display */
+export interface LabelCount {
+  id: number;
+  name: string;
+  color: string;
+  count: number;
+}
+
 /** Detailed file properties returned by Rust `get_file_properties` command */
 export interface DetailedFileProperties {
   name: string;

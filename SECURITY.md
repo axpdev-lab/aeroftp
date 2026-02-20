@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 2.4.x   | Yes (current) |
+| 2.5.x   | Yes (current) |
+| 2.4.x   | Security fixes only |
 | 2.3.x   | Security fixes only |
-| 2.2.x   | Security fixes only |
-| < 2.2   | No  |
+| < 2.3   | No  |
 
 ## Security Architecture
 
@@ -376,4 +376,4 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
-*AeroFTP v2.4.0 - 19 February 2026*
+*AeroFTP v2.5.0 - 20 February 2026*

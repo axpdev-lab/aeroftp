@@ -6,7 +6,8 @@ import {
     isFtpProtocol, TransferProgress, TransferEvent, SyncIndex,
     RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry,
     SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus,
-    CompressionMode, SyncTransferEntry, ParallelSyncResult
+    CompressionMode, SyncTransferEntry, ParallelSyncResult,
+    JournalSummary
 } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -17,7 +18,8 @@ import {
     CheckCircle2, XCircle,
     Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
     WifiOff, KeyRound, HardDrive, Timer, Ban,
-    Download, ShieldAlert
+    Download, ShieldAlert,
+    History, FileCheck, FilePen, ChevronDown, ChevronRight, FlaskConical
 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
@@ -33,6 +35,7 @@ import {
 import { MultiPathEditor } from './Sync/MultiPathEditor';
 import { SyncTemplateDialog } from './Sync/SyncTemplateDialog';
 import { RollbackDialog } from './Sync/RollbackDialog';
+import { CanaryResultDialog, CanaryResult } from './Sync/CanaryResultDialog';
 
 interface SyncPanelProps {
     isOpen: boolean;
@@ -86,6 +89,26 @@ const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
 
 // Constants imported from ./Sync/syncConstants
 
+// Generate a signing key from a stored random secret + sync path pair (tamper detection)
+async function getJournalSigningKey(localPath: string, remotePath: string): Promise<string> {
+    // Use a stored random secret + paths to derive the signing key
+    const STORAGE_KEY = 'aeroftp_journal_signing_secret';
+    let secret = localStorage.getItem(STORAGE_KEY);
+    if (!secret) {
+        // Generate a random 256-bit secret on first use
+        const randomBytes = new Uint8Array(32);
+        crypto.getRandomValues(randomBytes);
+        secret = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(STORAGE_KEY, secret);
+    }
+    const data = new TextEncoder().encode(`${secret}|${localPath}|${remotePath}|aeroftp-journal-signing`);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Integrity status for a journal entry in the history list
+type JournalIntegrityStatus = 'unknown' | 'checking' | 'signed' | 'verified' | 'tampered' | 'unsigned';
+
 export const SyncPanel: React.FC<SyncPanelProps> = ({
     isOpen,
     onClose,
@@ -107,6 +130,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [showTemplate, setShowTemplate] = useState(false);
     const [showRollback, setShowRollback] = useState(false);
 
+    // --- Canary Mode State ---
+    const [canaryMode, setCanaryMode] = useState(false);
+    const [canaryPercent, setCanaryPercent] = useState(10);
+    const [canarySelection, setCanarySelection] = useState('random');
+    const [canaryResult, setCanaryResult] = useState<CanaryResult | null>(null);
+
     // --- Core State ---
     const [editLocalPath, setEditLocalPath] = useState(localPath);
     const [editRemotePath, setEditRemotePath] = useState(remotePath);
@@ -123,6 +152,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [hasIndex, setHasIndex] = useState(false);
     const [hasJournal, setHasJournal] = useState(false);
     const [pendingJournal, setPendingJournal] = useState<SyncJournal | null>(null);
+
+    // --- Journal History & Integrity State ---
+    const [journalList, setJournalList] = useState<JournalSummary[]>([]);
+    const [showJournalHistory, setShowJournalHistory] = useState(false);
+    const [journalIntegrity, setJournalIntegrity] = useState<Map<string, JournalIntegrityStatus>>(new Map());
+    const [journalFeedback, setJournalFeedback] = useState<string | null>(null);
+
     const isProvider = !!protocol && !isFtpProtocol(protocol);
     const isFtp = !isProvider;
 
@@ -246,6 +282,24 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 });
             // Auto-cleanup completed journals older than 30 days
             invoke<number>('cleanup_old_journals_cmd', { maxAgeDays: 30 }).catch(() => {});
+            // Load journal history list and check integrity status
+            invoke<JournalSummary[]>('list_sync_journals_cmd').then(async (journals) => {
+                setJournalList(journals);
+                const statusMap = new Map<string, JournalIntegrityStatus>();
+                for (const j of journals) {
+                    const key = `${j.local_path}|${j.remote_path}`;
+                    try {
+                        const signingKey = await getJournalSigningKey(j.local_path, j.remote_path);
+                        const valid = await invoke<boolean>('verify_journal_signature', {
+                            localPath: j.local_path, remotePath: j.remote_path, signingKey,
+                        });
+                        statusMap.set(key, valid ? 'verified' : 'tampered');
+                    } catch {
+                        statusMap.set(key, 'unsigned');
+                    }
+                }
+                setJournalIntegrity(statusMap);
+            }).catch(() => setJournalList([]));
             // Load current speed limits
             const loadCmd = isFtp ? 'get_speed_limit' : 'provider_get_speed_limit';
             invoke<[number, number]>(loadCmd)
@@ -457,6 +511,35 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    // Canary sync: run a trial on a subset, show results dialog
+    const handleCanaryRun = async () => {
+        if (!isConnected) return;
+        setError(null);
+        setIsSyncing(true);
+        try {
+            const result = await invoke<CanaryResult>('sync_canary_run', {
+                localPath: editLocalPath,
+                remotePath: editRemotePath,
+                percent: canaryPercent,
+                selection: canarySelection,
+            });
+            setCanaryResult(result);
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    // Decides whether to run canary or full sync based on canaryMode toggle
+    const handleCanaryOrSync = () => {
+        if (canaryMode) {
+            handleCanaryRun();
+        } else {
+            handleSync();
+        }
+    };
+
     // #149: Dry-run export — JSON
     const handleExportJSON = async () => {
         if (comparisons.length === 0) return;
@@ -540,11 +623,51 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             const count = await invoke<number>('clear_all_journals_cmd');
             setHasJournal(false);
             setPendingJournal(null);
+            setJournalList([]);
+            setJournalIntegrity(new Map());
             if (count > 0) {
                 setError(t('syncPanel.journalsCleared', { count: String(count) }));
                 setTimeout(() => setError(null), 3000);
             }
         } catch { /* ignore */ }
+    };
+
+    // Sign a journal for tamper detection
+    const handleSignJournal = async (lp: string, rp: string) => {
+        const key = `${lp}|${rp}`;
+        setJournalIntegrity(prev => new Map(prev).set(key, 'checking'));
+        try {
+            const signingKey = await getJournalSigningKey(lp, rp);
+            await invoke<string>('sign_sync_journal', {
+                localPath: lp, remotePath: rp, signingKey,
+            });
+            setJournalIntegrity(prev => new Map(prev).set(key, 'signed'));
+            setJournalFeedback(t('syncPanel.journalSignSuccess'));
+            setTimeout(() => setJournalFeedback(null), 3000);
+        } catch {
+            setJournalIntegrity(prev => new Map(prev).set(key, 'unsigned'));
+            setJournalFeedback(t('syncPanel.journalSignError'));
+            setTimeout(() => setJournalFeedback(null), 3000);
+        }
+    };
+
+    // Verify a journal's integrity
+    const handleVerifyJournal = async (lp: string, rp: string) => {
+        const key = `${lp}|${rp}`;
+        setJournalIntegrity(prev => new Map(prev).set(key, 'checking'));
+        try {
+            const signingKey = await getJournalSigningKey(lp, rp);
+            const valid = await invoke<boolean>('verify_journal_signature', {
+                localPath: lp, remotePath: rp, signingKey,
+            });
+            setJournalIntegrity(prev => new Map(prev).set(key, valid ? 'verified' : 'tampered'));
+            setJournalFeedback(valid ? t('syncPanel.journalVerifySuccess') : t('syncPanel.journalVerifyFailed'));
+            setTimeout(() => setJournalFeedback(null), 4000);
+        } catch {
+            setJournalIntegrity(prev => new Map(prev).set(key, 'unsigned'));
+            setJournalFeedback(t('syncPanel.journalVerifyError'));
+            setTimeout(() => setJournalFeedback(null), 3000);
+        }
     };
 
     const handleSpeedLimitChange = async (dl: number, ul: number) => {
@@ -655,7 +778,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // Execute a single transfer with retry logic and error classification
     const executeTransferWithRetry = async (
         cmd: string,
-        args: Record<string, any>,
+        args: Record<string, unknown>,
         filePath: string,
     ): Promise<{ success: boolean; attempts: number; error?: SyncErrorInfo }> => {
         const maxAttempts = Math.max(1, retryPolicy.max_retries);
@@ -1294,7 +1417,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const virtualTotalHeight = comparisons.length * VIRTUAL_ROW_HEIGHT;
 
     return (
-        <div className="sync-panel-overlay">
+        <div className="sync-panel-overlay" role="dialog" aria-modal="true" aria-label="AeroSync">
             <div className="sync-panel">
                 <div className="sync-panel-header">
                     <div className="flex items-center gap-3">
@@ -1367,6 +1490,126 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 {t('syncPanel.dismissJournal')}
                             </button>
                         </div>
+                    </div>
+                )}
+
+                {/* Journal History Section */}
+                {journalList.length > 0 && !isSyncing && !syncReport && (
+                    <div className="mx-4 my-2">
+                        <button
+                            className="flex items-center gap-2 w-full text-left text-xs font-semibold py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                            style={{ color: 'var(--color-text-secondary, #9ca3af)' }}
+                            onClick={() => setShowJournalHistory(!showJournalHistory)}
+                        >
+                            {showJournalHistory ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            <History size={14} />
+                            <span>{t('syncPanel.journalHistory')}</span>
+                            <span className="ml-auto text-[10px] opacity-60">{journalList.length}</span>
+                        </button>
+                        {showJournalHistory && (
+                            <div className="mt-1 space-y-1 max-h-48 overflow-y-auto pr-1">
+                                {journalFeedback && (
+                                    <div className="text-[11px] px-2 py-1.5 rounded border"
+                                        style={{
+                                            background: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
+                                                ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                                            borderColor: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
+                                                ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)',
+                                            color: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
+                                                ? '#10b981' : '#ef4444',
+                                        }}
+                                    >
+                                        {journalFeedback}
+                                    </div>
+                                )}
+                                {journalList.map((j) => {
+                                    const jKey = `${j.local_path}|${j.remote_path}`;
+                                    const intStatus = journalIntegrity.get(jKey) || 'unknown';
+                                    const isJournalVerified = intStatus === 'verified' || intStatus === 'signed';
+                                    const isJournalTampered = intStatus === 'tampered';
+                                    const isJournalChecking = intStatus === 'checking';
+
+                                    return (
+                                        <div
+                                            key={jKey}
+                                            className="flex items-center gap-2 text-xs py-1.5 px-2 rounded border transition-colors"
+                                            style={{
+                                                background: 'var(--color-bg-secondary, rgba(0,0,0,0.05))',
+                                                borderColor: isJournalTampered
+                                                    ? 'rgba(239,68,68,0.4)'
+                                                    : isJournalVerified
+                                                    ? 'rgba(16,185,129,0.3)'
+                                                    : 'var(--color-border, rgba(128,128,128,0.2))',
+                                            }}
+                                        >
+                                            <div className="flex-shrink-0">
+                                                {j.completed
+                                                    ? <CheckCircle2 size={14} className="text-green-500" />
+                                                    : <RotateCcw size={14} className="text-amber-500" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="truncate font-medium" style={{ color: 'var(--color-text-primary, #e5e7eb)' }}>
+                                                    {j.local_path.split('/').pop() || j.local_path}
+                                                    <span className="mx-1 opacity-40">&rarr;</span>
+                                                    {j.remote_path}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--color-text-tertiary, #6b7280)' }}>
+                                                    <span>{new Date(j.updated_at).toLocaleDateString()}</span>
+                                                    <span>{t('syncPanel.journalEntries', {
+                                                        completed: String(j.completed_entries),
+                                                        total: String(j.total_entries),
+                                                    })}</span>
+                                                    <span className={j.completed ? 'text-green-500' : 'text-amber-500'}>
+                                                        {j.completed ? t('syncPanel.journalCompleted') : t('syncPanel.journalInterrupted')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex-shrink-0">
+                                                {isJournalChecking ? (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-400">
+                                                        <Loader2 size={10} className="animate-spin" />
+                                                    </span>
+                                                ) : isJournalVerified ? (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-400">
+                                                        <FileCheck size={10} /> {t('syncPanel.journalSigned')}
+                                                    </span>
+                                                ) : isJournalTampered ? (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/20 text-red-400">
+                                                        <ShieldAlert size={10} /> {t('syncPanel.journalTampered')}
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-400">
+                                                        <FilePen size={10} /> {t('syncPanel.journalUnsigned')}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex-shrink-0 flex gap-1">
+                                                {!isJournalVerified && !isJournalTampered && (
+                                                    <button
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20"
+                                                        onClick={() => handleSignJournal(j.local_path, j.remote_path)}
+                                                        disabled={isJournalChecking}
+                                                        title={t('syncPanel.journalSignAction')}
+                                                    >
+                                                        {t('syncPanel.journalSignAction')}
+                                                    </button>
+                                                )}
+                                                {(isJournalVerified || isJournalTampered) && (
+                                                    <button
+                                                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                                                        onClick={() => handleVerifyJournal(j.local_path, j.remote_path)}
+                                                        disabled={isJournalChecking}
+                                                        title={t('syncPanel.journalVerifyAction')}
+                                                    >
+                                                        {t('syncPanel.journalVerifyAction')}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -1626,6 +1869,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 onOpenTemplate={() => setShowTemplate(true)}
                                 onOpenRollback={() => setShowRollback(true)}
                                 onClearHistory={handleClearHistory}
+                                canaryMode={canaryMode}
+                                onCanaryModeChange={setCanaryMode}
+                                canaryPercent={canaryPercent}
+                                onCanaryPercentChange={setCanaryPercent}
+                                canarySelection={canarySelection}
+                                onCanarySelectionChange={setCanarySelection}
                             />
                         )}
 
@@ -1874,11 +2123,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         ) : (
                             <button
                                 className="sync-execute-btn"
-                                onClick={() => handleSync()}
+                                onClick={() => handleCanaryOrSync()}
                                 disabled={!hasSyncableItems || isSyncing || (speedMode === 'maniac' && !maniacConfirmed)}
                             >
                                 {isSyncing ? (
                                     <><Loader2 size={16} className="animate-spin" /> {t('syncPanel.syncing')} ({syncProgress?.current || 0}/{syncProgress?.total || 0})...</>
+                                ) : canaryMode ? (
+                                    <><FlaskConical size={16} /> {t('syncPanel.canaryRun') || 'Canary Sync'} ({selectedPaths.size + syncableDirs})</>
                                 ) : (
                                     <><Zap size={16} /> {t('syncPanel.synchronize')} ({selectedPaths.size + syncableDirs})</>
                                 )}
@@ -1909,6 +2160,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 localPath={editLocalPath}
                 remotePath={editRemotePath}
             />
+            {canaryResult && (
+                <CanaryResultDialog
+                    result={canaryResult}
+                    onClose={() => setCanaryResult(null)}
+                    onApprove={() => {
+                        setCanaryResult(null);
+                        handleSync();
+                    }}
+                />
+            )}
         </div>
     );
 };

@@ -10,7 +10,7 @@ import {
     ShieldCheck, RotateCcw, Gauge, Zap, Shrink, HardDrive,
     ArrowDownToLine, ArrowUpFromLine,
     FolderTree, FileDown, Undo2, Trash2, GitCompare, Settings2, Activity,
-    ChevronDown
+    ChevronDown, FlaskConical
 } from 'lucide-react';
 import {
     CompareOptions, RetryPolicy, VerifyPolicy, CompressionMode,
@@ -46,6 +46,13 @@ interface SyncAdvancedConfigProps {
     onOpenTemplate: () => void;
     onOpenRollback: () => void;
     onClearHistory: () => void;
+    // Canary mode
+    canaryMode: boolean;
+    onCanaryModeChange: (enabled: boolean) => void;
+    canaryPercent: number;
+    onCanaryPercentChange: (pct: number) => void;
+    canarySelection: string;
+    onCanarySelectionChange: (sel: string) => void;
 }
 
 const getDirectionDescription = (direction: SyncDirection, t: (key: string) => string): { Icon: typeof ArrowDownToLine; text: string } => {
@@ -110,6 +117,12 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
     onOpenTemplate,
     onOpenRollback,
     onClearHistory,
+    canaryMode,
+    onCanaryModeChange,
+    canaryPercent,
+    onCanaryPercentChange,
+    canarySelection,
+    onCanarySelectionChange,
 }) => {
     const t = useTranslation();
     const isProvider = !!protocol && !isFtpProtocol(protocol);
@@ -390,6 +403,69 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
             >
                 <SyncScheduler disabled={disabled} />
                 <WatcherStatus watchPath={localPath} />
+
+                <div className="sync-adv-divider" />
+
+                {/* Canary Mode */}
+                <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={canaryMode}
+                            onChange={e => onCanaryModeChange(e.target.checked)}
+                            disabled={disabled}
+                        />
+                        <FlaskConical size={12} className="text-amber-500" />
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">
+                            {t('syncPanel.canaryMode') || 'Canary Mode'}
+                        </span>
+                    </label>
+
+                    {canaryMode && (
+                        <div className="pl-5 space-y-2">
+                            {/* Percent slider */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 w-16">
+                                    {t('syncPanel.canarySample') || 'Sample'}:
+                                </span>
+                                <input
+                                    type="range"
+                                    min={5}
+                                    max={50}
+                                    step={5}
+                                    value={canaryPercent}
+                                    onChange={e => onCanaryPercentChange(Number(e.target.value))}
+                                    disabled={disabled}
+                                    className="flex-1 h-1 accent-amber-500"
+                                />
+                                <span className="text-[10px] text-amber-400 font-mono w-8 text-right">
+                                    {canaryPercent}%
+                                </span>
+                            </div>
+
+                            {/* Selection strategy */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 w-16">
+                                    {t('syncPanel.canaryStrategy') || 'Strategy'}:
+                                </span>
+                                <select
+                                    className="sync-adv-select text-[10px] flex-1"
+                                    value={canarySelection}
+                                    onChange={e => onCanarySelectionChange(e.target.value)}
+                                    disabled={disabled}
+                                >
+                                    <option value="random">{t('syncPanel.canaryRandom') || 'Random'}</option>
+                                    <option value="newest">{t('syncPanel.canaryNewest') || 'Newest'}</option>
+                                    <option value="largest">{t('syncPanel.canaryLargest') || 'Largest'}</option>
+                                </select>
+                            </div>
+
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                                {t('syncPanel.canaryDesc') || 'Run a trial sync on a subset of files before committing to the full operation.'}
+                            </p>
+                        </div>
+                    )}
+                </div>
             </Section>
         </div>
     );

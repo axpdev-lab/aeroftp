@@ -116,7 +116,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="AI Model Editor">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
             <div className="relative bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1825,7 +1825,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 const filtered = availableModels.models.filter(m => !modelFilter || m.toLowerCase().includes(modelFilter.toLowerCase()));
 
                 return (
-                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={() => { setAvailableModels(null); setModelFilter(''); }}>
+                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={() => { setAvailableModels(null); setModelFilter(''); }} role="dialog" aria-modal="true" aria-label="Available Models">
                         <div className="bg-gray-800 rounded-xl border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                                 <div className="flex items-center gap-2">

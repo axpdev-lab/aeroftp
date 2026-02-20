@@ -16,11 +16,13 @@ pub static AI_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 
 /// Shared HTTP client for streaming (no read timeout, only connect timeout).
+/// Pool idle timeout prevents zombie connections from stalled providers.
 pub static AI_STREAM_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
+        .pool_idle_timeout(Duration::from_secs(300))
         .build()
-        .expect("Failed to create AI stream HTTP client")
+        .unwrap_or_default()
 });
 
 /// Safely truncate a string at a UTF-8 character boundary

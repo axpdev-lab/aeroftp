@@ -69,6 +69,25 @@ jobs:
       - name: Run security regression suite (MVP)
         run: npm run security:regression
 
+      # Quality gates — run on Linux only to avoid duplicating work across platforms
+      - name: TypeScript type check
+        if: matrix.target == 'linux'
+        run: npx tsc --noEmit
+
+      - name: i18n validation
+        if: matrix.target == 'linux'
+        run: npm run i18n:validate
+
+      - name: Rust linting (clippy)
+        if: matrix.target == 'linux'
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust tests
+        if: matrix.target == 'linux'
+        working-directory: src-tauri
+        run: cargo test
+
       - name: Build Tauri app
         run: npm run tauri build
         env:
