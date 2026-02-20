@@ -975,6 +975,6 @@ mod tests {
     fn test_oauth_config_google() {
         let config = OAuthConfig::google("client_id", "client_secret");
         assert_eq!(config.provider, OAuthProvider::Google);
-        assert!(config.scopes.len() > 0);
+        assert!(!config.scopes.is_empty());
     }
 }

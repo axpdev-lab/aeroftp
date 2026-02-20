@@ -433,14 +433,14 @@ mod tests {
     #[test]
     fn test_small_change_delta() {
         let mut original = vec![0u8; 4096];
-        for i in 0..4096 {
-            original[i] = (i % 256) as u8;
+        for (i, byte) in original.iter_mut().enumerate() {
+            *byte = (i % 256) as u8;
         }
 
         // Modify a small portion in the middle
         let mut modified = original.clone();
-        for i in 1024..1030 {
-            modified[i] = 0xFF;
+        for byte in &mut modified[1024..1030] {
+            *byte = 0xFF;
         }
 
         let sigs = compute_signatures(&original, 512);
@@ -495,8 +495,8 @@ mod tests {
     #[test]
     fn test_delta_reconstruction_with_serialization() {
         let mut original = vec![0u8; 2048];
-        for i in 0..2048 {
-            original[i] = (i * 7 % 256) as u8;
+        for (i, byte) in original.iter_mut().enumerate() {
+            *byte = (i * 7 % 256) as u8;
         }
 
         let mut modified = original.clone();

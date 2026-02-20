@@ -577,7 +577,7 @@ mod tests {
         };
         let remaining = s2.next_sync_in().unwrap();
         // Should be approximately 200 seconds (allow 2s tolerance for test execution time)
-        assert!(remaining >= 198 && remaining <= 202, "remaining={}", remaining);
+        assert!((198..=202).contains(&remaining), "remaining={}", remaining);
 
         // Fully elapsed interval — 0 seconds remaining
         let s3 = SyncSchedule {
