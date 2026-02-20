@@ -378,14 +378,7 @@ We will respond within 48 hours and work with you to address the issue.
 
 ## Bug Bounty
 
-AeroFTP offers a bug bounty program to reward responsible disclosure of security vulnerabilities.
-
-| Severity | Reward |
-| -------- | ------ |
-| **Critical** (RCE, auth bypass, data exfiltration) | $100–$250 |
-| **High** (privilege escalation, crypto weakness, path traversal) | $50–$100 |
-| **Medium** (XSS, information disclosure, CSRF) | $25–$50 |
-| **Low** (minor issues, hardening suggestions) | Credit in Security Hall of Fame |
+AeroFTP welcomes responsible disclosure of security vulnerabilities. Researchers who report valid issues will be credited in our Security Hall of Fame.
 
 ### Scope
 
