@@ -93,6 +93,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Fix Tauri AppImage bug: .DirIcon is created as an absolute symlink
+      # which breaks appdir-lint.sh validation on AppImageHub.
+      # Re-package with a relative symlink so the AppImage is spec-compliant.
+      - name: Fix AppImage DirIcon symlink
+        if: matrix.target == 'linux'
+        run: |
+          APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1)
+          if [ -z "$APPIMAGE" ]; then echo "No AppImage found, skipping"; exit 0; fi
+          echo "Fixing .DirIcon in $APPIMAGE"
+          chmod +x "$APPIMAGE"
+          # Extract squashfs
+          OFFSET=$("$APPIMAGE" --appimage-offset)
+          mkdir -p /tmp/appimage-fix
+          unsquashfs -d /tmp/appimage-fix/squashfs-root -o "$OFFSET" "$APPIMAGE"
+          # Replace absolute symlink with relative
+          cd /tmp/appimage-fix/squashfs-root
+          rm -f .DirIcon
+          ICON=$(ls *.png 2>/dev/null | head -1)
+          if [ -n "$ICON" ]; then
+            ln -s "$ICON" .DirIcon
+            echo "Fixed: .DirIcon -> $ICON (relative)"
+          fi
+          # Re-package
+          cd /tmp/appimage-fix
+          wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE"
+          echo "AppImage re-packaged successfully"
+
       # Build Snap package using Snapcraft (Tauri doesn't generate .snap)
       - name: Build Snap package
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
