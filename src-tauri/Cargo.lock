@@ -58,7 +58,7 @@ dependencies = [
  "open",
  "pbkdf2",
  "portable-pty",
- "quick-xml 0.39.1",
+ "quick-xml 0.39.2",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -5168,9 +5168,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.39.1"
+version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd58c6a1fc307e1092aa0bb23d204ca4d1f021764142cd0424dccc84d2d5d106"
+checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
 dependencies = [
  "memchr",
 ]
