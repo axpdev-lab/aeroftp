@@ -376,4 +376,42 @@ Include:
 
 We will respond within 48 hours and work with you to address the issue.
 
+## Bug Bounty
+
+AeroFTP offers a bug bounty program to reward responsible disclosure of security vulnerabilities.
+
+| Severity | Reward |
+| -------- | ------ |
+| **Critical** (RCE, auth bypass, data exfiltration) | $100–$250 |
+| **High** (privilege escalation, crypto weakness, path traversal) | $50–$100 |
+| **Medium** (XSS, information disclosure, CSRF) | $25–$50 |
+| **Low** (minor issues, hardening suggestions) | Credit in Security Hall of Fame |
+
+### Scope
+
+- AeroFTP desktop application (all platforms)
+- AeroVault encryption implementation
+- AI tool execution sandbox
+- OAuth2/credential storage
+
+### Out of Scope
+
+- Social engineering attacks
+- Denial of service (DoS)
+- Issues in third-party dependencies (report upstream)
+- Issues requiring physical access to the device
+
+### Rules
+
+- Report via [GitHub Security Advisories](https://github.com/axpnet/aeroftp/security/advisories/new)
+- Allow 48 hours for initial response
+- Do not publicly disclose before a fix is released
+- One bounty per unique vulnerability
+
+### Security Hall of Fame
+
+We gratefully acknowledge security researchers who help improve AeroFTP:
+
+*No reports yet — be the first!*
+
 *AeroFTP v2.5.1 - 20 February 2026*
