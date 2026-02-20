@@ -59,7 +59,7 @@ impl DigestState {
         let unquoted = format!("{}=", key);
         if let Some(pos) = s.find(&unquoted) {
             let after = &s[pos + unquoted.len()..];
-            let end = after.find(|c: char| c == ',' || c == ' ').unwrap_or(after.len());
+            let end = after.find([',', ' ']).unwrap_or(after.len());
             return Some(after[..end].to_string());
         }
         None

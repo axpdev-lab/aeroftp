@@ -1661,7 +1661,7 @@ async fn upload_folder(
     
     // Sort directories by depth (shortest first) to ensure parent dirs exist
     let mut dirs_sorted = dirs_to_create.clone();
-    dirs_sorted.sort_by(|a, b| a.matches('/').count().cmp(&b.matches('/').count()));
+    dirs_sorted.sort_by_key(|a| a.matches('/').count());
     
     for remote_dir in &dirs_sorted {
         match ftp_manager.mkdir(remote_dir).await {
@@ -2319,7 +2319,7 @@ async fn delete_remote_file(
 ) -> Result<String, String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
     
-    let file_name = path.split('/').last().unwrap_or(&path).to_string();
+    let file_name = path.split('/').next_back().unwrap_or(&path).to_string();
     let delete_id = format!("del-remote-{}", chrono::Utc::now().timestamp_millis());
     
     if !is_dir {
@@ -2495,7 +2495,7 @@ async fn delete_remote_file(
                 cancelled = true;
                 break;
             }
-            let dir_name = dir_path.split('/').last().unwrap_or(dir_path);
+            let dir_name = dir_path.split('/').next_back().unwrap_or(dir_path);
             match ftp_manager.remove_dir(dir_path).await {
                 Ok(_) => {
                     let _ = app.emit("transfer_event", TransferEvent {
@@ -3824,32 +3824,32 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         labels.get(key).cloned().unwrap_or_else(|| fallback.to_string())
     };
 
-    let quit = MenuItem::with_id(&app, "quit", &get("quit", "Quit AeroFTP"), true, accel("CmdOrCtrl+Q"))
+    let quit = MenuItem::with_id(&app, "quit", get("quit", "Quit AeroFTP"), true, accel("CmdOrCtrl+Q"))
         .map_err(|e| e.to_string())?;
-    let about = MenuItem::with_id(&app, "about", &get("about", "About AeroFTP"), true, None::<&str>)
+    let about = MenuItem::with_id(&app, "about", get("about", "About AeroFTP"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
-    let settings = MenuItem::with_id(&app, "settings", &get("settings", "Settings..."), true, accel("CmdOrCtrl+,"))
+    let settings = MenuItem::with_id(&app, "settings", get("settings", "Settings..."), true, accel("CmdOrCtrl+,"))
         .map_err(|e| e.to_string())?;
-    let refresh = MenuItem::with_id(&app, "refresh", &get("refresh", "Refresh"), true, accel("CmdOrCtrl+R"))
+    let refresh = MenuItem::with_id(&app, "refresh", get("refresh", "Refresh"), true, accel("CmdOrCtrl+R"))
         .map_err(|e| e.to_string())?;
-    let shortcuts = MenuItem::with_id(&app, "shortcuts", &get("shortcuts", "Keyboard Shortcuts"), true, accel("F1"))
+    let shortcuts = MenuItem::with_id(&app, "shortcuts", get("shortcuts", "Keyboard Shortcuts"), true, accel("F1"))
         .map_err(|e| e.to_string())?;
-    let support = MenuItem::with_id(&app, "support", &get("support", "Support Development"), true, None::<&str>)
+    let support = MenuItem::with_id(&app, "support", get("support", "Support Development"), true, None::<&str>)
         .map_err(|e| e.to_string())?;
 
     let file_menu = Submenu::with_items(
         &app,
-        &get("file", "File"),
+        get("file", "File"),
         true,
         &[
-            &MenuItem::with_id(&app, "new_folder", &get("newFolder", "New Folder"), true, accel("CmdOrCtrl+N"))
+            &MenuItem::with_id(&app, "new_folder", get("newFolder", "New Folder"), true, accel("CmdOrCtrl+N"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &settings,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_debug_mode", &get("debugMode", "Debug Mode"), true, accel("CmdOrCtrl+Shift+F12"))
+            &MenuItem::with_id(&app, "toggle_debug_mode", get("debugMode", "Debug Mode"), true, accel("CmdOrCtrl+Shift+F12"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "show_dependencies", &get("dependencies", "Dependencies..."), true, None::<&str>)
+            &MenuItem::with_id(&app, "show_dependencies", get("dependencies", "Dependencies..."), true, None::<&str>)
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &quit,
@@ -3858,7 +3858,7 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 
     let edit_menu = Submenu::with_items(
         &app,
-        &get("edit", "Edit"),
+        get("edit", "Edit"),
         true,
         &[
             &PredefinedMenuItem::undo(&app, None).map_err(|e| e.to_string())?,
@@ -3870,38 +3870,38 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &PredefinedMenuItem::select_all(&app, None).map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "rename", &get("rename", "Rename"), true, accel("F2"))
+            &MenuItem::with_id(&app, "rename", get("rename", "Rename"), true, accel("F2"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "delete", &get("delete", "Delete"), true, accel("Delete"))
+            &MenuItem::with_id(&app, "delete", get("delete", "Delete"), true, accel("Delete"))
                 .map_err(|e| e.to_string())?,
         ],
     ).map_err(|e| e.to_string())?;
 
     let devtools_submenu = Submenu::with_items(
         &app,
-        &get("devtools", "DevTools"),
+        get("devtools", "DevTools"),
         true,
         &[
-            &MenuItem::with_id(&app, "toggle_devtools", &get("toggleDevtools", "Toggle DevTools"), true, accel("CmdOrCtrl+Shift+D"))
+            &MenuItem::with_id(&app, "toggle_devtools", get("toggleDevtools", "Toggle DevTools"), true, accel("CmdOrCtrl+Shift+D"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_editor", &get("toggleEditor", "Toggle Editor"), true, accel("CmdOrCtrl+1"))
+            &MenuItem::with_id(&app, "toggle_editor", get("toggleEditor", "Toggle Editor"), true, accel("CmdOrCtrl+1"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_terminal", &get("toggleTerminal", "Toggle Terminal"), true, accel("CmdOrCtrl+2"))
+            &MenuItem::with_id(&app, "toggle_terminal", get("toggleTerminal", "Toggle Terminal"), true, accel("CmdOrCtrl+2"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_agent", &get("toggleAgent", "Toggle Agent"), true, accel("CmdOrCtrl+3"))
+            &MenuItem::with_id(&app, "toggle_agent", get("toggleAgent", "Toggle Agent"), true, accel("CmdOrCtrl+3"))
                 .map_err(|e| e.to_string())?,
         ],
     ).map_err(|e| e.to_string())?;
 
     let view_menu = Submenu::with_items(
         &app,
-        &get("view", "View"),
+        get("view", "View"),
         true,
         &[
             &refresh,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_theme", &get("toggleTheme", "Toggle Theme"), true, accel("CmdOrCtrl+T"))
+            &MenuItem::with_id(&app, "toggle_theme", get("toggleTheme", "Toggle Theme"), true, accel("CmdOrCtrl+T"))
                 .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &devtools_submenu,
@@ -3910,7 +3910,7 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 
     let help_menu = Submenu::with_items(
         &app,
-        &get("help", "Help"),
+        get("help", "Help"),
         true,
         &[
             &shortcuts,
@@ -4147,6 +4147,7 @@ pub async fn get_local_files_recursive_parallel(
     }
 
     // Phase 1: Walk the directory tree (sequential — fast, mostly metadata)
+    #[allow(clippy::type_complexity)]
     let mut file_entries: Vec<(String, String, u64, Option<chrono::DateTime<chrono::Utc>>, bool)> = Vec::new();
     let mut dirs_to_process = vec![base.clone()];
 
@@ -4673,7 +4674,7 @@ async fn sync_canary_run(
     }
 
     // Clamp percent to 5-50 range
-    let percent = percent.max(5).min(50);
+    let percent = percent.clamp(5, 50);
 
     // Scan local files (no checksum for speed)
     let exclude_patterns = sync::CompareOptions::default().exclude_patterns;
@@ -5078,6 +5079,7 @@ async fn parallel_sync_execute(
 
 /// Execute a single FTP transfer (upload, download, or delete) with a dedicated connection.
 /// Each call creates and tears down its own FTP connection to avoid multiplexing issues.
+#[allow(clippy::too_many_arguments)]
 async fn execute_single_transfer(
     host: &str,
     user: &str,
@@ -5529,14 +5531,16 @@ async fn setup_aerocloud(
     sync_on_change: bool,
     sync_interval_secs: u64,
 ) -> Result<CloudConfig, String> {
-    let mut config = CloudConfig::default();
-    config.enabled = true;
-    config.cloud_name = cloud_name;
-    config.local_folder = std::path::PathBuf::from(&local_folder);
-    config.remote_folder = remote_folder.clone();
-    config.server_profile = server_profile;
-    config.sync_on_change = sync_on_change;
-    config.sync_interval_secs = sync_interval_secs;
+    let config = CloudConfig {
+        enabled: true,
+        cloud_name,
+        local_folder: std::path::PathBuf::from(&local_folder),
+        remote_folder: remote_folder.clone(),
+        server_profile,
+        sync_on_change,
+        sync_interval_secs,
+        ..CloudConfig::default()
+    };
     
     // Validate configuration
     cloud_config::validate_config(&config)?;
@@ -6501,10 +6505,9 @@ pub fn run() {
             }
 
             // Initialize Chat History SQLite database
-            match chat_history::init_db(&app.handle()) {
+            match chat_history::init_db(app.handle()) {
                 Ok(conn) => {
-                    // Run JSON→SQLite migration if ai_history.json exists
-                    if let Err(e) = chat_history::migrate_from_json(&conn, &app.handle()) {
+                    if let Err(e) = chat_history::migrate_from_json(&conn, app.handle()) {
                         log::warn!("Chat history migration failed: {e}");
                     }
                     app.manage(chat_history::ChatHistoryDb(std::sync::Mutex::new(conn)));
@@ -6520,7 +6523,7 @@ pub fn run() {
             }
 
             // Initialize File Tags SQLite database
-            match file_tags::init_db(&app.handle()) {
+            match file_tags::init_db(app.handle()) {
                 Ok(conn) => {
                     app.manage(file_tags::FileTagsDb(std::sync::Mutex::new(conn)));
                 }

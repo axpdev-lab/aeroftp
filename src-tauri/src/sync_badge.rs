@@ -43,7 +43,7 @@ pub enum SyncBadgeState {
 
 impl SyncBadgeState {
     /// Convert to Nextcloud protocol status string
-    pub fn to_status_str(&self) -> &'static str {
+    pub fn to_status_str(self) -> &'static str {
         match self {
             SyncBadgeState::Synced => "OK",
             SyncBadgeState::Syncing => "SYNC",
@@ -55,7 +55,7 @@ impl SyncBadgeState {
     }
 
     /// Convert to GIO emblem name
-    pub fn to_emblem_name(&self) -> &'static str {
+    pub fn to_emblem_name(self) -> &'static str {
         match self {
             SyncBadgeState::Synced => "emblem-aerocloud-synced",
             SyncBadgeState::Syncing => "emblem-aerocloud-syncing",
@@ -304,7 +304,7 @@ where
             }
         };
 
-        let safe_path = path_str.replace('\n', "").replace('\r', "");
+        let safe_path = path_str.replace(['\n', '\r'], "");
         let response = format!("STATUS:{}:{}\ndone\n", status, safe_path);
         writer
             .write_all(response.as_bytes())

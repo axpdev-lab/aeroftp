@@ -557,7 +557,7 @@ impl CredentialStore {
 /// Get aeroftp config directory, creating it with secure permissions if needed
 fn config_dir() -> Result<PathBuf, CredentialError> {
     let base = dirs::config_dir()
-        .or_else(|| dirs::home_dir())
+        .or_else(dirs::home_dir)
         .ok_or_else(|| CredentialError::Io(
             std::io::Error::new(std::io::ErrorKind::NotFound, "No config directory")
         ))?;

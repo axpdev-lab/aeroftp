@@ -611,7 +611,7 @@ pub async fn provider_download_folder(
     // Emit complete event
     let _ = app.emit("transfer_event", crate::TransferEvent {
         event_type: "complete".to_string(),
-        transfer_id: transfer_id,
+        transfer_id,
         filename: folder_name.clone(),
         direction: "download".to_string(),
         message: Some(format!("Downloaded {} files, {} skipped, {} errors", files_downloaded, files_skipped, files_errored)),

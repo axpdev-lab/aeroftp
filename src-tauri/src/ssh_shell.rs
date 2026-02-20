@@ -88,6 +88,7 @@ pub fn create_ssh_shell_state() -> SshShellManager {
 
 /// Open an SSH shell session to a remote server
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ssh_shell_open(
     app: AppHandle,
     state: State<'_, SshShellManager>,

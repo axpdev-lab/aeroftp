@@ -483,7 +483,7 @@ impl CloudService {
                     continue;
                 }
 
-                let modified = metadata.modified().ok().map(|t| DateTime::<Utc>::from(t));
+                let modified = metadata.modified().ok().map(DateTime::<Utc>::from);
 
                 let is_dir = metadata.is_dir();
                 let size = if is_dir {

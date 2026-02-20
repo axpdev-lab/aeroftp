@@ -466,7 +466,7 @@ impl FilenProvider {
             }
 
             // List current folder to find child
-            let resp = self.client.post(&format!("{}/v3/dir/content", GATEWAY))
+            let resp = self.client.post(format!("{}/v3/dir/content", GATEWAY))
                 .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
                 .json(&serde_json::json!({"uuid": current_uuid}))
                 .send().await
@@ -520,7 +520,7 @@ impl StorageProvider for FilenProvider {
 
         // Step 1: Get auth info
         let auth_info_resp: AuthInfoResponse = self.client
-            .post(&format!("{}/v3/auth/info", GATEWAY))
+            .post(format!("{}/v3/auth/info", GATEWAY))
             .json(&serde_json::json!({"email": self.config.email}))
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
@@ -548,7 +548,7 @@ impl StorageProvider for FilenProvider {
             "twoFactorCode": two_fa,
         });
         let login_resp: LoginResponse = self.client
-            .post(&format!("{}/v3/login", GATEWAY))
+            .post(format!("{}/v3/login", GATEWAY))
             .json(&login_body)
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
@@ -583,7 +583,7 @@ impl StorageProvider for FilenProvider {
 
         // Step 5: Get root folder UUID from user info
         let user_resp: serde_json::Value = self.client
-            .get(&format!("{}/v3/user/baseFolder", GATEWAY))
+            .get(format!("{}/v3/user/baseFolder", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
@@ -625,7 +625,7 @@ impl StorageProvider for FilenProvider {
             self.resolve_folder_uuid(path).await?
         };
 
-        let resp = self.client.post(&format!("{}/v3/dir/content", GATEWAY))
+        let resp = self.client.post(format!("{}/v3/dir/content", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .send().await
@@ -802,7 +802,7 @@ impl StorageProvider for FilenProvider {
 
         // Stream decrypted chunks directly to disk (no full-file RAM buffer)
         let mut local_file = tokio::fs::File::create(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let mut transferred: u64 = 0;
 
         for chunk_idx in 0..chunks {
@@ -821,7 +821,7 @@ impl StorageProvider for FilenProvider {
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             local_file.write_all(&decrypted).await
-                .map_err(|e| ProviderError::IoError(e))?;
+                .map_err(ProviderError::IoError)?;
             transferred += decrypted.len() as u64;
 
             if let Some(ref progress) = on_progress {
@@ -829,7 +829,7 @@ impl StorageProvider for FilenProvider {
             }
         }
 
-        local_file.flush().await.map_err(|e| ProviderError::IoError(e))?;
+        local_file.flush().await.map_err(ProviderError::IoError)?;
 
         Ok(())
     }
@@ -896,7 +896,7 @@ impl StorageProvider for FilenProvider {
 
         let parent_uuid = self.resolve_folder_uuid(parent_path).await?;
         let data = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let file_size = data.len();
         let mime_type = mime_guess::from_path(file_name).first_or_octet_stream().to_string();
 
@@ -983,7 +983,7 @@ impl StorageProvider for FilenProvider {
 
         // Mark upload as done
         let done_resp: serde_json::Value = self.client
-            .post(&format!("{}/v3/upload/done", GATEWAY))
+            .post(format!("{}/v3/upload/done", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .header(CONTENT_TYPE, "application/json")
             .json(&serde_json::json!({
@@ -1027,7 +1027,7 @@ impl StorageProvider for FilenProvider {
         let encrypted_name = self.encrypt_metadata(&name_json)?;
 
         let resp: CreateFolderResponse = self.client
-            .post(&format!("{}/v3/dir/create", GATEWAY))
+            .post(format!("{}/v3/dir/create", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({
                 "uuid": folder_uuid,
@@ -1050,7 +1050,7 @@ impl StorageProvider for FilenProvider {
         for key in &self.master_keys {
             let encrypted_for_key = Self::encrypt_metadata_with_key(&name_json, key)?;
             let _: serde_json::Value = self.client
-                .post(&format!("{}/v3/dir/metadata", GATEWAY))
+                .post(format!("{}/v3/dir/metadata", GATEWAY))
                 .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
                 .json(&serde_json::json!({
                     "uuid": folder_uuid,
@@ -1085,7 +1085,7 @@ impl StorageProvider for FilenProvider {
         let endpoint = if entry.is_dir { "v3/dir/trash" } else { "v3/file/trash" };
 
         let resp: GenericResponse = self.client
-            .post(&format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", GATEWAY, endpoint))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({"uuid": uuid}))
             .send().await
@@ -1104,7 +1104,7 @@ impl StorageProvider for FilenProvider {
         let folder_uuid = self.resolve_folder_uuid(path).await?;
 
         let resp: GenericResponse = self.client
-            .post(&format!("{}/v3/dir/trash", GATEWAY))
+            .post(format!("{}/v3/dir/trash", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .send().await
@@ -1157,7 +1157,7 @@ impl StorageProvider for FilenProvider {
             let encrypted_name = self.encrypt_metadata(&name_json)?;
 
             let resp: GenericResponse = self.client
-                .post(&format!("{}/v3/dir/rename", GATEWAY))
+                .post(format!("{}/v3/dir/rename", GATEWAY))
                 .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
                 .json(&serde_json::json!({
                     "uuid": uuid,
@@ -1179,7 +1179,7 @@ impl StorageProvider for FilenProvider {
             for key in &self.master_keys.clone() {
                 let enc = Self::encrypt_metadata_with_key(&name_json, key)?;
                 let _ = self.client
-                    .post(&format!("{}/v3/dir/metadata", GATEWAY))
+                    .post(format!("{}/v3/dir/metadata", GATEWAY))
                     .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
                     .json(&serde_json::json!({"uuid": uuid, "encrypted": enc}))
                     .send().await;
@@ -1202,7 +1202,7 @@ impl StorageProvider for FilenProvider {
             let encrypted_metadata = self.encrypt_metadata(&meta_json.to_string())?;
 
             let resp: GenericResponse = self.client
-                .post(&format!("{}/v3/file/rename", GATEWAY))
+                .post(format!("{}/v3/file/rename", GATEWAY))
                 .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
                 .json(&serde_json::json!({
                     "uuid": uuid,
@@ -1259,7 +1259,7 @@ impl StorageProvider for FilenProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let resp: UserInfoResponse = self.client
-            .get(&format!("{}/v3/user/info", GATEWAY))
+            .get(format!("{}/v3/user/info", GATEWAY))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?
@@ -1300,7 +1300,7 @@ impl StorageProvider for FilenProvider {
         let link_uuid = uuid::Uuid::new_v4().to_string();
 
         let resp: LinkEditResponse = self.client
-            .post(&format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", GATEWAY, endpoint))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({
                 "uuid": uuid,
@@ -1343,7 +1343,7 @@ impl StorageProvider for FilenProvider {
         let endpoint = if entry.is_dir { "v3/dir/link/edit" } else { "v3/file/link/edit" };
 
         let resp: GenericResponse = self.client
-            .post(&format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", GATEWAY, endpoint))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
             .json(&serde_json::json!({
                 "uuid": uuid,

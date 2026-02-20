@@ -229,6 +229,7 @@ impl BoxProvider {
     }
 
     /// Upload data in chunks via a Box upload session, then commit
+    #[allow(clippy::type_complexity)]
     async fn chunked_upload_session(
         &self,
         session_resp: reqwest::Response,
@@ -265,7 +266,7 @@ impl BoxProvider {
 
         // Stream from file handle instead of buffered &[u8]
         let mut file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let mut parts: Vec<serde_json::Value> = Vec::new();
         let mut offset: u64 = 0;
         let mut whole_sha1 = Sha1::new();
@@ -275,7 +276,7 @@ impl BoxProvider {
             let this_chunk = std::cmp::min(chunk_size, remaining);
             let mut chunk = vec![0u8; this_chunk];
             file.read_exact(&mut chunk).await
-                .map_err(|e| ProviderError::IoError(e))?;
+                .map_err(ProviderError::IoError)?;
 
             let chunk_sha1 = {
                 let mut h = Sha1::new();
@@ -355,7 +356,7 @@ impl StorageProvider for BoxProvider {
         // Verify token works
         let token = self.get_token().await?;
 
-        let resp = self.client.get(&format!("{}/users/me", API_BASE))
+        let resp = self.client.get(format!("{}/users/me", API_BASE))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -561,7 +562,7 @@ impl StorageProvider for BoxProvider {
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
         let total_size = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?.len();
+            .map_err(ProviderError::IoError)?.len();
 
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
@@ -616,7 +617,7 @@ impl StorageProvider for BoxProvider {
 
         // Simple multipart upload for small files (<=50MB, OK to buffer)
         let data = tokio::fs::read(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let token = self.get_token().await?;
         let attributes = serde_json::json!({
             "name": file_name,
@@ -639,7 +640,7 @@ impl StorageProvider for BoxProvider {
             if body.contains("item_name_in_use") {
                 let file_id = self.resolve_file_id(remote_path).await?;
                 let data2 = tokio::fs::read(local_path).await
-                    .map_err(|e| ProviderError::IoError(e))?;
+                    .map_err(ProviderError::IoError)?;
                 let token2 = self.get_token().await?;
 
                 let form2 = reqwest::multipart::Form::new()
@@ -681,7 +682,7 @@ impl StorageProvider for BoxProvider {
             "parent": {"id": parent_id}
         });
 
-        let resp = self.client.post(&format!("{}/folders", API_BASE))
+        let resp = self.client.post(format!("{}/folders", API_BASE))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .json(&body)
@@ -700,7 +701,7 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let resp = self.client.delete(&format!("{}/files/{}", API_BASE, file_id))
+        let resp = self.client.delete(format!("{}/files/{}", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -716,7 +717,7 @@ impl StorageProvider for BoxProvider {
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
-        let resp = self.client.delete(&format!("{}/folders/{}?recursive=true", API_BASE, folder_id))
+        let resp = self.client.delete(format!("{}/folders/{}?recursive=true", API_BASE, folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -745,7 +746,7 @@ impl StorageProvider for BoxProvider {
 
         if let Ok(file_id) = self.resolve_file_id(from).await {
             let body = serde_json::json!({"name": new_name});
-            let resp = self.client.put(&format!("{}/files/{}", API_BASE, file_id))
+            let resp = self.client.put(format!("{}/files/{}", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token))
                 .json(&body)
                 .send().await
@@ -757,7 +758,7 @@ impl StorageProvider for BoxProvider {
         } else {
             let folder_id = self.resolve_folder_id(from).await?;
             let body = serde_json::json!({"name": new_name});
-            let resp = self.client.put(&format!("{}/folders/{}", API_BASE, folder_id))
+            let resp = self.client.put(format!("{}/folders/{}", API_BASE, folder_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token))
                 .json(&body)
                 .send().await
@@ -775,7 +776,7 @@ impl StorageProvider for BoxProvider {
         // Try file first
         if let Ok(file_id) = self.resolve_file_id(path).await {
             let token = self.get_token().await?;
-            let resp = self.client.get(&format!("{}/files/{}?fields=name,type,size,modified_at", API_BASE, file_id))
+            let resp = self.client.get(format!("{}/files/{}?fields=name,type,size,modified_at", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token))
                 .send().await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -798,7 +799,7 @@ impl StorageProvider for BoxProvider {
         // Try folder
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
-        let resp = self.client.get(&format!("{}/folders/{}?fields=name,type,size,modified_at", API_BASE, folder_id))
+        let resp = self.client.get(format!("{}/folders/{}?fields=name,type,size,modified_at", API_BASE, folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -840,7 +841,7 @@ impl StorageProvider for BoxProvider {
     // Storage info
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let token = self.get_token().await?;
-        let resp = self.client.get(&format!("{}/users/me?fields=space_amount,space_used", API_BASE))
+        let resp = self.client.get(format!("{}/users/me?fields=space_amount,space_used", API_BASE))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -866,7 +867,7 @@ impl StorageProvider for BoxProvider {
             "shared_link": {"access": "open"}
         });
 
-        let resp = self.client.put(&format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
+        let resp = self.client.put(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .json(&body)
             .send().await
@@ -885,7 +886,7 @@ impl StorageProvider for BoxProvider {
         let token = self.get_token().await?;
 
         let body = serde_json::json!({"shared_link": null});
-        let _resp = self.client.put(&format!("{}/files/{}", API_BASE, file_id))
+        let _resp = self.client.put(format!("{}/files/{}", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .json(&body)
             .send().await
@@ -911,7 +912,7 @@ impl StorageProvider for BoxProvider {
                 "parent": {"id": to_parent_id},
                 "name": to_name
             });
-            let resp = self.client.post(&format!("{}/files/{}/copy", API_BASE, file_id))
+            let resp = self.client.post(format!("{}/files/{}/copy", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token))
                 .json(&body)
                 .send().await
@@ -929,7 +930,7 @@ impl StorageProvider for BoxProvider {
             "parent": {"id": to_parent_id},
             "name": to_name
         });
-        let resp = self.client.post(&format!("{}/folders/{}/copy", API_BASE, folder_id))
+        let resp = self.client.post(format!("{}/folders/{}/copy", API_BASE, folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .json(&body)
             .send().await
@@ -1014,7 +1015,7 @@ impl StorageProvider for BoxProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }
@@ -1024,7 +1025,7 @@ impl StorageProvider for BoxProvider {
         let token = self.get_token().await?;
 
         let body = serde_json::json!({"id": version_id});
-        let resp = self.client.post(&format!("{}/files/{}/versions/current", API_BASE, file_id))
+        let resp = self.client.post(format!("{}/files/{}/versions/current", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token))
             .json(&body)
             .send().await

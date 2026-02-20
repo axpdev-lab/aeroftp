@@ -379,8 +379,8 @@ fn get_disk_space(mount_point: &str) -> (u64, u64) {
     unsafe {
         let mut stat: libc::statvfs = std::mem::zeroed();
         if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
-            let total = stat.f_blocks as u64 * stat.f_frsize as u64;
-            let free = stat.f_bavail as u64 * stat.f_frsize as u64;
+            let total = stat.f_blocks * stat.f_frsize;
+            let free = stat.f_bavail * stat.f_frsize;
             (total, free)
         } else {
             (0, 0)
@@ -458,9 +458,9 @@ fn unescape_octal(input: &str) -> String {
             && bytes[i + 3].is_ascii_digit() && bytes[i + 3] < b'8'
         {
             // Parse 3 octal digits
-            let o1 = (bytes[i + 1] - b'0') as u8;
-            let o2 = (bytes[i + 2] - b'0') as u8;
-            let o3 = (bytes[i + 3] - b'0') as u8;
+            let o1 = bytes[i + 1] - b'0';
+            let o2 = bytes[i + 2] - b'0';
+            let o3 = bytes[i + 3] - b'0';
             let byte_val = (o1 << 6) | (o2 << 3) | o3;
             byte_buf.push(byte_val);
             i += 4;
@@ -923,7 +923,7 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
 
     for part in all_parts {
         // Skip if already mounted
-        if !part["mountpoint"].is_null() && part["mountpoint"].as_str().unwrap_or("") != "" {
+        if !part["mountpoint"].is_null() && !part["mountpoint"].as_str().unwrap_or("").is_empty() {
             continue;
         }
 
@@ -1747,7 +1747,7 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
                         libc::inotify_add_watch(
                             inotify_fd,
                             c_path.as_ptr(),
-                            (libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO) as u32,
+                            libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO,
                         );
                     }
                 }

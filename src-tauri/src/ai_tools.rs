@@ -178,23 +178,21 @@ pub async fn validate_tool_args(
                     if !p.is_dir() {
                         errors.push(format!("Directory not found: {}", path));
                     }
-                } else {
-                    if !p.exists() {
-                        errors.push(format!("File not found: {}", path));
-                    } else if p.is_dir() {
-                        errors.push(format!("Path is a directory, not a file: {}", path));
-                    } else if let Ok(meta) = p.metadata() {
-                        let size = meta.len();
-                        if size > 5_242_880 {
-                            warnings.push(format!(
-                                "File is large ({:.1} MB). Edit operations may be slow.",
-                                size as f64 / 1_048_576.0
-                            ));
-                        }
-                        // Check read-only for edit tools
-                        if tool_name == "local_edit" && meta.permissions().readonly() {
-                            errors.push(format!("File is read-only: {}", path));
-                        }
+                } else if !p.exists() {
+                    errors.push(format!("File not found: {}", path));
+                } else if p.is_dir() {
+                    errors.push(format!("Path is a directory, not a file: {}", path));
+                } else if let Ok(meta) = p.metadata() {
+                    let size = meta.len();
+                    if size > 5_242_880 {
+                        warnings.push(format!(
+                            "File is large ({:.1} MB). Edit operations may be slow.",
+                            size as f64 / 1_048_576.0
+                        ));
+                    }
+                    // Check read-only for edit tools
+                    if tool_name == "local_edit" && meta.permissions().readonly() {
+                        errors.push(format!("File is read-only: {}", path));
                     }
                 }
             }
@@ -881,8 +879,8 @@ pub async fn execute_ai_tool(
                 }))
             } else if has_ftp(&app_state).await {
                 // FTP: list parent dir and find the entry
-                let file_name = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(&path);
-                let parent = if let Some(pos) = path.rfind(|c: char| c == '/' || c == '\\') {
+                let file_name = path.rsplit(['/', '\\']).next().unwrap_or(&path);
+                let parent = if let Some(pos) = path.rfind(['/', '\\']) {
                     let p = &path[..pos];
                     if p.is_empty() { "/" } else { p }
                 } else {
@@ -2322,9 +2320,9 @@ pub async fn execute_ai_tool(
                             .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
 
                         let ctx_before: Vec<&str> = lines[i.saturating_sub(context_lines)..i]
-                            .iter().copied().collect();
+                            .to_vec();
                         let ctx_after: Vec<&str> = lines[(i + 1)..lines.len().min(i + 1 + context_lines)]
-                            .iter().copied().collect();
+                            .to_vec();
 
                         matches.push(json!({
                             "file": rel,
@@ -2589,6 +2587,7 @@ pub async fn execute_ai_tool(
                 .unwrap_or_else(|| path.clone());
             tree_lines.push(format!("{}/", root_name));
 
+            #[allow(clippy::too_many_arguments)]
             fn build_tree(
                 dir: &std::path::Path,
                 prefix: &str,

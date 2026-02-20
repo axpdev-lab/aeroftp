@@ -1,10 +1,10 @@
-/// Chat History SQLite Backend for AeroAgent
-///
-/// Replaces the JSON flat-file approach with SQLite + FTS5 for:
-/// - Atomic writes (WAL mode, crash-safe)
-/// - Full-text search across all conversations
-/// - Configurable retention policies
-/// - Efficient partial reads (no full-file rewrite)
+//! Chat History SQLite Backend for AeroAgent
+//!
+//! Replaces the JSON flat-file approach with SQLite + FTS5 for:
+//! - Atomic writes (WAL mode, crash-safe)
+//! - Full-text search across all conversations
+//! - Configurable retention policies
+//! - Efficient partial reads (no full-file rewrite)
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};

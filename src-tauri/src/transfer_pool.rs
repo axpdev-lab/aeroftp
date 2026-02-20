@@ -98,7 +98,7 @@ pub enum SyncTrigger {
 }
 
 /// Compression mode for transfers
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum CompressionMode {
     /// Smart detection: skip already-compressed files
@@ -106,13 +106,8 @@ pub enum CompressionMode {
     /// Always compress
     On,
     /// Never compress (default)
+    #[default]
     Off,
-}
-
-impl Default for CompressionMode {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 /// File extensions that are already compressed (compression counterproductive)
@@ -126,11 +121,7 @@ const PRECOMPRESSED_EXTENSIONS: &[&str] = &[
 /// Validate parallel transfer config, clamping values to safe ranges
 pub fn validate_config(config: &mut ParallelTransferConfig) {
     // Clamp max_streams to 1-8
-    if config.max_streams < 1 {
-        config.max_streams = 1;
-    } else if config.max_streams > 8 {
-        config.max_streams = 8;
-    }
+    config.max_streams = config.max_streams.clamp(1, 8);
 
     // Set default timeout if 0
     if config.acquire_timeout_ms == 0 {

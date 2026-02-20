@@ -6,7 +6,7 @@ authors = ["axpdev"]
 license = "GPL-3.0"
 repository = "https://github.com/axpnet/aeroftp"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80.0"
 default-run = "aeroftp"
 
 [lib]

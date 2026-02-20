@@ -240,11 +240,7 @@ impl SyncSchedule {
         // Seconds remaining in the current interval
         let interval_remaining = if let Some(last) = self.last_sync {
             let elapsed = now_utc.signed_duration_since(last).num_seconds().max(0) as u64;
-            if elapsed >= self.interval_secs {
-                0u64
-            } else {
-                self.interval_secs - elapsed
-            }
+            self.interval_secs.saturating_sub(elapsed)
         } else {
             // Never synced — ready immediately (interval-wise)
             0u64

@@ -204,7 +204,7 @@ pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<V
         let is_dir = entry.is_directory();
         ArchiveEntry {
             name,
-            size: entry.size() as u64,
+            size: entry.size(),
             compressed_size: 0,
             is_dir,
             is_encrypted: entry.has_stream() && secret_password.is_some(),
@@ -388,7 +388,7 @@ pub async fn list_rar(archive_path: String) -> Result<Vec<ArchiveEntry>, String>
         let entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
         entries.push(ArchiveEntry {
             name: entry.filename.to_string_lossy().to_string(),
-            size: entry.unpacked_size as u64,
+            size: entry.unpacked_size,
             compressed_size: 0, // RAR crate doesn't expose packed_size directly
             is_dir: entry.is_directory(),
             is_encrypted: entry.is_encrypted(),

@@ -664,12 +664,12 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
     // Step 7: Write masterkey.cryptomator JSON
     let masterkey_json = serde_json::json!({
         "version": 999,
-        "scryptSalt": b64.encode(&salt),
+        "scryptSalt": b64.encode(salt),
         "scryptCostParam": 32768,
         "scryptBlockSize": 8,
         "primaryMasterKey": b64.encode(&wrapped_enc),
         "hmacMasterKey": b64.encode(&wrapped_mac),
-        "versionMac": b64.encode(&version_mac)
+        "versionMac": b64.encode(version_mac)
     });
 
     let masterkey_path = vault_dir.join("masterkey.cryptomator");

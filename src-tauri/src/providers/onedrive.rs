@@ -651,7 +651,7 @@ impl StorageProvider for OneDriveProvider {
         }
 
         // Clear from cache
-        self.path_cache.remove(&full_path.trim_matches('/').to_string());
+        self.path_cache.remove(full_path.trim_matches('/'));
         
         info!("Deleted: {}", path);
         Ok(())
@@ -728,7 +728,7 @@ impl StorageProvider for OneDriveProvider {
         }
 
         // Invalidate old path from cache
-        self.path_cache.remove(&from_path.trim_matches('/').to_string());
+        self.path_cache.remove(from_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -1064,7 +1064,7 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }
@@ -1222,9 +1222,9 @@ impl StorageProvider for OneDriveProvider {
 
         // OneDrive resumable upload via upload session — read chunks from file, not all in memory
         let total_size = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?.len();
+            .map_err(ProviderError::IoError)?.len();
         let mut file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         let path_str = remote_path.trim_matches('/');
         let url = format!(
@@ -1270,7 +1270,7 @@ impl StorageProvider for OneDriveProvider {
             let this_chunk_size = (end - offset) as usize;
             let mut chunk = vec![0u8; this_chunk_size];
             file.read_exact(&mut chunk).await
-                .map_err(|e| ProviderError::IoError(e))?;
+                .map_err(ProviderError::IoError)?;
 
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 

@@ -305,12 +305,10 @@ impl AzureProvider {
             self.current_prefix.clone()
         } else if path.starts_with('/') {
             path.trim_start_matches('/').to_string()
+        } else if self.current_prefix.is_empty() {
+            path.to_string()
         } else {
-            if self.current_prefix.is_empty() {
-                path.to_string()
-            } else {
-                format!("{}{}", self.current_prefix, path)
-            }
+            format!("{}{}", self.current_prefix, path)
         }
     }
 
@@ -369,8 +367,8 @@ impl StorageProvider for AzureProvider {
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // Test connection by listing with max_results=1
-        let url = format!("{}?restype=container&comp=list&maxresults=1",
-            format!("{}/{}", self.config.blob_endpoint(), self.config.container));
+        let url = format!("{}/{}?restype=container&comp=list&maxresults=1",
+            self.config.blob_endpoint(), self.config.container);
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
@@ -409,8 +407,8 @@ impl StorageProvider for AzureProvider {
             format!("&prefix={}", urlencoding::encode(&p))
         };
 
-        let base_url = format!("{}?restype=container&comp=list&delimiter=/{}",
-            format!("{}/{}", self.config.blob_endpoint(), self.config.container),
+        let base_url = format!("{}/{}?restype=container&comp=list&delimiter=/{}",
+            self.config.blob_endpoint(), self.config.container,
             prefix_param);
 
         let items = self.list_blobs_paginated(&base_url).await?;
@@ -549,11 +547,11 @@ impl StorageProvider for AzureProvider {
 
         // Streaming upload: get file metadata for Content-Length, then stream body
         let file_meta = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let file_len = file_meta.len();
 
         let file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 

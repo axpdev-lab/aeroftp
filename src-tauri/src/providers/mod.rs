@@ -67,7 +67,12 @@ use std::collections::HashMap;
 pub fn sanitize_api_error(body: &str) -> String {
     let first_line = body.lines().next().unwrap_or("unknown error");
     let truncated = if first_line.len() > 200 {
-        format!("{}...", &first_line[..first_line.floor_char_boundary(200)])
+        let boundary = first_line.char_indices()
+            .take_while(|&(i, _)| i <= 200)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(200);
+        format!("{}...", &first_line[..boundary])
     } else {
         first_line.to_string()
     };

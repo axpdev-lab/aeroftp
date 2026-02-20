@@ -276,7 +276,7 @@ pub fn generate_password(
     exclude_ambiguous: bool,
     count: usize,
 ) -> Result<Vec<String>, String> {
-    if length < 8 || length > 128 {
+    if !(8..=128).contains(&length) {
         return Err("Length must be between 8 and 128".into());
     }
     let count = count.clamp(1, 10);
@@ -320,7 +320,7 @@ pub fn generate_passphrase(
     capitalize: bool,
     count: usize,
 ) -> Result<Vec<String>, String> {
-    if word_count < 3 || word_count > 24 {
+    if !(3..=24).contains(&word_count) {
         return Err("Word count must be between 3 and 24".into());
     }
     let count = count.clamp(1, 10);

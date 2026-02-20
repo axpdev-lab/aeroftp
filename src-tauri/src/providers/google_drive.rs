@@ -1396,7 +1396,7 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }

@@ -166,10 +166,11 @@ impl ProviderConfig {
 }
 
 /// TLS mode for FTP connections
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FtpTlsMode {
     /// Plain FTP (no encryption)
+    #[default]
     None,
     /// Explicit TLS (AUTH TLS on port 21) - required
     Explicit,
@@ -177,12 +178,6 @@ pub enum FtpTlsMode {
     Implicit,
     /// Try explicit TLS, fall back to plain if unsupported
     ExplicitIfAvailable,
-}
-
-impl Default for FtpTlsMode {
-    fn default() -> Self {
-        FtpTlsMode::None
-    }
 }
 
 /// FTP-specific configuration
@@ -495,11 +490,11 @@ pub struct AzureConfig {
 impl AzureConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let account_name = config.extra.get("account_name")
-            .or_else(|| config.username.as_ref())
+            .or(config.username.as_ref())
             .ok_or_else(|| ProviderError::InvalidConfig("Account name required for Azure".to_string()))?
             .clone();
         let access_key: secrecy::SecretString = config.extra.get("access_key")
-            .or_else(|| config.password.as_ref())
+            .or(config.password.as_ref())
             .ok_or_else(|| ProviderError::InvalidConfig("Access key required for Azure".to_string()))?
             .clone()
             .into();

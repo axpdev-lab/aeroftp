@@ -65,8 +65,11 @@ enum Commands {
     },
 }
 
+/// (protocol, host, password, username, port, path)
+type ConnectionInfo = (String, String, Option<String>, String, u16, String);
+
 /// Parse a URL like sftp://user:pass@host:22/path into components
-fn parse_url(url: &str) -> Result<(String, String, Option<String>, String, u16, String), String> {
+fn parse_url(url: &str) -> Result<ConnectionInfo, String> {
     let url_obj = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
     let protocol = url_obj.scheme().to_string();
     let host = url_obj.host_str().ok_or("Missing host")?.to_string();

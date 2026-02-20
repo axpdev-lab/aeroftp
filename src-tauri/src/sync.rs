@@ -156,9 +156,8 @@ pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
         let pattern_lower = pattern.to_lowercase();
         
         // Simple glob matching
-        if pattern_lower.starts_with('*') {
+        if let Some(ext) = pattern_lower.strip_prefix('*') {
             // *.ext pattern
-            let ext = &pattern_lower[1..];
             if path_lower.ends_with(ext) {
                 return true;
             }
@@ -764,23 +763,18 @@ impl RetryPolicy {
 // ============ Phase 2: Post-Transfer Verification ============
 
 /// Policy for verifying transfers after completion
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum VerifyPolicy {
     /// No verification (fastest)
     None,
     /// Verify file size matches
+    #[default]
     SizeOnly,
     /// Verify size and modification time
     SizeAndMtime,
     /// Verify size + SHA-256 hash (slowest, most accurate)
     Full,
-}
-
-impl Default for VerifyPolicy {
-    fn default() -> Self {
-        Self::SizeOnly
-    }
 }
 
 /// Result of a post-transfer verification
@@ -1593,8 +1587,8 @@ pub fn select_canary_sample(
     match selection {
         "newest" => {
             file_list.sort_by(|a, b| {
-                let a_mod = a.1.modified.unwrap_or_else(|| chrono::DateTime::<Utc>::MIN_UTC);
-                let b_mod = b.1.modified.unwrap_or_else(|| chrono::DateTime::<Utc>::MIN_UTC);
+                let a_mod = a.1.modified.unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
+                let b_mod = b.1.modified.unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
                 b_mod.cmp(&a_mod)
             });
         }

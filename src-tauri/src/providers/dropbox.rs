@@ -402,12 +402,10 @@ impl StorageProvider for DropboxProvider {
             let mut parts: Vec<&str> = self.current_path.split('/').filter(|s| !s.is_empty()).collect();
             parts.pop();
             parts.join("/")
+        } else if self.current_path.is_empty() {
+            path.to_string()
         } else {
-            if self.current_path.is_empty() {
-                path.to_string()
-            } else {
-                format!("{}/{}", self.current_path, path)
-            }
+            format!("{}/{}", self.current_path, path)
         };
 
         // Verify path exists (skip for root)
@@ -1156,7 +1154,7 @@ impl StorageProvider for DropboxProvider {
 
         let _ = full_path; // Used for path resolution
         tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }

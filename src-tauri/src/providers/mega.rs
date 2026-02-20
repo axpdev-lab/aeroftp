@@ -408,7 +408,7 @@ impl StorageProvider for MegaProvider {
     async fn server_info(&mut self) -> Result<String, ProviderError> { 
         self.run_mega_cmd("mega-whoami", &[])
             .await
-            .map_err(|e| ProviderError::ServerError(e))
+            .map_err(ProviderError::ServerError)
     }
     
     fn supports_server_copy(&self) -> bool { true }

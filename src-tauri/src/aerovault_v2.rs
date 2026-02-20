@@ -83,7 +83,7 @@ pub struct HeaderFlags {
 }
 
 impl HeaderFlags {
-    fn to_byte(&self) -> u8 {
+    fn to_byte(self) -> u8 {
         let mut flags = 0u8;
         if self.cascade_mode { flags |= 0x01; }
         if self.hidden_volume { flags |= 0x02; }

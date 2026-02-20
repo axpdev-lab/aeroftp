@@ -507,7 +507,7 @@ impl OAuth2Manager {
         }
 
         // Vault not open — try auto-initializing vault first
-        if let Ok(_) = crate::credential_store::CredentialStore::init() {
+        if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 store.store(&account, &json)
                     .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;

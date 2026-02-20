@@ -184,7 +184,7 @@ impl PCloudProvider {
     }
 
     /// Check pCloud API response for errors
-    fn check_response<T: std::fmt::Debug>(resp: &PCloudResponse) -> Result<(), ProviderError> {
+    fn check_response(resp: &PCloudResponse) -> Result<(), ProviderError> {
         if resp.result != 0 {
             let msg = resp.error.clone().unwrap_or_else(|| format!("Error code: {}", resp.result));
             return Err(match resp.result {
@@ -254,7 +254,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
 
         let metadata = resp.metadata
             .ok_or_else(|| ProviderError::ParseError("No metadata in response".to_string()))?;
@@ -296,7 +296,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         self.current_path = new_path;
         Ok(())
     }
@@ -419,7 +419,7 @@ impl StorageProvider for PCloudProvider {
 
         // Streaming upload: read file as a stream instead of loading into memory
         let file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
@@ -457,7 +457,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -474,7 +474,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -491,7 +491,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -533,7 +533,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -550,7 +550,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
 
         let meta = resp.metadata
             .ok_or_else(|| ProviderError::ParseError("No metadata".to_string()))?;
@@ -655,7 +655,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -693,7 +693,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         Ok(())
     }
 
@@ -802,7 +802,7 @@ impl StorageProvider for PCloudProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }
@@ -862,7 +862,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
         info!("Remote upload from {} to {}", url, dest_path);
         Ok(())
     }
@@ -885,7 +885,7 @@ impl StorageProvider for PCloudProvider {
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Self::check_response::<()>(&resp)?;
+        Self::check_response(&resp)?;
 
         let metadata = resp.metadata
             .ok_or_else(|| ProviderError::ParseError("No metadata".to_string()))?;

@@ -1,8 +1,8 @@
-/// File Tags SQLite Backend
-///
-/// Provides a label-based tagging system for files in both local and remote
-/// panels. Labels are color-coded and orderable; each file can carry multiple
-/// labels. Data is persisted in a per-user SQLite database with WAL mode.
+//! File Tags SQLite Backend
+//!
+//! Provides a label-based tagging system for files in both local and remote
+//! panels. Labels are color-coded and orderable; each file can carry multiple
+//! labels. Data is persisted in a per-user SQLite database with WAL mode.
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};

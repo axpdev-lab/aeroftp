@@ -119,7 +119,7 @@ async fn stream_openai(
     // Build tools with strict mode for providers that support structured outputs
     let supports_strict = matches!(
         request.provider_type,
-        AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
+        AIProviderType::OpenAI | AIProviderType::Xai | AIProviderType::OpenRouter
     );
     let tools = request.tools.as_ref().map(|defs| {
         defs.iter().map(|d| {
@@ -167,10 +167,10 @@ async fn stream_openai(
             let effort = if budget <= 5000 { "low" } else if budget <= 20000 { "medium" } else { "high" };
             body["reasoning_effort"] = serde_json::json!(effort);
             // Reasoning models do not support temperature or top_p
-            body.as_object_mut().map(|o| {
+            if let Some(o) = body.as_object_mut() {
                 o.remove("temperature");
                 o.remove("top_p");
-            });
+            }
         }
     }
 
@@ -195,8 +195,8 @@ async fn stream_openai(
     }
 
     // Kimi web search: inject $web_search as builtin_function tool
-    if matches!(request.provider_type, AIProviderType::Kimi) {
-        if request.web_search.unwrap_or(false) {
+    if matches!(request.provider_type, AIProviderType::Kimi)
+        && request.web_search.unwrap_or(false) {
             let web_tool = serde_json::json!({
                 "type": "builtin_function",
                 "function": { "name": "$web_search" }
@@ -207,7 +207,6 @@ async fn stream_openai(
                 body["tools"] = serde_json::json!([web_tool]);
             }
         }
-    }
 
     // Kimi context caching: inject cache_id if provided
     if matches!(request.provider_type, AIProviderType::Kimi) {
@@ -219,14 +218,13 @@ async fn stream_openai(
     }
 
     // Qwen web search: enable_search + search_options
-    if matches!(request.provider_type, AIProviderType::Qwen) {
-        if request.web_search.unwrap_or(false) {
+    if matches!(request.provider_type, AIProviderType::Qwen)
+        && request.web_search.unwrap_or(false) {
             body["enable_search"] = serde_json::json!(true);
             body["search_options"] = serde_json::json!({
                 "search_strategy": "pro"
             });
         }
-    }
 
     // DeepSeek prefix completion: add prefix:true to last assistant message
     if matches!(request.provider_type, AIProviderType::DeepSeek) {
@@ -613,7 +611,7 @@ async fn stream_anthropic(
                                 Some("thinking") => {
                                     is_thinking = true;
                                 }
-                                Some("text") | _ => {
+                                _ => {
                                     if is_thinking {
                                         let _ = app.emit(event_name, StreamChunk {
                                             content: String::new(),

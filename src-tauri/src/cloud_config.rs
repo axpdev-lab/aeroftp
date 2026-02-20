@@ -40,10 +40,11 @@ pub struct CloudConfig {
 }
 
 /// How to handle file conflicts
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ConflictStrategy {
     /// Always ask the user
+    #[default]
     AskUser,
     /// Keep both files (rename with timestamp)
     KeepBoth,
@@ -53,12 +54,6 @@ pub enum ConflictStrategy {
     PreferRemote,
     /// Use newer file based on timestamp
     PreferNewer,
-}
-
-impl Default for ConflictStrategy {
-    fn default() -> Self {
-        Self::AskUser
-    }
 }
 
 impl Default for CloudConfig {
@@ -98,10 +93,11 @@ impl Default for CloudConfig {
 }
 
 /// Current cloud sync status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CloudSyncStatus {
     /// Not configured
+    #[default]
     NotConfigured,
     /// Idle, waiting for next sync
     Idle {
@@ -125,12 +121,6 @@ pub enum CloudSyncStatus {
     Error {
         message: String,
     },
-}
-
-impl Default for CloudSyncStatus {
-    fn default() -> Self {
-        Self::NotConfigured
-    }
 }
 
 /// Cloud sync statistics

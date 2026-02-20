@@ -51,7 +51,7 @@ pub enum AIProviderType {
     Google,
     OpenAI,
     Anthropic,
-    XAI,
+    Xai,
     OpenRouter,
     Ollama,
     Custom,
@@ -667,7 +667,7 @@ mod openai_compat {
         // For OpenAI, xAI, OpenRouter: enable structured outputs (strict: true + additionalProperties: false)
         let supports_strict = matches!(
             request.provider_type,
-            AIProviderType::OpenAI | AIProviderType::XAI | AIProviderType::OpenRouter
+            AIProviderType::OpenAI | AIProviderType::Xai | AIProviderType::OpenRouter
         );
         let tools = request.tools.as_ref().map(|defs| {
             defs.iter().map(|d| {
@@ -708,10 +708,10 @@ mod openai_compat {
                 let effort = if budget <= 5000 { "low" } else if budget <= 20000 { "medium" } else { "high" };
                 body["reasoning_effort"] = serde_json::json!(effort);
                 // Reasoning models do not support temperature or top_p
-                body.as_object_mut().map(|o| {
+                if let Some(o) = body.as_object_mut() {
                     o.remove("temperature");
                     o.remove("top_p");
-                });
+                }
             }
         }
 
@@ -736,8 +736,8 @@ mod openai_compat {
         }
 
         // Kimi web search: inject $web_search as builtin_function tool
-        if matches!(request.provider_type, AIProviderType::Kimi) {
-            if request.web_search.unwrap_or(false) {
+        if matches!(request.provider_type, AIProviderType::Kimi)
+            && request.web_search.unwrap_or(false) {
                 let web_tool = serde_json::json!({
                     "type": "builtin_function",
                     "function": { "name": "$web_search" }
@@ -748,7 +748,6 @@ mod openai_compat {
                     body["tools"] = serde_json::json!([web_tool]);
                 }
             }
-        }
 
         // Kimi context caching: inject cache_id if provided
         if matches!(request.provider_type, AIProviderType::Kimi) {
@@ -760,14 +759,13 @@ mod openai_compat {
         }
 
         // Qwen web search: enable_search + search_options
-        if matches!(request.provider_type, AIProviderType::Qwen) {
-            if request.web_search.unwrap_or(false) {
+        if matches!(request.provider_type, AIProviderType::Qwen)
+            && request.web_search.unwrap_or(false) {
                 body["enable_search"] = serde_json::json!(true);
                 body["search_options"] = serde_json::json!({
                     "search_strategy": "pro"
                 });
             }
-        }
 
         // DeepSeek prefix completion: add prefix:true to last assistant message
         if matches!(request.provider_type, AIProviderType::DeepSeek) {

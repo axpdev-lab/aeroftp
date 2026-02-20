@@ -106,7 +106,7 @@ impl MultiProviderState {
     {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(session_id)
-            .ok_or_else(|| ProviderError::NotConnected)?;
+            .ok_or(ProviderError::NotConnected)?;
 
         // Update last activity
         session.info.last_activity = std::time::Instant::now();

@@ -504,7 +504,7 @@ impl StorageProvider for FtpProvider {
 
         let mut local_file = tokio::fs::File::create(local_path)
             .await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         let mut chunk = [0u8; 8192];
         let mut transferred: u64 = 0;
@@ -520,7 +520,7 @@ impl StorageProvider for FtpProvider {
             local_file
                 .write_all(&chunk[..n])
                 .await
-                .map_err(|e| ProviderError::IoError(e))?;
+                .map_err(ProviderError::IoError)?;
             transferred += n as u64;
 
             if let Some(ref progress) = on_progress {
@@ -528,7 +528,7 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        local_file.flush().await.map_err(|e| ProviderError::IoError(e))?;
+        local_file.flush().await.map_err(ProviderError::IoError)?;
 
         // Finalize the stream - need to get stream again after the borrow
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
@@ -581,10 +581,10 @@ impl StorageProvider for FtpProvider {
 
         // Stream from file instead of reading entire file into memory
         let total_size = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?.len();
+            .map_err(ProviderError::IoError)?.len();
 
         let mut file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         // Upload using AsyncRead
         stream
@@ -662,7 +662,7 @@ impl StorageProvider for FtpProvider {
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "/".to_string());
-                if let Some(entry) = self.parse_mlsd_entry(&mlst_line.trim(), &parent) {
+                if let Some(entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
                     return Ok(entry);
                 }
             }
@@ -822,23 +822,24 @@ impl StorageProvider for FtpProvider {
         use tokio::io::AsyncWriteExt as _;
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .append(false)
             .open(local_path)
             .await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         // Seek to offset and write
         file.set_len(offset)
             .await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         use tokio::io::AsyncSeekExt;
         file.seek(std::io::SeekFrom::Start(offset))
             .await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         file.write_all(&data)
             .await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }
@@ -853,7 +854,7 @@ impl StorageProvider for FtpProvider {
         use tokio::io::AsyncSeekExt;
 
         let total_size = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?.len();
+            .map_err(ProviderError::IoError)?.len();
 
         if offset >= total_size {
             return Ok(()); // Nothing to upload
@@ -861,9 +862,9 @@ impl StorageProvider for FtpProvider {
 
         // Open file and seek to offset for streaming append
         let mut file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         file.seek(std::io::SeekFrom::Start(offset)).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
 
         let stream = self.stream_mut()?;
         stream

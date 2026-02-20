@@ -196,20 +196,16 @@ pub async fn detect_project_context(path: String) -> Result<ProjectContext, Stri
     }
 
     // Try detecting project type in order of specificity
-    if try_detect_nodejs(base, &mut ctx) {
-        // detected
-    } else if try_detect_rust(base, &mut ctx) {
-        // detected
-    } else if try_detect_python(base, &mut ctx) {
-        // detected
-    } else if try_detect_php(base, &mut ctx) {
-        // detected
-    } else if try_detect_go(base, &mut ctx) {
-        // detected
-    } else if try_detect_java(base, &mut ctx) {
-        // detected
-    } else if try_detect_dotnet(base, &mut ctx) {
-        // detected
+    let detected = try_detect_nodejs(base, &mut ctx)
+        || try_detect_rust(base, &mut ctx)
+        || try_detect_python(base, &mut ctx)
+        || try_detect_php(base, &mut ctx)
+        || try_detect_go(base, &mut ctx)
+        || try_detect_java(base, &mut ctx)
+        || try_detect_dotnet(base, &mut ctx);
+
+    if detected {
+        // project type already set by the detection function
     } else if base.join("Makefile").exists() || base.join("CMakeLists.txt").exists() {
         ctx.project_type = "c_cpp".to_string();
         if base.join("Makefile").exists() {
@@ -630,14 +626,14 @@ fn try_detect_dotnet(base: &Path, ctx: &mut ProjectContext) -> bool {
     let has_sln = std::fs::read_dir(base)
         .map(|entries| {
             entries.filter_map(|e| e.ok())
-                .any(|e| e.path().extension().map_or(false, |ext| ext == "sln"))
+                .any(|e| e.path().extension().is_some_and(|ext| ext == "sln"))
         })
         .unwrap_or(false);
 
     let has_csproj = std::fs::read_dir(base)
         .map(|entries| {
             entries.filter_map(|e| e.ok())
-                .any(|e| e.path().extension().map_or(false, |ext| ext == "csproj"))
+                .any(|e| e.path().extension().is_some_and(|ext| ext == "csproj"))
         })
         .unwrap_or(false);
 

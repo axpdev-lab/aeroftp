@@ -594,10 +594,8 @@ impl FtpManager {
 
                 if file.is_dir {
                     sub_dirs.push(file_path.clone());
-                } else {
-                    if let Err(e) = self.remove(&file_path).await {
-                        warn!("Failed to delete file {}: {}", file_path, e);
-                    }
+                } else if let Err(e) = self.remove(&file_path).await {
+                    warn!("Failed to delete file {}: {}", file_path, e);
                 }
             }
 
@@ -823,7 +821,7 @@ impl FtpManager {
 
         // DOS format: date time <DIR>/size name...
         // Find the filename start (after date, time, and either <DIR> or size)
-        let name_start_idx = if is_dir { 3 } else { 3 };
+        let name_start_idx = 3;
         let name = if parts.len() > name_start_idx {
             parts[name_start_idx..].join(" ")
         } else {

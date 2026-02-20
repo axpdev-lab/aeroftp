@@ -908,14 +908,10 @@ impl StorageProvider for S3Provider {
             } else {
                 String::new()
             }
-        } else if path.starts_with('/') {
+        } else if path.starts_with('/') || self.current_prefix.is_empty() {
             path.trim_matches('/').to_string()
         } else {
-            if self.current_prefix.is_empty() {
-                path.trim_matches('/').to_string()
-            } else {
-                format!("{}/{}", self.current_prefix, path.trim_matches('/'))
-            }
+            format!("{}/{}", self.current_prefix, path.trim_matches('/'))
         };
         
         // Verify the prefix exists by listing it
@@ -968,7 +964,7 @@ impl StorageProvider for S3Provider {
                 // H-01: Streaming download — write chunks as they arrive
                 let mut stream = response.bytes_stream();
                 let mut file = tokio::fs::File::create(local_path).await
-                    .map_err(|e| ProviderError::IoError(e))?;
+                    .map_err(ProviderError::IoError)?;
                 let mut downloaded: u64 = 0;
 
                 while let Some(chunk) = stream.next().await {
@@ -1028,7 +1024,7 @@ impl StorageProvider for S3Provider {
         }
 
         let file_meta = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let total_size = file_meta.len();
         let key = remote_path.trim_start_matches('/');
 
@@ -1036,14 +1032,14 @@ impl StorageProvider for S3Provider {
         if total_size > Self::MULTIPART_THRESHOLD as u64 {
             // Multipart still needs buffered data for chunking
             let data = tokio::fs::read(local_path).await
-                .map_err(|e| ProviderError::IoError(e))?;
+                .map_err(ProviderError::IoError)?;
             return self.upload_multipart(key, data, on_progress).await;
         }
 
         // Streaming upload for small files (< 5MB)
         use tokio_util::io::ReaderStream;
         let file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::IoError(e))?;
+            .map_err(ProviderError::IoError)?;
         let stream = ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
@@ -1800,7 +1796,7 @@ impl StorageProvider for S3Provider {
             StatusCode::OK => {
                 let mut stream = response.bytes_stream();
                 let mut file = tokio::fs::File::create(local_path).await
-                    .map_err(|e| ProviderError::IoError(e))?;
+                    .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;

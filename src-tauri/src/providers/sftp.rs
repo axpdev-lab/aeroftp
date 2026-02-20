@@ -125,8 +125,8 @@ impl SftpProvider {
             if parent.is_empty() { "/".to_string() } else { parent }
         } else if path == "~" {
             self.home_dir.clone()
-        } else if path.starts_with("~/") {
-            format!("{}/{}", self.home_dir.trim_end_matches('/'), &path[2..])
+        } else if let Some(stripped) = path.strip_prefix("~/") {
+            format!("{}/{}", self.home_dir.trim_end_matches('/'), stripped)
         } else {
             format!("{}/{}", self.current_dir.trim_end_matches('/'), path)
         }
@@ -181,9 +181,9 @@ impl SftpProvider {
             .ok_or_else(|| ProviderError::AuthenticationFailed("No private key path specified".to_string()))?;
 
         // Expand ~ in path (cross-platform: uses PathBuf for correct separator)
-        let expanded_path = if key_path.starts_with("~/") {
+        let expanded_path = if let Some(stripped) = key_path.strip_prefix("~/") {
             if let Some(home) = dirs::home_dir() {
-                home.join(&key_path[2..]).to_string_lossy().to_string()
+                home.join(stripped).to_string_lossy().to_string()
             } else {
                 key_path.clone()
             }
@@ -735,8 +735,7 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: chmod {} to {:o}", full_path, mode);
 
-        let mut attrs = russh_sftp::protocol::FileAttributes::default();
-        attrs.permissions = Some(mode);
+        let attrs = russh_sftp::protocol::FileAttributes { permissions: Some(mode), ..Default::default() };
 
         sftp.set_metadata(&full_path, attrs).await
             .map_err(|e| ProviderError::ServerError(format!("Failed to chmod: {}", e)))?;

@@ -43,7 +43,7 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 // ---------------------------------------------------------------------------
 
 /// Watcher operating mode
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum WatcherMode {
     /// Native OS watcher (inotify/FSEvents/ReadDirectoryChangesW) with debouncer
@@ -51,13 +51,8 @@ pub enum WatcherMode {
     /// Poll-based watcher (for network filesystems, NFS, CIFS)
     Poll,
     /// Automatic: try native first, fall back to poll if issues detected
+    #[default]
     Auto,
-}
-
-impl Default for WatcherMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Current watcher health status
