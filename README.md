@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
-  <a href="https://www.bestpractices.dev/projects/10292"><img src="https://www.bestpractices.dev/projects/10292/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <a href="https://snapcraft.io/aeroftp"><img src="https://img.shields.io/badge/snap-aeroftp-blue?logo=snapcraft" alt="Snap" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
   <img src="https://img.shields.io/badge/tauri-2-blue?logo=tauri&logoColor=white" alt="Tauri 2" />
