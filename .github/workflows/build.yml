@@ -37,21 +37,21 @@ jobs:
           df -h /
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           toolchain: stable
 
       - name: Rust cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
         with:
           workspaces: './src-tauri -> target'
 
@@ -96,7 +96,7 @@ jobs:
       # Build Snap package using Snapcraft (Tauri doesn't generate .snap)
       - name: Build Snap package
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        uses: snapcore/action-build@v1
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: snap-build
 
       # Upload directly to GitHub Release (only on tags)
@@ -121,7 +121,7 @@ jobs:
 
       - name: Upload Linux binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           name: 'AeroFTP ${{ github.ref_name }}'
           body: ${{ steps.changelog.outputs.notes }}
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload Windows binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'windows'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           files: |
             src-tauri/target/release/bundle/msi/*.msi
@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload macOS binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           files: |
             src-tauri/target/release/bundle/dmg/*.dmg
