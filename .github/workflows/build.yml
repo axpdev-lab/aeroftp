@@ -99,7 +99,7 @@ jobs:
       - name: Fix AppImage DirIcon symlink
         if: matrix.target == 'linux'
         run: |
-          APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1)
+          APPIMAGE=$(realpath src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1)
           if [ -z "$APPIMAGE" ]; then echo "No AppImage found, skipping"; exit 0; fi
           echo "Fixing .DirIcon in $APPIMAGE"
           chmod +x "$APPIMAGE"
