@@ -18,8 +18,12 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf, Component};
 use std::sync::{LazyLock, Mutex};
+#[cfg(target_os = "linux")]
 use tauri::Emitter;
+#[cfg(target_os = "linux")]
 use tracing::{error, info, warn};
+#[cfg(not(target_os = "linux"))]
+use tracing::{info, warn};
 
 // ─── Path validation ────────────────────────────────────────────────────────
 
@@ -379,8 +383,8 @@ fn get_disk_space(mount_point: &str) -> (u64, u64) {
     unsafe {
         let mut stat: libc::statvfs = std::mem::zeroed();
         if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
-            let total = stat.f_blocks * stat.f_frsize;
-            let free = stat.f_bavail * stat.f_frsize;
+            let total = stat.f_blocks as u64 * stat.f_frsize as u64;
+            let free = stat.f_bavail as u64 * stat.f_frsize as u64;
             (total, free)
         } else {
             (0, 0)
