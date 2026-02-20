@@ -216,6 +216,16 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 
 See [SECURITY.md](SECURITY.md) for the complete security architecture and privacy comparison, and [docs/security-evidence/README.md](docs/security-evidence/README.md) for release-by-release security evidence.
 
+### Security Posture
+
+| | |
+|---|---|
+| **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) — all 67 criteria met |
+| **Aikido Security** | Continuous SAST/SCA monitoring — **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
+| **Dependency Scanning** | 1,071 packages monitored (316 JS + 755 Rust), daily automated scans |
+| **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled |
+| **Security Audit** | [Download Official Report (Aikido)](https://app.aikido.dev/reports/audit-reports/XjkFN27VKYT2772IC79C4hmF/external/report/download?secret=TF9MK1qiVN6WFPYN5qH3iKgccbIyBwLXBY9g1wfC3rbVjzzUv3XJ61M7CFLk&group_id=68884) |
+
 ---
 
 ## Additional Features
@@ -225,12 +235,6 @@ Light, Dark, Tokyo Night, and Cyber — with themed icons, terminal colors, Mona
 
 ### Security Toolkit (Cyber theme)
 Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCha20-Poly1305 encrypt/decrypt), Password Forge (CSPRNG + BIP39 passphrase generator with entropy display).
-
-### Security Posture
-- **OpenSSF Best Practices**: [100% passing](https://www.bestpractices.dev/projects/11994)
-- **Aikido Security**: Continuous monitoring — Top 5% benchmark, 0 open issues, OWASP Top 10 coverage ([Aikido Official Download Link](https://app.aikido.dev/reports/audit-reports/XjkFN27VKYT2772IC79C4hmF/external/report/download?secret=TF9MK1qiVN6WFPYN5qH3iKgccbIyBwLXBY9g1wfC3rbVjzzUv3XJ61M7CFLk&group_id=68884))
-- **Dependency scanning**: 1,071 packages monitored (316 JS + 755 Rust), daily scans
-- **GitHub Actions**: All pinned to SHA hashes to prevent supply chain attacks
 
 ### 47 Languages at 100% Coverage
 
