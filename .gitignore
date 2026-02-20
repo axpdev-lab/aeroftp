@@ -74,6 +74,10 @@ run-clean.sh
 
 # Development scripts (root only, not .github/scripts/)
 /scripts/
+# Exception: CI-required scripts
+!/scripts/i18n-validate.ts
+!/scripts/i18n-sync.ts
+!/scripts/i18n-stats.ts
 
 # Temporary output files
 check_output*.txt
