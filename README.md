@@ -302,4 +302,9 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 
 ---
 
-*Built with Rust (Tauri 2) + React 18 + TypeScript*
+<p align="center">
+  <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
+</p>
+<p align="center">
+  <em>Built with Rust (Tauri 2) + React 18 + TypeScript</em>
+</p>
