@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 
 interface CloudTabState {
@@ -36,7 +36,7 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -105,6 +105,8 @@ const ProviderIcon: React.FC<{
             return <FilenLogo size={size} />;
         case 'fourshared':
             return <FourSharedLogo size={size} />;
+        case 'zohoworkdrive':
+            return <ZohoWorkDriveLogo size={size} />;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -128,6 +130,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'azure': return 'text-blue-500';
         case 'filen': return 'text-emerald-600';
         case 'fourshared': return 'text-blue-500';
+        case 'zohoworkdrive': return 'text-red-500';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green

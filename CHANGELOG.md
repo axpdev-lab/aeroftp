@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-02-20
+
+### Clippy Clean, Zoho Tab Icon & CI Fixes
+
+Patch release resolving 254 Clippy warnings across 42 Rust source files, fixing the Zoho WorkDrive session tab icon, and adding CI quality gates for i18n validation and Rust linting.
+
+#### Fixed
+
+- **Zoho WorkDrive session tab icon**: Session tab now displays the official Zoho WorkDrive logo instead of a generic WiFi icon. Added `zohoworkdrive` to provider icon switch, protocol list, and color map in `SessionTabs.tsx`
+- **254 Clippy warnings resolved**: MSRV updated from 1.77.2 to 1.80.0, 53 needless borrows removed, 40 redundant closures simplified, 6 enums now derive Default, 9 unnecessary casts removed, collapsible if/else blocks collapsed, manual strip_prefix patterns replaced, wrong_self_convention for Copy types fixed
+- **CI i18n validation**: Added `scripts/i18n-validate.ts` to git tracking (was gitignored), ensuring CI can validate all 47 locale files
+- **3 missing i18n keys**: Translated `preconfiguredProviders`, `customConnection`, `custom` protocol keys in all 46 non-English locales
+
+#### Changed
+
+- **Dependabot hardening**: Added ignore rules for intentionally pinned crates (windows 0.58, suppaftp 8.0.1, rusqlite 0.32, rand 0.8, zip 7, dirs 5, portable-pty 0.8, indicatif 0.17, notify-debouncer-full 0.6) and npm packages (vite 5, tailwindcss 3). Reduced PR limit to 5 per ecosystem
+- **MSRV bump to 1.80.0**: Minimum Supported Rust Version updated from 1.77.2 to 1.80.0
+
 ## [2.5.0] - 2026-02-20
 
 ### AeroFile Pro: Modularization, Tabs & Tags

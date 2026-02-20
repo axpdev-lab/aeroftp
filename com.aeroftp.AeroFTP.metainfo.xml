@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.5.1" date="2026-02-20">
+      <description>
+        <p>Clippy Clean, Zoho Tab Icon and CI Fixes: Resolved 254 Clippy warnings across 42 Rust source files. MSRV updated from 1.77.2 to 1.80.0. Zoho WorkDrive session tab now displays official provider logo instead of generic WiFi icon. CI quality gates hardened with i18n validation scripts committed to repo. 3 missing protocol translation keys added to all 46 non-English locales. Dependabot configured with ignore rules for intentionally pinned dependencies.</p>
+      </description>
+    </release>
     <release version="2.5.0" date="2026-02-20">
       <description>
         <p>AeroFile Pro: Modularization, Tabs, Tags, Keyboard Navigation, Accessibility, macOS FinderSync, and event-driven volume detection. App.tsx modularized by extracting 730 lines into LocalFilePanel. Tabbed directory browsing (12 max, drag-to-reorder, persistence). Finder-style file tagging with SQLite (7 color labels, context menu, sidebar filtering). Arrow key navigation for file selection (Up/Down/Shift+Arrow for range). ARIA accessibility baseline (role=grid, aria-selected, role=toolbar, role=status). macOS FinderSync .appex extension for native Finder sync badges (6 states, Unix socket bridge, universal binary). Event-driven mount watcher (poll + inotify) replaces 5s polling. Network volume eject with fusermount fallback for SSHFS/NFS/CIFS. Mount point octal escaping fix for multi-byte UTF-8 paths. 23 new i18n keys across 47 languages.</p>
