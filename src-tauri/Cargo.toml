@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.5.1"
+version = "2.5.2"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -98,7 +98,7 @@ flate2 = "1.0"                                                        # Gzip com
 xz2 = "0.1"                                                           # XZ/LZMA compression
 bzip2 = "0.6"                                                         # Bzip2 compression
 arboard = "3"                                                         # Native clipboard access
-image = { version = "0.25", default-features = false, features = ["png"] }  # Tray icon badge generation
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }  # Image editing + tray badge
 libc = "0.2"                                                              # Unix UID for badge socket path
 
 # Cryptomator vault support (v1.6.0)

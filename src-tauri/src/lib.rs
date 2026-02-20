@@ -51,6 +51,7 @@ mod cyber_tools;
 mod totp;
 mod chat_history;
 mod file_tags;
+mod image_edit;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -7197,6 +7198,8 @@ pub fn run() {
             file_tags::file_tags_get_tags_for_files,
             file_tags::file_tags_get_files_by_label,
             file_tags::file_tags_get_label_counts,
+            // AeroImage
+            image_edit::process_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -17,12 +17,13 @@ if [ ! -f "$FILE" ]; then
     exit 1
 fi
 
-# Only allow files from standard download/temp directories
+# Only allow files from user home or temp directories
+# Note: Downloads folder name varies by locale (Downloads, Scaricati, Téléchargements, etc.)
 case "$FILE" in
-    /home/*/Downloads/*|/tmp/*|/var/tmp/*)
+    /home/*/*|/tmp/*|/var/tmp/*)
         ;;
     *)
-        echo "Error: Package must be in Downloads or temp directory" >&2
+        echo "Error: Package must be in a user home or temp directory" >&2
         exit 1
         ;;
 esac

@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.5.2" date="2026-02-21">
+      <description>
+        <p>AeroImage — Built-in Image Editor: Lightweight image editor integrated into Universal Preview modal. Crop with Photoshop-style overlay and aspect ratio presets, resize with aspect lock, rotate and flip, brightness/contrast/hue adjustments with live CSS filter preview, blur/sharpen/grayscale/invert effects. Save As dialog with 6 output formats (PNG, JPEG, WebP, BMP, TIFF, GIF), JPEG quality slider, and replace-original option. Rust process_image pipeline for pixel-perfect output. Fix for auto-update installation on systems with localized Downloads folder names. 49 new i18n keys translated in all 47 languages.</p>
+      </description>
+    </release>
     <release version="2.5.1" date="2026-02-20">
       <description>
         <p>Clippy Clean, Zoho Tab Icon and CI Fixes: Resolved 254 Clippy warnings across 42 Rust source files. MSRV updated from 1.77.2 to 1.80.0. Zoho WorkDrive session tab now displays official provider logo instead of generic WiFi icon. CI quality gates hardened with i18n validation scripts committed to repo. 3 missing protocol translation keys added to all 46 non-English locales. Dependabot configured with ignore rules for intentionally pinned dependencies.</p>

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2026-02-21
+
+### AeroImage — Built-in Image Editor
+
+The Universal Preview gains a lightweight image editor powered by the Rust `image` crate. Edit local images directly within the preview modal with real-time CSS filter previews and pixel-perfect Rust-processed output.
+
+#### Added
+
+- **AeroImage editor**: Mini image editor integrated into ImageViewer as a 280px sidebar panel. Activated via Pencil button in toolbar (local files only). Three collapsible sections: Geometry, Adjustments, Effects
+- **Crop with overlay**: Photoshop-style crop selection with 4 darkened panels, 8 resize handles (corners + midpoints), real-time dimension badge showing natural pixel coordinates. Drag to create/move/resize, Escape to cancel
+- **Resize with aspect lock**: Width/Height inputs with linked aspect ratio toggle. Quick presets (50%, 75%, 150%, 200%) calculate from original dimensions
+- **Rotate and flip**: 90° CW, 90° CCW, 180° rotation cycle. Horizontal and vertical flip toggles
+- **Color adjustments**: Brightness (-100 to +100), Contrast (-100 to +100), Hue rotation (-180° to +180°) with individual reset buttons. Live CSS filter preview with zero backend calls
+- **Effects**: Gaussian Blur (0-10), Sharpen (0-10, applied on save), Grayscale and Invert toggles
+- **Save As dialog**: 6 output formats (PNG, JPEG, WebP, BMP, TIFF, GIF). JPEG quality slider (1-100). "Save Copy" (adds `_edited` suffix) or "Replace Original" (with warning). Filename editable
+- **Rust `process_image` pipeline**: Single Tauri command applies all operations in order (Crop → Resize → Rotate → Flip → Color → Effects), saves with format detection. 100MB input size guard, `spawn_blocking` for CPU-bound processing
+- **49 new i18n keys**: Full AeroImage UI translated in all 47 languages under `preview.image.edit.*`
+
+#### Fixed
+
+- **Update helper locale-aware paths**: Auto-update installation now works with localized Downloads folder names (Scaricati, Téléchargements, Descargas, etc.) instead of only accepting the English `Downloads` path
+
+#### Changed
+
+- **README distribution badges**: Added Awesome Tauri, AppImageHub, Winget, and AlternativeTo listing badges
+
 ## [2.5.1] - 2026-02-20
 
 ### Clippy Clean, Zoho Tab Icon & CI Fixes
