@@ -12,10 +12,10 @@
   The modern FTP client that grew into a complete file management platform. 16 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
+<!-- Row 1: Project Identity -->
 <p align="center">
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
-  <a href="https://snapcraft.io/aeroftp"><img src="https://img.shields.io/badge/snap-aeroftp-blue?logo=snapcraft" alt="Snap" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
   <img src="https://img.shields.io/badge/tauri-2-blue?logo=tauri&logoColor=white" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
@@ -23,19 +23,27 @@
   <img src="https://img.shields.io/badge/AI%20providers-15-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
+</p>
+
+<!-- Row 2: Platforms & Package Managers -->
+<p align="center">
   <img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" alt="Linux" />
   <img src="https://img.shields.io/badge/Windows-0078D4?logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS" />
-  <a href="https://buymeacoffee.com/AXPNetwork"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
-  <a href="https://github.com/sponsors/axpnet"><img src="https://img.shields.io/badge/sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
+  <a href="https://snapcraft.io/aeroftp"><img src="https://img.shields.io/badge/snap-aeroftp-blue?logo=snapcraft" alt="Snap Store" /></a>
+  <a href="https://aur.archlinux.org/packages/aeroftp-bin"><img src="https://img.shields.io/badge/AUR-aeroftp--bin-1793D1?logo=archlinux&logoColor=white" alt="AUR" /></a>
+  <a href="https://launchpad.net/aeroftp"><img src="https://img.shields.io/badge/Launchpad-aeroftp-F8C300?logo=launchpad&logoColor=black" alt="Launchpad" /></a>
+  <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
+  <a href="https://appimage.github.io/AeroFTP/"><img src="https://img.shields.io/badge/AppImageHub-AeroFTP-blue?logo=linux&logoColor=white" alt="AppImageHub" /></a>
 </p>
 
+<!-- Row 3: Community & Listings -->
 <p align="center">
   <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
-  <a href="https://appimage.github.io/AeroFTP/"><img src="https://img.shields.io/badge/AppImageHub-AeroFTP-blue?logo=linux&logoColor=white" alt="AppImageHub" /></a>
-  <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
   <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
+  <a href="https://buymeacoffee.com/AXPNetwork"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
+  <a href="https://github.com/sponsors/axpnet"><img src="https://img.shields.io/badge/sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
 </p>
 
 ---
@@ -271,7 +279,9 @@ Quality-audited translations with native script integrity. Automatic browser lan
 
 ## Installation
 
-### Linux Snap
+### Linux
+
+#### Snap Store
 ```bash
 sudo snap install aeroftp
 ```
@@ -282,9 +292,30 @@ sudo snap install aeroftp
   </a>
 </p>
 
-> **Note:** Snap version has limited filesystem access due to strict confinement. For full filesystem access, use .deb or .AppImage.
+> **Note:** Snap version has limited filesystem access due to strict confinement. For full filesystem access, use .deb, .AppImage, or AUR.
 
-### Windows (winget)
+#### AUR (Arch Linux)
+```bash
+yay -S aeroftp-bin
+# or
+paru -S aeroftp-bin
+```
+
+> Available on Arch Linux and derivatives (Manjaro, EndeavourOS, Garuda). Binary package — no compilation needed.
+
+#### Launchpad PPA (Ubuntu / Debian)
+
+Visit [launchpad.net/aeroftp](https://launchpad.net/aeroftp) for PPA instructions and .deb packages.
+
+#### Other Linux Formats
+Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+- **.deb** — Ubuntu, Debian, Linux Mint, Pop!_OS
+- **.rpm** — Fedora, openSUSE, RHEL
+- **.AppImage** — Portable, runs on any distro ([AppImageHub](https://appimage.github.io/AeroFTP/))
+
+### Windows
+
+#### Winget
 ```powershell
 winget install axpnet.AeroFTP
 ```
@@ -297,11 +328,15 @@ winget install axpnet.AeroFTP
 
 > Available on Windows 10 (1709+) and Windows 11. Requires [App Installer](https://apps.microsoft.com/detail/9NBLGGH4NNS1) from Microsoft Store.
 
-### Other Formats
+#### Other Windows Formats
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
-- **Linux:** .deb, .rpm, .AppImage
-- **Windows:** .exe, .msi
-- **macOS:** .dmg
+- **.exe** — NSIS installer
+- **.msi** — Windows Installer
+
+### macOS
+
+Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+- **.dmg** — Universal disk image
 
 ---
 
