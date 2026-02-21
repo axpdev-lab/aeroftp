@@ -34,6 +34,7 @@
   <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
   <a href="https://appimage.github.io/AeroFTP/"><img src="https://img.shields.io/badge/AppImageHub-AeroFTP-blue?logo=linux&logoColor=white" alt="AppImageHub" /></a>
   <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
+  <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
 </p>
 
@@ -282,6 +283,19 @@ sudo snap install aeroftp
 </p>
 
 > **Note:** Snap version has limited filesystem access due to strict confinement. For full filesystem access, use .deb or .AppImage.
+
+### Windows (winget)
+```powershell
+winget install axpnet.AeroFTP
+```
+
+<p align="center">
+  <a href="https://winstall.app/apps/axpnet.AeroFTP">
+    <img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows11&logoColor=white&style=for-the-badge" alt="Get it from Winget">
+  </a>
+</p>
+
+> Available on Windows 10 (1709+) and Windows 11. Requires [App Installer](https://apps.microsoft.com/detail/9NBLGGH4NNS1) from Microsoft Store.
 
 ### Other Formats
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
