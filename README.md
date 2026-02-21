@@ -294,7 +294,7 @@ sudo snap install aeroftp
 
 <p align="center">
   <a href="https://snapcraft.io/aeroftp">
-    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="Get it from the Snap Store">
+    <img src="https://img.shields.io/badge/snap-aeroftp-blue?logo=snapcraft&logoColor=white&style=for-the-badge" alt="Get it from the Snap Store">
   </a>
 </p>
 
@@ -306,6 +306,12 @@ yay -S aeroftp-bin
 # or
 paru -S aeroftp-bin
 ```
+
+<p align="center">
+  <a href="https://aur.archlinux.org/packages/aeroftp-bin">
+    <img src="https://img.shields.io/badge/AUR-aeroftp--bin-1793D1?logo=archlinux&logoColor=white&style=for-the-badge" alt="Get it from AUR">
+  </a>
+</p>
 
 > Available on Arch Linux and derivatives (Manjaro, EndeavourOS, Garuda). Binary package — no compilation needed.
 
