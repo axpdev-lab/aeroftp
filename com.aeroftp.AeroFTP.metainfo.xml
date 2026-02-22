@@ -12,8 +12,8 @@
     <p>
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
-      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, and Zoho WorkDrive.
-      16 protocols, 30+ presets, one app.
+      OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
+      Internxt Drive, and kDrive. 18 protocols, 30+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -26,7 +26,7 @@
     <p>AI Assistant:</p>
     <ul>
       <li>AeroAgent Pro: AI-powered assistant with 45 tools, shell command execution, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
-      <li>15 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, Custom</li>
+      <li>19 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
     </ul>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.0" date="2026-02-21">
+      <description>
+        <p>AeroAgent Ecosystem, App-Wide AI Interaction and Provider Tier 3: Four new AI providers (AI21 Labs, Cerebras, SambaNova, Fireworks AI) bringing the total to 19. Command Palette (Ctrl+Shift+P) with 25 commands across 5 categories. Plugin ecosystem with GitHub-based registry, SHA-256 integrity verification, Plugin Browser UI with install/update/remove, and event-driven plugin hooks. Context menu AI actions for instant file analysis. AI Status Widget in StatusBar with real-time state indicator. Drag and drop files to AeroAgent chat for analysis. AUR package (aeroftp-bin) for Arch Linux. README reorganized with 4-row badge layout and expanded installation section. 19 new i18n keys translated in all 47 languages. 8 dependency updates.</p>
+      </description>
+    </release>
     <release version="2.5.2" date="2026-02-21">
       <description>
         <p>AeroImage — Built-in Image Editor: Lightweight image editor integrated into Universal Preview modal. Crop with Photoshop-style overlay and aspect ratio presets, resize with aspect lock, rotate and flip, brightness/contrast/hue adjustments with live CSS filter preview, blur/sharpen/grayscale/invert effects. Save As dialog with 6 output formats (PNG, JPEG, WebP, BMP, TIFF, GIF), JPEG quality slider, and replace-original option. Rust process_image pipeline for pixel-perfect output. Fix for auto-update installation on systems with localized Downloads folder names. 49 new i18n keys translated in all 47 languages.</p>

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 16 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 18 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <!-- Row 1: Project Identity -->
@@ -17,8 +17,8 @@
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-16-green" alt="Protocols" />
-  <img src="https://img.shields.io/badge/AI%20providers-15-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
+  <img src="https://img.shields.io/badge/protocols-18-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
 </p>
@@ -56,7 +56,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 16 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 18 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
@@ -64,12 +64,12 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (16 protocols, sync, share)
+├── AeroCloud    — Personal cloud (18 protocols, sync, share)
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
 ├── AeroTools    — Code editor + Terminal + AI chat
-│   └── AeroAgent    — AI-powered assistant (45 tools, 15 providers)
+│   └── AeroAgent    — AI-powered assistant (45 tools, 19 providers)
 └── AeroPlayer   — Media player with visualizers
 ```
 
@@ -77,7 +77,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any FTP server** into a private personal cloud. Connect to 16 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any FTP server** into a private personal cloud. Connect to 18 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -95,6 +95,8 @@ Turn **any FTP server** into a private personal cloud. Connect to 16 protocols t
 | **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
 | **4shared** | OAuth 1.0 (HMAC-SHA1) | 15GB free, native REST API, folder/file management |
 | **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, PBKDF2 |
+| **Internxt Drive** | Client-side AES-256-CTR | 10GB free, E2E encrypted, BIP39 mnemonic, optional 2FA |
+| **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, REST API |
 
 **Cloud features**: Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
@@ -180,9 +182,9 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **28 provider-agnostic tools** that work across all 16 protocols. 15 AI providers, vision support, RAG indexing, and a plugin system.
+An AI assistant with **45 provider-agnostic tools** that work across all 18 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
-**Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, Custom
+**Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 
 **Core capabilities**:
 - **File operations**: List, read, search, create, edit, rename, delete — local and remote
@@ -206,6 +208,10 @@ An AI assistant with **28 provider-agnostic tools** that work across all 16 prot
 - **Thinking visualization**: See AI reasoning process with token count and duration
 - **Cost budget tracking**: Per-provider monthly limits with conversation-level cost display
 - **Chat search**: Ctrl+F overlay with role filter and keyboard navigation
+- **Command Palette**: Ctrl+Shift+P for quick access to all app actions
+- **Plugin ecosystem**: GitHub-based registry with SHA-256 integrity, event hooks, browser UI
+- **Context menu AI**: Right-click any file → "Ask AeroAgent" for instant analysis
+- **Drag & drop to chat**: Drop files into AeroAgent for analysis
 
 ---
 

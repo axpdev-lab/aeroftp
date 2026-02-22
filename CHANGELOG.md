@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-02-22
+
+### AeroAgent Ecosystem, Cloud Expansion & Provider Tier 3
+
+AeroFTP evolves from "app with AI" to "AI-powered platform with open ecosystem". Two new cloud storage protocols (Internxt Drive, Infomaniak kDrive), four new AI providers, a command palette, plugin ecosystem with GitHub registry, drag-and-drop file analysis, context menu AI actions, and real-time AI status in the status bar.
+
+#### Added
+
+- **Internxt Drive (17th protocol)**: Zero-knowledge encrypted cloud storage with E2E AES-256-CTR. Email + password auth with BIP39 mnemonic recovery. Optional 2FA. Full StorageProvider: list, upload, download, mkdir, delete, rename, move, share links, storage quota, trash management
+- **Infomaniak kDrive (18th protocol)**: Swiss-hosted cloud storage via REST API. Bearer token auth, cursor-based pagination, 15GB free. Full StorageProvider: list, upload (raw body), download, mkdir, delete, rename (via move endpoint), server-side copy, storage quota
+- **4 new AI providers (Tier 3)**: AI21 Labs (Jamba), Cerebras (fastest inference), SambaNova (1000+ tok/s), Fireworks AI — all OpenAI-compatible, zero backend changes. Total: 15 → 19 providers
+- **Command Palette (Ctrl+Shift+P)**: VS Code-style global command palette with ~25 commands across 5 categories (File, AI, Navigation, Tools, Sync). Fuzzy search, keyboard navigation, category headers
+- **Plugin Registry (GitHub-based)**: `plugin_registry.rs` with `fetch_plugin_registry` and `install_plugin_from_registry` Tauri commands. Downloads plugins from GitHub with SHA-256 integrity verification
+- **Plugin Browser UI**: Searchable modal with Installed/Browse/Updates tabs, category badges, star counts, install/remove buttons. Integrated into AI Settings Plugins tab
+- **Plugin Hooks system**: Event-driven plugin execution — plugins react to `file:created`, `file:deleted`, `transfer:complete`, `sync:complete` events with optional glob filters
+- **Context Menu AI Actions**: "Ask AeroAgent" option in local and remote file context menus. Dispatches `aeroagent-ask` event and opens agent panel with pre-filled prompt
+- **AI Status Widget**: Compact indicator in StatusBar showing AI state (Ready/Thinking/Running tool/Error). Pulse animation during streaming. Click to open AeroAgent
+- **Drag & Drop to AeroAgent**: Drag files from file manager into chat area to analyze. Drop overlay with dashed border and upload icon
+- **10 new i18n keys per provider**: Connection form keys (token, placeholder, help) + protocol description/tooltip for Internxt, kDrive — translated in all 47 languages
+- **19 new i18n keys**: Command palette (7), plugin browser (9), context menu (1), drag-to-analyze (1), browse plugins button (1) — translated in all 47 languages
+
+#### Changed
+
+- **Protocol count**: 16 → 18 (Internxt Drive, kDrive)
+- **AI provider count**: 15 → 19 (AI21, Cerebras, SambaNova, Fireworks)
+- **README distribution badges**: Reorganized into 4 rows (Project, Tech Stack & OS, Package Managers, Community). Added AUR and Launchpad badges
+- **README Installation section**: Expanded with per-platform subsections including AUR (`yay -S aeroftp-bin`), Launchpad PPA, and per-format descriptions
+- **Installation badges unified**: Snap, AUR, and Winget all use shields.io `for-the-badge` style
+
+#### Fixed
+
+- **CI AppImage repackaging**: Use absolute path and relative `.DirIcon` symlink for proper AppImage structure
+
+#### Dependencies
+
+- `quick-xml` 0.39.1 → 0.39.2
+- `anyhow` 1.0.101 → 1.0.102
+- `clap` 4.5.59 → 4.5.60
+- `futures-util` 0.3.31 → 0.3.32
+- `@tauri-apps/plugin-shell` 2.3.4 → 2.3.5
+- `@tauri-apps/plugin-fs` 2.4.4 → 2.4.5
+- `autoprefixer` 10.4.23 → 10.4.24
+- `@types/prismjs` 1.26.5 → 1.26.6
+
 ## [2.5.2] - 2026-02-21
 
 ### AeroImage — Built-in Image Editor

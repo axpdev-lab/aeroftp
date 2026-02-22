@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 10 February 2026
-> Version: v2.0.5 (4shared Native API, System Startup, Places Sidebar Pro)
+> Last Updated: 22 February 2026
+> Version: v2.6.0 (AeroAgent Ecosystem, Cloud Expansion, Provider Tier 3)
 
 ---
 
@@ -25,21 +25,24 @@
 | **Azure Blob** | HTTPS | Shared Key HMAC / SAS | Universal Vault | TLS Certificate |
 | **4shared** | HTTPS | OAuth 1.0 (HMAC-SHA1) | Universal Vault | TLS Certificate |
 | **Filen** | Client-side AES-256-GCM | Password (PBKDF2) | secrecy (zero-on-drop) | E2E Encrypted |
+| **Zoho WorkDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
+| **Internxt Drive** | Client-side AES-256-CTR | Password (PBKDF2 + BIP39) | secrecy (zero-on-drop) | E2E Encrypted |
+| **kDrive** | HTTPS | API Token (Bearer) | Universal Vault | TLS Certificate |
 
 ### Security Features by Protocol
 
-| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen |
-|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - |
-| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - |
-| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - |
-| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - |
-| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - |
-| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - |
-| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes |
-| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive |
+|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|
+| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes |
+| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - |
+| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - | - | - |
+| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - | - | - |
+| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - |
+| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes | Yes | - |
+| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -47,40 +50,41 @@
 
 ### Core Operations
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen |
-|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|
-| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes |
-| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No |
-| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive |
+|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|
+| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes | Yes | Yes | Yes*** |
+| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete
+***kDrive rename = move to same parent with new name
 
 ### Advanced Operations (v1.4.0)
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen |
-|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|
-| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - |
-| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - |
-| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - |
-| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - |
-| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - |
-| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - |
-| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - |
-| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive |
+|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|
+| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes |
+| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - |
+| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - |
+| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
+| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - |
+| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
 
 ---
 
@@ -99,6 +103,9 @@
 | **pCloud** | Native | `provider_create_share_link` | Public link via `getfilepublink` |
 | **4shared** | — | — | Not yet implemented |
 | **Filen** | Native | `provider_create_share_link` | E2E encrypted share link |
+| **Zoho WorkDrive** | Native | `provider_create_share_link` | Team share link |
+| **Internxt Drive** | Native | `provider_create_share_link` | E2E encrypted share link |
+| **kDrive** | — | — | Not yet implemented |
 
 ---
 
@@ -204,6 +211,9 @@ Bidirectional directory synchronization compares local and remote files by times
 | **Azure Blob** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **4shared** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Filen** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Zoho WorkDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Internxt Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **kDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 
 ### Sync Modes
 - **Remote → Local**: Download newer remote files
@@ -232,7 +242,7 @@ Persistent JSON index stored at `~/.config/aeroftp/sync-index/` enables:
 
 ## Provider Keep-Alive (v1.5.1)
 
-All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, and Filen.
+All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt Drive, and kDrive.
 
 ---
 
@@ -281,6 +291,24 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 - Chunk-based upload/download (1MB chunks)
 - API: `https://gateway.filen.io/`
 
+### Zoho WorkDrive (v2.4.0)
+- OAuth2 PKCE with 8 regional endpoints (US/EU/IN/AU/JP/UK/CA/SA)
+- Team-based storage with team ID auto-detection
+- Share links, trash management, storage quota
+- API: `https://www.zohoapis.{region}/workdrive/api/v1/`
+
+### Internxt Drive (v2.6.0)
+- Zero-knowledge E2E encryption: AES-256-CTR with BIP39 mnemonic key derivation
+- Auth: PBKDF2-SHA1 + AES-CBC encrypted password + JWT
+- Client-side file encryption/decryption, plainName metadata
+- API: `https://drive.internxt.com/`
+
+### Infomaniak kDrive (v2.6.0)
+- Swiss-hosted cloud storage (GDPR + FADP compliant)
+- Auth: Bearer API Token (generated from Infomaniak dashboard)
+- ID-based file system, cursor-based pagination, server-side copy
+- API: `https://api.infomaniak.com/`
+
 ---
 
 ## AeroAgent AI (v1.6.0)
@@ -298,11 +326,20 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 | **Kimi (Moonshot)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **Qwen (Alibaba)** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **DeepSeek** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Mistral** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Groq** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Perplexity** | No (text fallback) | Yes (SSE) | Yes | API Key |
+| **Cohere** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Together AI** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **AI21 Labs** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Cerebras** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **SambaNova** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
+| **Fireworks AI** | Yes (OpenAI-compat) | Yes (SSE) | Yes | API Key |
 | **Custom** | No (text fallback) | Yes (SSE) | Varies | API Key |
 
 ### AI Tool Support by Protocol
 
-All 28 tools work identically across all 14 protocols via the `StorageProvider` trait:
+All 45 tools work identically across all 17 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -397,15 +434,18 @@ All 28 tools work identically across all 14 protocols via the `StorageProvider` 
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (28 tools)
+### AeroAgent Tool Categories (45 tools)
 
 | Category | Tools | Danger Level |
 |----------|-------|-------------|
-| Remote File Ops | remote_list, remote_read, remote_download, remote_upload, remote_delete, remote_rename, remote_mkdir, remote_edit | medium-high |
-| Local File Ops | local_list, local_read, local_write, local_delete, local_rename, local_mkdir, local_search, local_edit | medium |
+| Remote File Ops | remote_list, remote_read, remote_download, remote_upload, remote_delete, remote_rename, remote_mkdir, remote_edit, remote_info, remote_search | medium-high |
+| Local File Ops | local_list, local_read, local_write, local_delete, local_rename, local_mkdir, local_search, local_edit, local_move_files, local_copy_files, local_trash, local_file_info, local_disk_usage, local_find_duplicates, local_batch_rename | medium |
 | Batch Operations | upload_files, download_files | medium |
+| Archives | archive_compress, archive_decompress | medium |
+| Power Tools | local_grep, local_head, local_tail, local_stat_batch, local_diff, local_tree | safe-medium |
+| Clipboard | clipboard_read, clipboard_write, clipboard_read_image | safe |
+| Shell | shell_execute | high |
 | Sync & Compare | sync_preview | medium |
-| Terminal | terminal_execute | high |
 | RAG | rag_index, rag_search | medium |
 | Memory | agent_memory_write | medium |
 
@@ -477,12 +517,15 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.0.1 | **3 Asian AI Providers** (Kimi, Qwen, DeepSeek) with thinking modes, web search, FIM, context caching, file analysis. **AeroFile Pro** Places Sidebar, BreadcrumbBar, Large Icons, drive detection, custom sidebar locations. Official SVG provider logos for all 10 providers | Done |
 | v2.0.5 | **4shared native REST API** (OAuth 1.0, 14th protocol), CloudMe WebDAV preset, Places Sidebar GVFS/unmounted partitions, Autostart, Windows Explorer badges, OwnCloud removal | Done |
 
+| v2.5.0 | **AeroFile Pro** — LocalFilePanel extraction, local path tabs (12 max, drag-to-reorder), file tags SQLite (7 Finder-style labels), FileTagBadge, tags context menu, sidebar filter, macOS FinderSync, event-driven volume detection, keyboard navigation, ARIA accessibility | Done |
+| v2.5.2 | **AeroImage** — Built-in image editor (crop, resize, rotate, flip, color adjustments, effects, 6 output formats) | Done |
+| v2.6.0 | **AeroAgent Ecosystem** — 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
+
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.1.0 | Theme System (4 themes), Provider Marketplace, CLI Foundation, 2FA/Biometric |
-| v2.2.0 | AeroFile Phase B (tabs, Quick Look, recent locations), Remote vault, Cryptomator creation |
+| v2.7.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
 
 ---
 

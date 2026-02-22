@@ -1,12 +1,12 @@
 name: aeroftp
 version: '2.5.2'
-summary: Multi-Protocol File Transfer & Cloud Client — 14 Protocols, AI, Encryption
+summary: Multi-Protocol File Transfer & Cloud Client — 19 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
   Connect to FTP/FTPS servers, SFTP, WebDAV, S3-compatible storage, and major
   cloud providers — all from a single, elegant interface.
 
-  Supported Protocols (14):
+  Supported Protocols (19):
   - FTP / FTPS (TLS 1.3)
   - SFTP (SSH File Transfer)
   - WebDAV (Nextcloud, CloudMe, Koofr, DriveHQ)
@@ -16,6 +16,9 @@ description: |
   - MEGA.nz, Filen (E2E encryption)
   - Box, pCloud (OAuth2)
   - Azure Blob Storage (HMAC)
+  - Zoho WorkDrive (OAuth2, 8 regional endpoints)
+  - Internxt Drive (E2E encrypted, zero-knowledge)
+  - kDrive (Infomaniak, 15 GB free)
 
   Security Features:
   - AeroVault v2: Military-grade encrypted containers (AES-256-GCM-SIV, Argon2id)
@@ -30,8 +33,8 @@ description: |
   AeroTools — Developer Suite:
   - Monaco Editor (VS Code engine) for remote file editing
   - Integrated SSH terminal with theme sync
-  - AeroAgent AI assistant (7 providers: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Custom)
-  - 28 AI tools: file ops, code editing, RAG search, terminal commands
+  - AeroAgent AI assistant (19 providers: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, and 13 more)
+  - 45 AI tools: file ops, code editing, RAG search, shell commands, plugin ecosystem
   - Autonomous multi-step tool execution with approval controls
 
   AeroSync — Reliable Synchronization:
