@@ -452,7 +452,7 @@ impl InternxtProvider {
         let mut result = Vec::with_capacity(8 + 8 + padded.len());
         result.extend_from_slice(SALTED_PREFIX);
         result.extend_from_slice(&salt);
-        result.extend_from_slice(&padded);
+        result.extend_from_slice(padded);
 
         Ok(hex::encode(result))
     }
@@ -1531,7 +1531,7 @@ impl StorageProvider for InternxtProvider {
 
         // Compute hash: RIPEMD-160(SHA-256(encrypted_data)) — matches Internxt web client
         let sha256_result = Sha256::digest(&encrypted);
-        let ripemd_hash = hex::encode(Ripemd160::digest(&sha256_result));
+        let ripemd_hash = hex::encode(Ripemd160::digest(sha256_result));
 
         // Finish upload
         let finish_url = format!("/v2/buckets/{}/files/finish", self.bucket);
@@ -1829,7 +1829,7 @@ impl StorageProvider for InternxtProvider {
         Ok(StorageInfo {
             used,
             total,
-            free: if total > used { total - used } else { 0 },
+            free: total.saturating_sub(used),
         })
     }
 }
