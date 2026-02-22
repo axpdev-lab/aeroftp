@@ -146,6 +146,45 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'paid',
         highlight: 'Best value reasoning',
     },
+    // Fast Inference — Tier 3
+    {
+        type: 'cerebras',
+        name: 'Cerebras',
+        description: 'LPU-powered inference at 2000+ tok/s. Llama 3.3 70B.',
+        category: 'fast',
+        features: ['streaming', 'tools'],
+        pricingTier: 'freemium',
+        highlight: 'Fastest inference (2000 tok/s)',
+    },
+    {
+        type: 'sambanova',
+        name: 'SambaNova',
+        description: 'RDU-accelerated inference. Llama, DeepSeek R1 Distill.',
+        category: 'fast',
+        features: ['streaming', 'tools'],
+        pricingTier: 'freemium',
+        highlight: '1000+ tok/s',
+    },
+    // Specialized — Tier 3
+    {
+        type: 'ai21',
+        name: 'AI21 Labs',
+        description: 'Jamba 1.5 models with 256K context. SSM-Transformer hybrid.',
+        category: 'specialized',
+        features: ['streaming', 'tools'],
+        pricingTier: 'paid',
+        highlight: '256K context (Jamba)',
+    },
+    // Gateway — Tier 3
+    {
+        type: 'fireworks',
+        name: 'Fireworks AI',
+        description: 'Optimized inference for open models. Llama, DeepSeek, Mixtral.',
+        category: 'gateway',
+        features: ['streaming', 'tools'],
+        pricingTier: 'freemium',
+        highlight: 'Optimized open models',
+    },
     // Gateway
     {
         type: 'openrouter',

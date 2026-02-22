@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.5.2"
+version = "2.6.0"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -57,6 +57,7 @@ hex = "0.4"
 hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
+ripemd = "0.1"
 md-5 = "0.10"
 zip = { version = "7.2", default-features = false, features = ["deflate", "aes-crypto"] }
 walkdir = "2"
@@ -74,6 +75,9 @@ semver = "1.0.27"
 # Secure Credential Storage (v1.3.2 hotfix)
 argon2 = "0.5"
 aes-gcm = "0.10"
+aes = "0.8"                                                            # AES block cipher (Internxt)
+cbc = "0.1"                                                            # AES-CBC mode (Internxt mnemonic decryption)
+ctr = "0.9"                                                            # AES-CTR mode (Internxt file encryption)
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.10"

@@ -185,7 +185,21 @@
         "useDifferentAccount": "Використати інший обліковий запис",
         "zohoRegion": "Регіон Zoho",
         "zohoRegionHelp": "Виберіть регіон, що відповідає вашому обліковому запису Zoho (напр. zoho.eu для Європи)."
-      }
+      },
+      "activeSessions": "Активні сеанси",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Пароль облікового запису Internxt",
+      "internxtEncryptionTitle": "Шифрування Zero-Knowledge",
+      "internxtEncryptionDesc": "Усі файли шифруються наскрізно за допомогою AES-256-CTR. Internxt не має доступу до ваших даних. Базується в EU, відповідає GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Вставте ваш API Token тут",
+      "kdriveDriveIdPlaceholder": "Ваш ідентифікатор kDrive (числовий)",
+      "kdriveTokenHelp": "Створіть токен на manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Підключитися",
+      "drimeToken": "API-токен",
+      "drimeTokenPlaceholder": "Вставте ваш API-токен Drime сюди",
+      "drimeTokenHelp": "Згенеруйте токен на app.drime.cloud → Налаштування облікового запису → Розробники"
     },
     "browser": {
       "remote": "Віддалений",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Вибрати все",
       "trashDeselectAll": "Скасувати вибір",
       "trashOriginalLocation": "Початкове розташування",
-      "trashDeletedDate": "Видалено"
+      "trashDeletedDate": "Видалено",
+      "createAeroVault": "Створити AeroVault...",
+      "createCryptomator": "Створити Cryptomator Vault...",
+      "more": "Більше",
+      "openAsCryptomator": "Відкрити як Cryptomator Vault",
+      "askAeroAgent": "Запитати AeroAgent..."
     },
     "transfer": {
       "transferring": "Передача...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Монохромні іконки, що адаптуються до поточної теми",
       "iconThemeOutline": "Контурні",
       "iconThemeOutlineDesc": "Чисті контурні іконки з кольоровим кодуванням типів файлів",
-      "iconsTab": "Іконки"
+      "iconsTab": "Іконки",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Скинути",
         "save": "Зберегти",
         "saving": "Збереження...",
-        "noFileSelected": "Файл для редагування не вибрано"
+        "noFileSelected": "Файл для редагування не вибрано",
+        "loading": "Завантаження редактора..."
       },
       "previewPanel": {
         "emptyState": "Клацніть правою кнопкою на файлі та виберіть \"Попередній перегляд\""
-      }
+      },
+      "codeEditor": "Редактор коду",
+      "sshTerminal": "SSH-термінал"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Дякуємо за вашу підтримку!",
       "footer": "Кожна пожертва допомагає розробці",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Це безкоштовно!",
+      "starOnGithub": "Поставте зірку на GitHub"
     },
     "activity": {
       "connect_start": "Підключаюсь до {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Порт",
       "preconfiguredProviders": "Попередньо налаштовані постачальники",
       "customConnection": "Користувацька відповідь",
-      "custom": "Користувацький"
+      "custom": "Користувацький",
+      "internxtDesc": "Хмарне сховище Zero-Knowledge",
+      "internxtTooltip": "Internxt - Хмара з Zero-knowledge шифруванням, базується в EU",
+      "kdriveDesc": "Швейцарське хмарне сховище",
+      "kdriveTooltip": "kDrive від Infomaniak — швейцарське хмарне сховище з 15ГБ безкоштовно",
+      "drimeDesc": "Безпечне хмарне сховище",
+      "drimeTooltip": "Drime Cloud - 20GB безпечного хмарного сховища з REST API"
     },
     "shortcuts": {
       "title": "Грячі клавіші",
@@ -2106,6 +2138,10 @@
         "unlimited": "Без обмежень",
         "roleAI": "AI",
         "roleUser": "Користувач"
+      },
+      "dropFileToAnalyze": "Перетягніть файл для аналізу за допомогою AeroAgent",
+      "plugins": {
+        "browsePlugins": "Огляд плагінів"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Розшифрувати і зберегти",
       "decrypted": "{name} розшифровано",
       "encrypted": "Файл зашифровано у сховище",
-      "root": "Корінь"
+      "root": "Корінь",
+      "confirmPassword": "Підтвердити пароль",
+      "createVault": "Створити сейф Cryptomator",
+      "minPassword": "Мінімум 8 символів",
+      "passwordMismatch": "Паролі не збігаються",
+      "repeatPassword": "Повторіть пароль",
+      "vaultName": "Назва сейфу"
     },
     "compress": {
       "title": "Стиснути файли",
@@ -2939,6 +2981,30 @@
     },
     "preconfiguredProviders": "Попередньо налаштовані постачальники",
     "customConnection": "Користувацька відповідь",
-    "custom": "Користувацький"
+    "custom": "Користувацький",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Файл",
+        "navigation": "Навігація",
+        "sync": "Синхронізація",
+        "tools": "Інструменти"
+      },
+      "noResults": "Жодна команда не відповідає вашому пошуку",
+      "placeholder": "Введіть команду..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "У реєстрі немає доступних плагінів",
+        "install": "Встановити",
+        "installed": "Встановлено",
+        "installing": "Встановлення...",
+        "loading": "Завантаження реєстру плагінів...",
+        "manageInSettings": "Керуйте встановленими плагінами у вкладці Plugins",
+        "search": "Пошук плагінів...",
+        "subtitle": "Відкривайте та встановлюйте плагіни спільноти для AeroAgent",
+        "title": "Браузер плагінів"
+      }
+    }
   }
 }

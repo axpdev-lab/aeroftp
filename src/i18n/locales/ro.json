@@ -185,7 +185,21 @@
         "useDifferentAccount": "Foloseste alt cont",
         "zohoRegion": "Regiune Zoho",
         "zohoRegionHelp": "Selectati regiunea corespunzatoare contului dvs. Zoho (de ex. zoho.eu pentru Europa)."
-      }
+      },
+      "activeSessions": "Sesiuni active",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Parola contului Internxt",
+      "internxtEncryptionTitle": "Criptare cu cunoștințe zero",
+      "internxtEncryptionDesc": "Toate fișierele sunt criptate end-to-end cu AES-256-CTR. Internxt nu poate accesa datele dvs. Cu sediul în EU, conform cu GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Lipiți API Token-ul aici",
+      "kdriveDriveIdPlaceholder": "ID-ul kDrive (numeric)",
+      "kdriveTokenHelp": "Generează un token pe manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Conectare",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Lipiți tokenul dvs. API Drime aici",
+      "drimeTokenHelp": "Generați un token la app.drime.cloud → Setările contului → Dezvoltatori"
     },
     "browser": {
       "remote": "La distanță",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Selectează tot",
       "trashDeselectAll": "Deselectează tot",
       "trashOriginalLocation": "Locație originală",
-      "trashDeletedDate": "Șters"
+      "trashDeletedDate": "Șters",
+      "createAeroVault": "Creați AeroVault...",
+      "createCryptomator": "Creați Cryptomator Vault...",
+      "more": "Mai mult",
+      "openAsCryptomator": "Deschideți ca Cryptomator Vault",
+      "askAeroAgent": "Întreabă AeroAgent..."
     },
     "transfer": {
       "transferring": "Se transferă...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Pictograme monocrome care se adapteaza la tema curenta",
       "iconThemeOutline": "Contur",
       "iconThemeOutlineDesc": "Pictograme cu linii curate si tipuri de fisiere codificate prin culori",
-      "iconsTab": "Pictograme"
+      "iconsTab": "Pictograme",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Resetare",
         "save": "Salvare",
         "saving": "Se salvează...",
-        "noFileSelected": "Niciun fișier selectat pentru editare"
+        "noFileSelected": "Niciun fișier selectat pentru editare",
+        "loading": "Se încarcă editorul..."
       },
       "previewPanel": {
         "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Previzualizare\""
-      }
+      },
+      "codeEditor": "Editor de cod",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Mulțumim pentru susținere!",
       "footer": "Fiecare donație ajută dezvoltarea",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Este gratuit!",
+      "starOnGithub": "Acordă o stea pe GitHub"
     },
     "activity": {
       "connect_start": "Deschid conexiunea cu {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Furnizori preconfigurati",
       "customConnection": "Conexiune personalizată",
-      "custom": "Personalizat"
+      "custom": "Personalizat",
+      "internxtDesc": "Stocare cloud cu cunoștințe zero",
+      "internxtTooltip": "Internxt - Cloud criptat cu cunoștințe zero, cu sediul în EU",
+      "kdriveDesc": "Stocare în cloud elvețiană",
+      "kdriveTooltip": "kDrive de la Infomaniak - stocare în cloud elvețiană cu 15GB gratuit",
+      "drimeDesc": "Stocare securizată în cloud",
+      "drimeTooltip": "Drime Cloud - 20GB stocare securizată în cloud cu REST API"
     },
     "shortcuts": {
       "title": "Scurtături tastatură",
@@ -2106,6 +2138,10 @@
         "unlimited": "Nelimitat",
         "roleAI": "AI",
         "roleUser": "Utilizator"
+      },
+      "dropFileToAnalyze": "Trageți fișierul pentru a-l analiza cu AeroAgent",
+      "plugins": {
+        "browsePlugins": "Răsfoiește pluginuri"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Decripteaza si salveaza",
       "decrypted": "Decriptat {name}",
       "encrypted": "Fisier criptat in seif",
-      "root": "Radacina"
+      "root": "Radacina",
+      "confirmPassword": "Confirmă parola",
+      "createVault": "Creează seif Cryptomator",
+      "minPassword": "Minim 8 caractere",
+      "passwordMismatch": "Parolele nu coincid",
+      "repeatPassword": "Repetă parola",
+      "vaultName": "Nume seif"
     },
     "compress": {
       "title": "Comprimare fișiere",
@@ -2936,6 +2978,30 @@
       "noTags": "Nicio etichetă",
       "removeTag": "Elimină eticheta",
       "tags": "Etichete"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fișier",
+        "navigation": "Navigare",
+        "sync": "Sincronizare",
+        "tools": "Instrumente"
+      },
+      "noResults": "Nicio comandă nu corespunde căutării",
+      "placeholder": "Tastați o comandă..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Niciun plugin disponibil în registru",
+        "install": "Instalează",
+        "installed": "Instalat",
+        "installing": "Se instalează...",
+        "loading": "Se încarcă registrul de pluginuri...",
+        "manageInSettings": "Gestionați pluginurile instalate în fila Plugins",
+        "search": "Căutare pluginuri...",
+        "subtitle": "Descoperă și instalează pluginuri comunitare pentru AeroAgent",
+        "title": "Browser de pluginuri"
+      }
     }
   }
 }

@@ -135,7 +135,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         <Archive size={18} className="text-blue-400" />
                         <span className="font-medium">{t('compress.title') || 'Compress Files'}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                 </div>
 
                 <div className="p-4 flex flex-col gap-3">

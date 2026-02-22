@@ -185,7 +185,21 @@
         "useDifferentAccount": "Bruk annen konto",
         "zohoRegion": "Zoho-region",
         "zohoRegionHelp": "Velg regionen som samsvarer med Zoho-kontoen din (f.eks. zoho.eu for Europa)."
-      }
+      },
+      "activeSessions": "Aktive sesjoner",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt-kontopassord",
+      "internxtEncryptionTitle": "Nullkunnskapskryptering",
+      "internxtEncryptionDesc": "Alle filer er ende-til-ende-kryptert med AES-256-CTR. Internxt kan ikke få tilgang til dataene dine. EU-basert, GDPR-kompatibel.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Lim inn API-tokenet ditt her",
+      "kdriveDriveIdPlaceholder": "Din kDrive-ID (numerisk)",
+      "kdriveTokenHelp": "Generer et token på manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Koble til",
+      "drimeToken": "API-token",
+      "drimeTokenPlaceholder": "Lim inn Drime API-tokenet ditt her",
+      "drimeTokenHelp": "Generer et token på app.drime.cloud → Kontoinnstillinger → Utviklere"
     },
     "browser": {
       "remote": "Ekstern",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Velg alle",
       "trashDeselectAll": "Fjern alle valg",
       "trashOriginalLocation": "Opprinnelig plassering",
-      "trashDeletedDate": "Slettet"
+      "trashDeletedDate": "Slettet",
+      "createAeroVault": "Opprett AeroVault...",
+      "createCryptomator": "Opprett Cryptomator-hvelv...",
+      "more": "Mer",
+      "openAsCryptomator": "Åpne som Cryptomator-hvelv",
+      "askAeroAgent": "Spør AeroAgent..."
     },
     "transfer": {
       "transferring": "Overfører...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Monokrome ikoner som tilpasser seg gjeldende tema",
       "iconThemeOutline": "Omriss",
       "iconThemeOutlineDesc": "Rene strekikoner med fargekodede filtyper",
-      "iconsTab": "Ikoner"
+      "iconsTab": "Ikoner",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Tilbakestill",
         "save": "Lagre",
         "saving": "Lagrer...",
-        "noFileSelected": "Ingen fil valgt for redigering"
+        "noFileSelected": "Ingen fil valgt for redigering",
+        "loading": "Laster redigeringsprogram..."
       },
       "previewPanel": {
         "emptyState": "Høyreklikk på en fil og velg \"Forhåndsvisning\""
-      }
+      },
+      "codeEditor": "Koderedigerer",
+      "sshTerminal": "SSH-terminal"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Takk for din støtte!",
       "footer": "Hver donasjon hjelper utviklingen",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Det er gratis!",
+      "starOnGithub": "Gi stjerne på GitHub"
     },
     "activity": {
       "connect_start": "Kobler til {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Forhåndskonfigurerte leverandører",
       "customConnection": "Egendefinert tilkobling",
-      "custom": "Egendefinert"
+      "custom": "Egendefinert",
+      "internxtDesc": "Nullkunnskaps skylagring",
+      "internxtTooltip": "Internxt - Nullkunnskaps kryptert sky, EU-basert",
+      "kdriveDesc": "Sveitsisk skylagring",
+      "kdriveTooltip": "kDrive by Infomaniak - Sveitsisk skylagring med 15GB gratis",
+      "drimeDesc": "Sikker skylagring",
+      "drimeTooltip": "Drime Cloud - 20GB gratis sikker skylagring med REST API"
     },
     "shortcuts": {
       "title": "Tastatursnarveier",
@@ -2106,6 +2138,10 @@
         "unlimited": "Ubegrenset",
         "roleAI": "AI",
         "roleUser": "Bruker"
+      },
+      "dropFileToAnalyze": "Slipp filen for å analysere med AeroAgent",
+      "plugins": {
+        "browsePlugins": "Bla gjennom plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Dekrypter og lagre",
       "decrypted": "Dekryptert {name}",
       "encrypted": "Fil kryptert i hvelv",
-      "root": "Rot"
+      "root": "Rot",
+      "confirmPassword": "Bekreft passord",
+      "createVault": "Opprett Cryptomator-hvelv",
+      "minPassword": "Minimum 8 tegn",
+      "passwordMismatch": "Passordene samsvarer ikke",
+      "repeatPassword": "Gjenta passord",
+      "vaultName": "Navn på hvelv"
     },
     "compress": {
       "title": "Komprimer filer",
@@ -2946,6 +2988,49 @@
       "noTags": "Ingen merker",
       "removeTag": "Fjern merke",
       "tags": "Merker"
-    }
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fil",
+        "navigation": "Navigasjon",
+        "sync": "Synkronisering",
+        "tools": "Verktøy"
+      },
+      "noResults": "Ingen kommandoer samsvarer med søket ditt",
+      "placeholder": "Skriv inn en kommando..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Ingen plugins tilgjengelig i registeret",
+        "install": "Installer",
+        "installed": "Installert",
+        "installing": "Installerer...",
+        "loading": "Laster pluginregister...",
+        "manageInSettings": "Administrer installerte plugins i Plugins-fanen",
+        "search": "Søk etter plugins...",
+        "subtitle": "Oppdag og installer fellesskapsplugins for AeroAgent",
+        "title": "Pluginnettleser"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

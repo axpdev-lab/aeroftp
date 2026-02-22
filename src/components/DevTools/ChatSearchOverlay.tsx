@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 /** A match reference pointing to a specific location within a chat message */
 export interface SearchMatch {
@@ -28,6 +29,7 @@ export const ChatSearchOverlay: React.FC<ChatSearchOverlayProps> = ({
     onHighlightMessage,
     onSearchResults,
 }) => {
+    const t = useTranslation();
     const [query, setQuery] = useState('');
     const [activeMatchIndex, setActiveMatchIndex] = useState(0);
     const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'assistant'>('all');
@@ -182,7 +184,7 @@ export const ChatSearchOverlay: React.FC<ChatSearchOverlayProps> = ({
                 </span>
             </div>
             {/* Close */}
-            <button onClick={onClose} className="p-0.5 text-gray-500 hover:text-white transition-colors">
+            <button onClick={onClose} className="p-0.5 text-gray-500 hover:text-white transition-colors" title={t('common.close')}>
                 <X size={13} />
             </button>
         </div>

@@ -231,6 +231,7 @@
         "title": "Diff Preview"
       },
       "disclaimer": "AI may make mistakes. Double-check code.",
+      "dropFileToAnalyze": "Drop file to analyze with AeroAgent",
       "error": {
         "authFailed": "Authentication failed. Check your API key in AI Settings.",
         "commandSentToTerminal": "Command sent to terminal",
@@ -345,6 +346,9 @@
       "noProvidersConfigured": "No AI providers configured. Click ⚙️ to add one.",
       "noTerminalAvailable": "No terminal session active",
       "operationCancelled": "Operation cancelled.",
+      "plugins": {
+        "browsePlugins": "Browse Plugins"
+      },
       "providerNotConfigured": "Provider not configured for {provider}",
       "pullModel": {
         "error": "Failed to pull model",
@@ -948,6 +952,7 @@
     "connection": {
       "accessKeyId": "Access Key ID",
       "active": "Active",
+      "activeSessions": "Active Sessions",
       "aerocloudConfigured": "AeroCloud is already configured and syncing",
       "aerocloudDesc": "Turn any FTP server into your personal cloud with automatic sync",
       "aerocloudHelp": "You can also configure AeroCloud from the status bar",
@@ -957,6 +962,7 @@
       "cancelEditing": "Cancel Editing",
       "change": "Change",
       "configureAerocloud": "Configure AeroCloud",
+      "connect": "Connect",
       "connected": "Connected",
       "connecting": "Connecting...",
       "connectionFailed": "Connection failed",
@@ -975,6 +981,18 @@
       "filenEncryptionDesc": "All files are encrypted client-side with AES-256-GCM before upload. Filen cannot access your data. Your password never leaves this device.",
       "filenEncryptionTitle": "Zero-Knowledge Encryption",
       "filenPasswordPlaceholder": "Filen account password",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt account password",
+      "internxtEncryptionTitle": "Zero-Knowledge Encryption",
+      "internxtEncryptionDesc": "All files are encrypted end-to-end with AES-256-CTR. Internxt cannot access your data. EU-based, GDPR compliant.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Paste your API token here",
+      "kdriveDriveIdPlaceholder": "Your kDrive ID (numeric)",
+      "kdriveTokenHelp": "Generate a token at manager.infomaniak.com → Developer → API Tokens",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "Paste your Drime API token here",
+      "drimeTokenHelp": "Generate a token at app.drime.cloud → Account Settings → Developers",
       "fourshared": {
         "backToExistingAccount": "Back to existing account",
         "configureCredentials": "Configure OAuth 1.0 credentials",
@@ -1072,7 +1090,19 @@
       "username": "Username",
       "usernamePlaceholder": "your-username"
     },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "File",
+        "navigation": "Navigation",
+        "sync": "Sync",
+        "tools": "Tools"
+      },
+      "noResults": "No commands match your search",
+      "placeholder": "Type a command..."
+    },
     "contextMenu": {
+      "askAeroAgent": "Ask AeroAgent...",
       "browseArchive": "Browse Archive",
       "calculateSize": "Calculate Size",
       "compress": "Compress",
@@ -1091,6 +1121,8 @@
       "copyUrl": "Copy {scheme} URL",
       "createShareLink": "Create Share Link",
       "creating7z": "Creating {name} (LZMA2)",
+      "createAeroVault": "Create AeroVault...",
+      "createCryptomator": "Create Cryptomator Vault...",
       "creatingShareLink": "Creating share link...",
       "cut": "Cut",
       "delete": "Delete",
@@ -1116,10 +1148,12 @@
       "importMegaLink": "Import MEGA Link",
       "importMegaPrompt": "Paste a MEGA public link to import:",
       "linkImported": "Link imported!",
+      "more": "More",
       "moved": "Moved",
       "nameCopied": "Name copied",
       "newFolder": "New Folder",
       "open": "Open",
+      "openAsCryptomator": "Open as Cryptomator Vault",
       "openInFileManager": "Open in File Manager",
       "openInTerminal": "Open in Terminal",
       "passwordRequired": "Password Required",
@@ -1153,6 +1187,8 @@
       "trashDeletedDate": "Deleted"
     },
     "cryptomator": {
+      "confirmPassword": "Confirm Password",
+      "createVault": "Create Cryptomator Vault",
       "decryptAndSave": "Decrypt & Save",
       "decrypted": "Decrypted {name}",
       "description": "Open a Cryptomator vault (format 8) to browse and decrypt files.",
@@ -1161,15 +1197,19 @@
       "encrypted": "File encrypted into vault",
       "items": "items",
       "lock": "Lock",
+      "minPassword": "Min 8 characters",
       "name": "Name",
       "openAsVault": "Open as Cryptomator Vault",
       "password": "Vault Password",
+      "passwordMismatch": "Passwords do not match",
       "readOnly": "Read-only mode — vault creation coming in v2.1",
+      "repeatPassword": "Repeat password",
       "root": "Root",
       "selectFolder": "Select Vault Folder...",
       "size": "Size",
       "title": "Cryptomator Vault",
-      "unlock": "Unlock Vault"
+      "unlock": "Unlock Vault",
+      "vaultName": "Vault Name"
     },
     "debug": {
       "copyFileListToClipboard": "Copy file list to clipboard",
@@ -1272,6 +1312,7 @@
     "devtools": {
       "agent": "AI Agent",
       "closeDevTools": "Close AeroTools",
+      "codeEditor": "Code Editor",
       "discardChanges": "Discard Changes",
       "duplicatesSkipped": "duplicates skipped",
       "editor": "Editor",
@@ -1286,6 +1327,7 @@
       "preview": "Preview",
       "restore": "Restore",
       "saveChanges": "Save Changes",
+      "sshTerminal": "SSH Terminal",
       "syntaxHighlighting": "Syntax Highlighting",
       "terminal": "Terminal",
       "title": "AeroTools",
@@ -1308,6 +1350,7 @@
       },
       "editorPanel": {
         "emptyState": "Right-click on a file and choose \"Edit\"",
+        "loading": "Loading editor...",
         "noFileSelected": "No file selected for editing",
         "reset": "Reset",
         "save": "Save",
@@ -1685,6 +1728,19 @@
       "typeVideo": "Video",
       "viewSource": "View Source"
     },
+    "plugins": {
+      "browser": {
+        "empty": "No plugins available in the registry",
+        "install": "Install",
+        "installed": "Installed",
+        "installing": "Installing...",
+        "loading": "Loading plugin registry...",
+        "manageInSettings": "Manage installed plugins in the Plugins tab",
+        "search": "Search plugins...",
+        "subtitle": "Discover and install community plugins for AeroAgent",
+        "title": "Plugin Browser"
+      }
+    },
     "properties": {
       "accessed": "Last Accessed",
       "calculate": "Calculate",
@@ -1748,6 +1804,12 @@
       "endpointPlaceholder": "s3.example.com",
       "filenDesc": "E2E Encrypted Cloud",
       "filenTooltip": "Filen - Zero-knowledge E2E encryption, 10GB free",
+      "internxtDesc": "Zero-Knowledge Cloud Storage",
+      "internxtTooltip": "Internxt - Zero-knowledge encrypted cloud, EU-based",
+      "kdriveDesc": "Swiss Cloud Storage",
+      "kdriveTooltip": "kDrive by Infomaniak - Swiss-hosted cloud storage with 15GB free",
+      "drimeDesc": "Secure Cloud Storage",
+      "drimeTooltip": "Drime Cloud - 20GB free secure cloud storage with REST API",
       "foursharedDesc": "15 GB Free Cloud Storage",
       "foursharedTooltip": "4shared - 15GB free storage, OAuth 1.0 authentication",
       "ftpDesc": "File Transfer Protocol",
@@ -2070,10 +2132,12 @@
       "protocolGdrive": "Google Drive",
       "protocolMega": "MEGA",
       "protocolOnedrive": "OneDrive",
+      "protocolFourshared": "4shared",
       "protocolPcloud": "pCloud",
       "protocolS3": "S3 / R2 / B2",
       "protocolSftp": "SFTP (SSH)",
       "protocolWebdav": "WebDAV",
+      "protocolZohoworkdrive": "Zoho WorkDrive",
       "reconnectAttempts": "Reconnect Attempts",
       "reconnectDelay": "Reconnect Delay",
       "region": "Region",
@@ -2270,7 +2334,9 @@
       "cryptoSection": "Donate with Crypto",
       "fiatSection": "Donate with Card",
       "footer": "Every donation helps development",
+      "freeSupport": "It's free!",
       "githubSponsors": "GitHub Sponsors",
+      "starOnGithub": "Star on GitHub",
       "subtitle": "Your support helps keep AeroFTP free!",
       "thanks": "Thank you for your support!",
       "title": "Support AeroFTP"

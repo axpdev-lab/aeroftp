@@ -160,3 +160,31 @@ export const TogetherIcon: React.FC<IconProps> = ({ size = 16, className = '' })
     </svg>
 );
 
+// AI21 Labs - Official logo (dark blue #6C3AFF)
+export const AI21Icon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#6C3AFF">
+        <path d="M3.5 18h2.3L8 11.2h.05L10.2 18h2.3L16 6h-2.5l-2.3 7.1h-.05L8.8 6H6.5L4.2 13.1h-.05L1.8 6H0zm14 0h2V9.3L22 6h-2.6l-1.9 2.5L15.6 6H13l2.5 3.3z" />
+    </svg>
+);
+
+// Cerebras - Official logo (blue #0066FF)
+export const CerebrasIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#0066FF">
+        <path d="M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z" />
+    </svg>
+);
+
+// SambaNova - Official logo (green #00C853)
+export const SambaNovaIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#00C853">
+        <path d="M2 12c0 5.52 4.48 10 10 10s10-4.48 10-10S17.52 2 12 2 2 6.48 2 12zm4-2l3 3-3 3V10zm5-4l3 3-3 3V6zm5 4l3 3-3 3V10z" />
+    </svg>
+);
+
+// Fireworks AI - Official logo (orange #FF6D00)
+export const FireworksIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#FF6D00">
+        <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.37L12 6.1l1.71 4.04 4.38.37-3.32 2.88 1 4.28z" />
+    </svg>
+);
+

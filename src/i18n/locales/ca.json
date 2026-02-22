@@ -185,7 +185,21 @@
         "useDifferentAccount": "Utilitzar un altre compte",
         "zohoRegion": "Regio de Zoho",
         "zohoRegionHelp": "Seleccioneu la regio que coincideixi amb el vostre compte de Zoho (p. ex. zoho.eu per a Europa)."
-      }
+      },
+      "activeSessions": "Sessions Actives",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Contrasenya del compte Internxt",
+      "internxtEncryptionTitle": "Xifratge de coneixement zero",
+      "internxtEncryptionDesc": "Tots els fitxers es xifren d'extrem a extrem amb AES-256-CTR. Internxt no pot accedir a les vostres dades. Basat a la EU, compatible amb GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Enganxeu el vostre API Token aquí",
+      "kdriveDriveIdPlaceholder": "El vostre kDrive ID (numèric)",
+      "kdriveTokenHelp": "Genereu un token a manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Connecta",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Enganxeu aquí el vostre token API de Drime",
+      "drimeTokenHelp": "Genereu un token a app.drime.cloud → Configuració del compte → Desenvolupadors"
     },
     "browser": {
       "remote": "Remot",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Selecciona-ho tot",
       "trashDeselectAll": "Desselecciona-ho tot",
       "trashOriginalLocation": "Ubicació original",
-      "trashDeletedDate": "Eliminat"
+      "trashDeletedDate": "Eliminat",
+      "createAeroVault": "Crea AeroVault...",
+      "createCryptomator": "Crea un dipòsit Cryptomator...",
+      "more": "Més",
+      "openAsCryptomator": "Obre com a dipòsit Cryptomator",
+      "askAeroAgent": "Pregunta a AeroAgent..."
     },
     "transfer": {
       "transferring": "Transferint...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Icones monocromes que s'adapten al tema actual",
       "iconThemeOutline": "Contorn",
       "iconThemeOutlineDesc": "Icones de traç net amb tipus de fitxer codificats per color",
-      "iconsTab": "Icones"
+      "iconsTab": "Icones",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Restablir",
         "save": "Guardar",
         "saving": "Guardant...",
-        "noFileSelected": "Cap fitxer seleccionat per editar"
+        "noFileSelected": "Cap fitxer seleccionat per editar",
+        "loading": "Carregant editor..."
       },
       "previewPanel": {
         "emptyState": "Fes clic dret en un fitxer i tria \"Vista prèvia\""
-      }
+      },
+      "codeEditor": "Editor de codi",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Gracies pel teu suport!",
       "footer": "Cada donacio ajuda al desenvolupament",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "És gratuït!",
+      "starOnGithub": "Dona una estrella a GitHub"
     },
     "activity": {
       "connect_start": "Connectant a {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Proveïdors Preconfigurats",
       "customConnection": "Connexió Personalitzada",
-      "custom": "Personalitzat"
+      "custom": "Personalitzat",
+      "internxtDesc": "Emmagatzematge al núvol amb coneixement zero",
+      "internxtTooltip": "Internxt - Núvol xifrat amb coneixement zero, basat a la EU",
+      "kdriveDesc": "Emmagatzematge al núvol suís",
+      "kdriveTooltip": "kDrive d'Infomaniak - Emmagatzematge al núvol allotjat a Suïssa amb 15GB gratuïts",
+      "drimeDesc": "Emmagatzematge al núvol segur",
+      "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API"
     },
     "shortcuts": {
       "title": "Dreceres de Teclat",
@@ -2106,6 +2138,10 @@
         "unlimited": "Il·limitat",
         "roleAI": "AI",
         "roleUser": "Usuari"
+      },
+      "dropFileToAnalyze": "Deixeu anar el fitxer per analitzar amb AeroAgent",
+      "plugins": {
+        "browsePlugins": "Explorar Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Desxifrar i desar",
       "decrypted": "{name} desxifrat",
       "encrypted": "Fitxer xifrat a la volta",
-      "root": "Arrel"
+      "root": "Arrel",
+      "confirmPassword": "Confirma la contrasenya",
+      "createVault": "Crea una caixa forta de Cryptomator",
+      "minPassword": "Mínim 8 caràcters",
+      "passwordMismatch": "Les contrasenyes no coincideixen",
+      "repeatPassword": "Repeteix la contrasenya",
+      "vaultName": "Nom de la caixa forta"
     },
     "compress": {
       "title": "Comprimir fitxers",
@@ -2946,6 +2988,49 @@
       "noTags": "Sense etiquetes",
       "removeTag": "Elimina l'etiqueta",
       "tags": "Etiquetes"
-    }
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fitxer",
+        "navigation": "Navegació",
+        "sync": "Sincronització",
+        "tools": "Eines"
+      },
+      "noResults": "Cap comanda coincideix amb la vostra cerca",
+      "placeholder": "Escriviu una comanda..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "No hi ha plugins disponibles al registre",
+        "install": "Instal·lar",
+        "installed": "Instal·lat",
+        "installing": "Instal·lant...",
+        "loading": "Carregant el registre de plugins...",
+        "manageInSettings": "Gestioneu els plugins instal·lats a la pestanya Plugins",
+        "search": "Cercar plugins...",
+        "subtitle": "Descobriu i instal·leu plugins de la comunitat per a AeroAgent",
+        "title": "Plugin Browser"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

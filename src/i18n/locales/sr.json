@@ -185,7 +185,21 @@
         "useDifferentAccount": "Користи други налог",
         "zohoRegion": "Zoho регион",
         "zohoRegionHelp": "Изаберите регион који одговара вашем Zoho налогу (нпр. zoho.eu за Европу)."
-      }
+      },
+      "activeSessions": "Активне сесије",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Лозинка Internxt налога",
+      "internxtEncryptionTitle": "Шифровање са нултим знањем",
+      "internxtEncryptionDesc": "Све датотеке су шифроване од краја до краја помоћу AES-256-CTR. Internxt не може приступити вашим подацима. Са седиштем у EU, у складу са GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Налепите ваш API Token овде",
+      "kdriveDriveIdPlaceholder": "Ваш kDrive ID (нумерички)",
+      "kdriveTokenHelp": "Генеришите токен на manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Повежи се",
+      "drimeToken": "API токен",
+      "drimeTokenPlaceholder": "Налепите свој API токен Drime овде",
+      "drimeTokenHelp": "Генеришите токен на app.drime.cloud → Подешавања налога → Програмери"
     },
     "browser": {
       "remote": "Удаљено",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Изабери све",
       "trashDeselectAll": "Поништи избор",
       "trashOriginalLocation": "Оригинална локација",
-      "trashDeletedDate": "Избрисано"
+      "trashDeletedDate": "Избрисано",
+      "createAeroVault": "Направи AeroVault...",
+      "createCryptomator": "Направи Cryptomator Vault...",
+      "more": "Више",
+      "openAsCryptomator": "Отвори као Cryptomator Vault",
+      "askAeroAgent": "Питај AeroAgent..."
     },
     "transfer": {
       "transferring": "Пренос...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Једнобојне иконице које се прилагођавају тренутној теми",
       "iconThemeOutline": "Контурне",
       "iconThemeOutlineDesc": "Чисте контурне иконице са типовима датотека означеним бојама",
-      "iconsTab": "Иконице"
+      "iconsTab": "Иконице",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Ресетуј",
         "save": "Сачувај",
         "saving": "Чување...",
-        "noFileSelected": "Није изабрана датотека за уређивање"
+        "noFileSelected": "Није изабрана датотека за уређивање",
+        "loading": "Учитавање уређивача..."
       },
       "previewPanel": {
         "emptyState": "Десним кликом кликните на фајл и изаберите \"Преглед\""
-      }
+      },
+      "codeEditor": "Уређивач кода",
+      "sshTerminal": "SSH терминал"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Хвала на подршци!",
       "footer": "Свака донација помаже развоју",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Бесплатно је!",
+      "starOnGithub": "Оцените звездицом на GitHub"
     },
     "activity": {
       "connect_start": "Отварам везу са {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Порт",
       "preconfiguredProviders": "Унапред конфигурисани добављачи",
       "customConnection": "Прилагођена веза",
-      "custom": "Прилагођено"
+      "custom": "Прилагођено",
+      "internxtDesc": "Облак складиште са нултим знањем",
+      "internxtTooltip": "Internxt - Шифровани облак са нултим знањем, са седиштем у EU",
+      "kdriveDesc": "Швајцарско складиште у облаку",
+      "kdriveTooltip": "kDrive од Infomaniak - швајцарско складиште у облаку са 15GB бесплатно",
+      "drimeDesc": "Безбедно складиштење у облаку",
+      "drimeTooltip": "Drime Cloud - 20GB безбедног складиштења у облаку са REST API"
     },
     "shortcuts": {
       "title": "Prečice na tastaturi",
@@ -2106,6 +2138,10 @@
         "unlimited": "Неограничено",
         "roleAI": "AI",
         "roleUser": "Корисник"
+      },
+      "dropFileToAnalyze": "Превуците датотеку за анализу помоћу AeroAgent",
+      "plugins": {
+        "browsePlugins": "Прегледај плагине"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Дешифруј и сачувај",
       "decrypted": "Дешифровано {name}",
       "encrypted": "Датотека шифрована у трезор",
-      "root": "Корен"
+      "root": "Корен",
+      "confirmPassword": "Потврдите лозинку",
+      "createVault": "Направи Cryptomator сеф",
+      "minPassword": "Минимално 8 знакова",
+      "passwordMismatch": "Лозинке се не подударају",
+      "repeatPassword": "Поновите лозинку",
+      "vaultName": "Назив сефа"
     },
     "compress": {
       "title": "Kompresuj fajlove",
@@ -2946,6 +2988,30 @@
       "noTags": "Нема ознака",
       "removeTag": "Уклони ознаку",
       "tags": "Ознаке"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Датотека",
+        "navigation": "Навигација",
+        "sync": "Синхронизација",
+        "tools": "Алатке"
+      },
+      "noResults": "Ниједна команда не одговара вашој претрази",
+      "placeholder": "Унесите команду..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Нема доступних плагина у регистру",
+        "install": "Инсталирај",
+        "installed": "Инсталирано",
+        "installing": "Инсталирање...",
+        "loading": "Учитавање регистра плагина...",
+        "manageInSettings": "Управљајте инсталираним плагинима у картици Plugins",
+        "search": "Претражи плагине...",
+        "subtitle": "Откријте и инсталирајте плагине заједнице за AeroAgent",
+        "title": "Претраживач плагина"
+      }
     }
   }
 }

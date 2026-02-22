@@ -46,7 +46,7 @@ export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
 const DEFAULTS: AppSettings = {
   compactMode: false,
   showHiddenFiles: true,
-  showToastNotifications: true,
+  showToastNotifications: false,
   confirmBeforeDelete: true,
   showStatusBar: true,
   defaultLocalPath: '',

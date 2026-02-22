@@ -185,7 +185,21 @@
         "useDifferentAccount": "Използване на друг акаунт",
         "zohoRegion": "Регион на Zoho",
         "zohoRegionHelp": "Изберете региона, съответстващ на вашия Zoho акаунт (напр. zoho.eu за Европа)."
-      }
+      },
+      "activeSessions": "Активни сесии",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Парола за акаунт в Internxt",
+      "internxtEncryptionTitle": "Криптиране с нулево познание",
+      "internxtEncryptionDesc": "Всички файлове са криптирани от край до край с AES-256-CTR. Internxt няма достъп до вашите данни. Базиран в EU, съвместим с GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Поставете вашия API Token тук",
+      "kdriveDriveIdPlaceholder": "Вашият kDrive ID (числов)",
+      "kdriveTokenHelp": "Генерирайте токен на manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Свързване",
+      "drimeToken": "API токен",
+      "drimeTokenPlaceholder": "Поставете вашия Drime API токен тук",
+      "drimeTokenHelp": "Генерирайте токен на app.drime.cloud → Настройки на акаунта → Разработчици"
     },
     "browser": {
       "remote": "Отдалечен",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Избери всички",
       "trashDeselectAll": "Премахни избора",
       "trashOriginalLocation": "Оригинално местоположение",
-      "trashDeletedDate": "Изтрито"
+      "trashDeletedDate": "Изтрито",
+      "createAeroVault": "Създай AeroVault...",
+      "createCryptomator": "Създай Cryptomator хранилище...",
+      "more": "Още",
+      "openAsCryptomator": "Отвори като Cryptomator хранилище",
+      "askAeroAgent": "Питай AeroAgent..."
     },
     "transfer": {
       "transferring": "Прехвърляне...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Монохромни икони, адаптирани към текущата тема",
       "iconThemeOutline": "Контурни",
       "iconThemeOutlineDesc": "Чисти контурни икони с цветово кодирани типове файлове",
-      "iconsTab": "Икони"
+      "iconsTab": "Икони",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Нулирай",
         "save": "Запази",
         "saving": "Запазване...",
-        "noFileSelected": "Не е избран файл за редактиране"
+        "noFileSelected": "Не е избран файл за редактиране",
+        "loading": "Зареждане на редактор..."
       },
       "previewPanel": {
         "emptyState": "Натиснете с десен бутон върху файл и изберете \"Преглед\""
-      }
+      },
+      "codeEditor": "Редактор на код",
+      "sshTerminal": "SSH терминал"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Благодарим за подкрепата!",
       "footer": "Всяко дарение помага на разработката",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Безплатно е!",
+      "starOnGithub": "Дайте звезда в GitHub"
     },
     "activity": {
       "connect_start": "Свързване с {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Порт",
       "preconfiguredProviders": "Предварително конфигурирани доставчици",
       "customConnection": "Персонализирана връзка",
-      "custom": "Персонализирано"
+      "custom": "Персонализирано",
+      "internxtDesc": "Облачно хранилище с нулево познание",
+      "internxtTooltip": "Internxt - Облак с нулево познание и криптиране, базиран в EU",
+      "kdriveDesc": "Швейцарско облачно хранилище",
+      "kdriveTooltip": "kDrive от Infomaniak - Облачно хранилище в Швейцария с 15GB безплатно",
+      "drimeDesc": "Сигурно облачно хранилище",
+      "drimeTooltip": "Drime Cloud - 20GB безплатно сигурно облачно хранилище с REST API"
     },
     "shortcuts": {
       "title": "Клавишни комбинации",
@@ -2106,6 +2138,10 @@
         "unlimited": "Неограничено",
         "roleAI": "AI",
         "roleUser": "Потребител"
+      },
+      "dropFileToAnalyze": "Пуснете файл за анализ с AeroAgent",
+      "plugins": {
+        "browsePlugins": "Преглед на Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Дешифриране и запазване",
       "decrypted": "Дешифрирано: {name}",
       "encrypted": "Файлът е криптиран в хранилището",
-      "root": "Корен"
+      "root": "Корен",
+      "confirmPassword": "Потвърдете паролата",
+      "createVault": "Создай хранилище на Cryptomator",
+      "minPassword": "Минимум 8 символа",
+      "passwordMismatch": "Паролите не съвпадат",
+      "repeatPassword": "Повторете паролата",
+      "vaultName": "Име на хранилище"
     },
     "compress": {
       "title": "Компресиране на файлове",
@@ -2946,6 +2988,30 @@
       "noTags": "Няма етикети",
       "removeTag": "Премахни етикет",
       "tags": "Етикети"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Файл",
+        "navigation": "Навигация",
+        "sync": "Синхронизация",
+        "tools": "Инструменти"
+      },
+      "noResults": "Няма команди, съответстващи на търсенето ви",
+      "placeholder": "Въведете команда..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Няма налични plugins в регистъра",
+        "install": "Инсталиране",
+        "installed": "Инсталиран",
+        "installing": "Инсталиране...",
+        "loading": "Зареждане на регистъра на plugins...",
+        "manageInSettings": "Управлявайте инсталираните plugins в раздела Plugins",
+        "search": "Търсене на plugins...",
+        "subtitle": "Открийте и инсталирайте plugins от общността за AeroAgent",
+        "title": "Plugin Browser"
+      }
     }
   }
 }

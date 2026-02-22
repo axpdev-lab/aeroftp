@@ -185,7 +185,21 @@
         "useDifferentAccount": "অন্য অ্যাকাউন্ট ব্যবহার করুন",
         "zohoRegion": "Zoho অঞ্চল",
         "zohoRegionHelp": "আপনার Zoho অ্যাকাউন্টের সাথে মিলে যায় এমন অঞ্চল নির্বাচন করুন (যেমন ইউরোপের জন্য zoho.eu)।"
-      }
+      },
+      "activeSessions": "সক্রিয় সেশন",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt অ্যাকাউন্ট পাসওয়ার্ড",
+      "internxtEncryptionTitle": "Zero-Knowledge এনক্রিপশন",
+      "internxtEncryptionDesc": "সমস্ত ফাইল AES-256-CTR দিয়ে এন্ড-টু-এন্ড এনক্রিপ্ট করা হয়। Internxt আপনার ডেটা অ্যাক্সেস করতে পারে না। EU-ভিত্তিক, GDPR সম্মত।",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "আপনার API Token এখানে পেস্ট করুন",
+      "kdriveDriveIdPlaceholder": "আপনার kDrive ID (সংখ্যাসূচক)",
+      "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens এ একটি টোকেন তৈরি করুন",
+      "connect": "সংযোগ করুন",
+      "drimeToken": "API টোকেন",
+      "drimeTokenPlaceholder": "এখানে আপনার Drime API টোকেন পেস্ট করুন",
+      "drimeTokenHelp": "app.drime.cloud → অ্যাকাউন্ট সেটিংস → ডেভেলপারস-এ একটি টোকেন তৈরি করুন"
     },
     "browser": {
       "remote": "রিমোট",
@@ -309,7 +323,12 @@
       "trashSelectAll": "সব নির্বাচন করুন",
       "trashDeselectAll": "নির্বাচন বাতিল করুন",
       "trashOriginalLocation": "মূল অবস্থান",
-      "trashDeletedDate": "মুছে ফেলা হয়েছে"
+      "trashDeletedDate": "মুছে ফেলা হয়েছে",
+      "createAeroVault": "AeroVault তৈরি করুন...",
+      "createCryptomator": "Cryptomator ভল্ট তৈরি করুন...",
+      "more": "আরও",
+      "openAsCryptomator": "Cryptomator ভল্ট হিসেবে খুলুন",
+      "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন..."
     },
     "transfer": {
       "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "বর্তমান থিমের সাথে মানানসই একরঙা আইকন",
       "iconThemeOutline": "আউটলাইন",
       "iconThemeOutlineDesc": "রঙ-কোডেড ফাইল টাইপ সহ পরিষ্কার স্ট্রোক আইকন",
-      "iconsTab": "আইকন"
+      "iconsTab": "আইকন",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "রিসেট করুন",
         "save": "সংরক্ষণ করুন",
         "saving": "সংরক্ষণ করা হচ্ছে...",
-        "noFileSelected": "সম্পাদনার জন্য কোনো ফাইল নির্বাচিত নেই"
+        "noFileSelected": "সম্পাদনার জন্য কোনো ফাইল নির্বাচিত নেই",
+        "loading": "সম্পাদক লোড করা হচ্ছে..."
       },
       "previewPanel": {
         "emptyState": "একটি ফাইলে রাইট-ক্লিক করুন এবং \"প্রিভিউ\" নির্বাচন করুন"
-      }
+      },
+      "codeEditor": "কোড এডিটর",
+      "sshTerminal": "SSH টার্মিনাল"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "আপনার সমর্থনের জন্য ধন্যবাদ!",
       "footer": "প্রতিটি দান উন্নয়নে সাহায্য করে",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "এটি বিনামূল্যে!",
+      "starOnGithub": "GitHub-এ স্টার দিন"
     },
     "activity": {
       "connect_start": "{server}-এর সাথে সংযোগ করা হচ্ছে ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "পোর্ট",
       "preconfiguredProviders": "পূর্বনির্ধারিত প্রদানকারী",
       "customConnection": "কাস্টম সংযোগ",
-      "custom": "কাস্টম"
+      "custom": "কাস্টম",
+      "internxtDesc": "Zero-Knowledge ক্লাউড স্টোরেজ",
+      "internxtTooltip": "Internxt - Zero-knowledge এনক্রিপ্টেড ক্লাউড, EU-ভিত্তিক",
+      "kdriveDesc": "সুইস ক্লাউড স্টোরেজ",
+      "kdriveTooltip": "Infomaniak এর kDrive - 15GB বিনামূল্যে সুইস-হোস্টেড ক্লাউড স্টোরেজ",
+      "drimeDesc": "নিরাপদ ক্লাউড স্টোরেজ",
+      "drimeTooltip": "Drime Cloud - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ"
     },
     "shortcuts": {
       "title": "কীবোর্ড শর্টকাট",
@@ -2106,6 +2138,10 @@
         "unlimited": "সীমাহীন",
         "roleAI": "AI",
         "roleUser": "ব্যবহারকারী"
+      },
+      "dropFileToAnalyze": "AeroAgent দিয়ে বিশ্লেষণ করতে ফাইল ছেড়ে দিন",
+      "plugins": {
+        "browsePlugins": "Plugins ব্রাউজ করুন"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "ডিক্রিপ্ট ও সেভ করুন",
       "decrypted": "{name} ডিক্রিপ্ট হয়েছে",
       "encrypted": "ফাইল ভল্টে এনক্রিপ্ট করা হয়েছে",
-      "root": "রুট"
+      "root": "রুট",
+      "confirmPassword": "পাসওয়ার্ড নিশ্চিত করুন",
+      "createVault": "Cryptomator ভল্ট তৈরি করুন",
+      "minPassword": "ন্যূনতম ৮টি অক্ষর",
+      "passwordMismatch": "পাসওয়ার্ডগুলি মেলে না",
+      "repeatPassword": "পাসওয়ার্ড পুনরাবৃত্তি করুন",
+      "vaultName": "ভল্ট নাম"
     },
     "compress": {
       "title": "ফাইল কম্প্রেস করুন",
@@ -2946,6 +2988,30 @@
       "noTags": "কোনো ট্যাগ নেই",
       "removeTag": "ট্যাগ সরান",
       "tags": "ট্যাগ"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "ফাইল",
+        "navigation": "ন্যাভিগেশন",
+        "sync": "সিঙ্ক",
+        "tools": "টুলস"
+      },
+      "noResults": "আপনার অনুসন্ধানের সাথে কোনো কমান্ড মেলেনি",
+      "placeholder": "একটি কমান্ড লিখুন..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "রেজিস্ট্রিতে কোনো plugin উপলব্ধ নেই",
+        "install": "ইনস্টল",
+        "installed": "ইনস্টল করা আছে",
+        "installing": "ইনস্টল হচ্ছে...",
+        "loading": "Plugin রেজিস্ট্রি লোড হচ্ছে...",
+        "manageInSettings": "Plugins ট্যাবে ইনস্টল করা plugins পরিচালনা করুন",
+        "search": "Plugins অনুসন্ধান করুন...",
+        "subtitle": "AeroAgent-এর জন্য কমিউনিটি plugins আবিষ্কার ও ইনস্টল করুন",
+        "title": "Plugin Browser"
+      }
     }
   }
 }

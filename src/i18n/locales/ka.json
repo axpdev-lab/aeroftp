@@ -185,7 +185,21 @@
         "useDifferentAccount": "სხვა ანგარიშის გამოყენება",
         "zohoRegion": "Zoho რეგიონი",
         "zohoRegionHelp": "აირჩიეთ თქვენი Zoho ანგარიშის შესაბამისი რეგიონი (მაგ. zoho.eu ევროპისთვის)."
-      }
+      },
+      "activeSessions": "აქტიური სესიები",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt ანგარიშის პაროლი",
+      "internxtEncryptionTitle": "Zero-Knowledge დაშიფრვა",
+      "internxtEncryptionDesc": "ყველა ფაილი დაშიფრულია ბოლოდან ბოლომდე AES-256-CTR-ით. Internxt ვერ წვდება თქვენს მონაცემებს. EU-ზე დაფუძნებული, GDPR-თან თავსებადი.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "ჩასვით თქვენი API ტოკენი აქ",
+      "kdriveDriveIdPlaceholder": "თქვენი kDrive იდენტიფიკატორი (რიცხვითი)",
+      "kdriveTokenHelp": "შექმენით ტოკენი manager.infomaniak.com → Developer → API Tokens",
+      "connect": "დაკავშირება",
+      "drimeToken": "API ტოკენი",
+      "drimeTokenPlaceholder": "ჩასვით თქვენი Drime API ტოკენი აქ",
+      "drimeTokenHelp": "შექმენით ტოკენი app.drime.cloud → ანგარიშის პარამეტრები → დეველოპერები"
     },
     "browser": {
       "remote": "დისტანციური",
@@ -309,7 +323,12 @@
       "trashSelectAll": "ყველის მონიშვნა",
       "trashDeselectAll": "ყველის მოხსნა",
       "trashOriginalLocation": "თავდაპირველი მდებარეობა",
-      "trashDeletedDate": "წაშლილია"
+      "trashDeletedDate": "წაშლილია",
+      "createAeroVault": "აეროვოლთის შექმნა AeroVault...",
+      "createCryptomator": "კრიპტომატორის საიდუმლოს შექმნა Cryptomator...",
+      "more": "მეტი",
+      "openAsCryptomator": "გახსნა Cryptomator საიდუმლად",
+      "askAeroAgent": "ჰკითხე AeroAgent-ს..."
     },
     "transfer": {
       "transferring": "გადაცემა...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "მონოქრომული ხატულები, რომლებიც ადაპტირდება მიმდინარე თემაზე",
       "iconThemeOutline": "კონტური",
       "iconThemeOutlineDesc": "სუფთა კონტურის ხატულები ფერით კოდირებული ფაილის ტიპებით",
-      "iconsTab": "ხატულები"
+      "iconsTab": "ხატულები",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "გადატვირთვა",
         "save": "შენახვა",
         "saving": "ინახება...",
-        "noFileSelected": "ფაილი არ არის არჩეული რედაქტირებისთვის"
+        "noFileSelected": "ფაილი არ არის არჩეული რედაქტირებისთვის",
+        "loading": "რედაქტორის ჩატვირთვა..."
       },
       "previewPanel": {
         "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"გადახედვა\""
-      }
+      },
+      "codeEditor": "კოდის რედაქტორი",
+      "sshTerminal": "SSH ტერმინალი"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "გმადლობთ მხარდაჭერისთვის!",
       "footer": "ყველა შემოწირვა ეხმარება განვითარებას",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "უფასოა!",
+      "starOnGithub": "ვარსკვლავი GitHub-ზე"
     },
     "activity": {
       "connect_start": "მიმდინარეობს დაკავშირება {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "პორტი",
       "preconfiguredProviders": "წინასწარ კონფიგურირებული მომწოდებლები",
       "customConnection": "მორგებული კავშირი",
-      "custom": "მორგებული"
+      "custom": "მორგებული",
+      "internxtDesc": "Zero-Knowledge ღრუბლოვანი საცავი",
+      "internxtTooltip": "Internxt - Zero-knowledge დაშიფრული ღრუბელი, EU-ზე დაფუძნებული",
+      "kdriveDesc": "შვეიცარიული ღრუბლოვანი საცავი",
+      "kdriveTooltip": "kDrive by Infomaniak - შვეიცარიაში განთავსებული ღრუბლოვანი საცავი 15GB უფასოდ",
+      "drimeDesc": "უსაფრთხო ღრუბლოვანი საცავი",
+      "drimeTooltip": "Drime Cloud - 20GB უფასო უსაფრთხო ღრუბლოვანი საცავი REST API-ით"
     },
     "shortcuts": {
       "title": "კლავიატურის მალსახმობები",
@@ -2106,6 +2138,10 @@
         "unlimited": "შეუზღუდავი",
         "roleAI": "AI",
         "roleUser": "მომხმარებელი"
+      },
+      "dropFileToAnalyze": "ჩააგდეთ ფაილი AeroAgent-ით ანალიზისთვის",
+      "plugins": {
+        "browsePlugins": "პლაგინების დათვალიერება"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "გაშიფვრა და შენახვა",
       "decrypted": "{name} გაშიფრულია",
       "encrypted": "ფაილი დაშიფრულია საცავში",
-      "root": "ძირი"
+      "root": "ძირი",
+      "confirmPassword": "პაროლის დადასტურება",
+      "createVault": "Cryptomator საიდუმლო კვამლის შექმნა",
+      "minPassword": "მინიმუმ 8 სიმბოლო",
+      "passwordMismatch": "პაროლი არ ემთხვევა",
+      "repeatPassword": "პაროლის განმეორება",
+      "vaultName": "საიდუმლო კვამლის სახელი"
     },
     "compress": {
       "title": "ფაილების შეკუმშვა",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "წინასწარ კონფიგურირებული მომწოდებლები",
     "customConnection": "მორგებული კავშირი",
-    "custom": "მორგებული"
+    "custom": "მორგებული",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "ფაილი",
+        "navigation": "ნავიგაცია",
+        "sync": "სინქრონიზაცია",
+        "tools": "ხელსაწყოები"
+      },
+      "noResults": "არცერთი ბრძანება არ შეესაბამება თქვენს ძიებას",
+      "placeholder": "შეიყვანეთ ბრძანება..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "რეესტრში ხელმისაწვდომი პლაგინები არ არის",
+        "install": "ინსტალაცია",
+        "installed": "დაინსტალირებული",
+        "installing": "ინსტალაცია...",
+        "loading": "პლაგინების რეესტრის ჩატვირთვა...",
+        "manageInSettings": "მართეთ დაინსტალირებული პლაგინები Plugins ჩანართში",
+        "search": "პლაგინების ძიება...",
+        "subtitle": "აღმოაჩინეთ და დააინსტალირეთ საზოგადოების პლაგინები AeroAgent-ისთვის",
+        "title": "პლაგინების ბრაუზერი"
+      }
+    }
   }
 }

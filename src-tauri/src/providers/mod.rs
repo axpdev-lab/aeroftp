@@ -36,6 +36,9 @@ pub mod filen;
 pub mod oauth1;
 pub mod fourshared;
 pub mod zoho_workdrive;
+pub mod internxt;
+pub mod kdrive;
+pub mod drime_cloud;
 pub mod http_retry;
 
 pub use types::*;
@@ -56,6 +59,9 @@ pub use azure::AzureProvider;
 pub use filen::FilenProvider;
 pub use fourshared::FourSharedProvider;
 pub use zoho_workdrive::ZohoWorkdriveProvider;
+pub use internxt::InternxtProvider;
+pub use kdrive::KDriveProvider;
+pub use drime_cloud::DrimeCloudProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -506,6 +512,18 @@ impl ProviderFactory {
                 let filen_config = FilenConfig::from_provider_config(config)?;
                 Ok(Box::new(FilenProvider::new(filen_config)))
             }
+            ProviderType::Internxt => {
+                let internxt_config = InternxtConfig::from_provider_config(config)?;
+                Ok(Box::new(InternxtProvider::new(internxt_config)))
+            }
+            ProviderType::KDrive => {
+                let kdrive_config = KDriveConfig::from_provider_config(config)?;
+                Ok(Box::new(KDriveProvider::new(kdrive_config)))
+            }
+            ProviderType::DrimeCloud => {
+                let drime_config = DrimeCloudConfig::from_provider_config(config)?;
+                Ok(Box::new(DrimeCloudProvider::new(drime_config)))
+            }
         }
     }
     
@@ -529,6 +547,9 @@ impl ProviderFactory {
             ProviderType::Filen,
             ProviderType::FourShared,
             ProviderType::ZohoWorkdrive,
+            ProviderType::Internxt,
+            ProviderType::KDrive,
+            ProviderType::DrimeCloud,
         ]
     }
 }

@@ -54,6 +54,7 @@ import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
+import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen,
@@ -62,7 +63,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info, Heart,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag
+  MoreHorizontal, Tag, Bot, Terminal
 } from 'lucide-react';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { PlacesSidebar } from './components/PlacesSidebar';
@@ -72,7 +73,6 @@ import { LocalFilePanel } from './components/LocalFilePanel';
 import { QuickLookOverlay } from './components/QuickLookOverlay';
 import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
-import { LocalPathTabs } from './components/LocalPathTabs';
 import { FileTagBadge } from './components/FileTagBadge';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
@@ -93,7 +93,7 @@ import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import ActivityLogPanel from './components/ActivityLogPanel';
-import DebugPanel from './components/DebugPanel';
+import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
 import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
 
@@ -243,6 +243,7 @@ const App: React.FC = () => {
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
@@ -259,9 +260,14 @@ const App: React.FC = () => {
   // showSettingsPanel provided by useSettings
   const [serversRefreshKey, setServersRefreshKey] = useState(0);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // Activate global console capture when debug mode is enabled
+  React.useEffect(() => {
+    if (debugMode) { activateGlobalCapture(); activateNetworkCapture(); }
+  }, [debugMode]);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  const [showVaultPanel, setShowVaultPanel] = useState(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open' }>(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
@@ -651,14 +657,17 @@ const App: React.FC = () => {
 
   // showToastNotifications provided by useSettings
 
-  // Wrapper: Notify user with ActivityLog always, toast only if enabled
-  // Returns toast ID for compatibility with removeToast
+  // Wrapper: ActivityLog gets clean messages, Debug Panel gets full details via console
   const notify = React.useMemo(() => ({
     success: (title: string, message?: string): string | null => {
+      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
       return showToastNotifications ? toast.success(title, message) : null;
     },
-    error: (title: string, message?: string): string => {
-      return toast.error(title, message);
+    error: (title: string, message?: string): string | null => {
+      // Activity log: short title only. Debug panel: full details via console.error
+      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'error');
+      if (message) console.error(`[ERROR] ${title}: ${message}`);
+      return showToastNotifications ? toast.error(title, message) : null;
     },
     info: (title: string, message?: string): string | null => {
       activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
@@ -695,6 +704,7 @@ const App: React.FC = () => {
     'F1': () => setShowShortcutsDialog(v => !v),
     'F10': () => setShowMenuBar(v => !v),
     'Ctrl+,': () => setShowSettingsPanel(true),
+    'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
 
     // Delete: delete selected files
     'Delete': () => {
@@ -1175,16 +1185,74 @@ const App: React.FC = () => {
     });
   }, [activeLocalTabId]);
 
-  // Sync tab path when navigating
+  // AeroFile mode: file manager visible and not viewing a remote server
+  const isAeroFileMode = !isConnected || !showRemotePanel;
+  const isAeroFileVisible = !showConnectionScreen && isAeroFileMode;
+
+  // Command palette items
+  const commandPaletteItems: CommandItem[] = useMemo(() => [
+    // Navigation
+    { id: 'nav-aerofile', label: t('statusBar.aerofile'), category: 'navigation' as CommandCategory, icon: <FolderOpen size={14} />, action: () => { setShowConnectionScreen(false); setActivePanel('local'); }, keywords: ['local', 'file', 'manager'] },
+    { id: 'nav-connect', label: t('connection.quickConnect'), category: 'navigation' as CommandCategory, icon: <Globe size={14} />, action: () => setShowConnectionScreen(true), keywords: ['connection', 'server', 'ftp', 'sftp'] },
+    { id: 'nav-settings', label: t('settings.title'), category: 'navigation' as CommandCategory, icon: <Settings size={14} />, action: () => setShowSettingsPanel(true), shortcut: 'Ctrl+,', keywords: ['preferences', 'config'] },
+    // File
+    { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel !== 'remote'), keywords: ['create', 'directory', 'mkdir'] },
+    { id: 'file-refresh', label: t('contextMenu.refresh'), category: 'file' as CommandCategory, icon: <RefreshCw size={14} />, action: () => { if (activePanel === 'remote') loadRemoteFiles(); else loadLocalFiles(currentLocalPath); }, keywords: ['reload'] },
+    // AI
+    { id: 'ai-agent', label: 'AeroAgent', category: 'ai' as CommandCategory, icon: <Bot size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), keywords: ['chat', 'assistant', 'ai'] },
+    // Tools
+    { id: 'tools-editor', label: t('devtools.codeEditor'), category: 'tools' as CommandCategory, icon: <Code size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'editor' })), keywords: ['code', 'monaco', 'edit'] },
+    { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
+    // Sync
+    { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
+  ], [t, activePanel, currentLocalPath]);
+
+  // Sync active tab path when navigating — only in AeroFile mode
   useEffect(() => {
-    if (activeLocalTabId && currentLocalPath) {
+    if (isAeroFileVisible && activeLocalTabId && currentLocalPath) {
       setLocalTabs(prev => prev.map(tab =>
         tab.id === activeLocalTabId
           ? { ...tab, path: currentLocalPath, label: currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/' }
           : tab
       ));
     }
-  }, [activeLocalTabId, currentLocalPath]);
+  }, [isAeroFileVisible, activeLocalTabId, currentLocalPath]);
+
+  // Auto-manage local tabs when entering AeroFile mode
+  const prevAeroFileVisible = useRef(false);
+  const tabAutoCreatedForPath = useRef<string | null>(null);
+  useEffect(() => {
+    const wasVisible = prevAeroFileVisible.current;
+    prevAeroFileVisible.current = isAeroFileVisible;
+    if (!isAeroFileVisible || !currentLocalPath) return;
+
+    // Case: no tabs exist → create first tab
+    if (localTabs.length === 0) {
+      // Guard: don't re-create if we just created for this path (prevents loops)
+      if (tabAutoCreatedForPath.current === currentLocalPath) return;
+      tabAutoCreatedForPath.current = currentLocalPath;
+      const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const label = currentLocalPath.split(/[\\/]/).filter(Boolean).pop() || '/';
+      setLocalTabs([{ id, path: currentLocalPath, label, scrollTop: 0 }]);
+      setActiveLocalTabId(id);
+      return;
+    }
+    tabAutoCreatedForPath.current = null;
+
+    // Case: returning from server/connection screen
+    if (!wasVisible) {
+      // If active tab still exists, reuse it — the sync effect (line 1203)
+      // will update its path to currentLocalPath. Creating a new tab here
+      // would race with sync and produce duplicates.
+      if (activeLocalTabId && localTabs.some(t => t.id === activeLocalTabId)) {
+        return;
+      }
+      // No valid active tab — find matching path or activate first available
+      const normalize = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+      const match = localTabs.find(t => normalize(t.path) === normalize(currentLocalPath));
+      setActiveLocalTabId(match ? match.id : localTabs[0].id);
+    }
+  }, [isAeroFileVisible, currentLocalPath, localTabs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tags for visible files
   useEffect(() => {
@@ -1606,7 +1674,9 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'zohoworkdrive', 'azure'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'drime', 'zohoworkdrive', 'azure'];
+  // Providers that support server-side copy (for context menu)
+  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'drime'];
 
   const logConnectionSteps = async (
     server: string,
@@ -1733,7 +1803,7 @@ const App: React.FC = () => {
 
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if ((!connectionParams.server && protocol !== 'mega') || !connectionParams.username) {
+      if ((!connectionParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'drime') || !connectionParams.username) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -1749,9 +1819,11 @@ const App: React.FC = () => {
       // No protocol prefix in tab name - icon distinguishes the protocol
       const providerName = connectionParams.displayName || (protocol === 's3'
         ? connectionParams.options?.bucket || 'S3'
-        : protocol === 'mega'
-          ? connectionParams.username
-          : connectionParams.server.split(':')[0]);
+        : protocol === 'kdrive'
+          ? `kDrive ${connectionParams.options?.bucket || ''}`
+          : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
+            ? connectionParams.username
+            : connectionParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -1800,9 +1872,10 @@ const App: React.FC = () => {
           const accepted = await checkSftpHostKey(connectionParams.server, connectionParams.port || 22);
           if (!accepted) { setLoading(false); return; }
         }
-        const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connectionParams.server, connectionParams.port || 21, protocol);
+        const connHost = connectionParams.server || (protocol === 'internxt' ? 'gateway.internxt.com' : protocol === 'kdrive' ? 'api.infomaniak.com' : protocol === 'mega' ? 'mega.nz' : protocol === 'filen' ? 'filen.io' : 'localhost');
+        const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, connectionParams.port || 443, protocol);
         await invoke('provider_connect', { params: providerParams });
-        if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connectionParams.server, port: String(connectionParams.port || 21) }) });
+        if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(connectionParams.port || 443) }) });
 
         logConnectionSuccess(protocol, connectionParams.username, {
           tlsMode: connectionParams.options?.tlsMode,
@@ -1943,6 +2016,9 @@ const App: React.FC = () => {
       // Close DevTools panel and clear preview
       setDevToolsOpen(false);
       setDevToolsPreviewFile(null);
+      // Go to AeroFile mode instead of ConnectionScreen
+      setShowConnectionScreen(false);
+      setShowRemotePanel(false);
       humanLog.logSuccess('DISCONNECT', {}, logId);
       if (showToastNotifications) {
         const msgKey = reason === 'tab-close' ? 'toast.disconnectedTabClosed'
@@ -3074,7 +3150,30 @@ const App: React.FC = () => {
           }
           loadLocalFiles(currentLocalPath);
         } else {
-          notify.error(t('toast.copyFailed'), t('toast.copyNotSupported'));
+          // Remote copy via server-side copy API
+          let anyFailed = false;
+          for (const file of files) {
+            const destPath = `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
+            const from = file.path || `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
+            // Same directory: add " (copy)" suffix
+            const finalDest = destPath === from
+              ? (() => {
+                  const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
+                  const baseName = ext ? file.name.slice(0, -ext.length) : file.name;
+                  return `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${baseName} (copy)${ext}`;
+                })()
+              : destPath;
+            try {
+              await invoke('provider_server_copy', { from, to: finalDest });
+            } catch (e) {
+              notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
+              anyFailed = true;
+            }
+          }
+          if (!anyFailed && files.length > 0) {
+            notify.info(t('toast.copyCompleted') || 'Copy completed', files.length === 1 ? files[0].name : `${files.length} files`);
+          }
+          loadRemoteFiles(undefined, true);
         }
       }
     }
@@ -3924,16 +4023,16 @@ const App: React.FC = () => {
           clipboardCut(selectedFiles, true, currentRemotePath);
         }
       },
-      {
+      ...(currentProtocol && SERVER_COPY_PROVIDERS.includes(currentProtocol) ? [{
         label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
           const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
           clipboardCopy(selectedFiles, true, currentRemotePath);
         }
-      },
+      }] : []),
       {
         label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
         action: () => clipboardPaste(true, currentRemotePath),
-        disabled: !hasClipboard,
+        disabled: !hasClipboard || (fileClipboardRef.current?.isRemote && fileClipboardRef.current?.operation === 'copy' && currentProtocol && !SERVER_COPY_PROVIDERS.includes(currentProtocol)),
         divider: true,
       },
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
@@ -4083,6 +4182,19 @@ const App: React.FC = () => {
         divider: true,
       });
     }
+
+    // Ask AeroAgent
+    items.push({
+      label: t('contextMenu.askAeroAgent'),
+      icon: <Bot size={14} />,
+      action: () => {
+        window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+        window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+          detail: { code: '', fileName: file.name, filePath: file.path, context: 'file' }
+        }));
+      },
+      divider: true,
+    });
 
     contextMenu.show(e, items);
   };
@@ -4358,8 +4470,7 @@ const App: React.FC = () => {
         label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
         icon: <Shield size={14} className="text-emerald-500" />,
         action: () => {
-          setShowVaultPanel(true);
-          // VaultPanel will handle opening the vault file
+          setShowVaultPanel({ mode: 'open' });
         },
       });
     }
@@ -4379,8 +4490,7 @@ const App: React.FC = () => {
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <Shield size={14} className="text-emerald-500" />,
         action: () => {
-          setShowVaultPanel(true);
-          // VaultPanel opens in create mode
+          setShowVaultPanel({ mode: 'create' });
         },
       });
 
@@ -4451,6 +4561,20 @@ const App: React.FC = () => {
         divider: true,
       });
     }
+
+    // Ask AeroAgent
+    items.push({
+      label: t('contextMenu.askAeroAgent'),
+      icon: <Bot size={14} />,
+      action: () => {
+        const fullPath = currentLocalPath.endsWith('/') ? currentLocalPath + file.name : currentLocalPath + '/' + file.name;
+        window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+        window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+          detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
+        }));
+      },
+      divider: true,
+    });
 
     contextMenu.show(e, items);
   };
@@ -4858,6 +4982,12 @@ const App: React.FC = () => {
       {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
       <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
       <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
+      {showCommandPalette && (
+        <CommandPalette
+          commands={commandPaletteItems}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
       <HostKeyDialog
         visible={hostKeyDialog.visible}
         info={hostKeyDialog.info}
@@ -4936,7 +5066,7 @@ const App: React.FC = () => {
         isOpen={showCloudPanel}
         onClose={() => setShowCloudPanel(false)}
       />
-      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} />}
+      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} />}
       {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
       {archiveBrowserState && (
         <ArchiveBrowser
@@ -5042,7 +5172,7 @@ const App: React.FC = () => {
               <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
               {/* AeroVault */}
               <button
-                onClick={() => setShowVaultPanel(true)}
+                onClick={() => setShowVaultPanel({ mode: 'home' })}
                 className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-800/50 transition-colors"
                 title={t('vault.titleFull')}
               >
@@ -5118,6 +5248,12 @@ const App: React.FC = () => {
             onOpenCloudPanel={() => setShowCloudPanel(true)}
             hasExistingSessions={sessions.length > 0}
             serversRefreshKey={serversRefreshKey}
+            onAeroFile={async () => {
+              setShowConnectionScreen(false);
+              setActivePanel('local');
+              setShowSidebar(true);
+              await loadLocalFiles(currentLocalPath || '/');
+            }}
             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
               // NOTE: Do NOT set connectionParams here - that would show the form
               // The form should only appear when clicking Edit, not when connecting
@@ -5167,7 +5303,7 @@ const App: React.FC = () => {
                 // Use displayName if available - no protocol prefix, icon shows protocol
                 const providerName = params.displayName || (params.protocol === 's3'
                   ? params.options?.bucket || 'S3'
-                  : params.protocol === 'mega'
+                  : params.protocol === 'mega' || params.protocol === 'internxt' || params.protocol === 'filen'
                     ? params.username
                     : params.server.split(':')[0]);
                 const protocolLabel = (params.protocol || 'FTP').toUpperCase();
@@ -5209,9 +5345,10 @@ const App: React.FC = () => {
                     const accepted = await checkSftpHostKey(params.server, params.port || 22);
                     if (!accepted) return;
                   }
-                  const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(params.server, params.port || 21, params.protocol || 'ftp');
+                  const savedConnHost = params.server || (params.protocol === 'internxt' ? 'gateway.internxt.com' : params.protocol === 'mega' ? 'mega.nz' : params.protocol === 'filen' ? 'filen.io' : 'localhost');
+                  const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, params.port || 443, params.protocol || 'ftp');
                   await invoke('provider_connect', { params: providerParams });
-                  if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || params.server, port: String(params.port || 21) }) });
+                  if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(params.port || 443) }) });
                   logConnectionSuccess(params.protocol || 'ftp', params.username, {
                     tlsMode: params.options?.tlsMode,
                     private_key_path: params.options?.private_key_path || undefined,
@@ -5339,8 +5476,7 @@ const App: React.FC = () => {
           />
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
-            {/* Session Tabs - visible when there are sessions or cloud is enabled */}
-            {(sessions.length > 0 || isCloudActive) && (
+            {/* Session Tabs + Local Path Tabs */}
               <SessionTabs
                 sessions={sessions}
                 activeSessionId={activeSessionId}
@@ -5356,8 +5492,13 @@ const App: React.FC = () => {
                 } : undefined}
                 onCloudTabClick={handleCloudTabClick}
                 onReorder={setSessions}
+                localTabs={(!isConnected || !showRemotePanel) ? localTabs : undefined}
+                activeLocalTabId={(!isConnected || !showRemotePanel) ? activeLocalTabId : undefined}
+                onLocalTabClick={(!isConnected || !showRemotePanel) ? switchLocalTab : undefined}
+                onLocalTabClose={(!isConnected || !showRemotePanel) ? closeLocalTab : undefined}
+                onLocalNewTab={(!isConnected || !showRemotePanel) ? createLocalTab : undefined}
+                onLocalReorder={(!isConnected || !showRemotePanel) ? setLocalTabs : undefined}
               />
-            )}
             {/* Toolbar */}
             <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex gap-2">
@@ -5921,17 +6062,6 @@ const App: React.FC = () => {
                 </div>
               </div>}
 
-              {/* Local Path Tabs — visible in AeroFile mode when tabs exist */}
-              {(!isConnected || !showRemotePanel) && localTabs.length > 0 && (
-                <LocalPathTabs
-                  tabs={localTabs}
-                  activeTabId={activeLocalTabId}
-                  onTabClick={switchLocalTab}
-                  onTabClose={closeLocalTab}
-                  onNewTab={createLocalTab}
-                  onReorder={setLocalTabs}
-                />
-              )}
 
               {/* Local — full width when remote panel is hidden */}
               <LocalFilePanel

@@ -159,7 +159,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                         <ArrowUpDown size={16} className="text-blue-400" />
                         <span className="font-medium text-sm">{t('vaultSync.title')}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-[var(--bg-secondary)] rounded"><X size={16} /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-[var(--bg-secondary)] rounded" title={t('common.close')}><X size={16} /></button>
                 </div>
 
                 {/* Content */}

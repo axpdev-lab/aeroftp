@@ -26,13 +26,8 @@ export const GlobalTooltip: React.FC = () => {
         tooltipRef.current = tip;
 
         const show = (target: HTMLElement) => {
-            const title = target.getAttribute('title');
+            const title = storedTitle.current;
             if (!title || !title.trim()) return;
-
-            // Store and remove native title to prevent double tooltip
-            storedTitle.current = title;
-            target.removeAttribute('title');
-            currentTarget.current = target;
 
             const tip = tooltipRef.current!;
             tip.textContent = title;
@@ -73,19 +68,31 @@ export const GlobalTooltip: React.FC = () => {
             const target = (e.target as HTMLElement).closest?.('[title]') as HTMLElement | null;
             if (!target || !target.getAttribute('title')) return;
 
+            // Restore previous element's title if switching targets
+            if (currentTarget.current && currentTarget.current !== target && storedTitle.current) {
+                currentTarget.current.setAttribute('title', storedTitle.current);
+            }
+
+            // Immediately strip native title to prevent browser tooltip
+            storedTitle.current = target.getAttribute('title')!;
+            target.removeAttribute('title');
+            currentTarget.current = target;
+
             clearTimeout(hideTimer.current);
             clearTimeout(showTimer.current);
             showTimer.current = window.setTimeout(() => show(target), SHOW_DELAY);
         };
 
         const onMouseLeave = (e: MouseEvent) => {
-            const target = (e.target as HTMLElement).closest?.('[title]') as HTMLElement | null;
-            const related = (e.relatedTarget as HTMLElement)?.closest?.('[title]') as HTMLElement | null;
+            const related = e.relatedTarget as HTMLElement | null;
+
+            // If moving to a child of the current tooltip target, stay open
+            if (currentTarget.current && related && currentTarget.current.contains(related)) return;
 
             // If leaving to another [title] element, let mouseenter handle it
-            if (related && related.getAttribute('title')) return;
+            if (related?.closest?.('[title]')?.getAttribute('title')) return;
 
-            if (target || currentTarget.current) {
+            if (currentTarget.current) {
                 clearTimeout(showTimer.current);
                 hideTimer.current = window.setTimeout(hide, HIDE_DELAY);
             }

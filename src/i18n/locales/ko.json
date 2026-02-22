@@ -185,7 +185,21 @@
         "useDifferentAccount": "다른 계정 사용",
         "zohoRegion": "Zoho 지역",
         "zohoRegionHelp": "Zoho 계정에 맞는 지역을 선택하세요 (예: 유럽의 경우 zoho.eu)."
-      }
+      },
+      "activeSessions": "활성 세션",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt 계정 비밀번호",
+      "internxtEncryptionTitle": "Zero-Knowledge 암호화",
+      "internxtEncryptionDesc": "모든 파일은 AES-256-CTR로 종단 간 암호화됩니다. Internxt는 귀하의 데이터에 접근할 수 없습니다. EU 기반, GDPR 준수.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "여기에 API 토큰을 붙여넣으세요",
+      "kdriveDriveIdPlaceholder": "kDrive ID (숫자)",
+      "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens에서 토큰을 생성하세요",
+      "connect": "연결",
+      "drimeToken": "API 토큰",
+      "drimeTokenPlaceholder": "여기에 Drime API 토큰을 붙여넣으세요",
+      "drimeTokenHelp": "app.drime.cloud → 계정 설정 → 개발자에서 토큰을 생성하세요"
     },
     "browser": {
       "remote": "원격",
@@ -309,7 +323,12 @@
       "trashSelectAll": "모두 선택",
       "trashDeselectAll": "모두 선택 해제",
       "trashOriginalLocation": "원래 위치",
-      "trashDeletedDate": "삭제됨"
+      "trashDeletedDate": "삭제됨",
+      "createAeroVault": "AeroVault 만들기...",
+      "createCryptomator": "Cryptomator 보관함 만들기...",
+      "more": "더 보기",
+      "openAsCryptomator": "Cryptomator 보관함으로 열기",
+      "askAeroAgent": "AeroAgent에게 질문..."
     },
     "transfer": {
       "transferring": "전송 중...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "현재 테마에 맞게 조정되는 단색 아이콘",
       "iconThemeOutline": "윤곽선",
       "iconThemeOutlineDesc": "파일 유형별 색상 구분이 있는 깔끔한 스트로크 아이콘",
-      "iconsTab": "아이콘"
+      "iconsTab": "아이콘",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "초기화",
         "save": "저장",
         "saving": "저장 중...",
-        "noFileSelected": "편집할 파일이 선택되지 않았습니다"
+        "noFileSelected": "편집할 파일이 선택되지 않았습니다",
+        "loading": "편집기 로드 중..."
       },
       "previewPanel": {
         "emptyState": "파일을 우클릭하고 \"미리보기\"를 선택하세요"
-      }
+      },
+      "codeEditor": "코드 에디터",
+      "sshTerminal": "SSH 터미널"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "지원해 주셔서 감사합니다!",
       "footer": "모든 기부는 개발에 도움이 됩니다",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "무료입니다!",
+      "starOnGithub": "GitHub에서 스타 누르기"
     },
     "activity": {
       "connect_start": "{server} ({protocol})에 연결 중...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "포트",
       "preconfiguredProviders": "사전 구성된 제공자",
       "customConnection": "사용자 지정 연결",
-      "custom": "사용자 지정"
+      "custom": "사용자 지정",
+      "internxtDesc": "Zero-Knowledge 클라우드 스토리지",
+      "internxtTooltip": "Internxt - Zero-knowledge 암호화 클라우드, EU 기반",
+      "kdriveDesc": "스위스 클라우드 스토리지",
+      "kdriveTooltip": "kDrive by Infomaniak - 15GB 무료 스위스 호스팅 클라우드 스토리지",
+      "drimeDesc": "안전한 클라우드 스토리지",
+      "drimeTooltip": "Drime Cloud - REST API를 지원하는 20GB 무료 안전한 클라우드 스토리지"
     },
     "shortcuts": {
       "title": "단축키",
@@ -2106,6 +2138,10 @@
         "unlimited": "무제한",
         "roleAI": "AI",
         "roleUser": "사용자"
+      },
+      "dropFileToAnalyze": "AeroAgent로 분석할 파일을 드롭하세요",
+      "plugins": {
+        "browsePlugins": "플러그인 찾아보기"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "복호화 후 저장",
       "decrypted": "{name} 복호화됨",
       "encrypted": "파일이 볼트에 암호화됨",
-      "root": "루트"
+      "root": "루트",
+      "confirmPassword": "비밀번호 확인",
+      "createVault": "Cryptomator 자격증 만들기",
+      "minPassword": "최소 8자",
+      "passwordMismatch": "비밀번호가 일치하지 않습니다",
+      "repeatPassword": "비밀번호 다시 입력",
+      "vaultName": "자격증 이름"
     },
     "compress": {
       "title": "파일 압축",
@@ -2939,6 +2981,30 @@
     },
     "preconfiguredProviders": "사전 구성된 제공자",
     "customConnection": "사용자 지정 연결",
-    "custom": "사용자 지정"
+    "custom": "사용자 지정",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "파일",
+        "navigation": "탐색",
+        "sync": "동기화",
+        "tools": "도구"
+      },
+      "noResults": "검색과 일치하는 명령이 없습니다",
+      "placeholder": "명령어 입력..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "레지스트리에 사용 가능한 플러그인이 없습니다",
+        "install": "설치",
+        "installed": "설치됨",
+        "installing": "설치 중...",
+        "loading": "플러그인 레지스트리 로드 중...",
+        "manageInSettings": "설치된 플러그인은 Plugins 탭에서 관리하세요",
+        "search": "플러그인 검색...",
+        "subtitle": "AeroAgent용 커뮤니티 플러그인을 발견하고 설치하세요",
+        "title": "플러그인 브라우저"
+      }
+    }
   }
 }

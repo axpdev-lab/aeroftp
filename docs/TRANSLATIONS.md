@@ -1,8 +1,8 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 15 February 2026
-> Version: v2.2.0
-> Languages: 47 | Keys: 2320 | Coverage: 100%
+> Last Updated: 22 February 2026
+> Version: v2.6.0
+> Languages: 47 | Keys: 2739 | Coverage: 100%
 
 ---
 
@@ -160,6 +160,8 @@ Translations are organized by 35+ namespaces:
 | `properties` | File properties | Metadata, permissions (v2.0.6) |
 | `preview` | File preview | Text, image, PDF (v2.0.6) |
 | `syncPanel` | AeroSync panel | Profiles, compression, delta sync, multi-path, templates, rollback (v2.1.2+) |
+| `commandPalette` | Command Palette | Commands, categories, search (v2.6.0) |
+| `pluginBrowser` | Plugin Browser | Install, update, remove (v2.6.0) |
 
 ---
 
@@ -390,4 +392,4 @@ const { t, language, setLanguage } = useI18n();
 ---
 
 **Maintainer**: axpdev
-**Last Updated**: 15 February 2026
+**Last Updated**: 22 February 2026

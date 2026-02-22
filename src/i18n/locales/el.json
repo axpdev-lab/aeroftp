@@ -185,7 +185,21 @@
         "useDifferentAccount": "Χρήση διαφορετικού λογαριασμού",
         "zohoRegion": "Περιοχή Zoho",
         "zohoRegionHelp": "Επιλέξτε την περιοχή που αντιστοιχεί στον λογαριασμό σας Zoho (π.χ. zoho.eu για Ευρώπη)."
-      }
+      },
+      "activeSessions": "Ενεργές συνεδρίες",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Κωδικός πρόσβασης λογαριασμού Internxt",
+      "internxtEncryptionTitle": "Κρυπτογράφηση Zero-Knowledge",
+      "internxtEncryptionDesc": "Όλα τα αρχεία κρυπτογραφούνται end-to-end με AES-256-CTR. Η Internxt δεν μπορεί να έχει πρόσβαση στα δεδομένα σας. Βασισμένο στην EU, συμβατό με GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Επικολλήστε το API Token σας εδώ",
+      "kdriveDriveIdPlaceholder": "Το kDrive ID σας (αριθμητικό)",
+      "kdriveTokenHelp": "Δημιουργήστε ένα token στο manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Σύνδεση",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Επικολλήστε το token API του Drime εδώ",
+      "drimeTokenHelp": "Δημιουργήστε ένα token στο app.drime.cloud → Ρυθμίσεις λογαριασμού → Προγραμματιστές"
     },
     "browser": {
       "remote": "Απομακρυσμένο",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Επιλογή όλων",
       "trashDeselectAll": "Αποεπιλογή όλων",
       "trashOriginalLocation": "Αρχική τοποθεσία",
-      "trashDeletedDate": "Διαγράφηκε"
+      "trashDeletedDate": "Διαγράφηκε",
+      "createAeroVault": "Δημιουργία AeroVault...",
+      "createCryptomator": "Δημιουργία θησαυροφυλακίου Cryptomator...",
+      "more": "Περισσότερα",
+      "openAsCryptomator": "Άνοιγμα ως θησαυροφυλάκιο Cryptomator",
+      "askAeroAgent": "Ρωτήστε το AeroAgent..."
     },
     "transfer": {
       "transferring": "Μεταφορά...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Μονόχρωμα εικονίδια που προσαρμόζονται στο τρέχον θέμα",
       "iconThemeOutline": "Περιγράμματα",
       "iconThemeOutlineDesc": "Καθαρά εικονίδια περιγράμματος με χρωματική κωδικοποίηση τύπων αρχείων",
-      "iconsTab": "Εικονίδια"
+      "iconsTab": "Εικονίδια",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Επαναφορά",
         "save": "Αποθήκευση",
         "saving": "Αποθήκευση...",
-        "noFileSelected": "Δεν έχει επιλεγεί αρχείο για επεξεργασία"
+        "noFileSelected": "Δεν έχει επιλεγεί αρχείο για επεξεργασία",
+        "loading": "Φόρτωση επεξεργαστή..."
       },
       "previewPanel": {
         "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προεπισκόπηση\""
-      }
+      },
+      "codeEditor": "Επεξεργαστής κώδικα",
+      "sshTerminal": "Τερματικό SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Ευχαριστούμε για την υποστήριξή σας!",
       "footer": "Κάθε δωρεά βοηθά την ανάπτυξη",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Είναι δωρεάν!",
+      "starOnGithub": "Δώστε αστέρι στο GitHub"
     },
     "activity": {
       "connect_start": "Σύνδεση σε {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Θύρα",
       "preconfiguredProviders": "Προρυθμισμένοι Πάροχοι",
       "customConnection": "Προσαρμοσμένη Σύνδεση",
-      "custom": "Προσαρμοσμένο"
+      "custom": "Προσαρμοσμένο",
+      "internxtDesc": "Αποθήκευση Cloud με Zero-Knowledge",
+      "internxtTooltip": "Internxt - Κρυπτογραφημένο cloud Zero-knowledge, βασισμένο στην EU",
+      "kdriveDesc": "Ελβετική αποθήκευση cloud",
+      "kdriveTooltip": "kDrive από την Infomaniak - Αποθήκευση cloud φιλοξενούμενη στην Ελβετία με 15GB δωρεάν",
+      "drimeDesc": "Ασφαλής αποθήκευση στο νέφος",
+      "drimeTooltip": "Drime Cloud - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API"
     },
     "shortcuts": {
       "title": "Συντομεύσεις πληκτρολογίου",
@@ -2106,6 +2138,10 @@
         "unlimited": "Απεριόριστο",
         "roleAI": "AI",
         "roleUser": "Χρήστης"
+      },
+      "dropFileToAnalyze": "Αφήστε αρχείο για ανάλυση με το AeroAgent",
+      "plugins": {
+        "browsePlugins": "Περιήγηση Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Αποκρυπτογράφηση και αποθήκευση",
       "decrypted": "Αποκρυπτογραφήθηκε {name}",
       "encrypted": "Το αρχείο κρυπτογραφήθηκε στο θησαυροφυλάκιο",
-      "root": "Ρίζα"
+      "root": "Ρίζα",
+      "confirmPassword": "Επιβεβαιώστε το κωδικό πρόσβασης",
+      "createVault": "Δημιουργία θησαυρού Cryptomator",
+      "minPassword": "Ελάχιστο 8 χαρακτήρες",
+      "passwordMismatch": "Τα κωδικά πρόσβασης δεν ταιριάζουν",
+      "repeatPassword": "Επαναλάβετε τον κωδικό πρόσβασης",
+      "vaultName": "Όνομα θησαυρού"
     },
     "compress": {
       "title": "Συμπίεση Αρχείων",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Προρυθμισμένοι Πάροχοι",
     "customConnection": "Προσαρμοσμένη Σύνδεση",
-    "custom": "Προσαρμοσμένο"
+    "custom": "Προσαρμοσμένο",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Αρχείο",
+        "navigation": "Πλοήγηση",
+        "sync": "Συγχρονισμός",
+        "tools": "Εργαλεία"
+      },
+      "noResults": "Καμία εντολή δεν ταιριάζει με την αναζήτησή σας",
+      "placeholder": "Πληκτρολογήστε μια εντολή..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Δεν υπάρχουν διαθέσιμα plugins στο μητρώο",
+        "install": "Εγκατάσταση",
+        "installed": "Εγκατεστημένο",
+        "installing": "Εγκατάσταση...",
+        "loading": "Φόρτωση μητρώου plugins...",
+        "manageInSettings": "Διαχειριστείτε τα εγκατεστημένα plugins στην καρτέλα Plugins",
+        "search": "Αναζήτηση plugins...",
+        "subtitle": "Ανακαλύψτε και εγκαταστήστε plugins κοινότητας για το AeroAgent",
+        "title": "Plugin Browser"
+      }
+    }
   }
 }

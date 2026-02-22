@@ -5,6 +5,151 @@ import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Pl
 import { useTranslation } from '../i18n';
 import type { EffectiveTheme } from '../hooks/useTheme';
 
+// ─── Shared timestamp helper ───────────────────────────────────────────────
+function ts() {
+    return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ─── Global console capture (singleton, survives mount/unmount) ───────────
+interface CapturedLog {
+    id: number;
+    timestamp: string;
+    level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
+    message: string;
+}
+
+const globalLogBuffer: CapturedLog[] = [];
+let globalLogId = 0;
+let globalCaptureActive = false;
+const globalLogListeners = new Set<() => void>();
+
+function activateGlobalCapture() {
+    if (globalCaptureActive) return;
+    globalCaptureActive = true;
+
+    const origLog = console.log;
+    const origWarn = console.warn;
+    const origError = console.error;
+    const origDebug = console.debug;
+
+    const addEntry = (level: CapturedLog['level'], args: unknown[]) => {
+        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        const entry: CapturedLog = { id: globalLogId++, timestamp: ts(), level, message: msg };
+        globalLogBuffer.push(entry);
+        if (globalLogBuffer.length > 500) globalLogBuffer.splice(0, globalLogBuffer.length - 500);
+        queueMicrotask(() => globalLogListeners.forEach(fn => fn()));
+    };
+
+    console.log = (...args) => { origLog(...args); addEntry('INFO', args); };
+    console.warn = (...args) => { origWarn(...args); addEntry('WARN', args); };
+    console.error = (...args) => { origError(...args); addEntry('ERROR', args); };
+    console.debug = (...args) => { origDebug(...args); addEntry('DEBUG', args); };
+}
+
+function clearGlobalLogs() {
+    globalLogBuffer.length = 0;
+    globalLogListeners.forEach(fn => fn());
+}
+
+// ─── Global network capture (transfer_event + invoke interceptor) ────────
+interface NetworkEntry {
+    id: number;
+    timestamp: string;
+    type: 'TRANSFER' | 'INVOKE' | 'EVENT';
+    status: 'start' | 'progress' | 'complete' | 'error' | 'ok';
+    command: string;
+    detail: string;
+    duration?: number;
+}
+
+const globalNetworkBuffer: NetworkEntry[] = [];
+let globalNetworkId = 0;
+let globalNetworkActive = false;
+const globalNetworkListeners = new Set<() => void>();
+
+function notifyNetworkListeners() {
+    queueMicrotask(() => globalNetworkListeners.forEach(fn => fn()));
+}
+
+function addNetworkEntry(entry: Omit<NetworkEntry, 'id' | 'timestamp'>) {
+    const e: NetworkEntry = { ...entry, id: globalNetworkId++, timestamp: ts() };
+    globalNetworkBuffer.push(e);
+    if (globalNetworkBuffer.length > 300) globalNetworkBuffer.splice(0, globalNetworkBuffer.length - 300);
+    notifyNetworkListeners();
+}
+
+function clearGlobalNetwork() {
+    globalNetworkBuffer.length = 0;
+    notifyNetworkListeners();
+}
+
+// Commands to skip in invoke interceptor (too noisy / internal)
+const INVOKE_SKIP = new Set([
+    'get_system_info', 'plugin:event|listen', 'plugin:event|unlisten',
+    'plugin:webview|get_all_webviews', 'tauri_invoke_handler',
+]);
+
+function activateNetworkCapture() {
+    if (globalNetworkActive) return;
+    globalNetworkActive = true;
+
+    // 1) Listen for transfer_event from Rust backend
+    listen<{ event_type: string; transfer_id: string; filename: string; direction: string; message?: string }>('transfer_event', (event) => {
+        const d = event.payload;
+        const evType = d.event_type.toLowerCase();
+        const status: NetworkEntry['status'] = evType.includes('error') ? 'error'
+            : evType.includes('complete') || evType.includes('done') ? 'complete'
+            : evType.includes('start') || evType.includes('begin') ? 'start'
+            : 'progress';
+        addNetworkEntry({
+            type: 'TRANSFER',
+            status,
+            command: `${d.direction} ${d.event_type}`,
+            detail: `${d.filename}${d.message ? ` — ${d.message}` : ''}`,
+        });
+    });
+
+    // 2) Intercept __TAURI_INTERNALS__.invoke to log all IPC calls with timing
+    const internals = (window as any).__TAURI_INTERNALS__;
+    if (internals && !internals.__debugPatched) {
+        const origFn = internals.invoke.bind(internals);
+        internals.__debugPatched = true;
+        internals.invoke = async (cmd: string, args?: any, options?: any) => {
+            if (INVOKE_SKIP.has(cmd)) return origFn(cmd, args, options);
+            const t0 = performance.now();
+            const argSummary = args ? Object.keys(args).filter((k: string) => k !== 'appWindow' && k !== '__invokeKey').join(',') : '';
+            addNetworkEntry({
+                type: 'INVOKE',
+                status: 'start',
+                command: cmd,
+                detail: argSummary ? `args: ${argSummary}` : '',
+            });
+            try {
+                const result = await origFn(cmd, args, options);
+                const dur = Math.round(performance.now() - t0);
+                addNetworkEntry({
+                    type: 'INVOKE',
+                    status: 'ok',
+                    command: cmd,
+                    detail: `${dur}ms`,
+                    duration: dur,
+                });
+                return result;
+            } catch (err: any) {
+                const dur = Math.round(performance.now() - t0);
+                addNetworkEntry({
+                    type: 'INVOKE',
+                    status: 'error',
+                    command: cmd,
+                    detail: `${dur}ms — ${String(err).slice(0, 120)}`,
+                    duration: dur,
+                });
+                throw err;
+            }
+        };
+    }
+}
+
 interface SystemInfo {
     app_version: string;
     os: string;
@@ -18,21 +163,9 @@ interface SystemInfo {
     known_hosts_exists: boolean;
 }
 
-interface LogEntry {
-    id: number;
-    timestamp: string;
-    level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
-    message: string;
-    source?: string;
-}
+type LogEntry = CapturedLog;
 
-interface TransferEvent {
-    event_type: string;
-    transfer_id: string;
-    filename: string;
-    direction: string;
-    message?: string;
-}
+// TransferEvent type removed — handled by global network capture
 
 type TabId = 'connection' | 'network' | 'system' | 'logs' | 'frontend';
 
@@ -87,10 +220,10 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [logFilter, setLogFilter] = useState<string>('ALL');
     const [logPaused, setLogPaused] = useState(false);
-    const [networkEvents, setNetworkEvents] = useState<{ time: string; type: string; detail: string }[]>([]);
+    const [networkEvents, setNetworkEvents] = useState<NetworkEntry[]>([]);
     const [connectTime] = useState(() => isConnected ? new Date() : null);
     const logEndRef = useRef<HTMLDivElement>(null);
-    const logIdRef = useRef(0);
+    const networkEndRef = useRef<HTMLDivElement>(null);
     const resizeRef = useRef<HTMLDivElement>(null);
 
     // Load system info
@@ -106,60 +239,41 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
         })();
     }, [isVisible]);
 
-    // Listen for transfer events as network activity
+    // Activate global captures on first mount and subscribe to updates
     useEffect(() => {
-        if (!isVisible) return;
-        const unlisten = listen<TransferEvent>('transfer_event', (event) => {
-            const d = event.payload;
-            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            setNetworkEvents(prev => {
-                const entry = { time, type: d.event_type.toUpperCase(), detail: `${d.direction} ${d.filename}${d.message ? ` - ${d.message}` : ''}` };
-                const next = [...prev, entry];
-                return next.length > 200 ? next.slice(-200) : next;
-            });
-        });
-        return () => { unlisten.then(fn => fn()); };
-    }, [isVisible]);
+        activateGlobalCapture();
+        activateNetworkCapture();
 
-    // Capture console.log/warn/error for the Logs tab
-    useEffect(() => {
-        if (!isVisible) return;
+        setLogs([...globalLogBuffer]);
+        setNetworkEvents([...globalNetworkBuffer]);
 
-        const origLog = console.log;
-        const origWarn = console.warn;
-        const origError = console.error;
-        const origDebug = console.debug;
-
-        const addLog = (level: LogEntry['level'], args: unknown[]) => {
-            if (logPaused) return;
-            const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            setLogs(prev => {
-                const entry: LogEntry = { id: logIdRef.current++, timestamp: time, level, message: msg };
-                const next = [...prev, entry];
-                return next.length > 500 ? next.slice(-500) : next;
-            });
+        const logListener = () => {
+            if (!pausedRef.current) setLogs([...globalLogBuffer]);
         };
-
-        console.log = (...args) => { origLog(...args); addLog('INFO', args); };
-        console.warn = (...args) => { origWarn(...args); addLog('WARN', args); };
-        console.error = (...args) => { origError(...args); addLog('ERROR', args); };
-        console.debug = (...args) => { origDebug(...args); addLog('DEBUG', args); };
-
+        const netListener = () => {
+            if (!pausedRef.current) setNetworkEvents([...globalNetworkBuffer]);
+        };
+        globalLogListeners.add(logListener);
+        globalNetworkListeners.add(netListener);
         return () => {
-            console.log = origLog;
-            console.warn = origWarn;
-            console.error = origError;
-            console.debug = origDebug;
+            globalLogListeners.delete(logListener);
+            globalNetworkListeners.delete(netListener);
         };
-    }, [isVisible, logPaused]);
+    }, []);
 
-    // Auto-scroll logs
+    // Track logPaused via ref so listener closure stays current
+    const pausedRef = useRef(logPaused);
+    useEffect(() => { pausedRef.current = logPaused; }, [logPaused]);
+
+    // Auto-scroll logs + network
     useEffect(() => {
         if (!logPaused && activeTab === 'logs') {
             logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [logs, logPaused, activeTab]);
+        if (!logPaused && activeTab === 'network') {
+            networkEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [logs, networkEvents, logPaused, activeTab]);
 
     // Resize handle
     const handleResize = useCallback((e: React.MouseEvent) => {
@@ -277,9 +391,11 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 {activeTab === 'network' && (
                     <div className="p-2">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-gray-500">{t('debug.network.transferEvents')} ({networkEvents.length})</span>
+                            <span className="text-xs text-gray-500">
+                                IPC + Transfers ({networkEvents.length})
+                            </span>
                             <button
-                                onClick={() => setNetworkEvents([])}
+                                onClick={() => { clearGlobalNetwork(); setNetworkEvents([]); }}
                                 className="flex items-center gap-1 text-xs px-2 py-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500"
                             >
                                 <Trash2 size={11} /> {t('debug.network.clear')}
@@ -292,31 +408,44 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 <table className="w-full">
                                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr className="text-[10px] text-gray-500 border-b border-gray-200 dark:border-gray-700">
-                                            <th className="text-left py-1 px-2 w-20">{t('debug.network.time')}</th>
-                                            <th className="text-left py-1 px-2 w-28">{t('debug.network.event')}</th>
+                                            <th className="text-left py-1 px-2 w-16">{t('debug.network.time')}</th>
+                                            <th className="text-left py-1 px-2 w-16">Type</th>
+                                            <th className="text-left py-1 px-2 w-16">Status</th>
+                                            <th className="text-left py-1 px-2 w-48">Command</th>
                                             <th className="text-left py-1 px-2">{t('debug.network.detail')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="font-mono text-[11px]">
-                                        {networkEvents.map((evt, i) => (
-                                            <tr key={i} className="border-b border-gray-50 dark:border-gray-700/30">
-                                                <td className="py-0.5 px-2 text-gray-400">{evt.time}</td>
+                                        {networkEvents.map(evt => (
+                                            <tr key={evt.id} className="border-b border-gray-50 dark:border-gray-700/30">
+                                                <td className="py-0.5 px-2 text-gray-400 whitespace-nowrap">{evt.timestamp}</td>
                                                 <td className="py-0.5 px-2">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                                                        evt.type.includes('ERROR') ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                                                        evt.type.includes('COMPLETE') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                                        evt.type.includes('START') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                                    <span className={`px-1 py-0.5 rounded text-[9px] font-semibold ${
+                                                        evt.type === 'TRANSFER' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                                        evt.type === 'INVOKE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                                                         'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                                     }`}>
                                                         {evt.type}
                                                     </span>
                                                 </td>
-                                                <td className="py-0.5 px-2 text-gray-600 dark:text-gray-300 truncate max-w-md">{evt.detail}</td>
+                                                <td className="py-0.5 px-2">
+                                                    <span className={`px-1 py-0.5 rounded text-[9px] font-semibold ${
+                                                        evt.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                                        evt.status === 'complete' || evt.status === 'ok' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                                        evt.status === 'start' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                        'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                                    }`}>
+                                                        {evt.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-0.5 px-2 text-gray-700 dark:text-gray-200 truncate max-w-[200px]">{evt.command}</td>
+                                                <td className="py-0.5 px-2 text-gray-500 dark:text-gray-400 truncate max-w-md">{evt.detail}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             )}
+                            <div ref={networkEndRef} />
                         </div>
                     </div>
                 )}
@@ -378,7 +507,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 <button onClick={copyLogs} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={t('debug.logs.copyAll')}>
                                     <Copy size={12} />
                                 </button>
-                                <button onClick={() => setLogs([])} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={t('debug.logs.clear')}>
+                                <button onClick={() => { clearGlobalLogs(); setLogs([]); }} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={t('debug.logs.clear')}>
                                     <Trash2 size={12} />
                                 </button>
                             </div>
@@ -439,4 +568,5 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     );
 };
 
+export { activateGlobalCapture, activateNetworkCapture };
 export default DebugPanel;

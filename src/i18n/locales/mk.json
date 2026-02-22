@@ -185,7 +185,21 @@
         "useDifferentAccount": "Користи друга сметка",
         "zohoRegion": "Zoho регион",
         "zohoRegionHelp": "Изберете го регионот што одговара на вашата Zoho сметка (нпр. zoho.eu за Европа)."
-      }
+      },
+      "activeSessions": "Активни сесии",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Лозинка за Internxt сметка",
+      "internxtEncryptionTitle": "Шифрирање со нулто знаење",
+      "internxtEncryptionDesc": "Сите датотеки се шифрирани од крај до крај со AES-256-CTR. Internxt не може да пристапи до вашите податоци. Со седиште во EU, усогласено со GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Залепете го вашиот API токен овде",
+      "kdriveDriveIdPlaceholder": "Вашиот kDrive ID (нумерички)",
+      "kdriveTokenHelp": "Генерирајте токен на manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Поврзи се",
+      "drimeToken": "API Токен",
+      "drimeTokenPlaceholder": "Залепете го вашиот Drime API токен овде",
+      "drimeTokenHelp": "Генерирајте токен на app.drime.cloud → Поставки на сметката → Програмери"
     },
     "browser": {
       "remote": "Далечински",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Избери сè",
       "trashDeselectAll": "Откажи го сиот избор",
       "trashOriginalLocation": "Оригинална локација",
-      "trashDeletedDate": "Избришано"
+      "trashDeletedDate": "Избришано",
+      "createAeroVault": "Создади AeroVault...",
+      "createCryptomator": "Создади Cryptomator трезор...",
+      "more": "Повеќе",
+      "openAsCryptomator": "Отвори како Cryptomator трезор",
+      "askAeroAgent": "Прашај AeroAgent..."
     },
     "transfer": {
       "transferring": "Се пренесува...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Едноцветни икони кои се прилагодуваат на тековната тема",
       "iconThemeOutline": "Контура",
       "iconThemeOutlineDesc": "Чисти контурни икони со кодирани бои за типови датотеки",
-      "iconsTab": "Икони"
+      "iconsTab": "Икони",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Ресетирај",
         "save": "Зачувај",
         "saving": "Зачувување...",
-        "noFileSelected": "Не е избрана датотека за уредување"
+        "noFileSelected": "Не е избрана датотека за уредување",
+        "loading": "Вчитување на уредувачот..."
       },
       "previewPanel": {
         "emptyState": "Кликнете со десно копче на датотека и изберете \"Преглед\""
-      }
+      },
+      "codeEditor": "Уредувач на код",
+      "sshTerminal": "SSH терминал"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Ви благодариме за поддршката!",
       "footer": "Секоја донација помага во развојот",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Бесплатно е!",
+      "starOnGithub": "Звезда на GitHub"
     },
     "activity": {
       "connect_start": "Поврзување на {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Порт",
       "preconfiguredProviders": "Предконфигурирани добавувачи",
       "customConnection": "Прилагодена врска",
-      "custom": "Прилагодено"
+      "custom": "Прилагодено",
+      "internxtDesc": "Облачно складирање со нулто знаење",
+      "internxtTooltip": "Internxt - Шифриран облак со нулто знаење, со седиште во EU",
+      "kdriveDesc": "Швајцарско складирање во облак",
+      "kdriveTooltip": "kDrive by Infomaniak - Швајцарско складирање во облак со 15GB бесплатно",
+      "drimeDesc": "Безбедно складирање во облак",
+      "drimeTooltip": "Drime Cloud - 20GB бесплатно безбедно складирање во облак со REST API"
     },
     "shortcuts": {
       "title": "Кратенки на тастатура",
@@ -2106,6 +2138,10 @@
         "unlimited": "Неограничено",
         "roleAI": "AI",
         "roleUser": "Корисник"
+      },
+      "dropFileToAnalyze": "Пуштете датотека за анализа со AeroAgent",
+      "plugins": {
+        "browsePlugins": "Прегледај додатоци"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Декриптирај и зачувај",
       "decrypted": "Декриптирано {name}",
       "encrypted": "Датотеката е енкриптирана во трезорот",
-      "root": "Корен"
+      "root": "Корен",
+      "confirmPassword": "Потврди лозинка",
+      "createVault": "Создај Cryptomator сеф",
+      "minPassword": "Минимум 8 карактери",
+      "passwordMismatch": "Лозинките не се совпаѓаат",
+      "repeatPassword": "Повтори лозинка",
+      "vaultName": "Име на сеф"
     },
     "compress": {
       "title": "Компресирај датотеки",
@@ -2949,6 +2991,49 @@
     },
     "preconfiguredProviders": "Предконфигурирани добавувачи",
     "customConnection": "Прилагодена врска",
-    "custom": "Прилагодено"
+    "custom": "Прилагодено",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Датотека",
+        "navigation": "Навигација",
+        "sync": "Синхронизација",
+        "tools": "Алатки"
+      },
+      "noResults": "Ниедна команда не одговара на вашето пребарување",
+      "placeholder": "Внесете команда..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Нема достапни додатоци во регистарот",
+        "install": "Инсталирај",
+        "installed": "Инсталирано",
+        "installing": "Инсталирање...",
+        "loading": "Вчитување на регистарот на додатоци...",
+        "manageInSettings": "Управувајте со инсталираните додатоци во јазичето Plugins",
+        "search": "Пребарај додатоци...",
+        "subtitle": "Откријте и инсталирајте додатоци од заедницата за AeroAgent",
+        "title": "Прегледувач на додатоци"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

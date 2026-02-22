@@ -185,7 +185,21 @@
         "useDifferentAccount": "Ander account gebruiken",
         "zohoRegion": "Zoho-regio",
         "zohoRegionHelp": "Selecteer de regio die overeenkomt met uw Zoho-account (bijv. zoho.eu voor Europa)."
-      }
+      },
+      "activeSessions": "Actieve sessies",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt-accountwachtwoord",
+      "internxtEncryptionTitle": "Zero-knowledge-versleuteling",
+      "internxtEncryptionDesc": "Alle bestanden worden end-to-end versleuteld met AES-256-CTR. Internxt heeft geen toegang tot uw gegevens. EU-gebaseerd, GDPR-conform.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Plak hier uw API-token",
+      "kdriveDriveIdPlaceholder": "Uw kDrive ID (numeriek)",
+      "kdriveTokenHelp": "Genereer een token op manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Verbinden",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "Plak hier uw Drime API-token",
+      "drimeTokenHelp": "Genereer een token op app.drime.cloud → Accountinstellingen → Ontwikkelaars"
     },
     "browser": {
       "remote": "Extern",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Alles selecteren",
       "trashDeselectAll": "Alles deselecteren",
       "trashOriginalLocation": "Oorspronkelijke locatie",
-      "trashDeletedDate": "Verwijderd"
+      "trashDeletedDate": "Verwijderd",
+      "createAeroVault": "AeroVault aanmaken...",
+      "createCryptomator": "Cryptomator kluis aanmaken...",
+      "more": "Meer",
+      "openAsCryptomator": "Openen als Cryptomator kluis",
+      "askAeroAgent": "Vraag AeroAgent..."
     },
     "transfer": {
       "transferring": "Overdragen...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Monochrome pictogrammen die zich aanpassen aan het huidige thema",
       "iconThemeOutline": "Omtrek",
       "iconThemeOutlineDesc": "Strakke lijnpictogrammen met kleurgecodeerde bestandstypen",
-      "iconsTab": "Pictogrammen"
+      "iconsTab": "Pictogrammen",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Resetten",
         "save": "Opslaan",
         "saving": "Opslaan...",
-        "noFileSelected": "Geen bestand geselecteerd om te bewerken"
+        "noFileSelected": "Geen bestand geselecteerd om te bewerken",
+        "loading": "Editor laden..."
       },
       "previewPanel": {
         "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Voorbeeld\""
-      }
+      },
+      "codeEditor": "Code-editor",
+      "sshTerminal": "SSH-terminal"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Bedankt voor uw steun!",
       "footer": "Elke donatie helpt de ontwikkeling",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Het is gratis!",
+      "starOnGithub": "Ster geven op GitHub"
     },
     "activity": {
       "connect_start": "Verbinden met {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Poort",
       "preconfiguredProviders": "Vooraf ingestelde providers",
       "customConnection": "Aangepaste verbinding",
-      "custom": "Aangepast"
+      "custom": "Aangepast",
+      "internxtDesc": "Zero-knowledge cloudopslag",
+      "internxtTooltip": "Internxt - Zero-knowledge versleutelde cloud, EU-gebaseerd",
+      "kdriveDesc": "Zwitserse cloudopslag",
+      "kdriveTooltip": "kDrive by Infomaniak - In Zwitserland gehoste cloudopslag met 15GB gratis",
+      "drimeDesc": "Veilige Cloudopslag",
+      "drimeTooltip": "Drime Cloud - 20GB gratis veilige cloudopslag met REST API"
     },
     "shortcuts": {
       "title": "Sneltoetsen",
@@ -2106,6 +2138,10 @@
         "unlimited": "Onbeperkt",
         "roleAI": "AI",
         "roleUser": "Gebruiker"
+      },
+      "dropFileToAnalyze": "Sleep een bestand om te analyseren met AeroAgent",
+      "plugins": {
+        "browsePlugins": "Plugins verkennen"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Ontsleutelen & opslaan",
       "decrypted": "Ontsleuteld {name}",
       "encrypted": "Bestand versleuteld in kluis",
-      "root": "Hoofdmap"
+      "root": "Hoofdmap",
+      "confirmPassword": "Wachtwoord bevestigen",
+      "createVault": "Cryptomator-kluis maken",
+      "minPassword": "Minimaal 8 tekens",
+      "passwordMismatch": "Wachtwoorden komen niet overeen",
+      "repeatPassword": "Wachtwoord herhalen",
+      "vaultName": "Kluisnaam"
     },
     "compress": {
       "title": "Bestanden comprimeren",
@@ -2939,6 +2981,30 @@
     },
     "preconfiguredProviders": "Vooraf ingestelde providers",
     "customConnection": "Aangepaste verbinding",
-    "custom": "Aangepast"
+    "custom": "Aangepast",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Bestand",
+        "navigation": "Navigatie",
+        "sync": "Synchronisatie",
+        "tools": "Hulpmiddelen"
+      },
+      "noResults": "Geen opdrachten komen overeen met uw zoekopdracht",
+      "placeholder": "Typ een opdracht..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Geen plugins beschikbaar in het register",
+        "install": "Installeren",
+        "installed": "Geïnstalleerd",
+        "installing": "Installeren...",
+        "loading": "Plugin-register laden...",
+        "manageInSettings": "Beheer geïnstalleerde plugins in het tabblad Plugins",
+        "search": "Plugins zoeken...",
+        "subtitle": "Ontdek en installeer communityplugins voor AeroAgent",
+        "title": "Pluginbrowser"
+      }
+    }
   }
 }

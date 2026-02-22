@@ -122,7 +122,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                             {t('security.totp.setup')}
                         </h3>
                     </div>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title={t('common.close')}>
                         <X size={16} className="text-gray-500 dark:text-gray-400" />
                     </button>
                 </div>
@@ -145,7 +145,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                                 <code className="text-xs font-mono text-gray-900 dark:text-gray-100 break-all select-all">
                                     {secret}
                                 </code>
-                                <button onClick={handleCopy} className="flex-shrink-0 p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+                                <button onClick={handleCopy} className="flex-shrink-0 p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title={t('common.copy')}>
                                     {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} className="text-gray-500 dark:text-gray-400" />}
                                 </button>
                             </div>

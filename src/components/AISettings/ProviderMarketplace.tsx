@@ -9,7 +9,8 @@ import {
 import {
     GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon,
     OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon,
-    GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon
+    GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon,
+    AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon
 } from '../DevTools/AIIcons';
 
 interface ProviderMarketplaceProps {
@@ -34,6 +35,10 @@ const PROVIDER_ICON_MAP: Record<AIProviderType, React.FC<{ size?: number; classN
     perplexity: PerplexityIcon,
     cohere: CohereIcon,
     together: TogetherIcon,
+    ai21: AI21Icon,
+    cerebras: CerebrasIcon,
+    sambanova: SambaNovaIcon,
+    fireworks: FireworksIcon,
     custom: OpenAIIcon,
 };
 

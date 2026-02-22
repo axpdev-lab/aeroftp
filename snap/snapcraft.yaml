@@ -1,6 +1,6 @@
 name: aeroftp
-version: '2.5.2'
-summary: Multi-Protocol File Transfer & Cloud Client — 19 Protocols, AI, Encryption
+version: '2.6.0'
+summary: Multi-Protocol File Transfer & Cloud Client — 18 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
   Connect to FTP/FTPS servers, SFTP, WebDAV, S3-compatible storage, and major

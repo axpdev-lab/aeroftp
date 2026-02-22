@@ -36,6 +36,7 @@ mod host_key_check;
 mod ai_tools;
 mod context_intelligence;
 mod plugins;
+mod plugin_registry;
 mod ai_stream;
 mod archive_browse;
 mod aerovault;
@@ -7045,6 +7046,8 @@ pub fn run() {
             provider_commands::provider_delete_file,
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
+            provider_commands::provider_server_copy,
+            provider_commands::provider_supports_server_copy,
             provider_commands::provider_stat,
             provider_commands::provider_keep_alive,
             provider_commands::provider_server_info,
@@ -7127,6 +7130,10 @@ pub fn run() {
             plugins::execute_plugin_tool,
             plugins::install_plugin,
             plugins::remove_plugin,
+            plugins::trigger_plugin_hooks,
+            // Plugin registry
+            plugin_registry::fetch_plugin_registry,
+            plugin_registry::install_plugin_from_registry,
             // Filesystem (Places Sidebar + AeroFile)
             filesystem::get_user_directories,
             filesystem::list_mounted_volumes,

@@ -185,7 +185,21 @@
         "useDifferentAccount": "Gunakan Akaun Lain",
         "zohoRegion": "Rantau Zoho",
         "zohoRegionHelp": "Pilih rantau yang sepadan dengan akaun Zoho anda (cth. zoho.eu untuk Eropah)."
-      }
+      },
+      "activeSessions": "Sesi Aktif",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Kata laluan akaun Internxt",
+      "internxtEncryptionTitle": "Penyulitan Zero-Knowledge",
+      "internxtEncryptionDesc": "Semua fail disulitkan hujung-ke-hujung dengan AES-256-CTR. Internxt tidak boleh mengakses data anda. Berpusat di EU, mematuhi GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Tampalkan token API anda di sini",
+      "kdriveDriveIdPlaceholder": "ID kDrive anda (numerik)",
+      "kdriveTokenHelp": "Jana token di manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Sambung",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Tampal token API Drime anda di sini",
+      "drimeTokenHelp": "Jana token di app.drime.cloud → Tetapan Akaun → Pembangun"
     },
     "browser": {
       "remote": "Jauh",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Pilih Semua",
       "trashDeselectAll": "Nyahpilih Semua",
       "trashOriginalLocation": "Lokasi asal",
-      "trashDeletedDate": "Dipadamkan"
+      "trashDeletedDate": "Dipadamkan",
+      "createAeroVault": "Buat AeroVault...",
+      "createCryptomator": "Buat Cryptomator Vault...",
+      "more": "Lagi",
+      "openAsCryptomator": "Buka sebagai Cryptomator Vault",
+      "askAeroAgent": "Tanya AeroAgent..."
     },
     "transfer": {
       "transferring": "Memindahkan...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Ikon monokrom yang menyesuaikan dengan tema semasa",
       "iconThemeOutline": "Garis Luar",
       "iconThemeOutlineDesc": "Ikon garisan bersih dengan jenis fail berkod warna",
-      "iconsTab": "Ikon"
+      "iconsTab": "Ikon",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Tetapkan Semula",
         "save": "Simpan",
         "saving": "Menyimpan...",
-        "noFileSelected": "Tiada fail dipilih untuk diedit"
+        "noFileSelected": "Tiada fail dipilih untuk diedit",
+        "loading": "Memuatkan editor..."
       },
       "previewPanel": {
         "emptyState": "Klik kanan pada fail dan pilih \"Pratonton\""
-      }
+      },
+      "codeEditor": "Editor Kod",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Terima kasih atas sokongan anda!",
       "footer": "Setiap derma membantu pembangunan",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Percuma!",
+      "starOnGithub": "Beri bintang di GitHub"
     },
     "activity": {
       "connect_start": "Menyambung ke {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Pembekal Pra-konfigurasi",
       "customConnection": "Sambungan Tersuai",
-      "custom": "Tersuai"
+      "custom": "Tersuai",
+      "internxtDesc": "Storan Awan Zero-Knowledge",
+      "internxtTooltip": "Internxt - Awan disulitkan zero-knowledge, berpusat di EU",
+      "kdriveDesc": "Storan Awan Switzerland",
+      "kdriveTooltip": "kDrive by Infomaniak - Storan awan dihoskan di Switzerland dengan 15GB percuma",
+      "drimeDesc": "Storan Awan Selamat",
+      "drimeTooltip": "Drime Cloud - 20GB storan awan selamat percuma dengan REST API"
     },
     "shortcuts": {
       "title": "Pintasan Papan Kekunci",
@@ -2106,6 +2138,10 @@
         "unlimited": "Tanpa Had",
         "roleAI": "AI",
         "roleUser": "Pengguna"
+      },
+      "dropFileToAnalyze": "Lepaskan fail untuk dianalisis dengan AeroAgent",
+      "plugins": {
+        "browsePlugins": "Layari Plugin"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Nyahsulit & Simpan",
       "decrypted": "Dinyahsulit {name}",
       "encrypted": "Fail disulitkan ke dalam peti besi",
-      "root": "Akar"
+      "root": "Akar",
+      "confirmPassword": "Sahkan Kata Laluan",
+      "createVault": "Buat Peti Cryptomator",
+      "minPassword": "Minimum 8 aksara",
+      "passwordMismatch": "Kata laluan tidak sepadan",
+      "repeatPassword": "Ulangi kata laluan",
+      "vaultName": "Nama Peti"
     },
     "compress": {
       "title": "Mampatkan Fail",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Pembekal Pra-konfigurasi",
     "customConnection": "Sambungan Tersuai",
-    "custom": "Tersuai"
+    "custom": "Tersuai",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fail",
+        "navigation": "Navigasi",
+        "sync": "Segerakkan",
+        "tools": "Alat"
+      },
+      "noResults": "Tiada arahan yang sepadan dengan carian anda",
+      "placeholder": "Taip arahan..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Tiada plugin tersedia dalam pendaftaran",
+        "install": "Pasang",
+        "installed": "Dipasang",
+        "installing": "Memasang...",
+        "loading": "Memuatkan pendaftaran plugin...",
+        "manageInSettings": "Urus plugin yang dipasang dalam tab Plugins",
+        "search": "Cari plugin...",
+        "subtitle": "Temui dan pasang plugin komuniti untuk AeroAgent",
+        "title": "Pelayar Plugin"
+      }
+    }
   }
 }

@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon } from './AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
@@ -134,6 +134,10 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
         case 'perplexity': return <PerplexityIcon size={size} />;
         case 'cohere': return <CohereIcon size={size} />;
         case 'together': return <TogetherIcon size={size} />;
+        case 'ai21': return <AI21Icon size={size} />;
+        case 'cerebras': return <CerebrasIcon size={size} />;
+        case 'sambanova': return <SambaNovaIcon size={size} />;
+        case 'fireworks': return <FireworksIcon size={size} />;
         case 'custom': return <Bot size={size} className="text-gray-400" />;
         default: return <Bot size={size} />;
     }
@@ -325,6 +329,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const agentModeRef = useRef<AgentMode>(agentMode);
     useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
     const [showExtremeWarning, setShowExtremeWarning] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
 
     // Listen for agent mode changes from AISettingsPanel
     useEffect(() => {
@@ -579,13 +584,23 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
     }, [cachedAiSettings?.advancedSettings?.chatHistoryRetentionDays, loadChatHistory]);
 
-    // Listen for "Ask AeroAgent" events from Monaco editor
+    // Listen for "Ask AeroAgent" events from Monaco editor and context menus
     useEffect(() => {
         const handleAskAgent = (e: Event) => {
-            const { code, fileName } = (e as CustomEvent).detail;
-            const language = fileName.split('.').pop() || 'text';
-            const trimmedCode = code.length > 2000 ? code.slice(0, 2000) + '\n// ...(truncated)' : code;
-            const contextText = `Regarding this code from \`${fileName}\`:\n\`\`\`${language}\n${trimmedCode}\n\`\`\`\n\n`;
+            const detail = (e as CustomEvent).detail;
+            const { code, fileName, context } = detail;
+
+            let contextText: string;
+            if (context === 'file') {
+                // From file context menu — ask about the file
+                const filePath = detail.filePath || fileName;
+                contextText = `Analyze file: \`${filePath}\`\n\n`;
+            } else {
+                // From Monaco editor — include code snippet
+                const language = fileName.split('.').pop() || 'text';
+                const trimmedCode = code.length > 2000 ? code.slice(0, 2000) + '\n// ...(truncated)' : code;
+                contextText = `Regarding this code from \`${fileName}\`:\n\`\`\`${language}\n${trimmedCode}\n\`\`\`\n\n`;
+            }
             setInput(contextText);
             // Focus the input
             setTimeout(() => {
@@ -703,7 +718,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 });
             }
         }
-        return await invoke('execute_ai_tool', { toolName, args, contextLocalPath: localPath || undefined });
+        dispatchAIStatus('tool-execution');
+        const result = await invoke('execute_ai_tool', { toolName, args, contextLocalPath: localPath || undefined });
+        dispatchAIStatus('streaming');
+        return result;
     };
 
     // Execute a tool
@@ -1113,7 +1131,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             setIsAutoExecuting(false);
             setAutoStepCount(0);
             setIsLoading(false);
+            dispatchAIStatus('idle');
         }
+    };
+
+    const dispatchAIStatus = (status: 'idle' | 'streaming' | 'tool-execution' | 'error') => {
+        window.dispatchEvent(new CustomEvent('ai-status-changed', { detail: status }));
     };
 
     const handleSend = async () => {
@@ -1138,6 +1161,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         if (inputRef.current) inputRef.current.style.height = 'auto';
         clearImages();
         setIsLoading(true);
+        dispatchAIStatus('streaming');
 
         let streamingMsgId: string | null = null;
         try {
@@ -1658,6 +1682,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         } finally {
             setIsLoading(false);
             streamingMsgIdRef.current = null;
+            dispatchAIStatus('idle');
         }
     };
 
@@ -1670,7 +1695,30 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [messages, activeConversationId]);
 
     return (
-        <div className={`flex flex-col h-full ${ct.bg} ${className}`}>
+        <div
+            className={`flex flex-col h-full ${ct.bg} ${className} relative`}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false); }}
+            onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                const filePath = e.dataTransfer.getData('text/plain');
+                if (filePath && filePath.startsWith('/')) {
+                    const fileName = filePath.split('/').pop() || filePath;
+                    setInput(`Analyze file: \`${filePath}\`\n\n`);
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                }
+            }}
+        >
+            {/* Drag & Drop overlay */}
+            {isDragOver && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-purple-500/10 backdrop-blur-sm border-2 border-dashed border-purple-400 rounded-lg pointer-events-none">
+                    <div className="flex flex-col items-center gap-2 text-purple-500">
+                        <Upload size={32} />
+                        <span className="text-sm font-medium">{t('ai.dropFileToAnalyze')}</span>
+                    </div>
+                </div>
+            )}
             <AIChatHeader
                 showHistory={showHistory}
                 onToggleHistory={() => setShowHistory(!showHistory)}

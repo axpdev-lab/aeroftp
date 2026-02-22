@@ -10,7 +10,7 @@ import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon } from '../DevTools/AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from '../DevTools/AIIcons';
 import {
     AIProvider, AIModel, AISettings, AIProviderType,
     PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
@@ -19,6 +19,7 @@ import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
+import { PluginBrowser } from './PluginBrowser';
 import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
 
@@ -44,6 +45,10 @@ const getProviderIcon = (type: AIProviderType): React.ReactNode => {
         case 'perplexity': return <PerplexityIcon size={16} />;
         case 'cohere': return <CohereIcon size={16} />;
         case 'together': return <TogetherIcon size={16} />;
+        case 'ai21': return <AI21Icon size={16} />;
+        case 'cerebras': return <CerebrasIcon size={16} />;
+        case 'sambanova': return <SambaNovaIcon size={16} />;
+        case 'fireworks': return <FireworksIcon size={16} />;
         case 'custom': return <Server size={14} className="text-gray-400" />;
         default: return <Server size={14} />;
     }
@@ -259,6 +264,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     settingsRef.current = settings;
     const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'advanced' | 'prompt' | 'plugins' | 'macros'>('providers');
     const [showMarketplace, setShowMarketplace] = useState(false);
+    const [showPluginBrowser, setShowPluginBrowser] = useState(false);
     const [plugins, setPlugins] = useState<PluginManifest[]>([]);
     const t = useTranslation();
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1590,8 +1596,17 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                     {activeTab === 'plugins' && (
                         <div className="space-y-4">
-                            <div className="text-sm text-gray-400 mb-4">
-                                {t('ai.settings.pluginsDesc')}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="text-sm text-gray-400">
+                                    {t('ai.settings.pluginsDesc')}
+                                </div>
+                                <button
+                                    onClick={() => setShowPluginBrowser(true)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition-colors whitespace-nowrap"
+                                >
+                                    <Globe size={14} />
+                                    {t('ai.plugins.browsePlugins')}
+                                </button>
                             </div>
 
                             {plugins.length === 0 ? (
@@ -1886,6 +1901,20 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 onClose={() => setShowMarketplace(false)}
                 onAddProvider={addProviderFromPreset}
                 addedProviderTypes={addedProviderTypesSet}
+            />
+            {/* Plugin Browser Modal */}
+            <PluginBrowser
+                isOpen={showPluginBrowser}
+                onClose={() => setShowPluginBrowser(false)}
+                installedPluginIds={new Set(plugins.map(p => p.id))}
+                onInstalled={async () => {
+                    try {
+                        const list = await invoke<PluginManifest[]>('list_plugins');
+                        setPlugins(list);
+                    } catch (e) {
+                        logger.error('Failed to refresh plugins', e);
+                    }
+                }}
             />
         </div>
     );

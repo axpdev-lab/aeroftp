@@ -185,7 +185,21 @@
         "useDifferentAccount": "Anvand ett annat konto",
         "zohoRegion": "Zoho-region",
         "zohoRegionHelp": "Valj den region som matchar ditt Zoho-konto (t.ex. zoho.eu for Europa)."
-      }
+      },
+      "activeSessions": "Aktiva sessioner",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt kontolösenord",
+      "internxtEncryptionTitle": "Zero-Knowledge-kryptering",
+      "internxtEncryptionDesc": "Alla filer är end-to-end-krypterade med AES-256-CTR. Internxt kan inte komma åt dina data. EU-baserat, GDPR-kompatibelt.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Klistra in din API Token här",
+      "kdriveDriveIdPlaceholder": "Ditt kDrive-ID (numeriskt)",
+      "kdriveTokenHelp": "Generera en token på manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Anslut",
+      "drimeToken": "API-token",
+      "drimeTokenPlaceholder": "Klistra in ditt Drime API-token här",
+      "drimeTokenHelp": "Generera ett token på app.drime.cloud → Kontoinställningar → Utvecklare"
     },
     "browser": {
       "remote": "Fjärr",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Markera alla",
       "trashDeselectAll": "Avmarkera alla",
       "trashOriginalLocation": "Ursprunglig plats",
-      "trashDeletedDate": "Raderat"
+      "trashDeletedDate": "Raderat",
+      "createAeroVault": "Skapa AeroVault...",
+      "createCryptomator": "Skapa Cryptomator Vault...",
+      "more": "Mer",
+      "openAsCryptomator": "Öppna som Cryptomator Vault",
+      "askAeroAgent": "Fråga AeroAgent..."
     },
     "transfer": {
       "transferring": "Överför...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Monokroma ikoner som anpassar sig till aktuellt tema",
       "iconThemeOutline": "Kontur",
       "iconThemeOutlineDesc": "Rena konturikoner med fargkodade filtyper",
-      "iconsTab": "Ikoner"
+      "iconsTab": "Ikoner",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Återställ",
         "save": "Spara",
         "saving": "Sparar...",
-        "noFileSelected": "Ingen fil vald för redigering"
+        "noFileSelected": "Ingen fil vald för redigering",
+        "loading": "Läser in redigerare..."
       },
       "previewPanel": {
         "emptyState": "Högerklicka på en fil och välj \"Förhandsgranska\""
-      }
+      },
+      "codeEditor": "Kodredigerare",
+      "sshTerminal": "SSH-terminal"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Tack för ditt stöd!",
       "footer": "Varje donation hjälper utvecklingen",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Det är gratis!",
+      "starOnGithub": "Stjärnmärk på GitHub"
     },
     "activity": {
       "connect_start": "Ansluter till {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Förkonfigurerade leverantörer",
       "customConnection": "Anpassad anslutning",
-      "custom": "Anpassad"
+      "custom": "Anpassad",
+      "internxtDesc": "Zero-Knowledge molnlagring",
+      "internxtTooltip": "Internxt - Zero-knowledge-krypterat moln, EU-baserat",
+      "kdriveDesc": "Schweizisk molnlagring",
+      "kdriveTooltip": "kDrive från Infomaniak - schweizisk molnlagring med 15GB gratis",
+      "drimeDesc": "Säker molnlagring",
+      "drimeTooltip": "Drime Cloud - 20GB säker molnlagring med REST API"
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -2106,6 +2138,10 @@
         "unlimited": "Obegransat",
         "roleAI": "AI",
         "roleUser": "Anvandare"
+      },
+      "dropFileToAnalyze": "Släpp fil för att analysera med AeroAgent",
+      "plugins": {
+        "browsePlugins": "Bläddra bland plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Dekryptera och spara",
       "decrypted": "Dekrypterat {name}",
       "encrypted": "Fil krypterad i valv",
-      "root": "Rot"
+      "root": "Rot",
+      "confirmPassword": "Bekräfta lösenord",
+      "createVault": "Skapa Cryptomator-valv",
+      "minPassword": "Minst 8 tecken",
+      "passwordMismatch": "Lösenorden matchar inte",
+      "repeatPassword": "Upprepa lösenord",
+      "vaultName": "Valvnamn"
     },
     "compress": {
       "title": "Komprimera filer",
@@ -2946,6 +2988,30 @@
       "noTags": "Inga taggar",
       "removeTag": "Ta bort tagg",
       "tags": "Taggar"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fil",
+        "navigation": "Navigering",
+        "sync": "Synkronisering",
+        "tools": "Verktyg"
+      },
+      "noResults": "Inga kommandon matchar din sökning",
+      "placeholder": "Skriv ett kommando..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Inga plugins tillgängliga i registret",
+        "install": "Installera",
+        "installed": "Installerad",
+        "installing": "Installerar...",
+        "loading": "Laddar pluginregister...",
+        "manageInSettings": "Hantera installerade plugins i fliken Plugins",
+        "search": "Sök plugins...",
+        "subtitle": "Upptäck och installera community-plugins för AeroAgent",
+        "title": "Pluginbläddrare"
+      }
     }
   }
 }

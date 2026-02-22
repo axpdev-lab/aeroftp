@@ -185,7 +185,21 @@
         "useDifferentAccount": "ប្រើគណនីផ្សេង",
         "zohoRegion": "ជំនាន់ Zoho",
         "zohoRegionHelp": "ជ្រើសរើសជំនាន់ដែលត្រូវនឹងគណត់ Zoho របស់អ្នក (ឧទាហរណ៍ zoho.eu សម្រាប់អឺរ៉ុប)."
-      }
+      },
+      "activeSessions": "សម័យកាលសកម្ម",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "ពាក្យសម្ងាត់គណនី Internxt",
+      "internxtEncryptionTitle": "ការអ៊ិនគ្រីបដោយមិនមានចំណេះដឹង",
+      "internxtEncryptionDesc": "ឯកសារទាំងអស់ត្រូវបានអ៊ិនគ្រីបពីចុងដល់ចុងដោយប្រើ AES-256-CTR។ Internxt មិនអាចចូលប្រើទិន្នន័យរបស់អ្នកបានទេ។ មូលដ្ឋាននៅ EU អនុលោមតាម GDPR។",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "បិទភ្ជាប់ API token របស់អ្នកនៅទីនេះ",
+      "kdriveDriveIdPlaceholder": "លេខសម្គាល់ kDrive របស់អ្នក (ជាលេខ)",
+      "kdriveTokenHelp": "បង្កើត token នៅ manager.infomaniak.com → Developer → API Tokens",
+      "connect": "ភ្ជាប់",
+      "drimeToken": "ថូខេន API",
+      "drimeTokenPlaceholder": "បិទភ្ជាប់ថូខេន API Drime របស់អ្នកនៅទីនេះ",
+      "drimeTokenHelp": "បង្កើតថូខេននៅ app.drime.cloud → ការកំណត់គណនី → អ្នកអភិវឌ្ឍន៍"
     },
     "browser": {
       "remote": "ពីចម្ងាយ",
@@ -309,7 +323,12 @@
       "trashSelectAll": "ជ្រើសរើសទាំងអស់",
       "trashDeselectAll": "បោះបង់ការជ្រើសរើសទាំងអស់",
       "trashOriginalLocation": "ទីតាំងដើម",
-      "trashDeletedDate": "បានលុប"
+      "trashDeletedDate": "បានលុប",
+      "createAeroVault": "តើតង AeroVault...",
+      "createCryptomator": "តើតង Cryptomator vault...",
+      "more": "ត្វើមស័ត",
+      "openAsCryptomator": "បើកតាម Cryptomator vault",
+      "askAeroAgent": "សួរ AeroAgent..."
     },
     "transfer": {
       "transferring": "កំពុងផ្ទេរ...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "រូបតំណាងពណ៌តែមួយដែលសម្របតាមស្បែកបច្ចុប្បន្ន",
       "iconThemeOutline": "គ្រោង",
       "iconThemeOutlineDesc": "រូបតំណាងគ្រោងស្អាតជាមួយប្រភេទឯកសារតាមកូដពណ៌",
-      "iconsTab": "រូបតំណាង"
+      "iconsTab": "រូបតំណាង",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "កំណត់ឡើងវិញ",
         "save": "រក្សាទុក",
         "saving": "កំពុងរក្សាទុក...",
-        "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីកែសម្រួល"
+        "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីកែសម្រួល",
+        "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ..."
       },
       "previewPanel": {
         "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"មើលជាមុន\""
-      }
+      },
+      "codeEditor": "ក្រុងកែតម្រែរ៉ូដ",
+      "sshTerminal": "SSH តឺរ្មីណាល"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "សូមអរគុណសម្រាប់ការគាំទ្ររបស់អ្នក!",
       "footer": "រាល់ការបរិច្ចាគជួយដល់ការអភិវឌ្ឍន៍",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "ស្រីឥត់គិតថ្លៃ!",
+      "starOnGithub": "ផ្តល់ផ្កាយលើ GitHub"
     },
     "activity": {
       "connect_start": "កំពុងតភ្ជាប់ទៅ {server} តាមរយៈ {protocol}...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "ព័ត",
       "preconfiguredProviders": "ក្រុមហ៊ុនផ្តល់សេវាកម្មដែលបានកំណត់ទុកជាមុន",
       "customConnection": "ការតភ្ជាប់ដែលបាន​ប្ដូរ​ប្រែ",
-      "custom": "ប្ដូរ​ប្រែ"
+      "custom": "ប្ដូរ​ប្រែ",
+      "internxtDesc": "កន្លែងផ្ទុកពពកដែលមិនមានចំណេះដឹង",
+      "internxtTooltip": "Internxt - ពពកអ៊ិនគ្រីបដោយមិនមានចំណេះដឹង មូលដ្ឋាននៅ EU",
+      "kdriveDesc": "ឃ្លាំងផ្ទុកពពកស្វ៊ីស",
+      "kdriveTooltip": "kDrive by Infomaniak - ឃ្លាំងផ្ទុកពពកដែលបង្ហោះនៅស្វ៊ីស មាន 15GB ឥតគិតថ្លៃ",
+      "drimeDesc": "ការផ្ទុកពពកដែលមានសុវត្ថិភាព",
+      "drimeTooltip": "Drime Cloud - ការផ្ទុកពពកដែលមានសុវត្ថិភាពឥតគិតថ្លៃ 20GB ជាមួយ REST API"
     },
     "shortcuts": {
       "title": "ផ្លូវកាត់ក្តារចុច",
@@ -2106,6 +2138,10 @@
         "unlimited": "គ្មានដែនកំណត់",
         "roleAI": "AI",
         "roleUser": "អ្នកប្រើ"
+      },
+      "dropFileToAnalyze": "ទម្លាក់ឯកសារដើម្បីវិភាគជាមួយ AeroAgent",
+      "plugins": {
+        "browsePlugins": "រកមើល Plugin"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "ឌិគ្រីប និងរក្សាទុក",
       "decrypted": "បានឌិគ្រីប {name}",
       "encrypted": "ឯកសារត្រូវបានអ៊ិនគ្រីបក្នុងប្រអប់សុវត្ថិភាព",
-      "root": "ឫស"
+      "root": "ឫស",
+      "confirmPassword": "​ស្តែ​បញ្ជាក់​ពាក្យសម្ងាត់",
+      "createVault": "​បង្កើត​អាស្រ័យ​ Cryptomator",
+      "minPassword": "​ប៉ាំង​ណាស់​តិច​ ៨ ​តួ​អក្សរ",
+      "passwordMismatch": "​ពាក្យសម្ងាត់​មិន​ត្រូវ​គ្នា",
+      "repeatPassword": "​វាយ​ពាក្យសម្ងាត់​ម្តង​ទៀត",
+      "vaultName": "​ឈ្មោះ​អាស្រ័យ"
     },
     "compress": {
       "title": "បង្ហាប់ឯកសារ",
@@ -2949,6 +2991,49 @@
     },
     "preconfiguredProviders": "ក្រុមហ៊ុនផ្តល់សេវាកម្មដែលបានកំណត់ទុកជាមុន",
     "customConnection": "ការតភ្ជាប់ដែលបាន​ប្ដូរ​ប្រែ",
-    "custom": "ប្ដូរ​ប្រែ"
+    "custom": "ប្ដូរ​ប្រែ",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "ឯកសារ",
+        "navigation": "ការរុករក",
+        "sync": "ធ្វើសមកាលកម្ម",
+        "tools": "ឧបករណ៍"
+      },
+      "noResults": "គ្មានពាក្យបញ្ជាដែលត្រូវនឹងការស្វែងរករបស់អ្នកទេ",
+      "placeholder": "វាយពាក្យបញ្ជា..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "មិនមាន Plugin នៅក្នុងបញ្ជីឈ្មោះទេ",
+        "install": "ដំឡើង",
+        "installed": "បានដំឡើង",
+        "installing": "កំពុងដំឡើង...",
+        "loading": "កំពុងផ្ទុកបញ្ជី Plugin...",
+        "manageInSettings": "គ្រប់គ្រង Plugin ដែលបានដំឡើងនៅក្នុងផ្ទាំង Plugins",
+        "search": "ស្វែងរក Plugin...",
+        "subtitle": "រកឃើញ និងដំឡើង Plugin សហគមន៍សម្រាប់ AeroAgent",
+        "title": "កម្មវិធីរុករក Plugin"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

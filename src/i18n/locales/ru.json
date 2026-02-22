@@ -185,7 +185,21 @@
         "useDifferentAccount": "Использовать другой аккаунт",
         "zohoRegion": "Регион Zoho",
         "zohoRegionHelp": "Выберите регион, соответствующий вашей учётной записи Zoho (например, zoho.eu для Европы)."
-      }
+      },
+      "activeSessions": "Активные сеансы",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Пароль учётной записи Internxt",
+      "internxtEncryptionTitle": "Шифрование Zero-Knowledge",
+      "internxtEncryptionDesc": "Все файлы зашифрованы сквозным шифрованием AES-256-CTR. Internxt не может получить доступ к вашим данным. Базируется в EU, соответствует GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Вставьте ваш API Token сюда",
+      "kdriveDriveIdPlaceholder": "Ваш идентификатор kDrive (числовой)",
+      "kdriveTokenHelp": "Сгенерируйте токен на manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Подключиться",
+      "drimeToken": "API-токен",
+      "drimeTokenPlaceholder": "Вставьте ваш API-токен Drime сюда",
+      "drimeTokenHelp": "Сгенерируйте токен на app.drime.cloud → Настройки аккаунта → Разработчики"
     },
     "browser": {
       "remote": "Удалённый",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Выбрать все",
       "trashDeselectAll": "Снять выделение",
       "trashOriginalLocation": "Исходное расположение",
-      "trashDeletedDate": "Удалено"
+      "trashDeletedDate": "Удалено",
+      "createAeroVault": "Создать AeroVault...",
+      "createCryptomator": "Создать Cryptomator Vault...",
+      "more": "Ещё",
+      "openAsCryptomator": "Открыть как Cryptomator Vault",
+      "askAeroAgent": "Спросить AeroAgent..."
     },
     "transfer": {
       "transferring": "Передача...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Монохромные значки, адаптирующиеся к текущей теме",
       "iconThemeOutline": "Контурные",
       "iconThemeOutlineDesc": "Чистые контурные значки с цветовой кодировкой типов файлов",
-      "iconsTab": "Значки"
+      "iconsTab": "Значки",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Сбросить",
         "save": "Сохранить",
         "saving": "Сохранение...",
-        "noFileSelected": "Файл для редактирования не выбран"
+        "noFileSelected": "Файл для редактирования не выбран",
+        "loading": "Загрузка редактора..."
       },
       "previewPanel": {
         "emptyState": "Щелкните правой кнопкой на файле и выберите \"Предпросмотр\""
-      }
+      },
+      "codeEditor": "Редактор кода",
+      "sshTerminal": "SSH-терминал"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Спасибо за вашу поддержку!",
       "footer": "Каждое пожертвование помогает разработке",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Это бесплатно!",
+      "starOnGithub": "Поставьте звезду на GitHub"
     },
     "activity": {
       "connect_start": "Я открываю соединение с {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Порт",
       "preconfiguredProviders": "Предварительно настроенные провайдеры",
       "customConnection": "Пользовательское подключение",
-      "custom": "Пользовательское"
+      "custom": "Пользовательское",
+      "internxtDesc": "Облачное хранилище Zero-Knowledge",
+      "internxtTooltip": "Internxt - Облако с шифрованием zero-knowledge, базируется в EU",
+      "kdriveDesc": "Швейцарское облачное хранилище",
+      "kdriveTooltip": "kDrive от Infomaniak — швейцарское облачное хранилище с 15ГБ бесплатно",
+      "drimeDesc": "Безопасное облачное хранилище",
+      "drimeTooltip": "Drime Cloud - 20GB безопасного облачного хранилища с REST API"
     },
     "shortcuts": {
       "title": "Горячие клавиши",
@@ -2106,6 +2138,10 @@
         "unlimited": "Без ограничений",
         "roleAI": "AI",
         "roleUser": "Пользователь"
+      },
+      "dropFileToAnalyze": "Перетащите файл для анализа с помощью AeroAgent",
+      "plugins": {
+        "browsePlugins": "Обзор плагинов"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Расшифровать и сохранить",
       "decrypted": "Расшифровано {name}",
       "encrypted": "Файл зашифрован в хранилище",
-      "root": "Корень"
+      "root": "Корень",
+      "confirmPassword": "Подтвердить пароль",
+      "createVault": "Создать хранилище Cryptomator",
+      "minPassword": "Минимум 8 символов",
+      "passwordMismatch": "Пароли не совпадают",
+      "repeatPassword": "Повторите пароль",
+      "vaultName": "Имя хранилища"
     },
     "compress": {
       "title": "Сжать файлы",
@@ -2936,6 +2978,30 @@
       "noTags": "Нет меток",
       "removeTag": "Удалить метку",
       "tags": "Метки"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Файл",
+        "navigation": "Навигация",
+        "sync": "Синхронизация",
+        "tools": "Инструменты"
+      },
+      "noResults": "Не найдено команд, соответствующих запросу",
+      "placeholder": "Введите команду..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "В реестре нет доступных плагинов",
+        "install": "Установить",
+        "installed": "Установлено",
+        "installing": "Установка...",
+        "loading": "Загрузка реестра плагинов...",
+        "manageInSettings": "Управление установленными плагинами во вкладке Plugins",
+        "search": "Поиск плагинов...",
+        "subtitle": "Находите и устанавливайте плагины сообщества для AeroAgent",
+        "title": "Браузер плагинов"
+      }
     }
   }
 }

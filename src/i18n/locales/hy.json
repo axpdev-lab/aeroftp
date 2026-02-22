@@ -185,7 +185,21 @@
         "useDifferentAccount": "Օգտագործել այլ հաշիվ",
         "zohoRegion": "Հաշվի Zoho տարածաշրջան",
         "zohoRegionHelp": "Ընտրեք ձեր Zoho հաշվին համապատասխանող տարածաշրջանը (օրինակ՝ zoho.eu Եվրոպայի համար):"
-      }
+      },
+      "activeSessions": "Մեիը դրի լնաղրշ",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt հաշվի գաղտնաբառ",
+      "internxtEncryptionTitle": "Zero-Knowledge գաղտնագրում",
+      "internxtEncryptionDesc": "Բոլոր ֆայլերը գաղտնագրված են ծայրից ծայր AES-256-CTR-ով։ Internxt-ը չի կարող մուտք գործել ձեր տվյալները։ EU-ն հիմնված, GDPR համատեղելի։",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Տեղադրեք Ձեր API տոկենը այստեղ",
+      "kdriveDriveIdPlaceholder": "Ձեր kDrive իդենտիֆիկատորը (թիվ)",
+      "kdriveTokenHelp": "Ստեղծեք տոկեն՝ manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Միանալ",
+      "drimeToken": "API թոկեն",
+      "drimeTokenPlaceholder": "Տեղադրեք ձեր Drime API թոկենը այստեղ",
+      "drimeTokenHelp": "Ստեղծեք թոկեն app.drime.cloud → Հաշվի կարգավորումներ → Մշակողներ"
     },
     "browser": {
       "remote": "Հեռավոր",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Ընտրել բոլորը",
       "trashDeselectAll": "Հանել բոլոր ընտրությունը",
       "trashOriginalLocation": "Բնօրինակ տեղը",
-      "trashDeletedDate": "Ջնջված"
+      "trashDeletedDate": "Ջնջված",
+      "createAeroVault": "Ստեղծել AeroVault...",
+      "createCryptomator": "Ստեղծել Cryptomator վահլլակ...",
+      "more": "Ավելին",
+      "openAsCryptomator": "Բացել որպես Cryptomator վահլլակ",
+      "askAeroAgent": "Հարցնել AeroAgent..."
     },
     "transfer": {
       "transferring": "Փոխանցում...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Միագույն պատկերակներ, որոնք հարմարվում են ընթացիկ թեմային",
       "iconThemeOutline": "Ուրվագիծ",
       "iconThemeOutlineDesc": "Մաքուր գծային պատկերակներ՝ գունային կոդավորված ֆայլերի տեսակներով",
-      "iconsTab": "Պատկերակներ"
+      "iconsTab": "Պատկերակներ",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Վերականգնել",
         "save": "Պահպանել",
         "saving": "Պահպանվում է...",
-        "noFileSelected": "Ֆայլ ընտրված չէ խմբագրելու համար"
+        "noFileSelected": "Ֆայլ ընտրված չէ խմբագրելու համար",
+        "loading": "Խմբագիր բեռնվում է..."
       },
       "previewPanel": {
         "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Նախադիտում»"
-      }
+      },
+      "codeEditor": "Կոդի խմբագիր",
+      "sshTerminal": "SSH տերմինալ"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -925,7 +949,9 @@
       "thanks": "Շնորհակալություն աջակցության համար:",
       "footer": "Յուրաքանչյուր նվիրատվություն խթանում է զարգացումը",
       "githubSponsors": "GitHub Հովանավորներ",
-      "buyMeACoffee": "Գնիր ինձ սուրճ"
+      "buyMeACoffee": "Գնիր ինձ սուրճ",
+      "freeSupport": "Անվճար է!",
+      "starOnGithub": "Աստղ GitHub-ում"
     },
     "activity": {
       "connect_start": "Միանում եմ {server}-ին ({protocol})...",
@@ -1086,7 +1112,13 @@
       "hostKeyPort": "Պորտ",
       "preconfiguredProviders": "Նարաբկացում գայբիդենորՀանոքը",
       "customConnection": "Րաղյեսափ Անագնման",
-      "custom": "Րաղյեսափ"
+      "custom": "Րաղյեսափ",
+      "internxtDesc": "Zero-Knowledge ամպային պահեստավորում",
+      "internxtTooltip": "Internxt - Zero-knowledge գաղտնագրված ամպ, EU-ն հիմնված",
+      "kdriveDesc": "Սույցարական ամպային պահեստան",
+      "kdriveTooltip": "kDrive by Infomaniak - Սույցարական հոսթինգով ամպային պահեստան՝ 15GB անվճար",
+      "drimeDesc": "Անվտանգ Ամպային Պահոց",
+      "drimeTooltip": "Drime Cloud - 20GB անվճար ամպային պահոց REST API-ով"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",
@@ -2099,6 +2131,10 @@
         "unlimited": "Անսահմանափակ",
         "roleAI": "AI",
         "roleUser": "Օգտատեր"
+      },
+      "dropFileToAnalyze": "Քաշեք ֆայլը AeroAgent-ի միջոցով վերլուծելու համար",
+      "plugins": {
+        "browsePlugins": "Դիտել պլագինները"
       }
     },
     "archive": {
@@ -2190,7 +2226,13 @@
       "decryptAndSave": "Վերծակվել և պահել",
       "decrypted": "Վերծակվեց՝ {name}",
       "encrypted": "Ֆայլը գաղտնագրվեց պահոցում",
-      "root": "Արմատ"
+      "root": "Արմատ",
+      "confirmPassword": "Տանցակումը հլեմաժեմ",
+      "createVault": "Ցետեք Cryptomator Էրկը",
+      "minPassword": "Ձրասձ 8 շափ յդի",
+      "passwordMismatch": "Հեմաճնի հլեմաճգում ռա վերաց են",
+      "repeatPassword": "Հեմաուձ հլեմաճնա",
+      "vaultName": "Էրկը մռզեքությաա"
     },
     "compress": {
       "title": "Սեղմել ֆայլերը",
@@ -2946,6 +2988,30 @@
       "noTags": "Պիտակներ չկան",
       "removeTag": "Հեռացնել պիտակը",
       "tags": "Պիտակներ"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Ֆայլ",
+        "navigation": "Նավիգացիա",
+        "sync": "Սինխրոնիզացիա",
+        "tools": "Գործիքներ"
+      },
+      "noResults": "Ոչ մի հրաման չի համապատասխանում ձեր որոնմանին",
+      "placeholder": "Մուտքագրեք հրաման..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Ռեգիստրում հասանելի պլագիններ չկան",
+        "install": "Տեղադրել",
+        "installed": "Տեղադրված",
+        "installing": "Տեղադրվում է...",
+        "loading": "Պլագինների լեգիստրի բեռնում...",
+        "manageInSettings": "Կառավարեք տեղադրված պլագինները Plugins ներդիրում",
+        "search": "Որոնել պլագիններ...",
+        "subtitle": "Գտեք և տեղադրեք համայնքի պլագիններ AeroAgent-ի համար",
+        "title": "Plugin դիտարկիչ"
+      }
     }
   }
 }

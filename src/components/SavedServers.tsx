@@ -50,6 +50,7 @@ interface SavedServersProps {
     onEdit: (profile: ServerProfile) => void;
     lastUpdate?: number;
     onOpenExportImport?: () => void;
+    onAeroFile?: () => void;
 }
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -62,7 +63,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
@@ -120,7 +121,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     className = '',
     onEdit,
     lastUpdate,
-    onOpenExportImport
+    onOpenExportImport,
+    onAeroFile
 }) => {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -201,6 +203,9 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         pcloud: 'from-green-500 to-teal-400',
         azure: 'from-blue-600 to-indigo-500',
         filen: 'from-emerald-500 to-green-400',
+        internxt: 'from-blue-500 to-blue-400',
+        kdrive: 'from-blue-500 to-sky-400',
+        drime: 'from-green-500 to-emerald-400',
         fourshared: 'from-blue-500 to-cyan-400',
         zohoworkdrive: 'from-yellow-500 to-orange-400',
     };
@@ -441,15 +446,26 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                         {t('connection.savedServersHelp')}
                     </div>
                 </div>
-                {onOpenExportImport && (
-                    <button
-                        onClick={onOpenExportImport}
-                        className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                        title={t('settings.exportImport')}
-                    >
-                        <ImportExportIcon size={18} />
-                    </button>
-                )}
+                <div className="flex items-center gap-1.5">
+                    {onAeroFile && (
+                        <button
+                            onClick={onAeroFile}
+                            className="p-2 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
+                            title={t('statusBar.aerofileTitle')}
+                        >
+                            <FolderOpen size={18} />
+                        </button>
+                    )}
+                    {onOpenExportImport && (
+                        <button
+                            onClick={onOpenExportImport}
+                            className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                            title={t('settings.exportImport')}
+                        >
+                            <ImportExportIcon size={18} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Server list */}
@@ -554,9 +570,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
                                         ? t('savedServers.oauthError', { username: server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '' })
-                                        : server.protocol === 'filen'
+                                        : server.protocol === 'filen' || server.protocol === 'internxt'
                                             ? t('savedServers.e2eAes256', { username: server.username || '' })
-                                            : server.protocol === 'mega'
+                                            : server.protocol === 'kdrive'
+                                                ? `kDrive ${server.options?.bucket || ''}`
+                                                : server.protocol === 'drime'
+                                                ? 'Drime Cloud'
+                                                : server.protocol === 'mega'
                                                 ? t('savedServers.e2eAes128', { username: server.username || '' })
                                                 : server.protocol === 's3'
                                                     ? (() => {

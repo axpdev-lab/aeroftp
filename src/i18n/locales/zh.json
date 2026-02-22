@@ -185,7 +185,21 @@
         "useDifferentAccount": "使用其他账户",
         "zohoRegion": "Zoho 区域",
         "zohoRegionHelp": "选择与您的 Zoho 帐户匹配的区域（例如 zoho.eu 对应欧洲）。"
-      }
+      },
+      "activeSessions": "活动会话",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt 账户密码",
+      "internxtEncryptionTitle": "Zero-Knowledge 加密",
+      "internxtEncryptionDesc": "所有文件均通过 AES-256-CTR 进行端到端加密。Internxt 无法访问您的数据。EU 总部，符合 GDPR。",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "在此粘贴您的 API Token",
+      "kdriveDriveIdPlaceholder": "您的 kDrive ID（数字）",
+      "kdriveTokenHelp": "在 manager.infomaniak.com → Developer → API Tokens 生成令牌",
+      "connect": "连接",
+      "drimeToken": "API 令牌",
+      "drimeTokenPlaceholder": "在此粘贴您的 Drime API 令牌",
+      "drimeTokenHelp": "在 app.drime.cloud → 账户设置 → 开发者 处生成令牌"
     },
     "browser": {
       "remote": "远程",
@@ -309,7 +323,12 @@
       "trashSelectAll": "全选",
       "trashDeselectAll": "取消全选",
       "trashOriginalLocation": "原始位置",
-      "trashDeletedDate": "删除时间"
+      "trashDeletedDate": "删除时间",
+      "createAeroVault": "创建 AeroVault...",
+      "createCryptomator": "创建 Cryptomator Vault...",
+      "more": "更多",
+      "openAsCryptomator": "以 Cryptomator Vault 打开",
+      "askAeroAgent": "询问 AeroAgent..."
     },
     "transfer": {
       "transferring": "传输中...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "自动适应当前主题的单色图标",
       "iconThemeOutline": "线框",
       "iconThemeOutlineDesc": "简洁的线框图标，按文件类型标注颜色",
-      "iconsTab": "图标"
+      "iconsTab": "图标",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "重置",
         "save": "保存",
         "saving": "保存中...",
-        "noFileSelected": "未选择要编辑的文件"
+        "noFileSelected": "未选择要编辑的文件",
+        "loading": "加载编辑器中..."
       },
       "previewPanel": {
         "emptyState": "右键点击文件并选择\"预览\""
-      }
+      },
+      "codeEditor": "代码编辑器",
+      "sshTerminal": "SSH 终端"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "感谢您的支持！",
       "footer": "每一笔捐赠都有助于开发",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "完全免费！",
+      "starOnGithub": "在 GitHub 上给个星标"
     },
     "activity": {
       "connect_start": "正在连接到 {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "端口",
       "preconfiguredProviders": "预配置的提供商",
       "customConnection": "自定义连接",
-      "custom": "自定义"
+      "custom": "自定义",
+      "internxtDesc": "Zero-Knowledge 云存储",
+      "internxtTooltip": "Internxt - Zero-knowledge 加密云端，EU 总部",
+      "kdriveDesc": "瑞士云存储",
+      "kdriveTooltip": "Infomaniak 的 kDrive - 瑞士云存储，免费 15GB",
+      "drimeDesc": "安全云存储",
+      "drimeTooltip": "Drime Cloud - 20GB 免费安全云存储，支持 REST API"
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -2106,6 +2138,10 @@
         "unlimited": "无限制",
         "roleAI": "AI",
         "roleUser": "用户"
+      },
+      "dropFileToAnalyze": "拖放文件以使用 AeroAgent 进行分析",
+      "plugins": {
+        "browsePlugins": "浏览插件"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "解密并保存",
       "decrypted": "已解密 {name}",
       "encrypted": "文件已加密到保险库",
-      "root": "根目录"
+      "root": "根目录",
+      "confirmPassword": "确认密码",
+      "createVault": "创建 Cryptomator 保险库",
+      "minPassword": "最少 8 个字符",
+      "passwordMismatch": "密码不匹配",
+      "repeatPassword": "重复密码",
+      "vaultName": "保险库名称"
     },
     "compress": {
       "title": "压缩文件",
@@ -2939,6 +2981,30 @@
     },
     "preconfiguredProviders": "预配置的提供商",
     "customConnection": "自定义连接",
-    "custom": "自定义"
+    "custom": "自定义",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "文件",
+        "navigation": "导航",
+        "sync": "同步",
+        "tools": "工具"
+      },
+      "noResults": "没有与您的搜索匹配的命令",
+      "placeholder": "输入命令..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "注册表中没有可用的插件",
+        "install": "安装",
+        "installed": "已安装",
+        "installing": "安装中...",
+        "loading": "正在加载插件注册表...",
+        "manageInSettings": "在 Plugins 选项卡中管理已安装的插件",
+        "search": "搜索插件...",
+        "subtitle": "发现并安装适用于 AeroAgent 的社区插件",
+        "title": "插件浏览器"
+      }
+    }
   }
 }

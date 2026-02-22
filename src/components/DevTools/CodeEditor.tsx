@@ -1,13 +1,25 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from '../../i18n';
-import Editor, { OnMount, loader } from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import { Save, X, RotateCcw, FileCode } from 'lucide-react';
 import { PreviewFile, getFileLanguage } from './types';
 
-// Use locally copied Monaco AMD assets (min/vs/) served by tauri-plugin-localhost.
-// AMD workers are IIFE format — no ESM import issues in WebKitGTK workers.
-// A Vite plugin copies node_modules/monaco-editor/min/vs → dist/vs at build time.
-loader.config({ paths: { vs: '/vs' } });
+// Monaco AMD loader is pre-configured and warmed up in main.tsx
+
+/** 3x3 grid-dots spinner (same as AeroAgent thinking) */
+const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 105 105" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width={size} height={size} className={className}>
+        <circle cx="12.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="0s" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="12.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="100ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="300ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="600ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="12.5" r="12.5"><animate attributeName="fill-opacity" begin="800ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="52.5" r="12.5"><animate attributeName="fill-opacity" begin="400ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="12.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="200ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="52.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="500ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+        <circle cx="92.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="700ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
+    </svg>
+);
 
 // Tokyo Night theme colors - in honor of Antigravity! 🌃
 const tokyoNightTheme = {
@@ -365,6 +377,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                     theme={theme}
                     onMount={handleEditorDidMount}
                     onChange={handleChange}
+                    loading={
+                        <div className="flex flex-col items-center justify-center h-full gap-3">
+                            <GridSpinner size={28} className="text-blue-400" />
+                            <span className="text-xs text-gray-400">{t('devtools.editorPanel.loading')}</span>
+                        </div>
+                    }
                     options={{
                         fontSize: 13,
                         fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Courier New', monospace",

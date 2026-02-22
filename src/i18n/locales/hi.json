@@ -185,7 +185,21 @@
         "useDifferentAccount": "दूसरा खाता उपयोग करें",
         "zohoRegion": "Zoho क्षेत्र",
         "zohoRegionHelp": "अपने Zoho खाते से मेल खाने वाला क्षेत्र चुनें (उदा. यूरोप के लिए zoho.eu)।"
-      }
+      },
+      "activeSessions": "सक्रिय सत्र",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt खाता पासवर्ड",
+      "internxtEncryptionTitle": "Zero-Knowledge एन्क्रिप्शन",
+      "internxtEncryptionDesc": "सभी फाइलें AES-256-CTR के साथ एंड-टू-एंड एन्क्रिप्टेड हैं। Internxt आपके डेटा तक पहुँच नहीं सकता। EU-आधारित, GDPR अनुपालन।",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "अपना API Token यहाँ पेस्ट करें",
+      "kdriveDriveIdPlaceholder": "आपका kDrive ID (संख्यात्मक)",
+      "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens पर टोकन बनाएँ",
+      "connect": "कनेक्ट करें",
+      "drimeToken": "API टोकन",
+      "drimeTokenPlaceholder": "यहाँ अपना Drime API टोकन पेस्ट करें",
+      "drimeTokenHelp": "app.drime.cloud → खाता सेटिंग → डेवलपर्स पर एक टोकन जनरेट करें"
     },
     "browser": {
       "remote": "दूरस्थ",
@@ -309,7 +323,12 @@
       "trashSelectAll": "सभी चुनें",
       "trashDeselectAll": "चयन हटाएं",
       "trashOriginalLocation": "मूल स्थान",
-      "trashDeletedDate": "हटाया गया"
+      "trashDeletedDate": "हटाया गया",
+      "createAeroVault": "AeroVault बनाएं...",
+      "createCryptomator": "Cryptomator वॉल्ट बनाएं...",
+      "more": "अधिक",
+      "openAsCryptomator": "Cryptomator वॉल्ट के रूप में खोलें",
+      "askAeroAgent": "AeroAgent से पूछें..."
     },
     "transfer": {
       "transferring": "स्थानांतरित हो रहा है...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "एकरंगी आइकन जो वर्तमान थीम के अनुसार ढलते हैं",
       "iconThemeOutline": "आउटलाइन",
       "iconThemeOutlineDesc": "रंग-कोडित फ़ाइल प्रकारों के साथ साफ़ स्ट्रोक आइकन",
-      "iconsTab": "आइकन"
+      "iconsTab": "आइकन",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "रीसेट करें",
         "save": "सहेजें",
         "saving": "सहेजा जा रहा है...",
-        "noFileSelected": "संपादन के लिए कोई फ़ाइल चयनित नहीं है"
+        "noFileSelected": "संपादन के लिए कोई फ़ाइल चयनित नहीं है",
+        "loading": "संपादक लोड हो रहा है..."
       },
       "previewPanel": {
         "emptyState": "किसी फ़ाइल पर राइट-क्लिक करें और \"पूर्वावलोकन\" चुनें"
-      }
+      },
+      "codeEditor": "कोड एडिटर",
+      "sshTerminal": "SSH टर्मिनल"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "आपके समर्थन के लिए धन्यवाद!",
       "footer": "प्रत्येक दान विकास में मदद करता है",
       "githubSponsors": "GitHub प्रायोजक",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "यह मुफ़्त है!",
+      "starOnGithub": "GitHub पर स्टार दें"
     },
     "activity": {
       "connect_start": "{server} ({protocol}) से कनेक्ट हो रहा है...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "पोर्ट",
       "preconfiguredProviders": "पूर्व-कॉन्फ़िगर्ड प्रदाता",
       "customConnection": "कस्टम कनेक्शन",
-      "custom": "कस्टम"
+      "custom": "कस्टम",
+      "internxtDesc": "Zero-Knowledge क्लाउड स्टोरेज",
+      "internxtTooltip": "Internxt - Zero-knowledge एन्क्रिप्टेड क्लाउड, EU-आधारित",
+      "kdriveDesc": "स्विस क्लाउड स्टोरेज",
+      "kdriveTooltip": "Infomaniak द्वारा kDrive - 15GB मुफ़्त के साथ स्विस-होस्टेड क्लाउड स्टोरेज",
+      "drimeDesc": "सुरक्षित क्लाउड स्टोरेज",
+      "drimeTooltip": "Drime Cloud - REST API के साथ 20GB मुफ़्त सुरक्षित क्लाउड स्टोरेज"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",
@@ -2106,6 +2138,10 @@
         "unlimited": "असीमित",
         "roleAI": "AI",
         "roleUser": "उपयोगकर्ता"
+      },
+      "dropFileToAnalyze": "AeroAgent से विश्लेषण के लिए फ़ाइल छोड़ें",
+      "plugins": {
+        "browsePlugins": "Plugins ब्राउज़ करें"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "डिक्रिप्ट करें और सहेजें",
       "decrypted": "{name} डिक्रिप्ट हुआ",
       "encrypted": "फ़ाइल वॉल्ट में एन्क्रिप्ट हुई",
-      "root": "रूट"
+      "root": "रूट",
+      "confirmPassword": "पासवर्ड की पुष्टि करें",
+      "createVault": "Cryptomator तिजोरी बनाएँ",
+      "minPassword": "न्यूनतम 8 वर्ण",
+      "passwordMismatch": "पासवर्ड मेल नहीं खाते",
+      "repeatPassword": "पासवर्ड दोहराएँ",
+      "vaultName": "तिजोरी का नाम"
     },
     "compress": {
       "title": "फ़ाइलें सम्पीडित करें",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "पूर्व-कॉन्फ़िगर्ड प्रदाता",
     "customConnection": "कस्टम कनेक्शन",
-    "custom": "कस्टम"
+    "custom": "कस्टम",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "फ़ाइल",
+        "navigation": "नेविगेशन",
+        "sync": "सिंक",
+        "tools": "टूल्स"
+      },
+      "noResults": "आपकी खोज से कोई कमांड मेल नहीं खाता",
+      "placeholder": "कमांड टाइप करें..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "रजिस्ट्री में कोई plugin उपलब्ध नहीं है",
+        "install": "इंस्टॉल करें",
+        "installed": "इंस्टॉल है",
+        "installing": "इंस्टॉल हो रहा है...",
+        "loading": "Plugin रजिस्ट्री लोड हो रही है...",
+        "manageInSettings": "Plugins टैब में इंस्टॉल किए गए plugins प्रबंधित करें",
+        "search": "Plugins खोजें...",
+        "subtitle": "AeroAgent के लिए सामुदायिक plugins खोजें और इंस्टॉल करें",
+        "title": "Plugin Browser"
+      }
+    }
   }
 }

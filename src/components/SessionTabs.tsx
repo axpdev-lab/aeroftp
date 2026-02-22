@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
-import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck } from 'lucide-react';
+import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import type { LocalTab } from '../types/aerofile';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, DrimeCloudLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 
 interface CloudTabState {
@@ -24,6 +25,14 @@ interface SessionTabsProps {
     onCloudTabClick?: () => void;
     // Tab reorder
     onReorder?: (sessions: FtpSession[]) => void;
+    // Local path tabs (AeroFile)
+    localTabs?: LocalTab[];
+    activeLocalTabId?: string | null;
+    onLocalTabClick?: (tabId: string) => void;
+    onLocalTabClose?: (tabId: string) => void;
+    onLocalNewTab?: () => void;
+    onLocalReorder?: (tabs: LocalTab[]) => void;
+    maxLocalTabs?: number;
 }
 
 // Status config factory (requires t() call, so moved inside component)
@@ -36,7 +45,7 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'drime'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -107,6 +116,12 @@ const ProviderIcon: React.FC<{
             return <FourSharedLogo size={size} />;
         case 'zohoworkdrive':
             return <ZohoWorkDriveLogo size={size} />;
+        case 'internxt':
+            return <InternxtLogo size={size} />;
+        case 'kdrive':
+            return <KDriveLogo size={size} />;
+        case 'drime':
+            return <DrimeCloudLogo size={size} />;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -131,6 +146,9 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'filen': return 'text-emerald-600';
         case 'fourshared': return 'text-blue-500';
         case 'zohoworkdrive': return 'text-red-500';
+        case 'internxt': return 'text-blue-600';
+        case 'kdrive': return 'text-blue-500';
+        case 'drime': return 'text-green-500';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green
@@ -147,31 +165,45 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     cloudTab,
     onCloudTabClick,
     onReorder,
+    localTabs = [],
+    activeLocalTabId,
+    onLocalTabClick,
+    onLocalTabClose,
+    onLocalNewTab,
+    onLocalReorder,
+    maxLocalTabs = 12,
 }) => {
     const t = useTranslation();
     const statusConfig = createStatusConfig(t);
-    const showTabs = sessions.length > 0 || (cloudTab?.enabled);
+    const showTabs = sessions.length > 0 || cloudTab?.enabled || onLocalNewTab;
 
     // Drag-to-reorder state
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
     const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
-    // Context menu state
+    // Context menu state (sessions)
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
-    // Close context menu on outside click
+    // Context menu state (local tabs)
+    const [localCtxMenu, setLocalCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+    const localCtxMenuRef = useRef<HTMLDivElement | null>(null);
+
+    // Close context menus on outside click
     React.useEffect(() => {
-        if (!contextMenu) return;
+        if (!contextMenu && !localCtxMenu) return;
         const handleClick = (e: MouseEvent) => {
-            if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+            if (contextMenu && contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
                 setContextMenu(null);
+            }
+            if (localCtxMenu && localCtxMenuRef.current && !localCtxMenuRef.current.contains(e.target as Node)) {
+                setLocalCtxMenu(null);
             }
         };
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
-    }, [contextMenu]);
+    }, [contextMenu, localCtxMenu]);
 
     const handleTabDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
         setDragIdx(idx);
@@ -325,6 +357,61 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 <Plus size={16} />
             </button>
 
+            {/* AeroFile local tabs — right-aligned */}
+            {onLocalNewTab && (
+                <>
+                    <div className="flex-1" />
+                    {(sessions.length > 0 || cloudTab?.enabled) && localTabs.length > 0 && (
+                        <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-1" />
+                    )}
+                    {localTabs.map((tab) => {
+                        const isActive = tab.id === activeLocalTabId;
+                        const canClose = localTabs.length > 1;
+                        return (
+                            <div
+                                key={tab.id}
+                                className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[180px] ${
+                                    isActive
+                                        ? 'bg-white dark:bg-gray-700 shadow-sm'
+                                        : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
+                                }`}
+                                onClick={() => onLocalTabClick?.(tab.id)}
+                                onAuxClick={(e) => {
+                                    if (e.button === 1 && canClose) { e.preventDefault(); onLocalTabClose?.(tab.id); }
+                                }}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    setLocalCtxMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
+                                }}
+                                title={tab.path}
+                            >
+                                <Folder size={12} className={`shrink-0 ${isActive ? 'text-amber-500' : 'text-gray-400'}`} />
+                                <span className={`truncate text-sm ${isActive ? 'font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                                    {tab.label || '/'}
+                                </span>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); if (canClose) onLocalTabClose?.(tab.id); }}
+                                    disabled={!canClose}
+                                    className={`shrink-0 p-0.5 rounded transition-opacity ${canClose ? 'hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100' : 'opacity-20 cursor-default'}`}
+                                >
+                                    <X size={10} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                    {localTabs.length < maxLocalTabs && (
+                        <button
+                            onClick={onLocalNewTab}
+                            className="shrink-0 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+                            title={t('localTabs.newTab')}
+                        >
+                            <Plus size={13} />
+                            {localTabs.length === 0 && <span className="text-xs">{t('localTabs.newTab')}</span>}
+                        </button>
+                    )}
+                </>
+            )}
+
             {/* Tab context menu */}
             {contextMenu && (
                 <div
@@ -360,6 +447,56 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                 {t('ui.session.closeAll')}
                             </button>
                         </>
+                    )}
+                </div>
+            )}
+
+            {/* Local tab context menu */}
+            {localCtxMenu && (
+                <div
+                    ref={localCtxMenuRef}
+                    className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px]"
+                    style={{ left: localCtxMenu.x, top: localCtxMenu.y }}
+                >
+                    {localTabs.length > 1 && (
+                        <>
+                            <button
+                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                                onClick={() => { onLocalTabClose?.(localCtxMenu.tabId); setLocalCtxMenu(null); }}
+                            >
+                                <X size={14} />
+                                {t('localTabs.closeTab')}
+                            </button>
+                            {localTabs.length > 2 && (
+                                <button
+                                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                                    onClick={() => {
+                                        localTabs.filter(tab => tab.id !== localCtxMenu.tabId).forEach(tab => onLocalTabClose?.(tab.id));
+                                        setLocalCtxMenu(null);
+                                    }}
+                                >
+                                    <X size={14} />
+                                    {t('localTabs.closeOthers')}
+                                </button>
+                            )}
+                            <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                            <button
+                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 text-red-600 dark:text-red-400"
+                                onClick={() => {
+                                    // Close all except the first tab
+                                    localTabs.slice(1).forEach(tab => onLocalTabClose?.(tab.id));
+                                    setLocalCtxMenu(null);
+                                }}
+                            >
+                                <X size={14} />
+                                {t('localTabs.closeAll')}
+                            </button>
+                        </>
+                    )}
+                    {localTabs.length <= 1 && (
+                        <div className="px-3 py-1.5 text-sm text-gray-400 dark:text-gray-500 italic">
+                            {t('localTabs.closeTab')}
+                        </div>
                     )}
                 </div>
             )}

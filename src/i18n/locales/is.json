@@ -185,7 +185,21 @@
         "useDifferentAccount": "Nota annan reikning",
         "zohoRegion": "Zoho svæði",
         "zohoRegionHelp": "Veldu svæðið sem passar við Zoho reikninginn þinn (t.d. zoho.eu fyrir Evrópu)."
-      }
+      },
+      "activeSessions": "Virkar lotur",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Lykilorð Internxt reiknings",
+      "internxtEncryptionTitle": "Núllþekkingar dulkóðun",
+      "internxtEncryptionDesc": "Allar skrár eru dulkóðaðar enda-í-enda með AES-256-CTR. Internxt hefur ekki aðgang að gögnunum þínum. Staðsett í EU, í samræmi við GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Límdu API lykilorðið þitt hér",
+      "kdriveDriveIdPlaceholder": "kDrive auðkennið þitt (tala)",
+      "kdriveTokenHelp": "Búðu til lykil á manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Tengjast",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "Límdu Drime API-tókenið þitt hér",
+      "drimeTokenHelp": "Búðu til tóken á app.drime.cloud → Reikningsstillingar → Forritarar"
     },
     "browser": {
       "remote": "Fjartengdur",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Velja allt",
       "trashDeselectAll": "Afvelja allt",
       "trashOriginalLocation": "Upprunaleg staðsetning",
-      "trashDeletedDate": "Eytt"
+      "trashDeletedDate": "Eytt",
+      "createAeroVault": "Búa til AeroVault...",
+      "createCryptomator": "Búa til Cryptomator vault...",
+      "more": "Meira",
+      "openAsCryptomator": "Opna sem Cryptomator vault",
+      "askAeroAgent": "Spyrja AeroAgent..."
     },
     "transfer": {
       "transferring": "Flytur...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Einlitar taknir sem alagast ad nuverandi thema",
       "iconThemeOutline": "Utlinur",
       "iconThemeOutlineDesc": "Hreinar utlinur med litakodudum skrategundum",
-      "iconsTab": "Taknir"
+      "iconsTab": "Taknir",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Endurstilla",
         "save": "Vista",
         "saving": "Vistar...",
-        "noFileSelected": "Engin skrá valin til breytinga"
+        "noFileSelected": "Engin skrá valin til breytinga",
+        "loading": "Hleð ritli..."
       },
       "previewPanel": {
         "emptyState": "Hægrismelltu á skrá og veldu \"Forskoða\""
-      }
+      },
+      "codeEditor": "Kóðaritill",
+      "sshTerminal": "SSH-útstöð"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Þakka þér fyrir stuðning!",
       "footer": "Sérhver gjöf hjálpar þróuninni",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Thetta er okeypis!",
+      "starOnGithub": "Stjarna a GitHub"
     },
     "activity": {
       "connect_start": "Tengist {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Glufa",
       "preconfiguredProviders": "Fyrirfram skilgreind þjónustuveita",
       "customConnection": "Sérsniðin tengill",
-      "custom": "Sérsniðið"
+      "custom": "Sérsniðið",
+      "internxtDesc": "Skýgeymsla með núllþekkingu",
+      "internxtTooltip": "Internxt - Núllþekkingar dulkóðað ský, staðsett í EU",
+      "kdriveDesc": "Svissneskur skýgeymsla",
+      "kdriveTooltip": "kDrive by Infomaniak - Svissneskur skýgeymsla með 15GB ókeypis",
+      "drimeDesc": "Örugg skýjageymsla",
+      "drimeTooltip": "Drime Cloud - 20GB ókeypis örugg skýjageymsla með REST API"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -2106,6 +2138,10 @@
         "unlimited": "Ótakmarkað",
         "roleAI": "AI",
         "roleUser": "Notandi"
+      },
+      "dropFileToAnalyze": "Slepptu skrá til að greina með AeroAgent",
+      "plugins": {
+        "browsePlugins": "Skoða viðbætur"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Afkóða og vista",
       "decrypted": "Afkóðað {name}",
       "encrypted": "Skrá dulkóðuð í hólf",
-      "root": "Rót"
+      "root": "Rót",
+      "confirmPassword": "Staðfesta lykilorð",
+      "createVault": "Búa til Cryptomator hólf",
+      "minPassword": "Lágmark 8 stafir",
+      "passwordMismatch": "Lykilorð stemma ekki",
+      "repeatPassword": "Endurtaka lykilorð",
+      "vaultName": "Heiti hólfs"
     },
     "compress": {
       "title": "Þjappa Skrár",
@@ -2946,6 +2988,49 @@
       "noTags": "Engin merki",
       "removeTag": "Fjarlægja merki",
       "tags": "Merki"
-    }
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Skrá",
+        "navigation": "Leiðsögn",
+        "sync": "Samstilling",
+        "tools": "Verkfæri"
+      },
+      "noResults": "Engin skipun passar við leitina þína",
+      "placeholder": "Sláðu inn skipun..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Engar viðbætur tiltækar í skránni",
+        "install": "Setja upp",
+        "installed": "Uppsett",
+        "installing": "Set upp...",
+        "loading": "Hleð viðbótaskrá...",
+        "manageInSettings": "Stjórna uppsettum viðbótum í Plugins flipanum",
+        "search": "Leita að viðbótum...",
+        "subtitle": "Uppgötvaðu og settu upp samfélagsviðbætur fyrir AeroAgent",
+        "title": "Viðbótavafri"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

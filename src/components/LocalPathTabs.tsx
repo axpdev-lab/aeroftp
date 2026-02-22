@@ -112,8 +112,6 @@ export const LocalPathTabs: React.FC<LocalPathTabsProps> = ({
     tabs.forEach(tab => onTabClose(tab.id));
   }, [tabs, onTabClose]);
 
-  if (tabs.length === 0) return null;
-
   return (
     <div className="flex items-center gap-1 px-3 py-1 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       {tabs.map((tab, idx) => {
@@ -169,10 +167,11 @@ export const LocalPathTabs: React.FC<LocalPathTabsProps> = ({
       {tabs.length < maxTabs && (
         <button
           onClick={onNewTab}
-          className="shrink-0 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          className="shrink-0 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
           title={t('localTabs.newTab')}
         >
           <Plus size={13} />
+          {tabs.length === 0 && <span className="text-xs">{t('localTabs.newTab')}</span>}
         </button>
       )}
 

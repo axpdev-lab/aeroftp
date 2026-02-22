@@ -86,6 +86,7 @@
       "stepLoading": "Caricamento credenziali..."
     },
     "connection": {
+      "activeSessions": "Sessioni Attive",
       "title": "Connetti al Server",
       "server": "Server",
       "serverPlaceholder": "ftp.esempio.com:21",
@@ -210,7 +211,20 @@
         "continue": "Continua",
         "configureCredentials": "Configura credenziali OAuth 1.0",
         "backToExistingAccount": "Torna all'account esistente"
-      }
+      },
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Password dell'account Internxt",
+      "internxtEncryptionTitle": "Crittografia a conoscenza zero",
+      "internxtEncryptionDesc": "Tutti i file sono crittografati end-to-end con AES-256-CTR. Internxt non può accedere ai tuoi dati. Con sede in EU, conforme al GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Incolla qui il tuo token API",
+      "kdriveDriveIdPlaceholder": "Il tuo ID kDrive (numerico)",
+      "kdriveTokenHelp": "Genera un token su manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Connetti",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "Incolla qui il tuo token API Drime",
+      "drimeTokenHelp": "Genera un token su app.drime.cloud → Impostazioni Account → Sviluppatori"
     },
     "protocol": {
       "selectProtocol": "Seleziona protocollo...",
@@ -305,7 +319,13 @@
       "hostKeyPort": "Porta",
       "preconfiguredProviders": "Provider preconfigurati",
       "customConnection": "Connessione personalizzata",
-      "custom": "Personalizzato"
+      "custom": "Personalizzato",
+      "internxtDesc": "Archiviazione cloud a conoscenza zero",
+      "internxtTooltip": "Internxt - Cloud crittografato a conoscenza zero, con sede in EU",
+      "kdriveDesc": "Archiviazione Cloud Svizzera",
+      "kdriveTooltip": "kDrive by Infomaniak - Archiviazione cloud svizzera con 15GB gratuiti",
+      "drimeDesc": "Archiviazione Cloud Sicura",
+      "drimeTooltip": "Drime Cloud - 20GB di archiviazione cloud sicura gratuita con REST API"
     },
     "browser": {
       "remote": "Remoto",
@@ -351,13 +371,26 @@
       "permsHeader": "Perm.",
       "syncPathMismatch": "I percorsi non sono sincronizzati — naviga nelle cartelle corrispondenti o disattiva la navigazione sincronizzata"
     },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "File",
+        "navigation": "Navigazione",
+        "sync": "Sincronizzazione",
+        "tools": "Strumenti"
+      },
+      "noResults": "Nessun comando corrisponde alla ricerca",
+      "placeholder": "Digita un comando..."
+    },
     "contextMenu": {
+      "askAeroAgent": "Chiedi ad AeroAgent...",
       "open": "Apri",
       "preview": "Anteprima",
       "edit": "Modifica",
       "viewSource": "Visualizza Sorgente",
       "copyPath": "Copia Percorso",
       "openInTerminal": "Apri nel Terminale",
+      "openAsCryptomator": "Apri come Vault Cryptomator",
       "openInFileManager": "Apri in Gestione File",
       "properties": "Proprietà",
       "permissions": "Permessi",
@@ -385,10 +418,13 @@
       "wrongPassword": "Password errata o archivio corrotto",
       "encryptionOptional": "Imposta Password (AES-256)",
       "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia",
+      "createAeroVault": "Crea AeroVault...",
+      "createCryptomator": "Crea Vault Cryptomator...",
       "cut": "Taglia",
       "copy": "Copia",
       "paste": "Incolla",
       "copied": "Copiato",
+      "more": "Altro",
       "moved": "Spostato",
       "copyName": "Copia Nome",
       "copyUrl": "Copia URL {scheme}",
@@ -564,6 +600,8 @@
       "protocolOnedrive": "OneDrive",
       "protocolBox": "Box",
       "protocolPcloud": "pCloud",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive",
       "protocolAzure": "Azure Blob",
       "disabled": "Disabilitato",
       "attemptsCount": "{n} tentativi",
@@ -804,7 +842,9 @@
     "devtools": {
       "title": "AeroTools",
       "preview": "Anteprima",
+      "codeEditor": "Editor Codice",
       "editor": "Editor",
+      "sshTerminal": "Terminale SSH",
       "terminal": "Terminale",
       "agent": "Agente AI",
       "saveChanges": "Salva Modifiche",
@@ -840,10 +880,11 @@
       },
       "editorPanel": {
         "emptyState": "Clicca col destro su un file e scegli \"Modifica\"",
+        "loading": "Caricamento editor...",
+        "noFileSelected": "Nessun file selezionato per la modifica",
         "reset": "Ripristina",
         "save": "Salva",
-        "saving": "Salvataggio...",
-        "noFileSelected": "Nessun file selezionato per la modifica"
+        "saving": "Salvataggio..."
       },
       "previewPanel": {
         "emptyState": "Clicca col destro su un file e scegli \"Anteprima\""
@@ -1101,10 +1142,12 @@
       "subtitle": "Il tuo supporto aiuta a mantenere AeroFTP gratuito!",
       "fiatSection": "Dona con Carta",
       "cryptoSection": "Dona con Crypto",
+      "freeSupport": "Costa zero!",
       "thanks": "Grazie per il tuo supporto!",
       "footer": "Ogni donazione aiuta lo sviluppo",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "starOnGithub": "Stella su GitHub"
     },
     "activity": {
       "connect_start": "Connessione a {server} ({protocol})...",
@@ -1612,6 +1655,7 @@
       "noPathsAvailable": "Nessun percorso disponibile",
       "copyBothPaths": "Copia entrambi i percorsi",
       "disclaimer": "L'AI può commettere errori. Verifica sempre il codice.",
+      "dropFileToAnalyze": "Trascina un file per analizzarlo con AeroAgent",
       "welcome": "Il tuo assistente FTP con intelligenza artificiale. Posso aiutarti a gestire file, analizzare codice ed eseguire operazioni.",
       "listFiles": "Elenca file e cartelle",
       "readFiles": "Leggi contenuto file",
@@ -1623,6 +1667,9 @@
       "chatHistory": "Cronologia chat",
       "hideHistory": "Nascondi cronologia",
       "operationCancelled": "Operazione annullata.",
+      "plugins": {
+        "browsePlugins": "Sfoglia Plugin"
+      },
       "noModelSelected": "Nessun modello selezionato. Clicca ⚙️ per configurare un provider.",
       "noProvidersConfigured": "Nessun provider AI configurato. Clicca ⚙️ per aggiungerne uno.",
       "providerNotConfigured": "Provider non configurato per {provider}",
@@ -2294,23 +2341,29 @@
       "dropFiles": "Trascina i file per aggiungerli al vault"
     },
     "cryptomator": {
-      "title": "Vault Cryptomator",
-      "description": "Apri un vault Cryptomator (formato 8) per sfogliare e decrittografare i file.",
-      "readOnly": "Modalità sola lettura — creazione vault in arrivo v2.1",
-      "openAsVault": "Apri come Vault Cryptomator",
-      "selectFolder": "Seleziona Cartella Vault...",
-      "password": "Password Vault",
-      "unlock": "Sblocca Vault",
-      "lock": "Blocca",
-      "encrypt": "Crittografa File",
-      "empty": "La directory è vuota",
-      "name": "Nome",
-      "size": "Dimensione",
-      "items": "elementi",
-      "root": "Radice",
+      "confirmPassword": "Conferma Password",
+      "createVault": "Crea Vault Cryptomator",
+      "decryptAndSave": "Decripta e Salva",
       "decrypted": "Decrittato {name}",
+      "description": "Apri un vault Cryptomator (formato 8) per sfogliare e decrittografare i file.",
+      "empty": "La directory è vuota",
+      "encrypt": "Crittografa File",
       "encrypted": "File crittografato nel vault",
-      "decryptAndSave": "Decripta e Salva"
+      "items": "elementi",
+      "lock": "Blocca",
+      "minPassword": "Minimo 8 caratteri",
+      "name": "Nome",
+      "openAsVault": "Apri come Vault Cryptomator",
+      "password": "Password Vault",
+      "passwordMismatch": "Le password non corrispondono",
+      "readOnly": "Modalità sola lettura — creazione vault in arrivo v2.1",
+      "repeatPassword": "Ripeti la password",
+      "root": "Radice",
+      "selectFolder": "Seleziona Cartella Vault...",
+      "size": "Dimensione",
+      "title": "Vault Cryptomator",
+      "unlock": "Sblocca Vault",
+      "vaultName": "Nome Vault"
     },
     "batchRename": {
       "title": "Rinomina Multipla",
@@ -2837,6 +2890,19 @@
       "typeText": "Testo",
       "typeVideo": "Video",
       "viewSource": "Vedi Sorgente"
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Nessun plugin disponibile nel registro",
+        "install": "Installa",
+        "installed": "Installato",
+        "installing": "Installazione...",
+        "loading": "Caricamento registro plugin...",
+        "manageInSettings": "Gestisci i plugin installati nella scheda Plugin",
+        "search": "Cerca plugin...",
+        "subtitle": "Scopri e installa plugin della community per AeroAgent",
+        "title": "Browser Plugin"
+      }
     },
     "savedServers": {
       "dragToReorder": "Trascina per riordinare",

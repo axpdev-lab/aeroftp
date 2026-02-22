@@ -185,7 +185,21 @@
         "useDifferentAccount": "Tumia Akaunti Nyingine",
         "zohoRegion": "Eneo la Zoho",
         "zohoRegionHelp": "Chagua eneo linalolingana na akaunti yako ya Zoho (mf. zoho.eu kwa Ulaya)."
-      }
+      },
+      "activeSessions": "Vikurasa vya kufa",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Nenosiri la akaunti ya Internxt",
+      "internxtEncryptionTitle": "Usimbaji wa Zero-Knowledge",
+      "internxtEncryptionDesc": "Faili zote zimesimbwa kwa njia ya mwisho-kwa-mwisho kwa AES-256-CTR. Internxt haiwezi kufikia data yako. Inategemea EU, inazingatia GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Bandika API Token yako hapa",
+      "kdriveDriveIdPlaceholder": "Kitambulisho chako cha kDrive (nambari)",
+      "kdriveTokenHelp": "Tengeneza tokeni kwenye manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Unganisha",
+      "drimeToken": "Tokeni ya API",
+      "drimeTokenPlaceholder": "Bandika tokeni yako ya API ya Drime hapa",
+      "drimeTokenHelp": "Tengeneza tokeni kwenye app.drime.cloud → Mipangilio ya Akaunti → Waendelezaji"
     },
     "browser": {
       "remote": "Mbali",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Chagua Zote",
       "trashDeselectAll": "Ondoa Uchaguzi Wote",
       "trashOriginalLocation": "Mahali pa asili",
-      "trashDeletedDate": "Imefutwa"
+      "trashDeletedDate": "Imefutwa",
+      "createAeroVault": "Unda AeroVault...",
+      "createCryptomator": "Unda Cryptomator Vault...",
+      "more": "Zaidi",
+      "openAsCryptomator": "Fungua kama Cryptomator Vault",
+      "askAeroAgent": "Uliza AeroAgent..."
     },
     "transfer": {
       "transferring": "Inahamisha...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Ikoni za rangi moja zinazobadilika kulingana na mandhari ya sasa",
       "iconThemeOutline": "Muhtasari",
       "iconThemeOutlineDesc": "Ikoni safi za mistari na aina za faili zilizotofautishwa kwa rangi",
-      "iconsTab": "Ikoni"
+      "iconsTab": "Ikoni",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Weka upya",
         "save": "Hifadhi",
         "saving": "Inahifadhi...",
-        "noFileSelected": "Hakuna faili iliyochaguliwa kuhariri"
+        "noFileSelected": "Hakuna faili iliyochaguliwa kuhariri",
+        "loading": "Kupakia mhariri..."
       },
       "previewPanel": {
         "emptyState": "Bofya kulia kwenye faili na uchague \"Onyesho la Awali\""
-      }
+      },
+      "codeEditor": "Kihariri cha Msimbo",
+      "sshTerminal": "Terminali ya SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Asante kwa msaada wako!",
       "footer": "Kila mchango husaidia uendelezaji",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Ni bure!",
+      "starOnGithub": "Weka nyota kwenye GitHub"
     },
     "activity": {
       "connect_start": "Ninaunganisha kwa {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Mlango",
       "preconfiguredProviders": "Watoa unaotaka tangu awali",
       "customConnection": "Uunganisho maalum",
-      "custom": "Maalum"
+      "custom": "Maalum",
+      "internxtDesc": "Hifadhi ya Wingu ya Zero-Knowledge",
+      "internxtTooltip": "Internxt - Wingu lililosimbwa kwa zero-knowledge, linalotegemea EU",
+      "kdriveDesc": "Hifadhi ya wingu ya Uswisi",
+      "kdriveTooltip": "kDrive na Infomaniak - hifadhi ya wingu ya Uswisi yenye 15GB bure",
+      "drimeDesc": "Hifadhi salama ya wingu",
+      "drimeTooltip": "Drime Cloud - hifadhi salama ya wingu ya 20GB na REST API"
     },
     "shortcuts": {
       "title": "Njia za Mkato",
@@ -2106,6 +2138,10 @@
         "unlimited": "Bila kikomo",
         "roleAI": "AI",
         "roleUser": "Mtumiaji"
+      },
+      "dropFileToAnalyze": "Dondosha faili ili kuchambuliwa na AeroAgent",
+      "plugins": {
+        "browsePlugins": "Vinjari plugini"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Fichue na Hifadhi",
       "decrypted": "Imefichuliwa {name}",
       "encrypted": "Faili imesimbwa ndani ya kasuba",
-      "root": "Mzizi"
+      "root": "Mzizi",
+      "confirmPassword": "Thibitisha nenosiri",
+      "createVault": "Unda hazina la Cryptomator",
+      "minPassword": "Angalau herufi 8",
+      "passwordMismatch": "Nenosiri hazilingani",
+      "repeatPassword": "Kurudia nenosiri",
+      "vaultName": "Jina la hazina"
     },
     "compress": {
       "title": "Bana Faili",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Watoa unaotaka tangu awali",
     "customConnection": "Uunganisho maalum",
-    "custom": "Maalum"
+    "custom": "Maalum",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Faili",
+        "navigation": "Urambazaji",
+        "sync": "Usawazishaji",
+        "tools": "Zana"
+      },
+      "noResults": "Hakuna amri zinazolingana na utafutaji wako",
+      "placeholder": "Andika amri..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Hakuna plugini zinazopatikana kwenye sajili",
+        "install": "Sakinisha",
+        "installed": "Imesakinishwa",
+        "installing": "Inasakinisha...",
+        "loading": "Inapakia sajili ya plugini...",
+        "manageInSettings": "Dhibiti plugini zilizosakinishwa kwenye kichupo cha Plugins",
+        "search": "Tafuta plugini...",
+        "subtitle": "Gundua na usakinishe plugini za jamii kwa AeroAgent",
+        "title": "Kivinjari cha plugini"
+      }
+    }
   }
 }

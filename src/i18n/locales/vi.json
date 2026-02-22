@@ -185,7 +185,21 @@
         "useDifferentAccount": "Sử dụng tài khoản khác",
         "zohoRegion": "Khu vuc Zoho",
         "zohoRegionHelp": "Chon khu vuc phu hop voi tai khoan Zoho cua ban (vd: zoho.eu cho Chau Au)."
-      }
+      },
+      "activeSessions": "Các phiên hoạt động",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Mật khẩu tài khoản Internxt",
+      "internxtEncryptionTitle": "Mã hóa Zero-Knowledge",
+      "internxtEncryptionDesc": "Tất cả các tệp được mã hóa đầu cuối bằng AES-256-CTR. Internxt không thể truy cập dữ liệu của bạn. Đặt tại EU, tuân thủ GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Dán API Token của bạn vào đây",
+      "kdriveDriveIdPlaceholder": "ID kDrive của bạn (số)",
+      "kdriveTokenHelp": "Tạo token tại manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Kết nối",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Dán token API Drime của bạn vào đây",
+      "drimeTokenHelp": "Tạo token tại app.drime.cloud → Cài đặt tài khoản → Nhà phát triển"
     },
     "browser": {
       "remote": "Từ xa",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Chọn tất cả",
       "trashDeselectAll": "Bỏ chọn tất cả",
       "trashOriginalLocation": "Vị trí ban đầu",
-      "trashDeletedDate": "Đã xóa"
+      "trashDeletedDate": "Đã xóa",
+      "createAeroVault": "Tạo AeroVault...",
+      "createCryptomator": "Tạo Cryptomator Vault...",
+      "more": "Thêm",
+      "openAsCryptomator": "Mở dưới dạng Cryptomator Vault",
+      "askAeroAgent": "Hỏi AeroAgent..."
     },
     "transfer": {
       "transferring": "Đang truyền...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Bieu tuong don sac thich ung voi chu de hien tai",
       "iconThemeOutline": "Duong vien",
       "iconThemeOutlineDesc": "Bieu tuong duong net sach se voi ma mau theo loai tep",
-      "iconsTab": "Bieu tuong"
+      "iconsTab": "Bieu tuong",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Đặt lại",
         "save": "Lưu",
         "saving": "Đang lưu...",
-        "noFileSelected": "Chưa chọn tệp để chỉnh sửa"
+        "noFileSelected": "Chưa chọn tệp để chỉnh sửa",
+        "loading": "Đang tải trình chỉnh sửa..."
       },
       "previewPanel": {
         "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem trước\""
-      }
+      },
+      "codeEditor": "Trình soạn mã",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Cảm ơn sự hỗ trợ của bạn!",
       "footer": "Mọi khoản quyên góp đều giúp phát triển",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Hoàn toàn miễn phí!",
+      "starOnGithub": "Ghi sao trên GitHub"
     },
     "activity": {
       "connect_start": "Đang kết nối đến {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Cổng",
       "preconfiguredProviders": "Các nhà cung cấp được cấu hình sẵn",
       "customConnection": "Kết nối tùy chỉnh",
-      "custom": "Tùy chỉnh"
+      "custom": "Tùy chỉnh",
+      "internxtDesc": "Lưu trữ đám mây Zero-Knowledge",
+      "internxtTooltip": "Internxt - Đám mây mã hóa zero-knowledge, đặt tại EU",
+      "kdriveDesc": "Lưu trữ đám mây Thụy Sĩ",
+      "kdriveTooltip": "kDrive của Infomaniak - lưu trữ đám mây Thụy Sĩ với 15GB miễn phí",
+      "drimeDesc": "Lưu trữ đám mây an toàn",
+      "drimeTooltip": "Drime Cloud - 20GB lưu trữ đám mây an toàn miễn phí với REST API"
     },
     "shortcuts": {
       "title": "Phím tắt",
@@ -2106,6 +2138,10 @@
         "unlimited": "Không giới hạn",
         "roleAI": "AI",
         "roleUser": "Người dùng"
+      },
+      "dropFileToAnalyze": "Thả tệp để phân tích bằng AeroAgent",
+      "plugins": {
+        "browsePlugins": "Duyệt plugin"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Giải mã & Lưu",
       "decrypted": "Đã giải mã {name}",
       "encrypted": "Tệp đã được mã hóa vào kho",
-      "root": "Gốc"
+      "root": "Gốc",
+      "confirmPassword": "Xác nhận mật khẩu",
+      "createVault": "Tạo kho lưu trữ Cryptomator",
+      "minPassword": "Tối thiểu 8 ký tự",
+      "passwordMismatch": "Mật khẩu không khớp",
+      "repeatPassword": "Nhập lại mật khẩu",
+      "vaultName": "Tên kho lưu trữ"
     },
     "compress": {
       "title": "Nén tệp",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Các nhà cung cấp được cấu hình sẵn",
     "customConnection": "Kết nối tùy chỉnh",
-    "custom": "Tùy chỉnh"
+    "custom": "Tùy chỉnh",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Tệp",
+        "navigation": "Điều hướng",
+        "sync": "Đồng bộ",
+        "tools": "Công cụ"
+      },
+      "noResults": "Không có lệnh nào khớp với tìm kiếm của bạn",
+      "placeholder": "Nhập lệnh..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Không có plugin nào trong sổ đăng ký",
+        "install": "Cài đặt",
+        "installed": "Đã cài đặt",
+        "installing": "Đang cài đặt...",
+        "loading": "Đang tải sổ đăng ký plugin...",
+        "manageInSettings": "Quản lý các plugin đã cài đặt trong tab Plugins",
+        "search": "Tìm kiếm plugin...",
+        "subtitle": "Khám phá và cài đặt plugin cộng đồng cho AeroAgent",
+        "title": "Trình duyệt plugin"
+      }
+    }
   }
 }

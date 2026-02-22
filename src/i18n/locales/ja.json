@@ -185,7 +185,21 @@
         "useDifferentAccount": "別のアカウントを使用",
         "zohoRegion": "Zoho リージョン",
         "zohoRegionHelp": "Zoho アカウントに対応するリージョンを選択してください（例: ヨーロッパの場合は zoho.eu）。"
-      }
+      },
+      "activeSessions": "アクティブなセッション",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt アカウントパスワード",
+      "internxtEncryptionTitle": "Zero-Knowledge 暗号化",
+      "internxtEncryptionDesc": "すべてのファイルは AES-256-CTR でエンドツーエンド暗号化されます。Internxt はお客様のデータにアクセスできません。EU拠点、GDPR 準拠。",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "APIトークンをここに貼り付けてください",
+      "kdriveDriveIdPlaceholder": "kDrive ID（数値）",
+      "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens でトークンを生成してください",
+      "connect": "接続",
+      "drimeToken": "API トークン",
+      "drimeTokenPlaceholder": "Drime API トークンをここに貼り付けてください",
+      "drimeTokenHelp": "app.drime.cloud → アカウント設定 → 開発者 でトークンを生成してください"
     },
     "browser": {
       "remote": "リモート",
@@ -309,7 +323,12 @@
       "trashSelectAll": "すべて選択",
       "trashDeselectAll": "すべて選択解除",
       "trashOriginalLocation": "元の場所",
-      "trashDeletedDate": "削除日"
+      "trashDeletedDate": "削除日",
+      "createAeroVault": "AeroVaultを作成...",
+      "createCryptomator": "Cryptomatorボールトを作成...",
+      "more": "その他",
+      "openAsCryptomator": "Cryptomatorボールトとして開く",
+      "askAeroAgent": "AeroAgentに質問..."
     },
     "transfer": {
       "transferring": "転送中...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "現在のテーマに適応するモノクロアイコン",
       "iconThemeOutline": "アウトライン",
       "iconThemeOutlineDesc": "ファイルタイプ別に色分けされたストロークアイコン",
-      "iconsTab": "アイコン"
+      "iconsTab": "アイコン",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "リセット",
         "save": "保存",
         "saving": "保存中...",
-        "noFileSelected": "編集するファイルが選択されていません"
+        "noFileSelected": "編集するファイルが選択されていません",
+        "loading": "エディターを読み込み中..."
       },
       "previewPanel": {
         "emptyState": "ファイルを右クリックして「プレビュー」を選択"
-      }
+      },
+      "codeEditor": "コードエディタ",
+      "sshTerminal": "SSHターミナル"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "ご支援ありがとうございます！",
       "footer": "すべての寄付が開発の助けになります",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "無料です！",
+      "starOnGithub": "GitHubでスターを付ける"
     },
     "activity": {
       "connect_start": "{server} ({protocol})に接続中...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "ポート",
       "preconfiguredProviders": "事前構成されたプロバイダー",
       "customConnection": "カスタム接続",
-      "custom": "カスタム"
+      "custom": "カスタム",
+      "internxtDesc": "Zero-Knowledge クラウドストレージ",
+      "internxtTooltip": "Internxt - Zero-knowledge暗号化クラウド、EU拠点",
+      "kdriveDesc": "スイスのクラウドストレージ",
+      "kdriveTooltip": "kDrive by Infomaniak - スイスでホストされたクラウドストレージ（15GB無料）",
+      "drimeDesc": "セキュアクラウドストレージ",
+      "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ"
     },
     "shortcuts": {
       "title": "キーボードショートカット",
@@ -2071,6 +2103,10 @@
         "unlimited": "無制限",
         "roleAI": "AI",
         "roleUser": "ユーザー"
+      },
+      "dropFileToAnalyze": "ファイルをドロップしてAeroAgentで分析",
+      "plugins": {
+        "browsePlugins": "プラグインを閲覧"
       }
     },
     "archive": {
@@ -2162,7 +2198,13 @@
       "decryptAndSave": "復号して保存",
       "decrypted": "{name} を復号しました",
       "encrypted": "ファイルをボールトに暗号化しました",
-      "root": "ルート"
+      "root": "ルート",
+      "confirmPassword": "パスワードを確認",
+      "createVault": "Cryptomatorヴォルトを作成",
+      "minPassword": "最低8文字",
+      "passwordMismatch": "パスワードが一致しません",
+      "repeatPassword": "パスワードを再入力",
+      "vaultName": "ヴォルト名"
     },
     "compress": {
       "title": "ファイルを圧縮",
@@ -2936,6 +2978,30 @@
       "noTags": "タグなし",
       "removeTag": "タグを削除",
       "tags": "タグ"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "ファイル",
+        "navigation": "ナビゲーション",
+        "sync": "同期",
+        "tools": "ツール"
+      },
+      "noResults": "検索に一致するコマンドがありません",
+      "placeholder": "コマンドを入力..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "レジストリに利用可能なプラグインがありません",
+        "install": "インストール",
+        "installed": "インストール済み",
+        "installing": "インストール中...",
+        "loading": "プラグインレジストリを読み込み中...",
+        "manageInSettings": "インストール済みプラグインはPluginsタブで管理できます",
+        "search": "プラグインを検索...",
+        "subtitle": "AeroAgent用のコミュニティプラグインを発見してインストール",
+        "title": "プラグインブラウザ"
+      }
     }
   }
 }

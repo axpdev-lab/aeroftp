@@ -14,7 +14,7 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive';
+export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'drime';
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -33,7 +33,7 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
 
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'drime'].includes(type);
 };
 
 // Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
@@ -43,12 +43,12 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure'].includes(type);
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'drime'].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode
@@ -94,6 +94,9 @@ export interface ProviderOptions {
 
   // Filen-specific
   two_factor_code?: string;  // Optional TOTP 2FA code
+
+  // kDrive-specific
+  drive_id?: string;  // Infomaniak kDrive numeric ID
 }
 
 export interface ConnectionParams {

@@ -235,7 +235,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                         <span className="font-medium truncate max-w-[400px]">{archiveName}</span>
                         <span className="text-xs text-gray-400 uppercase">{archiveType}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded">
+                    <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded" title={t('common.close')}>
                         <X size={18} />
                     </button>
                 </div>

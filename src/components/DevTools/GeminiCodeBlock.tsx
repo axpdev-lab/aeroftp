@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Play, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 interface GeminiCodeBlockProps {
     code: string;
@@ -9,6 +10,7 @@ interface GeminiCodeBlockProps {
 }
 
 export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language, output, outcome }) => {
+    const t = useTranslation();
     const [expanded, setExpanded] = useState(true);
     const [copied, setCopied] = useState(false);
 
@@ -29,7 +31,7 @@ export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language
                     <span>Gemini Code Execution</span>
                     <span className="text-gray-600">({language.toLowerCase()})</span>
                 </div>
-                <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300 transition-colors">
+                <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300 transition-colors" title={t('common.copy')}>
                     {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
                 </button>
             </div>

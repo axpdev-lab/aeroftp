@@ -185,7 +185,21 @@
         "useDifferentAccount": "Másik fiók használata",
         "zohoRegion": "Zoho régió",
         "zohoRegionHelp": "Válassza ki a Zoho fiókjának megfelelő régiót (pl. zoho.eu Európa esetén)."
-      }
+      },
+      "activeSessions": "Aktív munkamenetek",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt fiók jelszó",
+      "internxtEncryptionTitle": "Zero-knowledge titkosítás",
+      "internxtEncryptionDesc": "Minden fájl végponttól végpontig titkosítva van AES-256-CTR alkalmazásával. Az Internxt nem férhet hozzá az Ön adataihoz. EU-alapú, GDPR-kompatibilis.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Illessze be az API tokent ide",
+      "kdriveDriveIdPlaceholder": "Az Ön kDrive azonosítója (szám)",
+      "kdriveTokenHelp": "Token létrehozása: manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Csatlakozás",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "Illessze be ide a Drime API tokenjét",
+      "drimeTokenHelp": "Tokent generálhat az app.drime.cloud → Fiókbeállítások → Fejlesztők menüpontban"
     },
     "browser": {
       "remote": "Távoli",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Összes kijelölése",
       "trashDeselectAll": "Kijelölés megszüntetése",
       "trashOriginalLocation": "Eredeti hely",
-      "trashDeletedDate": "Törölve"
+      "trashDeletedDate": "Törölve",
+      "createAeroVault": "AeroVault létrehozása...",
+      "createCryptomator": "Cryptomator tároló létrehozása...",
+      "more": "Több",
+      "openAsCryptomator": "Megnyitás Cryptomator tárolóként",
+      "askAeroAgent": "Kérdezd meg AeroAgent..."
     },
     "transfer": {
       "transferring": "Átvitel...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Egyszinu ikonok, amelyek alkalmazkodnak az aktualis temahoz",
       "iconThemeOutline": "Korvonal",
       "iconThemeOutlineDesc": "Tiszta korvonal ikonok szinkodolt fajltipusokkal",
-      "iconsTab": "Ikonok"
+      "iconsTab": "Ikonok",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Visszaállítás",
         "save": "Mentés",
         "saving": "Mentés...",
-        "noFileSelected": "Nincs fájl kiválasztva szerkesztésre"
+        "noFileSelected": "Nincs fájl kiválasztva szerkesztésre",
+        "loading": "Szerkesztő betöltése..."
       },
       "previewPanel": {
         "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza az \"Előnézet\" lehetőséget"
-      }
+      },
+      "codeEditor": "Kódszerkesztő",
+      "sshTerminal": "SSH terminál"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Köszönjük a támogatást!",
       "footer": "Minden adomány segíti a fejlesztést",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Ingyenes!",
+      "starOnGithub": "Csillag a GitHub-on"
     },
     "activity": {
       "connect_start": "Csatlakozás {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Előre konfigurált szolgáltatók",
       "customConnection": "Egyéni kapcsolat",
-      "custom": "Egyéni"
+      "custom": "Egyéni",
+      "internxtDesc": "Zero-knowledge felhőtárhely",
+      "internxtTooltip": "Internxt - Zero-knowledge titkosított felhő, EU-alapú",
+      "kdriveDesc": "Svájci felhőtárhely",
+      "kdriveTooltip": "kDrive by Infomaniak - Svájcban tárolt felhőtárhely 15GB ingyenes tárhellyel",
+      "drimeDesc": "Biztonságos felhőtárhely",
+      "drimeTooltip": "Drime Cloud - 20GB ingyenes, biztonságos felhőtárhely REST API-val"
     },
     "shortcuts": {
       "title": "Billentyűparancsok",
@@ -2106,6 +2138,10 @@
         "unlimited": "Korlátlan",
         "roleAI": "AI",
         "roleUser": "Felhasználó"
+      },
+      "dropFileToAnalyze": "Húzza ide a fájlt az AeroAgent elemzéséhez",
+      "plugins": {
+        "browsePlugins": "Pluginok böngészése"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Visszafejtés és mentés",
       "decrypted": "Visszafejtve: {name}",
       "encrypted": "Fájl titkosítva a tárolóba",
-      "root": "Gyökér"
+      "root": "Gyökér",
+      "confirmPassword": "Jelszó megerősítése",
+      "createVault": "Cryptomator tár létrehozása",
+      "minPassword": "Legalább 8 karakter",
+      "passwordMismatch": "A jelszavak nem egyeznek",
+      "repeatPassword": "Jelszó ismétlése",
+      "vaultName": "Tár neve"
     },
     "compress": {
       "title": "Fájlok tömörítése",
@@ -2946,6 +2988,30 @@
       "noTags": "Nincs címke",
       "removeTag": "Címke eltávolítása",
       "tags": "Címkék"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fájl",
+        "navigation": "Navigáció",
+        "sync": "Szinkronizálás",
+        "tools": "Eszközök"
+      },
+      "noResults": "Nincs a keresésnek megfelelő parancs",
+      "placeholder": "Írjon be egy parancsot..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Nincsenek elérhető pluginok a nyilvántartásban",
+        "install": "Telepítés",
+        "installed": "Telepítve",
+        "installing": "Telepítés...",
+        "loading": "Plugin nyilvántartás betöltése...",
+        "manageInSettings": "A telepített pluginok kezelése a Plugins fülön",
+        "search": "Pluginok keresése...",
+        "subtitle": "Közösségi pluginok felfedezése és telepítése az AeroAgent számára",
+        "title": "Plugin böngésző"
+      }
     }
   }
 }

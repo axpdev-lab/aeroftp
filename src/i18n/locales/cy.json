@@ -185,7 +185,21 @@
         "useDifferentAccount": "Defnyddio cyfrif gwahanol",
         "zohoRegion": "Rhanbarth Zoho",
         "zohoRegionHelp": "Dewiswch y rhanbarth sy'n cyfateb i'ch cyfrif Zoho (e.e. zoho.eu ar gyfer Ewrop)."
-      }
+      },
+      "activeSessions": "Sesiynau Gweithredol",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Cyfrinair cyfrif Internxt",
+      "internxtEncryptionTitle": "Amgryptio Dim Gwybodaeth",
+      "internxtEncryptionDesc": "Mae pob ffeil wedi'i hamgryptio o ben i ben gydag AES-256-CTR. Ni all Internxt gael mynediad at eich data. Wedi'i leoli yn yr EU, yn cydymffurfio â GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Gludiwch eich API Token yma",
+      "kdriveDriveIdPlaceholder": "Eich kDrive ID (rhifiadol)",
+      "kdriveTokenHelp": "Cynhyrchwch docyn ar manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Cysylltu",
+      "drimeToken": "Token API",
+      "drimeTokenPlaceholder": "Gludwch eich token API Drime yma",
+      "drimeTokenHelp": "Cynhyrchwch docen yn app.drime.cloud → Gosodiadau Cyfrif → Datblygwyr"
     },
     "browser": {
       "remote": "Pell",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Dewis Popeth",
       "trashDeselectAll": "Dad-ddewis Popeth",
       "trashOriginalLocation": "Lleoliad gwreiddiol",
-      "trashDeletedDate": "Wedi'i ddileu"
+      "trashDeletedDate": "Wedi'i ddileu",
+      "createAeroVault": "Creu AeroVault...",
+      "createCryptomator": "Creu Cryptomator Vault...",
+      "more": "Mwy",
+      "openAsCryptomator": "Agor fel Cryptomator Vault",
+      "askAeroAgent": "Gofyn i AeroAgent..."
     },
     "transfer": {
       "transferring": "Yn trosglwyddo...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Eiconau unlliw sy'n addasu i'r thema gyfredol",
       "iconThemeOutline": "Amlinellol",
       "iconThemeOutlineDesc": "Eiconau strôc glân gyda mathau ffeil wedi'u codio â lliw",
-      "iconsTab": "Eiconau"
+      "iconsTab": "Eiconau",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Ailosod",
         "save": "Cadw",
         "saving": "Yn cadw...",
-        "noFileSelected": "Dim ffeil wedi'i dewis i'w golygu"
+        "noFileSelected": "Dim ffeil wedi'i dewis i'w golygu",
+        "loading": "Yn llwytho'r golygydd..."
       },
       "previewPanel": {
         "emptyState": "De-gliciwch ar ffeil a dewiswch \"Rhagolwg\""
-      }
+      },
+      "codeEditor": "Golygydd Cod",
+      "sshTerminal": "Terfynell SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Diolch am eich cefnogaeth!",
       "footer": "Mae pob rhodd yn helpu datblygiad",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Mae'n rhad ac am ddim!",
+      "starOnGithub": "Rhowch seren ar GitHub"
     },
     "activity": {
       "connect_start": "Yn cysylltu a {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Porth",
       "preconfiguredProviders": "Darparwyr Wedi'u Rhagosod",
       "customConnection": "Cysylltiad Trefnus",
-      "custom": "Trefnus"
+      "custom": "Trefnus",
+      "internxtDesc": "Storfa Cwmwl Dim Gwybodaeth",
+      "internxtTooltip": "Internxt - Cwmwl wedi'i amgryptio heb wybodaeth, wedi'i leoli yn yr EU",
+      "kdriveDesc": "Storfa Cwmwl y Swistir",
+      "kdriveTooltip": "kDrive gan Infomaniak - Storfa cwmwl wedi'i lletya yn y Swistir gyda 15GB am ddim",
+      "drimeDesc": "Stôr Cwmwl Diogel",
+      "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API"
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",
@@ -2106,6 +2138,10 @@
         "unlimited": "Diderfyn",
         "roleAI": "AI",
         "roleUser": "Defnyddiwr"
+      },
+      "dropFileToAnalyze": "Gollyngwch ffeil i'w dadansoddi gydag AeroAgent",
+      "plugins": {
+        "browsePlugins": "Pori Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Datgryptio a chadw",
       "decrypted": "{name} wedi'i ddatgryptio",
       "encrypted": "Ffeil wedi'i hamgryptio i'r seler",
-      "root": "Gwraidd"
+      "root": "Gwraidd",
+      "confirmPassword": "Cadarnhau Cyfrinair",
+      "createVault": "Creu Coffor Cryptomator",
+      "minPassword": "O leiaf 8 nod",
+      "passwordMismatch": "Nid yw cyfrineiriau yn cyfateb",
+      "repeatPassword": "Ailadroddwch y cyfrinair",
+      "vaultName": "Enw Coffor"
     },
     "compress": {
       "title": "Cywasgu Ffeiliau",
@@ -2946,6 +2988,49 @@
       "noTags": "Dim tagiau",
       "removeTag": "Tynnu Tag",
       "tags": "Tagiau"
-    }
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Ffeil",
+        "navigation": "Llywio",
+        "sync": "Cysoni",
+        "tools": "Offer"
+      },
+      "noResults": "Nid oes unrhyw orchmynion yn cyfateb i'ch chwiliad",
+      "placeholder": "Teipiwch orchymyn..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Nid oes plugins ar gael yn y gofrestr",
+        "install": "Gosod",
+        "installed": "Wedi'i osod",
+        "installing": "Yn gosod...",
+        "loading": "Yn llwytho cofrestr plugins...",
+        "manageInSettings": "Rheolwch y plugins sydd wedi'u gosod yn y tab Plugins",
+        "search": "Chwilio plugins...",
+        "subtitle": "Darganfyddwch a gosodwch plugins cymunedol ar gyfer AeroAgent",
+        "title": "Plugin Browser"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

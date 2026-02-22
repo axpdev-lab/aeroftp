@@ -185,7 +185,21 @@
         "useDifferentAccount": "Naudoti kitą paskyrą",
         "zohoRegion": "Zoho regionas",
         "zohoRegionHelp": "Pasirinkite regioną, atitinkantį jūsų Zoho paskyrą (pvz., zoho.eu Europai)."
-      }
+      },
+      "activeSessions": "Aktyvios sesijos",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt paskyros slaptažodis",
+      "internxtEncryptionTitle": "Zero-Knowledge šifravimas",
+      "internxtEncryptionDesc": "Visi failai užšifruojami iš galo į galą naudojant AES-256-CTR. Internxt negali pasiekti jūsų duomenų. EU pagrindu, atitinka GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Įklijuokite savo API raktą čia",
+      "kdriveDriveIdPlaceholder": "Jūsų kDrive ID (skaitinis)",
+      "kdriveTokenHelp": "Sukurkite raktą adresu manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Prisijungti",
+      "drimeToken": "API Prieigos Raktas",
+      "drimeTokenPlaceholder": "Įklijuokite savo Drime API raktą čia",
+      "drimeTokenHelp": "Sugeneruokite raktą adresu app.drime.cloud → Paskyros Nustatymai → Kūrėjai"
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Pasirinkti viską",
       "trashDeselectAll": "Atžymėti viską",
       "trashOriginalLocation": "Pradinė vieta",
-      "trashDeletedDate": "Ištrinta"
+      "trashDeletedDate": "Ištrinta",
+      "createAeroVault": "Kurti AeroVault...",
+      "createCryptomator": "Kurti Cryptomator saugyklą...",
+      "more": "Daugiau",
+      "openAsCryptomator": "Atidaryti kaip Cryptomator saugyklą",
+      "askAeroAgent": "Klausti AeroAgent..."
     },
     "transfer": {
       "transferring": "Perduodama...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Vienspalves piktogramos, prisitaikancios prie esamos temos",
       "iconThemeOutline": "Konturas",
       "iconThemeOutlineDesc": "Svarios konturo piktogramos su spalvomis koduotais failu tipais",
-      "iconsTab": "Piktogramos"
+      "iconsTab": "Piktogramos",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Atstatyti",
         "save": "Išsaugoti",
         "saving": "Išsaugoma...",
-        "noFileSelected": "Nepasirinktas failas redagavimui"
+        "noFileSelected": "Nepasirinktas failas redagavimui",
+        "loading": "Redaktoriaus įkėlimas..."
       },
       "previewPanel": {
         "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Peržiūra\""
-      }
+      },
+      "codeEditor": "Kodo redaktorius",
+      "sshTerminal": "SSH terminalas"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Dekojame uz jusu parama!",
       "footer": "Kiekviena auka padeda kurimui",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Tai nemokama!",
+      "starOnGithub": "Įvertinti GitHub"
     },
     "activity": {
       "connect_start": "Jungiamasi prie {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Prievadas",
       "preconfiguredProviders": "Iš anksto sukonfigūroti teikėjai",
       "customConnection": "Pasirinktinis ryšys",
-      "custom": "Pasirinktinis"
+      "custom": "Pasirinktinis",
+      "internxtDesc": "Zero-Knowledge debesinė saugykla",
+      "internxtTooltip": "Internxt - Zero-knowledge užšifruotas debesis, EU pagrindu",
+      "kdriveDesc": "Šveicarijos debesų saugykla",
+      "kdriveTooltip": "kDrive by Infomaniak - Šveicarijoje talpinama debesų saugykla su 15GB nemokamai",
+      "drimeDesc": "Saugi Debesų Saugykla",
+      "drimeTooltip": "Drime Cloud - 20GB nemokama saugi debesų saugykla su REST API"
     },
     "shortcuts": {
       "title": "Klaviatūros trumpiniai",
@@ -2106,6 +2138,10 @@
         "unlimited": "Neribota",
         "roleAI": "AI",
         "roleUser": "Vartotojas"
+      },
+      "dropFileToAnalyze": "Numeskite failą, kad AeroAgent jį išanalizuotų",
+      "plugins": {
+        "browsePlugins": "Naršyti papildinius"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Iššifruoti ir išsaugoti",
       "decrypted": "{name} iššifruota",
       "encrypted": "Failas užšifruotas saugykloje",
-      "root": "Šaknis"
+      "root": "Šaknis",
+      "confirmPassword": "Patvirtinti slaptažodį",
+      "createVault": "Kurti Cryptomator seifą",
+      "minPassword": "Mažiausiai 8 simboliai",
+      "passwordMismatch": "Slaptažodžiai nesutampa",
+      "repeatPassword": "Pakartoti slaptažodį",
+      "vaultName": "Seiso pavadinimas"
     },
     "compress": {
       "title": "Suspausti failus",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Iš anksto sukonfigūroti teikėjai",
     "customConnection": "Pasirinktinis ryšys",
-    "custom": "Pasirinktinis"
+    "custom": "Pasirinktinis",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Failas",
+        "navigation": "Navigacija",
+        "sync": "Sinchronizacija",
+        "tools": "Įrankiai"
+      },
+      "noResults": "Jokia komanda neatitinka jūsų paieškos",
+      "placeholder": "Įveskite komandą..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Registre nėra prieinamų papildinių",
+        "install": "Įdiegti",
+        "installed": "Įdiegta",
+        "installing": "Diegiama...",
+        "loading": "Įkeliamas papildinių registras...",
+        "manageInSettings": "Tvarkykite įdiegtus papildinius Plugins skirtuke",
+        "search": "Ieškoti papildinių...",
+        "subtitle": "Atraskite ir įdiekite bendruomenės papildinius, skirtus AeroAgent",
+        "title": "Papildinių naršyklė"
+      }
+    }
   }
 }

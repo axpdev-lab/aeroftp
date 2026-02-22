@@ -96,6 +96,9 @@ impl ProviderConnectionParams {
             "pcloud" => ProviderType::PCloud,
             "azure" => ProviderType::Azure,
             "filen" => ProviderType::Filen,
+            "internxt" => ProviderType::Internxt,
+            "kdrive" => ProviderType::KDrive,
+            "drime" => ProviderType::DrimeCloud,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -152,8 +155,8 @@ impl ProviderConnectionParams {
             // account_name comes from username field
         }
 
-        // Add Filen-specific options
-        if provider_type == ProviderType::Filen {
+        // Add Filen/Internxt-specific options
+        if provider_type == ProviderType::Filen || provider_type == ProviderType::Internxt {
             if let Some(ref code) = self.two_factor_code {
                 if !code.is_empty() {
                     extra.insert("two_factor_code".to_string(), code.clone());
@@ -167,6 +170,16 @@ impl ProviderConnectionParams {
                 extra.insert("region".to_string(), region.clone());
             } else {
                 extra.insert("region".to_string(), "us".to_string());
+            }
+        }
+
+        // Add kDrive-specific options
+        if provider_type == ProviderType::KDrive {
+            if let Some(ref bucket) = self.bucket {
+                // Reuse bucket field for drive_id
+                extra.insert("drive_id".to_string(), bucket.clone());
+            } else {
+                return Err("kDrive requires a Drive ID".to_string());
             }
         }
 
@@ -189,6 +202,12 @@ impl ProviderConnectionParams {
 
         let host = if provider_type == ProviderType::Mega {
             "mega.nz".to_string()
+        } else if provider_type == ProviderType::Internxt {
+            "gateway.internxt.com".to_string()
+        } else if provider_type == ProviderType::KDrive {
+            "api.infomaniak.com".to_string()
+        } else if provider_type == ProviderType::DrimeCloud {
+            "app.drime.cloud".to_string()
         } else {
             self.server.clone()
         };
@@ -731,6 +750,41 @@ pub async fn provider_rename(
         .map_err(|e| format!("Failed to rename: {}", e))?;
     
     Ok(())
+}
+
+/// Server-side copy (if supported by provider)
+#[tauri::command]
+pub async fn provider_server_copy(
+    state: State<'_, ProviderState>,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    let mut provider_lock = state.provider.lock().await;
+
+    let provider = provider_lock.as_mut()
+        .ok_or("Not connected to any provider")?;
+
+    if !provider.supports_server_copy() {
+        return Err("Server-side copy not supported by this provider".to_string());
+    }
+
+    info!("Server copy: {} -> {}", from, to);
+
+    provider.server_copy(&from, &to).await
+        .map_err(|e| format!("Failed to copy: {}", e))?;
+
+    Ok(())
+}
+
+/// Check if provider supports server-side copy
+#[tauri::command]
+pub async fn provider_supports_server_copy(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_lock = state.provider.lock().await;
+    let provider = provider_lock.as_ref()
+        .ok_or("Not connected to any provider")?;
+    Ok(provider.supports_server_copy())
 }
 
 /// Get file/directory information

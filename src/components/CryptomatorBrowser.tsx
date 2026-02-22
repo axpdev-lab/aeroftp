@@ -172,7 +172,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 <Lock size={12} /> {t('cryptomator.lock')}
                             </button>
                         )}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} /></button>
+                        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                     </div>
                 </div>
 

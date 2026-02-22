@@ -47,7 +47,7 @@ const getServerDisplayInfo = (server: ServerProfile) => {
     const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
 
     if (isOAuth) {
-        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
+        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' };
         return `OAuth — ${server.username || providerNames[protocol] || protocol}`;
     }
 
@@ -892,7 +892,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     const isS3 = protocol === 's3';
                                     const isAzure = protocol === 'azure';
                                     const isSftp = protocol === 'sftp';
-                                    const needsHostPort = !isOAuth && !isMega && !isFilen;
+                                    const isInternxt = protocol === 'internxt';
+                                    const isKDrive = protocol === 'kdrive';
+                                    const isDrime = protocol === 'drime';
+                                    const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isDrime;
                                     const needsPassword = !isOAuth;
                                     const isNewServer = !servers.some(s => s.id === editingServer.id);
 
@@ -910,6 +913,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         { value: 'onedrive', label: t('settings.protocolOnedrive'), port: 443 },
                                         { value: 'box', label: t('settings.protocolBox'), port: 443 },
                                         { value: 'pcloud', label: t('settings.protocolPcloud'), port: 443 },
+                                        { value: 'fourshared', label: t('settings.protocolFourshared'), port: 443 },
+                                        { value: 'zohoworkdrive', label: t('settings.protocolZohoworkdrive'), port: 443 },
+                                        { value: 'internxt', label: 'Internxt Drive', port: 443 },
+                                        { value: 'kdrive', label: 'kDrive', port: 443 },
+                                        { value: 'drime', label: 'Drime Cloud', port: 443 },
                                         { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                     ];
 
@@ -1030,6 +1038,110 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </div>
                                                     )}
 
+                                                    {/* Internxt - email + password + optional 2FA */}
+                                                    {isInternxt && (
+                                                        <>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.emailAccount')}</label>
+                                                                <input
+                                                                    type="email"
+                                                                    placeholder={t('connection.internxtEmailPlaceholder')}
+                                                                    value={editingServer.username}
+                                                                    onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'gateway.internxt.com', port: 443 })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type={showEditPassword ? 'text' : 'password'}
+                                                                        placeholder={t('connection.internxtPasswordPlaceholder')}
+                                                                        value={editingServer.password || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
+                                                                        className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                    <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.twoFactorCode')}</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={t('connection.twoFactorOptional')}
+                                                                    value={editingServer.options?.two_factor_code || ''}
+                                                                    onChange={e => setEditingServer({
+                                                                        ...editingServer,
+                                                                        options: { ...editingServer.options, two_factor_code: e.target.value || undefined }
+                                                                    })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    maxLength={6}
+                                                                    inputMode="numeric"
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* kDrive - API Token + Drive ID */}
+                                                    {isKDrive && (
+                                                        <>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveToken')}</label>
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type={showEditPassword ? 'text' : 'password'}
+                                                                        placeholder={t('connection.kdriveTokenPlaceholder')}
+                                                                        value={editingServer.password || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'api.infomaniak.com', port: 443, username: 'api-token' })}
+                                                                        className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                    <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveDriveId')}</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={t('connection.kdriveDriveIdPlaceholder')}
+                                                                    value={editingServer.options?.drive_id || editingServer.options?.bucket || ''}
+                                                                    onChange={e => setEditingServer({
+                                                                        ...editingServer,
+                                                                        options: { ...editingServer.options, bucket: e.target.value, drive_id: e.target.value }
+                                                                    })}
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    inputMode="numeric"
+                                                                />
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">{t('connection.kdriveTokenHelp')}</p>
+                                                        </>
+                                                    )}
+
+                                                    {/* Drime Cloud - API Token only */}
+                                                    {isDrime && (
+                                                        <>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.drimeToken')}</label>
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type={showEditPassword ? 'text' : 'password'}
+                                                                        placeholder={t('connection.drimeTokenPlaceholder')}
+                                                                        value={editingServer.password || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'app.drime.cloud', port: 443, username: 'api-token' })}
+                                                                        className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                    <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">{t('connection.drimeTokenHelp')}</p>
+                                                        </>
+                                                    )}
+
                                                     {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3/Azure */}
                                                     {needsHostPort && (
                                                         <div className="flex gap-2">
@@ -1075,7 +1187,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     )}
 
                                                     {/* Password - for non-OAuth */}
-                                                    {needsPassword && !isMega && (
+                                                    {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
                                                                 {isS3 ? t('settings.secretAccessKey') : t('settings.password')}

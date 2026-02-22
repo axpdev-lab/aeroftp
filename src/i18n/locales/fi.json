@@ -185,7 +185,21 @@
         "useDifferentAccount": "Käytä toista tiliä",
         "zohoRegion": "Zoho-alue",
         "zohoRegionHelp": "Valitse Zoho-tilisi mukainen alue (esim. zoho.eu Euroopalle)."
-      }
+      },
+      "activeSessions": "Aktiiviset istunnot",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt-tilin salasana",
+      "internxtEncryptionTitle": "Zero-Knowledge-salaus",
+      "internxtEncryptionDesc": "Kaikki tiedostot salataan päästä päähän AES-256-CTR-salauksella. Internxt ei voi käyttää tietojasi. EU-pohjainen, GDPR-yhteensopiva.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Liitä API Token tähän",
+      "kdriveDriveIdPlaceholder": "kDrive ID (numeerinen)",
+      "kdriveTokenHelp": "Luo token osoitteessa manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Yhdistä",
+      "drimeToken": "API-avain",
+      "drimeTokenPlaceholder": "Liitä Drime API-avaimesi tähän",
+      "drimeTokenHelp": "Luo avain osoitteessa app.drime.cloud → Tilin asetukset → Kehittäjät"
     },
     "browser": {
       "remote": "Etä",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Valitse kaikki",
       "trashDeselectAll": "Poista valinnat",
       "trashOriginalLocation": "Alkuperäinen sijainti",
-      "trashDeletedDate": "Poistettu"
+      "trashDeletedDate": "Poistettu",
+      "createAeroVault": "Luo AeroVault...",
+      "createCryptomator": "Luo Cryptomator-holvi...",
+      "more": "Lisää",
+      "openAsCryptomator": "Avaa Cryptomator-holvina",
+      "askAeroAgent": "Kysy AeroAgent-ilta..."
     },
     "transfer": {
       "transferring": "Siirretään...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Yksiväriset kuvakkeet, jotka mukautuvat nykyiseen teemaan",
       "iconThemeOutline": "Ääriviiva",
       "iconThemeOutlineDesc": "Selkeät ääriviivakuvakkeet väriköödatuilla tiedostotyypeillä",
-      "iconsTab": "Kuvakkeet"
+      "iconsTab": "Kuvakkeet",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Palauta",
         "save": "Tallenna",
         "saving": "Tallennetaan...",
-        "noFileSelected": "Tiedostoa ei valittu muokattavaksi"
+        "noFileSelected": "Tiedostoa ei valittu muokattavaksi",
+        "loading": "Ladataan editoria..."
       },
       "previewPanel": {
         "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Esikatselu\""
-      }
+      },
+      "codeEditor": "Koodieditori",
+      "sshTerminal": "SSH-pääte"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Kiitos tuestasi!",
       "footer": "Jokainen lahjoitus auttaa kehitystä",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Se on ilmaista!",
+      "starOnGithub": "Anna tähti GitHub-issa"
     },
     "activity": {
       "connect_start": "Yhdistetään palvelimeen {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Portti",
       "preconfiguredProviders": "Ennalta Määritellyt Palveluntarjoajat",
       "customConnection": "Mukautettu Yhteys",
-      "custom": "Mukautettu"
+      "custom": "Mukautettu",
+      "internxtDesc": "Zero-Knowledge-pilvitallennus",
+      "internxtTooltip": "Internxt - Zero-knowledge-salattu pilvi, EU-pohjainen",
+      "kdriveDesc": "Sveitsiläinen pilvitallennustila",
+      "kdriveTooltip": "kDrive Infomaniakilta - Sveitsissä isännöity pilvitallennustila 15GB ilmaiseksi",
+      "drimeDesc": "Turvallinen pilvitallennus",
+      "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla"
     },
     "shortcuts": {
       "title": "Pikanäppäimet",
@@ -2106,6 +2138,10 @@
         "unlimited": "Rajoittamaton",
         "roleAI": "AI",
         "roleUser": "Käyttäjä"
+      },
+      "dropFileToAnalyze": "Pudota tiedosto analysoitavaksi AeroAgent-illa",
+      "plugins": {
+        "browsePlugins": "Selaa Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Pura salaus ja tallenna",
       "decrypted": "{name} purettu salauksesta",
       "encrypted": "Tiedosto salattu holviin",
-      "root": "Juuri"
+      "root": "Juuri",
+      "confirmPassword": "Vahvista salasana",
+      "createVault": "Luo Cryptomator-holvi",
+      "minPassword": "Vähintään 8 merkkiä",
+      "passwordMismatch": "Salasanat eivät vastaa toisiaan",
+      "repeatPassword": "Toista salasana",
+      "vaultName": "Holvin nimi"
     },
     "compress": {
       "title": "Pakkaa tiedostot",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Ennalta Määritellyt Palveluntarjoajat",
     "customConnection": "Mukautettu Yhteys",
-    "custom": "Mukautettu"
+    "custom": "Mukautettu",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Tiedosto",
+        "navigation": "Navigointi",
+        "sync": "Synkronointi",
+        "tools": "Työkalut"
+      },
+      "noResults": "Yksikään komento ei vastaa hakuasi",
+      "placeholder": "Kirjoita komento..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Rekisterissä ei ole saatavilla olevia plugineja",
+        "install": "Asenna",
+        "installed": "Asennettu",
+        "installing": "Asennetaan...",
+        "loading": "Ladataan plugin-rekisteriä...",
+        "manageInSettings": "Hallitse asennettuja plugineja Plugins-välilehdellä",
+        "search": "Hae plugineja...",
+        "subtitle": "Löydä ja asenna yhteisön plugineja AeroAgent-ille",
+        "title": "Plugin Browser"
+      }
+    }
   }
 }

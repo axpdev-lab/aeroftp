@@ -185,7 +185,21 @@
         "useDifferentAccount": "Usar outra conta",
         "zohoRegion": "Rexion de Zoho",
         "zohoRegionHelp": "Seleccione a rexion que coincida coa sua conta de Zoho (p. ex. zoho.eu para Europa)."
-      }
+      },
+      "activeSessions": "Sesións ativas",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Contrasinal da conta Internxt",
+      "internxtEncryptionTitle": "Cifrado de coñecemento cero",
+      "internxtEncryptionDesc": "Todos os ficheiros son cifrados de extremo a extremo con AES-256-CTR. Internxt non pode acceder aos seus datos. Con sede na EU, compatible con GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Pegue o seu API Token aquí",
+      "kdriveDriveIdPlaceholder": "O seu kDrive ID (numérico)",
+      "kdriveTokenHelp": "Xere un token en manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Conectar",
+      "drimeToken": "Token de API",
+      "drimeTokenPlaceholder": "Pegue aquí o seu token de API de Drime",
+      "drimeTokenHelp": "Xere un token en app.drime.cloud → Configuración da conta → Desenvolvedores"
     },
     "browser": {
       "remote": "Remoto",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Seleccionar todo",
       "trashDeselectAll": "Deseleccionar todo",
       "trashOriginalLocation": "Localización orixinal",
-      "trashDeletedDate": "Eliminado"
+      "trashDeletedDate": "Eliminado",
+      "createAeroVault": "Crear AeroVault...",
+      "createCryptomator": "Crear Cryptomator Vault...",
+      "more": "Máis",
+      "openAsCryptomator": "Abrir como Cryptomator Vault",
+      "askAeroAgent": "Preguntar a AeroAgent..."
     },
     "transfer": {
       "transferring": "Transferindo...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Iconas monocromáticas que se adaptan ao tema actual",
       "iconThemeOutline": "Contorno",
       "iconThemeOutlineDesc": "Iconas de trazo limpo con tipos de ficheiro codificados por cor",
-      "iconsTab": "Iconas"
+      "iconsTab": "Iconas",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Restablecer",
         "save": "Gardar",
         "saving": "Gardando...",
-        "noFileSelected": "Ningún ficheiro seleccionado para editar"
+        "noFileSelected": "Ningún ficheiro seleccionado para editar",
+        "loading": "Cargando editor..."
       },
       "previewPanel": {
         "emptyState": "Preme co botón dereito nun ficheiro e escolle \"Vista previa\""
-      }
+      },
+      "codeEditor": "Editor de código",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Grazas polo teu apoio!",
       "footer": "Cada doazón axuda ao desenvolvemento",
       "githubSponsors": "Patrocinadores GitHub",
-      "buyMeACoffee": "Invítame a un café"
+      "buyMeACoffee": "Invítame a un café",
+      "freeSupport": "É de balde!",
+      "starOnGithub": "Dar estrela en GitHub"
     },
     "activity": {
       "connect_start": "Conectando a {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Porto",
       "preconfiguredProviders": "Provedores Preconfigurados",
       "customConnection": "Conexión Personalizada",
-      "custom": "Personalizado"
+      "custom": "Personalizado",
+      "internxtDesc": "Almacenamento na nube con coñecemento cero",
+      "internxtTooltip": "Internxt - Nube cifrada con coñecemento cero, con sede na EU",
+      "kdriveDesc": "Almacenamento na nube suízo",
+      "kdriveTooltip": "kDrive de Infomaniak - Almacenamento na nube aloxado en Suíza con 15GB de balde",
+      "drimeDesc": "Almacenamento seguro na nube",
+      "drimeTooltip": "Drime Cloud - 20GB de almacenamento seguro na nube gratuíto con REST API"
     },
     "shortcuts": {
       "title": "Atallos de teclado",
@@ -2106,6 +2138,10 @@
         "unlimited": "Ilimitado",
         "roleAI": "AI",
         "roleUser": "Usuario"
+      },
+      "dropFileToAnalyze": "Solta o ficheiro para analizar con AeroAgent",
+      "plugins": {
+        "browsePlugins": "Explorar Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Descifrar e gardar",
       "decrypted": "{name} descifrado",
       "encrypted": "Ficheiro cifrado no cofre",
-      "root": "Raíz"
+      "root": "Raíz",
+      "confirmPassword": "Confirmar contrasinal",
+      "createVault": "Crear bóveda Cryptomator",
+      "minPassword": "Mínimo 8 caracteres",
+      "passwordMismatch": "Os contrasinais non coinciden",
+      "repeatPassword": "Repetir contrasinal",
+      "vaultName": "Nome da bóveda"
     },
     "compress": {
       "title": "Comprimir ficheiros",
@@ -2949,6 +2991,49 @@
     },
     "preconfiguredProviders": "Provedores Preconfigurados",
     "customConnection": "Conexión Personalizada",
-    "custom": "Personalizado"
+    "custom": "Personalizado",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Ficheiro",
+        "navigation": "Navegación",
+        "sync": "Sincronización",
+        "tools": "Ferramentas"
+      },
+      "noResults": "Ningún comando coincide coa túa busca",
+      "placeholder": "Escribe un comando..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Non hai plugins dispoñibles no rexistro",
+        "install": "Instalar",
+        "installed": "Instalado",
+        "installing": "Instalando...",
+        "loading": "Cargando rexistro de plugins...",
+        "manageInSettings": "Xestiona os plugins instalados na pestana Plugins",
+        "search": "Buscar plugins...",
+        "subtitle": "Descobre e instala plugins da comunidade para AeroAgent",
+        "title": "Plugin Browser"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

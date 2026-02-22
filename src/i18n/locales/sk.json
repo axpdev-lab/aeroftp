@@ -185,7 +185,21 @@
         "useDifferentAccount": "Pouzit iny ucet",
         "zohoRegion": "Region Zoho",
         "zohoRegionHelp": "Vyberte region zodpovedajuci vasmu uctu Zoho (napr. zoho.eu pre Europu)."
-      }
+      },
+      "activeSessions": "Aktívne relácie",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Heslo účtu Internxt",
+      "internxtEncryptionTitle": "Šifrovanie s nulovými znalosťami",
+      "internxtEncryptionDesc": "Všetky súbory sú šifrované end-to-end pomocou AES-256-CTR. Internxt nemá prístup k vašim údajom. So sídlom v EU, v súlade s GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Vložte sem svoj API Token",
+      "kdriveDriveIdPlaceholder": "Vaše ID kDrive (číselné)",
+      "kdriveTokenHelp": "Vygenerujte token na manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Pripojiť",
+      "drimeToken": "API token",
+      "drimeTokenPlaceholder": "Sem vložte váš API token Drime",
+      "drimeTokenHelp": "Vygenerujte token na app.drime.cloud → Nastavenia účtu → Vývojári"
     },
     "browser": {
       "remote": "Vzdialený",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Vybrať všetko",
       "trashDeselectAll": "Zrušiť výber",
       "trashOriginalLocation": "Pôvodné umiestnenie",
-      "trashDeletedDate": "Vymazané"
+      "trashDeletedDate": "Vymazané",
+      "createAeroVault": "Vytvoriť AeroVault...",
+      "createCryptomator": "Vytvoriť Cryptomator Vault...",
+      "more": "Viac",
+      "openAsCryptomator": "Otvoriť ako Cryptomator Vault",
+      "askAeroAgent": "Opýtať sa AeroAgent..."
     },
     "transfer": {
       "transferring": "Prenáša sa...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Jednofarebne ikony prisposobene aktualnej teme",
       "iconThemeOutline": "Obrysove",
       "iconThemeOutlineDesc": "Ciste obrysove ikony s farebne rozlisenymi typmi suborov",
-      "iconsTab": "Ikony"
+      "iconsTab": "Ikony",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Resetovať",
         "save": "Uložiť",
         "saving": "Ukladanie...",
-        "noFileSelected": "Nebol vybraný súbor na úpravu"
+        "noFileSelected": "Nebol vybraný súbor na úpravu",
+        "loading": "Načítavanie editora..."
       },
       "previewPanel": {
         "emptyState": "Kliknite pravým tlačidlom na súbor a zvoľte \"Náhľad\""
-      }
+      },
+      "codeEditor": "Editor kódu",
+      "sshTerminal": "SSH terminál"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Ďakujeme za vašu podporu!",
       "footer": "Každý príspevok pomáha vývoju",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Je to zadarmo!",
+      "starOnGithub": "Ohodnotiť hviezdou na GitHub"
     },
     "activity": {
       "connect_start": "Otváram pripojenie k {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Vopred nakonfigurovaní poskytovatelia",
       "customConnection": "Vlastné pripojenie",
-      "custom": "Vlastný"
+      "custom": "Vlastný",
+      "internxtDesc": "Cloudové úložisko s nulovými znalosťami",
+      "internxtTooltip": "Internxt - Šifrovaný cloud s nulovými znalosťami, so sídlom v EU",
+      "kdriveDesc": "Švajčiarske cloudové úložisko",
+      "kdriveTooltip": "kDrive od Infomaniak - švajčiarske cloudové úložisko s 15GB zadarmo",
+      "drimeDesc": "Bezpečné cloudové úložisko",
+      "drimeTooltip": "Drime Cloud - 20GB bezpečného cloudového úložiska s REST API"
     },
     "shortcuts": {
       "title": "Klávesové skratky",
@@ -2106,6 +2138,10 @@
         "unlimited": "Neobmedzene",
         "roleAI": "AI",
         "roleUser": "Pouzivatel"
+      },
+      "dropFileToAnalyze": "Presuňte súbor na analýzu pomocou AeroAgent",
+      "plugins": {
+        "browsePlugins": "Prechádzať pluginy"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Desifrovit a ulozit",
       "decrypted": "Desifrovane {name}",
       "encrypted": "Subor zasifrovany v trezore",
-      "root": "Koren"
+      "root": "Koren",
+      "confirmPassword": "Potvrďte heslo",
+      "createVault": "Vytvoriť trezor Cryptomator",
+      "minPassword": "Minimálne 8 znakov",
+      "passwordMismatch": "Heslá sa nezhodujú",
+      "repeatPassword": "Zopakujte heslo",
+      "vaultName": "Názov trezoru"
     },
     "compress": {
       "title": "Komprimovat subory",
@@ -2946,6 +2988,30 @@
       "noTags": "Žiadne štítky",
       "removeTag": "Odstrániť štítok",
       "tags": "Štítky"
+    },
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Súbor",
+        "navigation": "Navigácia",
+        "sync": "Synchronizácia",
+        "tools": "Nástroje"
+      },
+      "noResults": "Žiadne príkazy nezodpovedajú vášmu vyhľadávaniu",
+      "placeholder": "Zadajte príkaz..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "V registri nie sú dostupné žiadne pluginy",
+        "install": "Inštalovať",
+        "installed": "Nainštalované",
+        "installing": "Inštalácia...",
+        "loading": "Načítava sa register pluginov...",
+        "manageInSettings": "Spravujte nainštalované pluginy na karte Plugins",
+        "search": "Hľadať pluginy...",
+        "subtitle": "Objavte a nainštalujte komunitné pluginy pre AeroAgent",
+        "title": "Prehliadač pluginov"
+      }
     }
   }
 }

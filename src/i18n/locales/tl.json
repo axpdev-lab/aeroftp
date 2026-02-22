@@ -185,7 +185,21 @@
         "useDifferentAccount": "Gumamit ng Ibang Account",
         "zohoRegion": "Rehiyon ng Zoho",
         "zohoRegionHelp": "Piliin ang rehiyon na tumutugma sa iyong Zoho account (hal. zoho.eu para sa Europa)."
-      }
+      },
+      "activeSessions": "Aktibong mga Sesyon",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Password ng Internxt account",
+      "internxtEncryptionTitle": "Zero-Knowledge na Pag-encrypt",
+      "internxtEncryptionDesc": "Lahat ng mga file ay naka-encrypt mula dulo hanggang dulo gamit ang AES-256-CTR. Hindi maa-access ng Internxt ang iyong data. Nakabase sa EU, sumusunod sa GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Idikit ang iyong API Token dito",
+      "kdriveDriveIdPlaceholder": "Ang iyong kDrive ID (numero)",
+      "kdriveTokenHelp": "Bumuo ng token sa manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Kumonekta",
+      "drimeToken": "API Token",
+      "drimeTokenPlaceholder": "I-paste ang iyong Drime API token dito",
+      "drimeTokenHelp": "Gumawa ng token sa app.drime.cloud → Mga Setting ng Account → Mga Developer"
     },
     "browser": {
       "remote": "Remote",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Piliin Lahat",
       "trashDeselectAll": "Alisin ang Lahat ng Pinili",
       "trashOriginalLocation": "Orihinal na lokasyon",
-      "trashDeletedDate": "Natanggal"
+      "trashDeletedDate": "Natanggal",
+      "createAeroVault": "Lumikha ng AeroVault...",
+      "createCryptomator": "Lumikha ng Cryptomator Vault...",
+      "more": "Higit pa",
+      "openAsCryptomator": "Buksan bilang Cryptomator Vault",
+      "askAeroAgent": "Itanong sa AeroAgent..."
     },
     "transfer": {
       "transferring": "Naglilipat...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Monochrome na mga icon na umaangkop sa kasalukuyang tema",
       "iconThemeOutline": "Balangkas",
       "iconThemeOutlineDesc": "Malinis na balangkas ng mga icon na may kulay ayon sa uri ng file",
-      "iconsTab": "Mga Icon"
+      "iconsTab": "Mga Icon",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "I-reset",
         "save": "I-save",
         "saving": "Nagse-save...",
-        "noFileSelected": "Walang napiling file para i-edit"
+        "noFileSelected": "Walang napiling file para i-edit",
+        "loading": "Naglo-load ng editor..."
       },
       "previewPanel": {
         "emptyState": "Mag-right-click sa isang file at piliin ang \"Preview\""
-      }
+      },
+      "codeEditor": "Editor ng Code",
+      "sshTerminal": "SSH Terminal"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Salamat sa iyong suporta!",
       "footer": "Bawat donasyon ay tumutulong sa development",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Libre ito!",
+      "starOnGithub": "Lagyan ng bituin sa GitHub"
     },
     "activity": {
       "connect_start": "Kumokonekta sa {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Paunang-inayos na Mga Provider",
       "customConnection": "Pasadyang Koneksyon",
-      "custom": "Pasadya"
+      "custom": "Pasadya",
+      "internxtDesc": "Zero-Knowledge Cloud Storage",
+      "internxtTooltip": "Internxt - Zero-knowledge na naka-encrypt na cloud, nakabase sa EU",
+      "kdriveDesc": "Cloud storage mula sa Switzerland",
+      "kdriveTooltip": "kDrive ng Infomaniak - cloud storage mula sa Switzerland na may libreng 15GB",
+      "drimeDesc": "Ligtas na Cloud Storage",
+      "drimeTooltip": "Drime Cloud - 20GB libreng ligtas na cloud storage na may REST API"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -2106,6 +2138,10 @@
         "unlimited": "Walang limitasyon",
         "roleAI": "AI",
         "roleUser": "Gumagamit"
+      },
+      "dropFileToAnalyze": "I-drop ang file para suriin gamit ang AeroAgent",
+      "plugins": {
+        "browsePlugins": "Mag-browse ng mga plugin"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "I-decrypt at I-save",
       "decrypted": "Na-decrypt ang {name}",
       "encrypted": "Na-encrypt ang file sa vault",
-      "root": "Root"
+      "root": "Root",
+      "confirmPassword": "Kumpirmahin ang password",
+      "createVault": "Lumikha ng Cryptomator Vault",
+      "minPassword": "Minimum 8 characters",
+      "passwordMismatch": "Ang mga password ay hindi tumutugma",
+      "repeatPassword": "Ulitin ang password",
+      "vaultName": "Pangalan ng Vault"
     },
     "compress": {
       "title": "I-compress ang mga File",
@@ -2949,6 +2991,49 @@
     },
     "preconfiguredProviders": "Paunang-inayos na Mga Provider",
     "customConnection": "Pasadyang Koneksyon",
-    "custom": "Pasadya"
+    "custom": "Pasadya",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "File",
+        "navigation": "Nabigasyon",
+        "sync": "Sync",
+        "tools": "Mga Kasangkapan"
+      },
+      "noResults": "Walang mga utos na tumutugma sa iyong paghahanap",
+      "placeholder": "Mag-type ng utos..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Walang mga plugin na available sa registry",
+        "install": "I-install",
+        "installed": "Naka-install",
+        "installing": "Ini-install...",
+        "loading": "Nilo-load ang plugin registry...",
+        "manageInSettings": "Pamahalaan ang mga naka-install na plugin sa tab na Plugins",
+        "search": "Maghanap ng mga plugin...",
+        "subtitle": "Tumuklas at mag-install ng mga community plugin para sa AeroAgent",
+        "title": "Plugin Browser"
+      }
+    },
+    "commandPalette.category.ai": {},
+    "commandPalette.category.file": {},
+    "commandPalette.category.navigation": {},
+    "commandPalette.category.sync": {},
+    "commandPalette.category.tools": {},
+    "commandPalette.noResults": {},
+    "commandPalette.placeholder": {},
+    "contextMenu.askAeroAgent": {},
+    "ai.dropFileToAnalyze": {},
+    "ai.plugins.browsePlugins": {},
+    "plugins.browser.empty": {},
+    "plugins.browser.install": {},
+    "plugins.browser.installed": {},
+    "plugins.browser.installing": {},
+    "plugins.browser.loading": {},
+    "plugins.browser.manageInSettings": {},
+    "plugins.browser.search": {},
+    "plugins.browser.subtitle": {},
+    "plugins.browser.title": {}
   }
 }

@@ -5,7 +5,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { X, Heart, Copy, Check, ExternalLink, CreditCard } from 'lucide-react';
+import { X, Heart, Copy, Check, ExternalLink, CreditCard, Star } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
@@ -167,7 +167,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
 
                 {/* Content */}
                 <div className="overflow-y-auto flex-1 p-5 space-y-5">
-                    {/* Fiat Section - Clean transparent buttons */}
+                    {/* Support Section */}
                     <div>
                         <div className="flex items-center gap-2 mb-3">
                             <CreditCard size={16} className="text-gray-500 dark:text-gray-400" />
@@ -175,7 +175,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                                 {t('support.fiatSection') || 'Donate with Card'}
                             </h2>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
                             {Object.entries(PAYMENT_LINKS).map(([key, link]) => (
                                 <button
                                     key={key}
@@ -189,6 +189,17 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                                     <ExternalLink size={10} className="text-gray-400 dark:text-gray-500" />
                                 </button>
                             ))}
+                            {/* Star on GitHub - free support */}
+                            <button
+                                onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:border-amber-300 dark:hover:border-amber-600 transition-all hover:scale-105"
+                            >
+                                <Star size={24} className="text-amber-500" />
+                                <span className="text-xs font-medium text-center leading-tight text-amber-700 dark:text-amber-400">
+                                    {t('support.starOnGithub')}
+                                </span>
+                                <span className="text-[10px] text-amber-500/70 dark:text-amber-500/50">{t('support.freeSupport')}</span>
+                            </button>
                         </div>
                     </div>
 

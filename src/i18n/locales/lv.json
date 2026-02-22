@@ -185,7 +185,21 @@
         "useDifferentAccount": "Izmantot citu kontu",
         "zohoRegion": "Zoho reģions",
         "zohoRegionHelp": "Atlasiet reģionu, kas atbilst jūsu Zoho kontam (piem., zoho.eu Eiropai)."
-      }
+      },
+      "activeSessions": "Aktīvās sesijas",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt konta parole",
+      "internxtEncryptionTitle": "Zero-Knowledge šifrēšana",
+      "internxtEncryptionDesc": "Visi faili tiek pilnībā šifrēti ar AES-256-CTR. Internxt nevar piekļūt jūsu datiem. EU bāzēts, GDPR saderīgs.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Ielīmējiet savu API marķieri šeit",
+      "kdriveDriveIdPlaceholder": "Jūsu kDrive ID (ciparu)",
+      "kdriveTokenHelp": "Ģenerējiet marķieri vietnē manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Savienot",
+      "drimeToken": "API Atslēga",
+      "drimeTokenPlaceholder": "Ielīmējiet šeit savu Drime API atslēgu",
+      "drimeTokenHelp": "Ģenerējiet atslēgu vietnē app.drime.cloud → Konta Iestatījumi → Izstrādātāji"
     },
     "browser": {
       "remote": "Attālināts",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Atlasīt visu",
       "trashDeselectAll": "Noņemt visu atlasi",
       "trashOriginalLocation": "Oriģinālā atrašanās vieta",
-      "trashDeletedDate": "Dzēsts"
+      "trashDeletedDate": "Dzēsts",
+      "createAeroVault": "Izveidot AeroVault...",
+      "createCryptomator": "Izveidot Cryptomator glabātuvi...",
+      "more": "Vairāk",
+      "openAsCryptomator": "Atvērt kā Cryptomator glabātuvi",
+      "askAeroAgent": "Jautāt AeroAgent..."
     },
     "transfer": {
       "transferring": "Pārsūta...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Vienkrasas ikonas, kas pielagojas pasreizejai temai",
       "iconThemeOutline": "Konturas",
       "iconThemeOutlineDesc": "Tiras konturu ikonas ar krasas kodetiem failu veidiem",
-      "iconsTab": "Ikonas"
+      "iconsTab": "Ikonas",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Atiestatīt",
         "save": "Saglabāt",
         "saving": "Saglabā...",
-        "noFileSelected": "Nav izvēlēts fails rediģēšanai"
+        "noFileSelected": "Nav izvēlēts fails rediģēšanai",
+        "loading": "Tiek ielādēts redaktors..."
       },
       "previewPanel": {
         "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Priekšskatījums\""
-      }
+      },
+      "codeEditor": "Koda redaktors",
+      "sshTerminal": "SSH terminālis"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Paldies par jūsu atbalstu!",
       "footer": "Katrs ziedojums palīdz izstrādei",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Tas ir bez maksas!",
+      "starOnGithub": "Ielikt zvaigzni GitHub"
     },
     "activity": {
       "connect_start": "Savienojas ar {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Ports",
       "preconfiguredProviders": "Iepriekš konfigurēti pakalpojumu sniedzēji",
       "customConnection": "Pielāgots savienojums",
-      "custom": "Pielāgots"
+      "custom": "Pielāgots",
+      "internxtDesc": "Zero-Knowledge mākoņkrātuve",
+      "internxtTooltip": "Internxt - Zero-knowledge šifrēts mākonis, EU bāzēts",
+      "kdriveDesc": "Šveices mākoņkrātuve",
+      "kdriveTooltip": "kDrive by Infomaniak - Šveicē izvietota mākoņkrātuve ar 15GB bez maksas",
+      "drimeDesc": "Droša Mākoņkrātuve",
+      "drimeTooltip": "Drime Cloud - 20GB bezmaksas droša mākoņkrātuve ar REST API"
     },
     "shortcuts": {
       "title": "Tastatūras saīsnes",
@@ -2106,6 +2138,10 @@
         "unlimited": "Neierobežots",
         "roleAI": "AI",
         "roleUser": "Lietotājs"
+      },
+      "dropFileToAnalyze": "Nometiet failu, lai analizētu ar AeroAgent",
+      "plugins": {
+        "browsePlugins": "Pārlūkot spraudņus"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Atšifrēt un saglabāt",
       "decrypted": "Atšifrēts {name}",
       "encrypted": "Fails šifrēts glabātavā",
-      "root": "Sakne"
+      "root": "Sakne",
+      "confirmPassword": "Apstipriniet paroli",
+      "createVault": "Izveidot Cryptomator sefu",
+      "minPassword": "Minimāli 8 rakstzīmes",
+      "passwordMismatch": "Paroles neatbilst",
+      "repeatPassword": "Atkārtojiet paroli",
+      "vaultName": "Sefa nosaukums"
     },
     "compress": {
       "title": "Saspiest failus",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Iepriekš konfigurēti pakalpojumu sniedzēji",
     "customConnection": "Pielāgots savienojums",
-    "custom": "Pielāgots"
+    "custom": "Pielāgots",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fails",
+        "navigation": "Navigācija",
+        "sync": "Sinhronizācija",
+        "tools": "Rīki"
+      },
+      "noResults": "Neviena komanda neatbilst jūsu meklējumam",
+      "placeholder": "Ievadiet komandu..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Reģistrā nav pieejamu spraudņu",
+        "install": "Instalēt",
+        "installed": "Instalēts",
+        "installing": "Instalē...",
+        "loading": "Ielādē spraudņu reģistru...",
+        "manageInSettings": "Pārvaldiet instalētos spraudņus Plugins cilnē",
+        "search": "Meklēt spraudņus...",
+        "subtitle": "Atklājiet un instalējiet kopienas spraudņus priekš AeroAgent",
+        "title": "Spraudņu pārlūks"
+      }
+    }
   }
 }

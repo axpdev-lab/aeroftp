@@ -31,7 +31,7 @@ interface DragData {
 interface UseDragAndDropParams {
     notify: {
         success: (title: string, message?: string) => string | null;
-        error: (title: string, message?: string) => string;
+        error: (title: string, message?: string) => string | null;
     };
     humanLog: {
         logStart: (operation: HumanizedOperationType, params?: HumanizedLogParams) => string;

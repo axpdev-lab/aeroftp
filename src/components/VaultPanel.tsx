@@ -15,6 +15,7 @@ interface VaultPanelProps {
     isConnected?: boolean;
     initialPath?: string;
     initialFiles?: string[];
+    initialMode?: VaultMode;
 }
 
 type VaultMode = 'home' | 'create' | 'open' | 'browse';
@@ -77,9 +78,9 @@ const securityLevels = {
     }
 };
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<VaultMode>(initialPath ? 'open' : initialFiles?.length ? 'create' : 'home');
+    const [mode, setMode] = useState<VaultMode>(initialMode || (initialPath ? 'open' : initialFiles?.length ? 'create' : 'home'));
     const [vaultPath, setVaultPath] = useState(initialPath || '');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -555,7 +556,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="AeroVault">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[680px] max-h-[85vh] flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-lg max-h-[85vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
@@ -571,7 +572,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             </span>
                         )}
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><X size={18} /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                 </div>
 
                 {/* Error / Success */}
@@ -607,10 +608,10 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                         </div>
 
                         <div className="flex gap-3 mt-1">
-                            <button onClick={() => { resetState(); setMode('create'); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium">
+                            <button onClick={() => { resetState(); setMode('create'); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium">
                                 <FolderPlus size={16} /> {t('vault.createNew')}
                             </button>
-                            <button onClick={handleOpen} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium">
+                            <button onClick={handleOpen} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">
                                 <Lock size={16} /> {t('vault.openExisting')}
                             </button>
                         </div>
@@ -786,7 +787,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             <button onClick={() => { resetState(); setMode('home'); }} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 {t('vault.cancel')}
                             </button>
-                            <button onClick={handleUnlock} disabled={loading} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm disabled:opacity-50">
+                            <button onClick={handleUnlock} disabled={loading} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm disabled:opacity-50">
                                 {loading && <Loader2 size={14} className="animate-spin" />}
                                 {t('vault.unlock')}
                             </button>
@@ -826,7 +827,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     <>
                         {/* Toolbar */}
                         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                            <button onClick={handleAddFiles} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 rounded">
+                            <button onClick={handleAddFiles} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">
                                 <Plus size={14} /> {t('vault.addFiles')}
                             </button>
                             {vaultSecurity?.version === 2 && (
@@ -938,7 +939,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                         </button>
                                     </div>
                                 </div>
-                                <button onClick={handleChangePassword} disabled={loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs">
+                                <button onClick={handleChangePassword} disabled={loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs">
                                     {t('vault.apply')}
                                 </button>
                             </div>

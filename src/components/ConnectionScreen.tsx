@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2 } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -48,8 +48,9 @@ interface ConnectionScreenProps {
     onConnect: () => void;
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
+    onAeroFile?: () => void;
     onOpenCloudPanel?: () => void;
-    hasExistingSessions?: boolean;  // Show back button when there are existing sessions
+    hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
 }
 
@@ -404,6 +405,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onConnect,
     onSavedServerConnect,
     onSkipToFileManager,
+    onAeroFile,
     onOpenCloudPanel,
     hasExistingSessions = false,
     serversRefreshKey = 0,
@@ -747,21 +749,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     return (
         <div className="max-w-5xl mx-auto relative z-10">
-            {/* Back button - shown when user has existing sessions and wants to go back */}
-            {hasExistingSessions && (
-                <button
-                    onClick={onSkipToFileManager}
-                    className="mb-4 flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-                >
-                    <ArrowLeft size={18} />
-                    <span className="text-sm">{t('common.back')}</span>
-                </button>
-            )}
-
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Quick Connect */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
-                    <h2 className="text-xl font-semibold mb-4">{t('connection.quickConnect')}</h2>
+                    <div className="flex items-center gap-3 mb-4">
+                        <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                        {hasExistingSessions && (
+                            <button
+                                onClick={onSkipToFileManager}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-800/40 transition-colors"
+                                title={t('connection.activeSessions')}
+                            >
+                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                            </button>
+                        )}
+                    </div>
                     <div className="space-y-3">
                         {/* Protocol Selector - always shown */}
                         <ProtocolSelector
@@ -1024,7 +1027,369 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
 
                                 {/* Connection Fields Area */}
-                                {protocol === 'filen' ? (
+                                {protocol === 'drime' ? (
+                                    /* Drime Cloud Specific Form — API Token only */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.drimeToken')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        password: e.target.value,
+                                                        server: 'app.drime.cloud',
+                                                        port: 443,
+                                                        username: 'api-token'
+                                                    })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                    placeholder={t('connection.drimeTokenPlaceholder')}
+                                                    autoFocus
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            {t('connection.drimeTokenHelp')}
+                                        </p>
+
+                                        {/* Optional Remote/Local Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saveConnection}
+                                                    onChange={(e) => setSaveConnection(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                    <Save size={14} />
+                                                    {t('connection.saveToServers')}
+                                                </span>
+                                            </label>
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-3">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-500 to-emerald-400 hover:from-green-600 hover:to-emerald-500'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : protocol === 'kdrive' ? (
+                                    /* kDrive Specific Form — API Token + Drive ID */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.kdriveToken')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        password: e.target.value,
+                                                        server: 'api.infomaniak.com',
+                                                        port: 443,
+                                                        username: 'api-token'
+                                                    })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder={t('connection.kdriveTokenPlaceholder')}
+                                                    autoFocus
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.kdriveDriveId')}</label>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.options?.drive_id || connectionParams.options?.bucket || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, bucket: e.target.value, drive_id: e.target.value }
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder={t('connection.kdriveDriveIdPlaceholder')}
+                                                inputMode="numeric"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            {t('connection.kdriveTokenHelp')}
+                                        </p>
+
+                                        {/* Optional Remote/Local Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saveConnection}
+                                                    onChange={(e) => setSaveConnection(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                    <Save size={14} />
+                                                    {t('connection.saveToServers')}
+                                                </span>
+                                            </label>
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-3">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.password || !connectionParams.options?.bucket}
+                                                className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-500 to-sky-400 hover:from-blue-600 hover:to-sky-500'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : protocol === 'internxt' ? (
+                                    /* Internxt Specific Form */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            <input
+                                                type="email"
+                                                value={connectionParams.username}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    username: e.target.value,
+                                                    server: 'gateway.internxt.com',
+                                                    port: 443
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder={t('connection.internxtEmailPlaceholder')}
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder={t('connection.internxtPasswordPlaceholder')}
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.options?.two_factor_code || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder={t('connection.twoFactorOptional')}
+                                                maxLength={6}
+                                                inputMode="numeric"
+                                                autoComplete="one-time-code"
+                                            />
+                                        </div>
+
+                                        <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
+                                            <p className="font-medium mb-1">{t('connection.internxtEncryptionTitle')}</p>
+                                            <p className="opacity-80">
+                                                {t('connection.internxtEncryptionDesc')}
+                                            </p>
+                                        </div>
+
+                                        {/* Optional Remote Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saveConnection}
+                                                    onChange={(e) => setSaveConnection(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                    <Save size={14} />
+                                                    {t('connection.saveToServers')}
+                                                </span>
+                                            </label>
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
+                                                )}
+                                            </button>
+                                            <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
+                                                <Lock size={12} /> {t('connection.endToEndAes')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : protocol === 'filen' ? (
                                     /* Filen Specific Form */
                                     <div className="space-y-4 pt-2">
                                         <div>
@@ -1484,6 +1849,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         onEdit={handleEdit}
                         lastUpdate={savedServersUpdate + serversRefreshKey}
                         onOpenExportImport={() => setShowExportImport(true)}
+                        onAeroFile={onAeroFile}
                     />
                 </div>
 

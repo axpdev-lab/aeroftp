@@ -43,6 +43,12 @@ pub enum ProviderType {
     FourShared,
     /// Zoho WorkDrive (OAuth2)
     ZohoWorkdrive,
+    /// Internxt Drive (E2E Encrypted)
+    Internxt,
+    /// Infomaniak kDrive (Swiss Cloud)
+    KDrive,
+    /// Drime Cloud (20GB Secure Cloud)
+    DrimeCloud,
 }
 
 impl fmt::Display for ProviderType {
@@ -64,6 +70,9 @@ impl fmt::Display for ProviderType {
             ProviderType::Filen => write!(f, "Filen"),
             ProviderType::FourShared => write!(f, "4shared"),
             ProviderType::ZohoWorkdrive => write!(f, "Zoho WorkDrive"),
+            ProviderType::Internxt => write!(f, "Internxt Drive"),
+            ProviderType::KDrive => write!(f, "kDrive"),
+            ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
         }
     }
 }
@@ -88,6 +97,9 @@ impl ProviderType {
             ProviderType::Filen => 443,
             ProviderType::FourShared => 443,
             ProviderType::ZohoWorkdrive => 443,
+            ProviderType::Internxt => 443,
+            ProviderType::KDrive => 443,
+            ProviderType::DrimeCloud => 443,
         }
     }
     
@@ -109,7 +121,10 @@ impl ProviderType {
             ProviderType::Azure |
             ProviderType::Filen |
             ProviderType::FourShared |
-            ProviderType::ZohoWorkdrive
+            ProviderType::ZohoWorkdrive |
+            ProviderType::Internxt |
+            ProviderType::KDrive |
+            ProviderType::DrimeCloud
         )
     }
 
@@ -537,6 +552,82 @@ impl FilenConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("Password required for Filen".to_string()))?;
         let two_factor_code = config.extra.get("two_factor_code").cloned();
         Ok(Self { email, password: password.into(), two_factor_code })
+    }
+}
+
+/// Internxt Drive configuration
+#[derive(Debug, Clone)]
+pub struct InternxtConfig {
+    pub email: String,
+    pub password: secrecy::SecretString,
+    /// Optional TOTP code for accounts with 2FA enabled
+    pub two_factor_code: Option<String>,
+    /// Optional initial remote path
+    pub initial_path: Option<String>,
+}
+
+impl InternxtConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let email = config.username.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Email required for Internxt".to_string()))?;
+        let password = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Password required for Internxt".to_string()))?;
+        let two_factor_code = config.extra.get("two_factor_code").cloned();
+        Ok(Self {
+            email,
+            password: password.into(),
+            two_factor_code,
+            initial_path: config.initial_path.clone(),
+        })
+    }
+}
+
+/// Infomaniak kDrive configuration (API Token)
+#[derive(Debug, Clone)]
+pub struct KDriveConfig {
+    /// Bearer API token from Infomaniak dashboard
+    pub api_token: secrecy::SecretString,
+    /// kDrive ID (numeric)
+    pub drive_id: String,
+    /// Optional initial remote path
+    pub initial_path: Option<String>,
+}
+
+impl KDriveConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let token = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("API token required for kDrive".to_string()))?;
+        let drive_id = config.extra.get("drive_id").cloned()
+            .ok_or_else(|| ProviderError::InvalidConfig("Drive ID required for kDrive".to_string()))?;
+        // F6: Validate drive_id is numeric to prevent URL path traversal
+        if !drive_id.chars().all(|c| c.is_ascii_digit()) {
+            return Err(ProviderError::InvalidConfig("Drive ID must be numeric".to_string()));
+        }
+        Ok(Self {
+            api_token: token.into(),
+            drive_id,
+            initial_path: config.initial_path.clone(),
+        })
+    }
+}
+
+/// Drime Cloud configuration (API Token)
+#[derive(Debug, Clone)]
+pub struct DrimeCloudConfig {
+    /// Bearer API token from Drime Cloud dashboard
+    pub api_token: secrecy::SecretString,
+    /// Optional initial remote path
+    pub initial_path: Option<String>,
+}
+
+impl DrimeCloudConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let token = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("API token required for Drime Cloud".to_string()))?;
+        Ok(Self {
+            api_token: token.into(),
+            initial_path: config.initial_path.clone(),
+        })
     }
 }
 

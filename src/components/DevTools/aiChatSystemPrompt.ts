@@ -195,6 +195,26 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Encryption**: zero-knowledge, client-side AES-256.
 - **2FA**: supported (optional field in connection form).
 
+### Internxt Drive
+- **Auth**: email + password (no OAuth). Optional TOTP 2FA.
+- **Encryption**: zero-knowledge, end-to-end AES-256-CTR. BIP39 mnemonic derived from password.
+- **API**: \`https://api.internxt.com\` (drive) + \`https://gateway.internxt.com\` (network/storage).
+- **Features**: E2E encrypted upload/download, folder hierarchy, trash (soft delete), storage quota.
+- **Limits**: Free plan 1GB. Files encrypted client-side before upload.
+
+### Infomaniak kDrive
+- **Auth**: API Token (Bearer). Generated at manager.infomaniak.com > Developer > API Tokens.
+- **API**: \`https://api.infomaniak.com\` (v2/v3 endpoints). Rate limit: 60 req/min.
+- **Features**: list, upload (multipart, up to 1GB), download, mkdir, delete, rename, server-side copy/move, storage quota.
+- **Hosting**: Swiss-hosted (Infomaniak, Switzerland). 15GB free.
+- **ID-based**: Root folder ID = 1. Cursor-based pagination.
+
+### Drime Cloud
+- **Auth**: API Token (Bearer). Generated at app.drime.cloud → Account Settings → Developers.
+- **API**: \`https://app.drime.cloud/api/v1\`. Page-based pagination. String UUID IDs.
+- **Features**: list, upload, download, mkdir, delete, rename, move, server-side copy, storage quota.
+- **Storage**: 20GB free.
+
 ### Zoho WorkDrive
 - **Auth**: OAuth 2.0 with PKCE.
 - **Regions**: US, EU, IN, AU, JP, UK, CA, SA — endpoint auto-selected from \`accounts_server\`.
@@ -291,6 +311,9 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         azure: '### Azure Blob\n- **Required**: Account Name, Access Key, Container.',
         fourshared: '### 4shared\n- **Auth**: OAuth 1.0 (HMAC-SHA1). 15 GB free. Native REST API v1.2.',
         filen: '### Filen\n- **Auth**: email + password. Zero-knowledge AES-256.',
+        internxt: '### Internxt Drive\n- **Auth**: email + password. E2E AES-256-CTR. BIP39 mnemonic. Optional 2FA.',
+        kdrive: '### Infomaniak kDrive\n- **Auth**: API Token (Bearer). Swiss-hosted. 15GB free. 60 req/min rate limit.',
+        drime: '### Drime Cloud\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
     };
 

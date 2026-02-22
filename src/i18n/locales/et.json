@@ -185,7 +185,21 @@
         "useDifferentAccount": "Kasuta teist kontot",
         "zohoRegion": "Zoho piirkond",
         "zohoRegionHelp": "Valige oma Zoho kontoga sobiv piirkond (nt zoho.eu Euroopa jaoks)."
-      }
+      },
+      "activeSessions": "Aktiivsed seansid",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt konto parool",
+      "internxtEncryptionTitle": "Zero-Knowledge krüpteerimine",
+      "internxtEncryptionDesc": "Kõik failid on otsast otsani krüpteeritud AES-256-CTR-iga. Internxt ei saa teie andmetele ligi. EU-põhine, GDPR-ühildne.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Kleepige oma API Token siia",
+      "kdriveDriveIdPlaceholder": "Teie kDrive ID (numbriline)",
+      "kdriveTokenHelp": "Looge token aadressil manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Ühenda",
+      "drimeToken": "API-token",
+      "drimeTokenPlaceholder": "Kleepige siia oma Drime API-token",
+      "drimeTokenHelp": "Looge token aadressil app.drime.cloud → Konto seaded → Arendajad"
     },
     "browser": {
       "remote": "Kaugserver",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Vali kõik",
       "trashDeselectAll": "Tühista valik",
       "trashOriginalLocation": "Algne asukoht",
-      "trashDeletedDate": "Kustutatud"
+      "trashDeletedDate": "Kustutatud",
+      "createAeroVault": "Loo AeroVault...",
+      "createCryptomator": "Loo Cryptomator'i seif...",
+      "more": "Rohkem",
+      "openAsCryptomator": "Ava Cryptomator'i seifina",
+      "askAeroAgent": "Küsi AeroAgent-ilt..."
     },
     "transfer": {
       "transferring": "Ülekanne...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Ühevärvilised ikoonid, mis kohanduvad praeguse teemaga",
       "iconThemeOutline": "Kontuurne",
       "iconThemeOutlineDesc": "Puhtad kontuurikoonid värvikooditud failtüüpidega",
-      "iconsTab": "Ikoonid"
+      "iconsTab": "Ikoonid",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Lähtesta",
         "save": "Salvesta",
         "saving": "Salvestamine...",
-        "noFileSelected": "Redigeerimiseks pole faili valitud"
+        "noFileSelected": "Redigeerimiseks pole faili valitud",
+        "loading": "Redaktori laadimine..."
       },
       "previewPanel": {
         "emptyState": "Tehke failil paremklõps ja valige \"Eelvaade\""
-      }
+      },
+      "codeEditor": "Koodiredaktor",
+      "sshTerminal": "SSH terminal"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Täname toetuse eest!",
       "footer": "Iga annetus aitab arendust",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "See on tasuta!",
+      "starOnGithub": "Anna täht GitHub-is"
     },
     "activity": {
       "connect_start": "Ühendamine {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Eelkonfigureeritud Pakkujad",
       "customConnection": "Kohandatud Ühendus",
-      "custom": "Kohandatud"
+      "custom": "Kohandatud",
+      "internxtDesc": "Zero-Knowledge pilvsalvestus",
+      "internxtTooltip": "Internxt - Zero-knowledge krüpteeritud pilv, EU-põhine",
+      "kdriveDesc": "Šveitsi pilvsalvestus",
+      "kdriveTooltip": "kDrive Infomaniakilt - Šveitsis majutatud pilvsalvestus 15GB tasuta",
+      "drimeDesc": "Turvaline pilvesalvestus",
+      "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga"
     },
     "shortcuts": {
       "title": "Kiirklahvid",
@@ -2106,6 +2138,10 @@
         "unlimited": "Piiramatu",
         "roleAI": "AI",
         "roleUser": "Kasutaja"
+      },
+      "dropFileToAnalyze": "Kukutage fail AeroAgent-iga analüüsimiseks",
+      "plugins": {
+        "browsePlugins": "Sirvi Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Dekrüpteeri ja salvesta",
       "decrypted": "{name} dekrüpteeritud",
       "encrypted": "Fail krüpteeritud seifi",
-      "root": "Juur"
+      "root": "Juur",
+      "confirmPassword": "Kinnita parool",
+      "createVault": "Loo Cryptomatori holvus",
+      "minPassword": "Vähemalt 8 tähemärki",
+      "passwordMismatch": "Paroolid ei ühti",
+      "repeatPassword": "Korda parooli",
+      "vaultName": "Holvuse nimi"
     },
     "compress": {
       "title": "Paki failid",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Eelkonfigureeritud Pakkujad",
     "customConnection": "Kohandatud Ühendus",
-    "custom": "Kohandatud"
+    "custom": "Kohandatud",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Fail",
+        "navigation": "Navigeerimine",
+        "sync": "Sünkroonimine",
+        "tools": "Tööriistad"
+      },
+      "noResults": "Ükski käsk ei vasta teie otsingule",
+      "placeholder": "Sisestage käsk..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Registris pole ühtegi pluginat saadaval",
+        "install": "Paigalda",
+        "installed": "Paigaldatud",
+        "installing": "Paigaldamine...",
+        "loading": "Pluginate registri laadimine...",
+        "manageInSettings": "Halda paigaldatud pluginaid vahekaardil Plugins",
+        "search": "Otsi pluginaid...",
+        "subtitle": "Avastage ja paigaldage kogukonna pluginaid AeroAgent jaoks",
+        "title": "Plugin Browser"
+      }
+    }
   }
 }

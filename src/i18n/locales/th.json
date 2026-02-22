@@ -185,7 +185,21 @@
         "useDifferentAccount": "ใช้บัญชีอื่น",
         "zohoRegion": "ภูมิภาค Zoho",
         "zohoRegionHelp": "เลือกภูมิภาคที่ตรงกับบัญชี Zoho ของคุณ (เช่น zoho.eu สำหรับยุโรป)"
-      }
+      },
+      "activeSessions": "เซสชันที่ทำงาน",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "รหัสผ่านบัญชี Internxt",
+      "internxtEncryptionTitle": "การเข้ารหัสแบบ Zero-Knowledge",
+      "internxtEncryptionDesc": "ไฟล์ทั้งหมดถูกเข้ารหัสแบบต้นทางถึงปลายทางด้วย AES-256-CTR Internxt ไม่สามารถเข้าถึงข้อมูลของคุณ ตั้งอยู่ใน EU สอดคล้องกับ GDPR",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "วาง API Token ของคุณที่นี่",
+      "kdriveDriveIdPlaceholder": "ID kDrive ของคุณ (ตัวเลข)",
+      "kdriveTokenHelp": "สร้างโทเคนที่ manager.infomaniak.com → Developer → API Tokens",
+      "connect": "เชื่อมต่อ",
+      "drimeToken": "โทเค็น API",
+      "drimeTokenPlaceholder": "วางโทเค็น API Drime ของคุณที่นี่",
+      "drimeTokenHelp": "สร้างโทเค็นที่ app.drime.cloud → การตั้งค่าบัญชี → นักพัฒนา"
     },
     "browser": {
       "remote": "ระยะไกล",
@@ -309,7 +323,12 @@
       "trashSelectAll": "เลือกทั้งหมด",
       "trashDeselectAll": "ยกเลิกการเลือกทั้งหมด",
       "trashOriginalLocation": "ตำแหน่งเดิม",
-      "trashDeletedDate": "ลบแล้ว"
+      "trashDeletedDate": "ลบแล้ว",
+      "createAeroVault": "สร้าง AeroVault...",
+      "createCryptomator": "สร้าง Cryptomator Vault...",
+      "more": "เพิ่มเติม",
+      "openAsCryptomator": "เปิดเป็น Cryptomator Vault",
+      "askAeroAgent": "ถาม AeroAgent..."
     },
     "transfer": {
       "transferring": "กำลังถ่ายโอน...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "ไอคอนสีเดียวที่ปรับตามธีมปัจจุบัน",
       "iconThemeOutline": "เส้นขอบ",
       "iconThemeOutlineDesc": "ไอคอนเส้นขอบที่สะอาดพร้อมสีแยกตามประเภทไฟล์",
-      "iconsTab": "ไอคอน"
+      "iconsTab": "ไอคอน",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "รีเซ็ต",
         "save": "บันทึก",
         "saving": "กำลังบันทึก...",
-        "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับแก้ไข"
+        "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับแก้ไข",
+        "loading": "กำลังโหลดตัวแก้ไข..."
       },
       "previewPanel": {
         "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูตัวอย่าง\""
-      }
+      },
+      "codeEditor": "โปรแกรมแก้ไขโค้ด",
+      "sshTerminal": "เทอร์มินอล SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "ขอบคุณสำหรับการสนับสนุน!",
       "footer": "ทุกการบริจาคช่วยในการพัฒนา",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "ฟรี!",
+      "starOnGithub": "ให้ดาวบน GitHub"
     },
     "activity": {
       "connect_start": "กำลังเชื่อมต่อไปยัง {server} ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "พอร์ต",
       "preconfiguredProviders": "ผู้ให้บริการที่กำหนดค่าไว้ล่วงหน้า",
       "customConnection": "การเชื่อมต่อแบบกำหนดเอง",
-      "custom": "กำหนดเอง"
+      "custom": "กำหนดเอง",
+      "internxtDesc": "ที่เก็บข้อมูลบนคลาวด์แบบ Zero-Knowledge",
+      "internxtTooltip": "Internxt - คลาวด์เข้ารหัสแบบ zero-knowledge ตั้งอยู่ใน EU",
+      "kdriveDesc": "พื้นที่เก็บข้อมูลบนคลาวด์สวิส",
+      "kdriveTooltip": "kDrive โดย Infomaniak - พื้นที่เก็บข้อมูลบนคลาวด์สวิส ฟรี 15GB",
+      "drimeDesc": "พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย",
+      "drimeTooltip": "Drime Cloud - พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย 20GB พร้อม REST API"
     },
     "shortcuts": {
       "title": "แป้นพิมพ์ลัด",
@@ -2106,6 +2138,10 @@
         "unlimited": "ไม่จำกัด",
         "roleAI": "AI",
         "roleUser": "ผู้ใช้"
+      },
+      "dropFileToAnalyze": "วางไฟล์เพื่อวิเคราะห์ด้วย AeroAgent",
+      "plugins": {
+        "browsePlugins": "เรียกดูปลั๊กอิน"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "ถอดรหัสและบันทึก",
       "decrypted": "ถอดรหัส {name} แล้ว",
       "encrypted": "เข้ารหัสไฟล์ลงในตู้เซฟแล้ว",
-      "root": "ราก"
+      "root": "ราก",
+      "confirmPassword": "ยืนยันรหัสผ่าน",
+      "createVault": "สร้างตู้นิรापภัย Cryptomator",
+      "minPassword": "อย่างน้อย 8 ตัวอักษร",
+      "passwordMismatch": "รหัสผ่านไม่ตรงกัน",
+      "repeatPassword": "ป้อนรหัสผ่านอีกครั้ง",
+      "vaultName": "ชื่อตู้นิรภัย"
     },
     "compress": {
       "title": "บีบอัดไฟล์",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "ผู้ให้บริการที่กำหนดค่าไว้ล่วงหน้า",
     "customConnection": "การเชื่อมต่อแบบกำหนดเอง",
-    "custom": "กำหนดเอง"
+    "custom": "กำหนดเอง",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "ไฟล์",
+        "navigation": "การนำทาง",
+        "sync": "ซิงค์",
+        "tools": "เครื่องมือ"
+      },
+      "noResults": "ไม่พบคำสั่งที่ตรงกับการค้นหาของคุณ",
+      "placeholder": "พิมพ์คำสั่ง..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "ไม่มีปลั๊กอินในรีจิสทรี",
+        "install": "ติดตั้ง",
+        "installed": "ติดตั้งแล้ว",
+        "installing": "กำลังติดตั้ง...",
+        "loading": "กำลังโหลดรีจิสทรีปลั๊กอิน...",
+        "manageInSettings": "จัดการปลั๊กอินที่ติดตั้งในแท็บ Plugins",
+        "search": "ค้นหาปลั๊กอิน...",
+        "subtitle": "ค้นพบและติดตั้งปลั๊กอินชุมชนสำหรับ AeroAgent",
+        "title": "เบราว์เซอร์ปลั๊กอิน"
+      }
+    }
   }
 }

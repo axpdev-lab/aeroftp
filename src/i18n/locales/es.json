@@ -185,7 +185,21 @@
         "useDifferentAccount": "Usar otra cuenta",
         "zohoRegion": "Región de Zoho",
         "zohoRegionHelp": "Seleccione la región que coincida con su cuenta de Zoho (p. ej. zoho.eu para Europa)."
-      }
+      },
+      "activeSessions": "Sesiones activas",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Contraseña de la cuenta Internxt",
+      "internxtEncryptionTitle": "Cifrado de conocimiento cero",
+      "internxtEncryptionDesc": "Todos los archivos están cifrados de extremo a extremo con AES-256-CTR. Internxt no puede acceder a sus datos. Con sede en EU, compatible con GDPR.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "Pegue su API Token aquí",
+      "kdriveDriveIdPlaceholder": "Su kDrive ID (numérico)",
+      "kdriveTokenHelp": "Genere un token en manager.infomaniak.com → Developer → API Tokens",
+      "connect": "Conectar",
+      "drimeToken": "Token de API",
+      "drimeTokenPlaceholder": "Pegue aquí su token de API de Drime",
+      "drimeTokenHelp": "Genere un token en app.drime.cloud → Configuración de cuenta → Desarrolladores"
     },
     "browser": {
       "remote": "Remoto",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Seleccionar todo",
       "trashDeselectAll": "Deseleccionar todo",
       "trashOriginalLocation": "Ubicación original",
-      "trashDeletedDate": "Eliminado"
+      "trashDeletedDate": "Eliminado",
+      "createAeroVault": "Crear AeroVault...",
+      "createCryptomator": "Crear Cryptomator Vault...",
+      "more": "Más",
+      "openAsCryptomator": "Abrir como Cryptomator Vault",
+      "askAeroAgent": "Preguntar a AeroAgent..."
     },
     "transfer": {
       "transferring": "Transfiriendo...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Iconos monocromáticos que se adaptan al tema actual",
       "iconThemeOutline": "Contorno",
       "iconThemeOutlineDesc": "Iconos de trazo limpio con tipos de archivo codificados por color",
-      "iconsTab": "Iconos"
+      "iconsTab": "Iconos",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Restablecer",
         "save": "Guardar",
         "saving": "Guardando...",
-        "noFileSelected": "Ningún archivo seleccionado para editar"
+        "noFileSelected": "Ningún archivo seleccionado para editar",
+        "loading": "Cargando editor..."
       },
       "previewPanel": {
         "emptyState": "Haz clic derecho en un archivo y elige \"Vista previa\""
-      }
+      },
+      "codeEditor": "Editor de código",
+      "sshTerminal": "Terminal SSH"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "¡Gracias por tu apoyo!",
       "footer": "Cada donación ayuda al desarrollo",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "¡Es gratis!",
+      "starOnGithub": "Dar estrella en GitHub"
     },
     "activity": {
       "connect_start": "Conectando a {server}...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Puerto",
       "preconfiguredProviders": "Proveedores Preconfigurados",
       "customConnection": "Conexión Personalizada",
-      "custom": "Personalizado"
+      "custom": "Personalizado",
+      "internxtDesc": "Almacenamiento en la nube de conocimiento cero",
+      "internxtTooltip": "Internxt - Nube cifrada de conocimiento cero, con sede en EU",
+      "kdriveDesc": "Almacenamiento en la nube suizo",
+      "kdriveTooltip": "kDrive de Infomaniak - Almacenamiento en la nube alojado en Suiza con 15GB gratis",
+      "drimeDesc": "Almacenamiento seguro en la nube",
+      "drimeTooltip": "Drime Cloud - 20GB de almacenamiento seguro en la nube gratuito con REST API"
     },
     "shortcuts": {
       "title": "Atajos de Teclado",
@@ -2106,6 +2138,10 @@
         "unlimited": "Ilimitado",
         "roleAI": "AI",
         "roleUser": "Usuario"
+      },
+      "dropFileToAnalyze": "Suelta el archivo para analizar con AeroAgent",
+      "plugins": {
+        "browsePlugins": "Explorar Plugins"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Descifrar y guardar",
       "decrypted": "{name} descifrado",
       "encrypted": "Archivo cifrado en la bóveda",
-      "root": "Raíz"
+      "root": "Raíz",
+      "confirmPassword": "Confirmar contraseña",
+      "createVault": "Crear caja fuerte de Cryptomator",
+      "minPassword": "Mínimo 8 caracteres",
+      "passwordMismatch": "Las contraseñas no coinciden",
+      "repeatPassword": "Repetir contraseña",
+      "vaultName": "Nombre de la caja fuerte"
     },
     "compress": {
       "title": "Comprimir archivos",
@@ -2939,6 +2981,30 @@
     },
     "preconfiguredProviders": "Proveedores Preconfigurados",
     "customConnection": "Conexión Personalizada",
-    "custom": "Personalizado"
+    "custom": "Personalizado",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Archivo",
+        "navigation": "Navegación",
+        "sync": "Sincronización",
+        "tools": "Herramientas"
+      },
+      "noResults": "Ningún comando coincide con tu búsqueda",
+      "placeholder": "Escribe un comando..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "No hay plugins disponibles en el registro",
+        "install": "Instalar",
+        "installed": "Instalado",
+        "installing": "Instalando...",
+        "loading": "Cargando registro de plugins...",
+        "manageInSettings": "Gestiona los plugins instalados en la pestaña Plugins",
+        "search": "Buscar plugins...",
+        "subtitle": "Descubre e instala plugins de la comunidad para AeroAgent",
+        "title": "Plugin Browser"
+      }
+    }
   }
 }

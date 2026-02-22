@@ -185,7 +185,21 @@
         "useDifferentAccount": "Farklı Hesap Kullan",
         "zohoRegion": "Zoho Bolgesi",
         "zohoRegionHelp": "Zoho hesabinizla eslesen bolgeyi secin (orn. Avrupa icin zoho.eu)."
-      }
+      },
+      "activeSessions": "Etkin Oturumlar",
+      "internxtEmailPlaceholder": "your.email@example.com",
+      "internxtPasswordPlaceholder": "Internxt hesap şifresi",
+      "internxtEncryptionTitle": "Zero-Knowledge Şifreleme",
+      "internxtEncryptionDesc": "Tüm dosyalar AES-256-CTR ile uçtan uca şifrelenir. Internxt verilerinize erişemez. EU merkezli, GDPR uyumlu.",
+      "kdriveToken": "API Token",
+      "kdriveDriveId": "Drive ID",
+      "kdriveTokenPlaceholder": "API Token'inizi buraya yapıştırın",
+      "kdriveDriveIdPlaceholder": "kDrive ID'niz (sayısal)",
+      "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens adresinden bir token oluşturun",
+      "connect": "Bağlan",
+      "drimeToken": "API Anahtarı",
+      "drimeTokenPlaceholder": "Drime API anahtarınızı buraya yapıştırın",
+      "drimeTokenHelp": "app.drime.cloud → Hesap Ayarları → Geliştiriciler adresinden anahtar oluşturun"
     },
     "browser": {
       "remote": "Uzak",
@@ -309,7 +323,12 @@
       "trashSelectAll": "Tümünü Seç",
       "trashDeselectAll": "Tümünün Seçimini Kaldır",
       "trashOriginalLocation": "Özgün konum",
-      "trashDeletedDate": "Silinme tarihi"
+      "trashDeletedDate": "Silinme tarihi",
+      "createAeroVault": "AeroVault Oluştur...",
+      "createCryptomator": "Cryptomator Vault Oluştur...",
+      "more": "Daha fazla",
+      "openAsCryptomator": "Cryptomator Vault olarak aç",
+      "askAeroAgent": "AeroAgent'a sor..."
     },
     "transfer": {
       "transferring": "Aktarılıyor...",
@@ -665,7 +684,9 @@
       "iconThemeMinimalDesc": "Mevcut temaya uyum saglayan tek renkli simgeler",
       "iconThemeOutline": "Cizgisel",
       "iconThemeOutlineDesc": "Renk kodlu dosya turleriyle temiz cizgisel simgeler",
-      "iconsTab": "Simgeler"
+      "iconsTab": "Simgeler",
+      "protocolFourshared": "4shared",
+      "protocolZohoworkdrive": "Zoho WorkDrive"
     },
     "devtools": {
       "title": "AeroTools",
@@ -709,11 +730,14 @@
         "reset": "Sıfırla",
         "save": "Kaydet",
         "saving": "Kaydediliyor...",
-        "noFileSelected": "Düzenleme için dosya seçilmedi"
+        "noFileSelected": "Düzenleme için dosya seçilmedi",
+        "loading": "Düzenleyici yükleniyor..."
       },
       "previewPanel": {
         "emptyState": "Bir dosyaya sağ tıklayın ve \"Önizle\" seçeneğini seçin"
-      }
+      },
+      "codeEditor": "Kod Düzenleyici",
+      "sshTerminal": "SSH Terminali"
     },
     "cloud": {
       "title": "AeroCloud",
@@ -932,7 +956,9 @@
       "thanks": "Desteğiniz için teşekkürler!",
       "footer": "Her bağış geliştirmeye yardımcı olur",
       "githubSponsors": "GitHub Sponsors",
-      "buyMeACoffee": "Buy Me a Coffee"
+      "buyMeACoffee": "Buy Me a Coffee",
+      "freeSupport": "Ücretsiz!",
+      "starOnGithub": "GitHub'da yıldız ver"
     },
     "activity": {
       "connect_start": "{server} sunucusuna bağlanıyorum ({protocol})...",
@@ -1093,7 +1119,13 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Önceden yapılandırılmış sağlayıcılar",
       "customConnection": "Özel bağlantı",
-      "custom": "Özel"
+      "custom": "Özel",
+      "internxtDesc": "Zero-Knowledge Bulut Depolama",
+      "internxtTooltip": "Internxt - Zero-knowledge şifreli bulut, EU merkezli",
+      "kdriveDesc": "İsviçre bulut depolama",
+      "kdriveTooltip": "Infomaniak'tan kDrive - 15GB ücretsiz İsviçre bulut depolama",
+      "drimeDesc": "Güvenli Bulut Depolama",
+      "drimeTooltip": "Drime Cloud - REST API ile 20GB ücretsiz güvenli bulut depolama"
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",
@@ -2106,6 +2138,10 @@
         "unlimited": "Sinirsiz",
         "roleAI": "AI",
         "roleUser": "Kullanici"
+      },
+      "dropFileToAnalyze": "AeroAgent ile analiz etmek için dosyayı bırakın",
+      "plugins": {
+        "browsePlugins": "Eklentilere göz at"
       }
     },
     "archive": {
@@ -2197,7 +2233,13 @@
       "decryptAndSave": "Şifre Çöz ve Kaydet",
       "decrypted": "{name} şifresi çözüldü",
       "encrypted": "Dosya kasaya şifrelendi",
-      "root": "Kök"
+      "root": "Kök",
+      "confirmPassword": "Şifreyi onayla",
+      "createVault": "Cryptomator Kasası Oluştur",
+      "minPassword": "En az 8 karakter",
+      "passwordMismatch": "Şifreler eşleşmiyor",
+      "repeatPassword": "Şifreyi tekrarlayın",
+      "vaultName": "Kasa Adı"
     },
     "compress": {
       "title": "Dosyaları Sıkıştır",
@@ -2949,6 +2991,30 @@
     },
     "preconfiguredProviders": "Önceden yapılandırılmış sağlayıcılar",
     "customConnection": "Özel bağlantı",
-    "custom": "Özel"
+    "custom": "Özel",
+    "commandPalette": {
+      "category": {
+        "ai": "AI",
+        "file": "Dosya",
+        "navigation": "Gezinme",
+        "sync": "Senkronizasyon",
+        "tools": "Araçlar"
+      },
+      "noResults": "Aramanızla eşleşen komut bulunamadı",
+      "placeholder": "Bir komut yazın..."
+    },
+    "plugins": {
+      "browser": {
+        "empty": "Kayıt defterinde kullanılabilir eklenti yok",
+        "install": "Yükle",
+        "installed": "Yüklendi",
+        "installing": "Yükleniyor...",
+        "loading": "Eklenti kayıt defteri yükleniyor...",
+        "manageInSettings": "Yüklü eklentileri Plugins sekmesinde yönetin",
+        "search": "Eklenti ara...",
+        "subtitle": "AeroAgent için topluluk eklentilerini keşfedin ve yükleyin",
+        "title": "Eklenti Tarayıcısı"
+      }
+    }
   }
 }

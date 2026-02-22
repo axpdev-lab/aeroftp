@@ -69,6 +69,17 @@ fn hash_prefix(h: &str) -> &str {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginHook {
+    /// Event name: "file:created", "file:deleted", "transfer:complete", "sync:complete"
+    pub event: String,
+    /// Script to execute when the event fires
+    pub command: String,
+    /// Optional glob filter (e.g., "*.csv")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -77,6 +88,9 @@ pub struct PluginManifest {
     pub tools: Vec<PluginToolDef>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Hooks that react to app events
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<PluginHook>,
 }
 
 fn default_true() -> bool {
@@ -397,4 +411,164 @@ pub async fn remove_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(
 
     info!("Removed plugin: {}", plugin_id);
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HookResult {
+    pub plugin_id: String,
+    pub hook_event: String,
+    pub success: bool,
+    pub output: String,
+}
+
+/// Trigger all plugin hooks for a given event
+#[tauri::command]
+pub async fn trigger_plugin_hooks(
+    app: tauri::AppHandle,
+    event: String,
+    context_json: String,
+) -> Result<Vec<HookResult>, String> {
+    let dir = plugins_dir(&app)?;
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+
+    // Load all plugins and find matching hooks
+    let plugins = list_plugins(app.clone()).await?;
+    let mut tasks = Vec::new();
+
+    for plugin in &plugins {
+        if !plugin.enabled {
+            continue;
+        }
+        for hook in &plugin.hooks {
+            if hook.event != event {
+                continue;
+            }
+            // Optional glob filter check
+            if let Some(ref filter) = hook.filter {
+                // Simple glob: check if context contains a matching filename
+                if !context_json.contains(filter.trim_matches('*')) {
+                    continue;
+                }
+            }
+            tasks.push((plugin.id.clone(), hook.clone()));
+        }
+    }
+
+    let mut results = Vec::new();
+
+    for (plugin_id, hook) in tasks {
+        let plugin_dir = dir.join(&plugin_id);
+        let cmd_path = plugin_dir.join(&hook.command);
+
+        // Verify path safety
+        let canonical = match cmd_path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                results.push(HookResult {
+                    plugin_id: plugin_id.clone(),
+                    hook_event: event.clone(),
+                    success: false,
+                    output: "Hook command not found".into(),
+                });
+                continue;
+            }
+        };
+
+        if !canonical.starts_with(&plugin_dir) {
+            results.push(HookResult {
+                plugin_id: plugin_id.clone(),
+                hook_event: event.clone(),
+                success: false,
+                output: "Hook path escape detected".into(),
+            });
+            continue;
+        }
+
+        // Execute hook with context as stdin
+        match timeout(
+            Duration::from_secs(PLUGIN_TIMEOUT_SECS),
+            execute_hook_script(&canonical, &context_json),
+        )
+        .await
+        {
+            Ok(Ok(output)) => {
+                info!("Hook {}:{} completed", plugin_id, event);
+                results.push(HookResult {
+                    plugin_id,
+                    hook_event: event.clone(),
+                    success: true,
+                    output,
+                });
+            }
+            Ok(Err(e)) => {
+                warn!("Hook {}:{} failed: {}", plugin_id, event, e);
+                results.push(HookResult {
+                    plugin_id,
+                    hook_event: event.clone(),
+                    success: false,
+                    output: e,
+                });
+            }
+            Err(_) => {
+                warn!("Hook {}:{} timed out", plugin_id, event);
+                results.push(HookResult {
+                    plugin_id,
+                    hook_event: event.clone(),
+                    success: false,
+                    output: "Timed out".into(),
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+async fn execute_hook_script(
+    script_path: &std::path::Path,
+    stdin_data: &str,
+) -> Result<String, String> {
+    let mut child = tokio::process::Command::new(script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env_clear()
+        .envs(std::env::vars().filter(|(k, _)| {
+            matches!(k.as_str(), "PATH" | "HOME" | "LANG" | "LC_ALL" | "TERM" | "TMPDIR")
+        }))
+        .spawn()
+        .map_err(|e| format!("Failed to spawn hook: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(stdin_data.as_bytes()).await;
+    }
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("Hook execution failed: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let truncated = if stdout.len() > MAX_OUTPUT_BYTES {
+        &stdout[..MAX_OUTPUT_BYTES]
+    } else {
+        &stdout
+    };
+
+    if output.status.success() {
+        Ok(truncated.to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "Hook exited with {}: {}",
+            output.status,
+            if stderr.is_empty() {
+                truncated.to_string()
+            } else {
+                stderr.to_string()
+            }
+        ))
+    }
 }

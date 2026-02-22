@@ -63,6 +63,11 @@ pub enum AIProviderType {
     Perplexity,
     Cohere,
     Together,
+    Ai21,
+    Cerebras,
+    #[serde(rename = "sambanova")]
+    SambaNova,
+    Fireworks,
 }
 
 // Image attachment for vision models

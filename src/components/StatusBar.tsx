@@ -1,8 +1,11 @@
 import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
+
+type AIStatus = 'idle' | 'streaming' | 'tool-execution' | 'error';
 
 interface StorageQuota {
     used: number;
@@ -76,9 +79,18 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     secureProtocol,
 }) => {
     const t = useTranslation();
+    const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
+
+    useEffect(() => {
+        const handler = (e: Event) => {
+            setAiStatus((e as CustomEvent<AIStatus>).detail);
+        };
+        window.addEventListener('ai-status-changed', handler);
+        return () => window.removeEventListener('ai-status-changed', handler);
+    }, []);
 
     return (
-        <div role="status" aria-label="Status bar" className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0">
+        <div role="status" aria-label="Status bar" className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
             {/* Left: Connection Status */}
             <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
@@ -274,14 +286,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         <ScrollText size={12} />
                         <span>{t('statusbar.log')}</span>
                         {activityLogCount > 0 && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-emerald-500 text-white rounded-full min-w-[18px] text-center">
+                            <span className="px-1 text-[9px] font-semibold leading-none bg-emerald-500 text-white rounded-full min-w-[16px] h-[16px] inline-flex items-center justify-center">
                                 {activityLogCount > 99 ? '99+' : activityLogCount}
                             </span>
                         )}
                     </button>
                 )}
 
-                {/* AeroAgent Button */}
+                {/* AeroAgent Button with AI Status */}
                 {onToggleAeroAgent && (
                     <button
                         onClick={onToggleAeroAgent}
@@ -291,8 +303,17 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                             }`}
                         title={t('statusBar.aeroagentTitle')}
                     >
-                        <Bot size={12} />
+                        <Bot size={12} className={aiStatus === 'streaming' ? 'animate-pulse' : ''} />
                         <span>{t('statusBar.aeroagent')}</span>
+                        {aiStatus === 'streaming' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
+                        )}
+                        {aiStatus === 'tool-execution' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                        {aiStatus === 'error' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        )}
                     </button>
                 )}
 

@@ -121,7 +121,7 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
                             {fileName}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title={t('common.close')}>
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
