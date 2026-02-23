@@ -1136,7 +1136,8 @@
             "drimeDesc": "Turvaline pilvesalvestus",
             "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga",
             "jottacloudDesc": "Norra pilv (5GB tasuta)",
-            "jottacloudTooltip": "Jottacloud - GDPR-ühildne Norra pilvesalvestus 5GB tasuta"
+            "jottacloudTooltip": "Jottacloud - GDPR-ühildne Norra pilvesalvestus 5GB tasuta",
+            "minioDesc": "Isehostitav S3-ühilduv objektihoidla"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

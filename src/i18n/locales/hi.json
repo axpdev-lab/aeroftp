@@ -1136,7 +1136,8 @@
             "drimeDesc": "सुरक्षित क्लाउड स्टोरेज",
             "drimeTooltip": "Drime Cloud - REST API के साथ 20GB मुफ़्त सुरक्षित क्लाउड स्टोरेज",
             "jottacloudDesc": "नॉर्वेजियन क्लाउड (5GB मुफ्त)",
-            "jottacloudTooltip": "Jottacloud - 5GB मुफ्त के साथ GDPR-अनुपालन नॉर्वेजियन क्लाउड स्टोरेज"
+            "jottacloudTooltip": "Jottacloud - 5GB मुफ्त के साथ GDPR-अनुपालन नॉर्वेजियन क्लाउड स्टोरेज",
+            "minioDesc": "सेल्फ-होस्टेड S3-संगत ऑब्जेक्ट स्टोरेज"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

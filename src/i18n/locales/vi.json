@@ -1136,7 +1136,8 @@
             "drimeDesc": "Lưu trữ đám mây an toàn",
             "drimeTooltip": "Drime Cloud - 20GB lưu trữ đám mây an toàn miễn phí với REST API",
             "jottacloudDesc": "Đám mây Na Uy (5GB miễn phí)",
-            "jottacloudTooltip": "Jottacloud - lưu trữ đám mây Na Uy tuân thủ GDPR với 5GB miễn phí"
+            "jottacloudTooltip": "Jottacloud - lưu trữ đám mây Na Uy tuân thủ GDPR với 5GB miễn phí",
+            "minioDesc": "Lưu trữ đối tượng S3 tự quản lý"
         },
         "shortcuts": {
             "title": "Phím tắt",

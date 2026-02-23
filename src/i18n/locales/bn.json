@@ -1136,7 +1136,8 @@
             "drimeDesc": "নিরাপদ ক্লাউড স্টোরেজ",
             "drimeTooltip": "Drime Cloud - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ",
             "jottacloudDesc": "নরওয়েজিয়ান ক্লাউড (5GB বিনামূল্যে)",
-            "jottacloudTooltip": "Jottacloud - 5GB বিনামূল্যে সহ GDPR-সম্মত নরওয়েজিয়ান ক্লাউড স্টোরেজ"
+            "jottacloudTooltip": "Jottacloud - 5GB বিনামূল্যে সহ GDPR-সম্মত নরওয়েজিয়ান ক্লাউড স্টোরেজ",
+            "minioDesc": "সেলফ-হোস্টেড S3-সামঞ্জস্যপূর্ণ অবজেক্ট স্টোরেজ"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

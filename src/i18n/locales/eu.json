@@ -1136,7 +1136,8 @@
             "drimeDesc": "Hodei-biltegi segurua",
             "drimeTooltip": "Drime Cloud - 20GB doako hodei-biltegi segurua REST API-rekin",
             "jottacloudDesc": "Norvegiar hodeia (5GB doan)",
-            "jottacloudTooltip": "Jottacloud - GDPRrekin bateragarria den Norvegiar hodeiko biltegia 5GB doan"
+            "jottacloudTooltip": "Jottacloud - GDPRrekin bateragarria den Norvegiar hodeiko biltegia 5GB doan",
+            "minioDesc": "Norberak ostatutako S3-bateragarri objektu biltegia"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

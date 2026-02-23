@@ -1136,7 +1136,8 @@
             "drimeDesc": "Biztonságos felhőtárhely",
             "drimeTooltip": "Drime Cloud - 20GB ingyenes, biztonságos felhőtárhely REST API-val",
             "jottacloudDesc": "Norvég felhő (5GB ingyenes)",
-            "jottacloudTooltip": "Jottacloud - GDPR-kompatibilis norvég felhőtárhely 5GB ingyenes tárhellyel"
+            "jottacloudTooltip": "Jottacloud - GDPR-kompatibilis norvég felhőtárhely 5GB ingyenes tárhellyel",
+            "minioDesc": "Önkiszolgáló S3-kompatibilis objektumtároló"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

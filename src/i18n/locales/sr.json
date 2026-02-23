@@ -1136,7 +1136,8 @@
             "drimeDesc": "Безбедно складиштење у облаку",
             "drimeTooltip": "Drime Cloud - 20GB безбедног складиштења у облаку са REST API",
             "jottacloudDesc": "Норвешки облак (5GB бесплатно)",
-            "jottacloudTooltip": "Jottacloud - норвешко складиштење у облаку усклађено са GDPR са 5GB бесплатно"
+            "jottacloudTooltip": "Jottacloud - норвешко складиштење у облаку усклађено са GDPR са 5GB бесплатно",
+            "minioDesc": "Самохостовано S3-компатибилно складиште објеката"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",

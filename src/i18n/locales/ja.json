@@ -1136,7 +1136,8 @@
             "drimeDesc": "セキュアクラウドストレージ",
             "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ",
             "jottacloudDesc": "ノルウェークラウド (5GB無料)",
-            "jottacloudTooltip": "Jottacloud - GDPR準拠のノルウェークラウドストレージ、5GB無料"
+            "jottacloudTooltip": "Jottacloud - GDPR準拠のノルウェークラウドストレージ、5GB無料",
+            "minioDesc": "セルフホスト型S3互換オブジェクトストレージ"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

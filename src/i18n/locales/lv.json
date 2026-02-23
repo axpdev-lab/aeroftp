@@ -1136,7 +1136,8 @@
             "drimeDesc": "Droša Mākoņkrātuve",
             "drimeTooltip": "Drime Cloud - 20GB bezmaksas droša mākoņkrātuve ar REST API",
             "jottacloudDesc": "Norvēģu mākonis (5GB bezmaksas)",
-            "jottacloudTooltip": "Jottacloud - GDPR saderīga norvēģu mākoņkrātuve ar 5GB bezmaksas"
+            "jottacloudTooltip": "Jottacloud - GDPR saderīga norvēģu mākoņkrātuve ar 5GB bezmaksas",
+            "minioDesc": "Pašmitināta S3-saderīga objektu krātuve"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

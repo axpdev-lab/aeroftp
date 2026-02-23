@@ -1136,7 +1136,8 @@
             "drimeDesc": "Almacenamento seguro na nube",
             "drimeTooltip": "Drime Cloud - 20GB de almacenamento seguro na nube gratuíto con REST API",
             "jottacloudDesc": "Nube norueguesa (5GB gratis)",
-            "jottacloudTooltip": "Jottacloud - Almacenamento na nube noruegués compatible con GDPR con 5GB gratis"
+            "jottacloudTooltip": "Jottacloud - Almacenamento na nube noruegués compatible con GDPR con 5GB gratis",
+            "minioDesc": "Almacenamento de obxectos S3 autoaloxado"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

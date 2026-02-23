@@ -240,6 +240,7 @@
       "ftpsDesc": "FTP su TLS/SSL",
       "sftpDesc": "SSH File Transfer",
       "webdavDesc": "Nextcloud, Synology, Koofr",
+      "minioDesc": "Object storage S3-compatibile self-hosted",
       "s3Desc": "AWS S3, MinIO, R2, B2",
       "aerocloudDesc": "Cloud personale basato su FTP",
       "googledriveDesc": "Connetti con Account Google",

@@ -1136,7 +1136,8 @@
             "drimeDesc": "ការផ្ទុកពពកដែលមានសុវត្ថិភាព",
             "drimeTooltip": "Drime Cloud - ការផ្ទុកពពកដែលមានសុវត្ថិភាពឥតគិតថ្លៃ 20GB ជាមួយ REST API",
             "jottacloudDesc": "ពម្ពៀកន័រវ៉េ (5GB ភ្លើ)",
-            "jottacloudTooltip": "Jottacloud - ការជ្រាប់ជ្រុលពម្ពៀកន័រវ៉េតាម GDPR ជាមួយ 5GB ភ្លើ"
+            "jottacloudTooltip": "Jottacloud - ការជ្រាប់ជ្រុលពម្ពៀកន័រវ៉េតាម GDPR ជាមួយ 5GB ភ្លើ",
+            "minioDesc": "កន្លែងផ្ទុកអ្វីៗដែលត្រូវគ្នានឹង S3 ដោយខ្លួនឯង"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

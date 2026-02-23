@@ -1136,7 +1136,8 @@
             "drimeDesc": "Emmagatzematge al núvol segur",
             "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API",
             "jottacloudDesc": "Núvol noruec (5GB gratuït)",
-            "jottacloudTooltip": "Jottacloud - Emmagatzematge al núvol noruec compatible amb GDPR amb 5GB gratuïts"
+            "jottacloudTooltip": "Jottacloud - Emmagatzematge al núvol noruec compatible amb GDPR amb 5GB gratuïts",
+            "minioDesc": "Emmagatzematge d'objectes S3 autoallotjat"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

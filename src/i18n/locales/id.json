@@ -1136,7 +1136,8 @@
             "drimeDesc": "Penyimpanan Awan Aman",
             "drimeTooltip": "Drime Cloud - 20GB penyimpanan awan aman gratis dengan REST API",
             "jottacloudDesc": "Cloud Norwegia (5GB gratis)",
-            "jottacloudTooltip": "Jottacloud - Penyimpanan cloud Norwegia yang sesuai GDPR dengan 5GB gratis"
+            "jottacloudTooltip": "Jottacloud - Penyimpanan cloud Norwegia yang sesuai GDPR dengan 5GB gratis",
+            "minioDesc": "Penyimpanan objek S3 yang dihosting sendiri"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

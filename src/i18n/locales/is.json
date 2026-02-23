@@ -1136,7 +1136,8 @@
             "drimeDesc": "Örugg skýjageymsla",
             "drimeTooltip": "Drime Cloud - 20GB ókeypis örugg skýjageymsla með REST API",
             "jottacloudDesc": "Norskt ský (5GB frelsi)",
-            "jottacloudTooltip": "Jottacloud - GDPR-samhæfð norsk skýageymsla með 5GB frelsi"
+            "jottacloudTooltip": "Jottacloud - GDPR-samhæfð norsk skýageymsla með 5GB frelsi",
+            "minioDesc": "Sjálfhýst S3-samhæft hlutageymslustjórnun"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

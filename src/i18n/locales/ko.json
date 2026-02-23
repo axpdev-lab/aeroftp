@@ -1136,7 +1136,8 @@
             "drimeDesc": "안전한 클라우드 스토리지",
             "drimeTooltip": "Drime Cloud - REST API를 지원하는 20GB 무료 안전한 클라우드 스토리지",
             "jottacloudDesc": "노르웨이 클라우드 (5GB 무료)",
-            "jottacloudTooltip": "Jottacloud - GDPR 준수 노르웨이 클라우드 저장소, 5GB 무료"
+            "jottacloudTooltip": "Jottacloud - GDPR 준수 노르웨이 클라우드 저장소, 5GB 무료",
+            "minioDesc": "셀프 호스팅 S3 호환 오브젝트 스토리지"
         },
         "shortcuts": {
             "title": "단축키",

@@ -271,6 +271,15 @@ export const AwsLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// MinIO — red circle with stylized storage icon
+export const MinIOLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="11" fill="#C72C48"/>
+        <path d="M7.5 7.5h2v9h-2zm3.5 0h2v9h-2zm3.5 0h2v9h-2z" fill="#fff" rx="0.5"/>
+        <path d="M6 17.5h12v1.5H6z" fill="#fff" rx="0.5"/>
+    </svg>
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -279,6 +288,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'backblaze': BackblazeLogo,
     'wasabi': WasabiLogo,
     'storj': StorjLogo,
+    'minio': MinIOLogo,
     'digitalocean-spaces': DigitalOceanLogo,
     'oracle-cloud': OracleCloudLogo,
     'idrive-e2': IDriveLogo,

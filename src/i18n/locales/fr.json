@@ -1136,7 +1136,8 @@
             "drimeDesc": "Stockage cloud sécurisé",
             "drimeTooltip": "Drime Cloud - 20GB de stockage cloud sécurisé gratuit avec REST API",
             "jottacloudDesc": "Cloud norvégien (5GB gratuit)",
-            "jottacloudTooltip": "Jottacloud - Stockage cloud norvégien conforme au GDPR avec 5GB gratuits"
+            "jottacloudTooltip": "Jottacloud - Stockage cloud norvégien conforme au GDPR avec 5GB gratuits",
+            "minioDesc": "Stockage objet S3 auto-hébergé"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

@@ -1136,7 +1136,8 @@
             "drimeDesc": "Säker molnlagring",
             "drimeTooltip": "Drime Cloud - 20GB säker molnlagring med REST API",
             "jottacloudDesc": "Norskt moln (5GB gratis)",
-            "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk molnlagring med 5GB gratis"
+            "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk molnlagring med 5GB gratis",
+            "minioDesc": "Självhostrad S3-kompatibel objektlagring"
         },
         "shortcuts": {
             "title": "Kortkommandon",

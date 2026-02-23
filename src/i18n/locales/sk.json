@@ -1136,7 +1136,8 @@
             "drimeDesc": "Bezpečné cloudové úložisko",
             "drimeTooltip": "Drime Cloud - 20GB bezpečného cloudového úložiska s REST API",
             "jottacloudDesc": "Nórsky cloud (5GB zadarmo)",
-            "jottacloudTooltip": "Jottacloud - nórske cloudové úložisko v súlade s GDPR s 5GB zadarmo"
+            "jottacloudTooltip": "Jottacloud - nórske cloudové úložisko v súlade s GDPR s 5GB zadarmo",
+            "minioDesc": "Vlastné hostované S3-kompatibilné úložisko objektov"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

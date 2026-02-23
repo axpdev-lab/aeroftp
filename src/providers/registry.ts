@@ -563,6 +563,37 @@ export const PROVIDERS: ProviderConfig[] = [
         helpUrl: 'https://www.tencentcloud.com/document/product/436/32537',
     },
 
+    {
+        id: 'minio',
+        name: 'MinIO',
+        description: 'High-performance self-hosted S3-compatible object storage',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Database',
+        color: '#C72C48',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, placeholder: 'minioadmin' },
+            { ...COMMON_FIELDS.secretAccessKey },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket' },
+            {
+                ...COMMON_FIELDS.endpoint,
+                label: 'MinIO Endpoint',
+                placeholder: 'minio.example.com:9000',
+                helpText: 'Your MinIO server address (without https://)',
+            },
+        ],
+        defaults: {
+            pathStyle: true,
+            region: 'us-east-1',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        helpUrl: 'https://min.io/docs/minio/linux/index.html',
+    },
+
     // =========================================================================
     // WEBDAV PROVIDERS
     // =========================================================================

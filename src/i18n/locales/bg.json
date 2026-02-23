@@ -1136,7 +1136,8 @@
             "drimeDesc": "Сигурно облачно хранилище",
             "drimeTooltip": "Drime Cloud - 20GB безплатно сигурно облачно хранилище с REST API",
             "jottacloudDesc": "Норвежки облак (5GB безплатно)",
-            "jottacloudTooltip": "Jottacloud - GDPR-съвместимо норвежко облачно съхранение с 5GB безплатно"
+            "jottacloudTooltip": "Jottacloud - GDPR-съвместимо норвежко облачно съхранение с 5GB безплатно",
+            "minioDesc": "Самостоятелно хоствано S3-съвместимо хранилище"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

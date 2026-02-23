@@ -1136,7 +1136,8 @@
             "drimeDesc": "Güvenli Bulut Depolama",
             "drimeTooltip": "Drime Cloud - REST API ile 20GB ücretsiz güvenli bulut depolama",
             "jottacloudDesc": "Norveç Bulutu (5GB ücretsiz)",
-            "jottacloudTooltip": "Jottacloud - 5GB ücretsiz ile GDPR uyumlu Norveç bulut depolama"
+            "jottacloudTooltip": "Jottacloud - 5GB ücretsiz ile GDPR uyumlu Norveç bulut depolama",
+            "minioDesc": "Kendi sunucunuzda S3-uyumlu nesne depolama"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

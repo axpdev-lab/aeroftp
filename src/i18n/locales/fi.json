@@ -1136,7 +1136,8 @@
             "drimeDesc": "Turvallinen pilvitallennus",
             "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla",
             "jottacloudDesc": "Norjalainen pilvi (5GB ilmaiseksi)",
-            "jottacloudTooltip": "Jottacloud - GDPR-yhteensopiva norjalainen pilvitallennus 5GB ilmaiseksi"
+            "jottacloudTooltip": "Jottacloud - GDPR-yhteensopiva norjalainen pilvitallennus 5GB ilmaiseksi",
+            "minioDesc": "Itse ylläpidetty S3-yhteensopiva objektitallennus"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

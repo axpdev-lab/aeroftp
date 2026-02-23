@@ -1129,7 +1129,8 @@
             "drimeDesc": "Անվտանգ Ամպային Պահոց",
             "drimeTooltip": "Drime Cloud - 20GB անվճար ամպային պահոց REST API-ով",
             "jottacloudDesc": "Նորվեգական ամպ (5GB անվճար)",
-            "jottacloudTooltip": "Jottacloud - GDPR-համապատասխան նորվեգական ամպային պահեստավորում 5GB անվճար"
+            "jottacloudTooltip": "Jottacloud - GDPR-համապատասխան նորվեգական ամպային պահեստավորում 5GB անվճար",
+            "minioDesc": "\u054D\u0565\u0583\u0561\u056F\u0561\u0576 \u0570\u0578\u057D\u0569\u056B\u0576\u0563\u0578\u057E S3-\u0570\u0561\u0574\u0561\u057F\u0565\u0572 \u0585\u0562\u0575\u0565\u056F\u057F\u0561\u0575\u056B\u0576 \u057A\u0561\u0570\u0578\u0581"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

@@ -1136,7 +1136,8 @@
             "drimeDesc": "พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย",
             "drimeTooltip": "Drime Cloud - พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย 20GB พร้อม REST API",
             "jottacloudDesc": "คลาวด์นอร์เวย์ (5GB ฟรี)",
-            "jottacloudTooltip": "Jottacloud - พื้นที่เก็บข้อมูลคลาวด์นอร์เวย์ที่สอดคล้องกับ GDPR พร้อม 5GB ฟรี"
+            "jottacloudTooltip": "Jottacloud - พื้นที่เก็บข้อมูลคลาวด์นอร์เวย์ที่สอดคล้องกับ GDPR พร้อม 5GB ฟรี",
+            "minioDesc": "พื้นที่เก็บอ็อบเจกต์ S3 ที่โฮสต์ด้วยตนเอง"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

@@ -1136,7 +1136,8 @@
             "drimeDesc": "Sicherer Cloud-Speicher",
             "drimeTooltip": "Drime Cloud - 20GB kostenloser sicherer Cloud-Speicher mit REST API",
             "jottacloudDesc": "Norwegische Cloud (5GB kostenlos)",
-            "jottacloudTooltip": "Jottacloud - GDPR-konforme norwegische Cloud-Speicherung mit 5GB kostenlos"
+            "jottacloudTooltip": "Jottacloud - GDPR-konforme norwegische Cloud-Speicherung mit 5GB kostenlos",
+            "minioDesc": "Selbstgehosteter S3-kompatibler Objektspeicher"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

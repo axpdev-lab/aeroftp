@@ -1136,7 +1136,8 @@
             "drimeDesc": "Storan Awan Selamat",
             "drimeTooltip": "Drime Cloud - 20GB storan awan selamat percuma dengan REST API",
             "jottacloudDesc": "Awan Norway (5GB percuma)",
-            "jottacloudTooltip": "Jottacloud - Storan awan Norway yang mematuhi GDPR dengan 5GB percuma"
+            "jottacloudTooltip": "Jottacloud - Storan awan Norway yang mematuhi GDPR dengan 5GB percuma",
+            "minioDesc": "Storan objek S3 yang dihoskan sendiri"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

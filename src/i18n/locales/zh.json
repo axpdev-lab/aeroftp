@@ -1136,7 +1136,8 @@
             "drimeDesc": "安全云存储",
             "drimeTooltip": "Drime Cloud - 20GB 免费安全云存储，支持 REST API",
             "jottacloudDesc": "挪威云存储 (5GB 免费)",
-            "jottacloudTooltip": "Jottacloud - 符合 GDPR 的挪威云存储，提供 5GB 免费空间"
+            "jottacloudTooltip": "Jottacloud - 符合 GDPR 的挪威云存储，提供 5GB 免费空间",
+            "minioDesc": "自托管 S3 兼容对象存储"
         },
         "shortcuts": {
             "title": "键盘快捷键",

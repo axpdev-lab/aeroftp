@@ -75,6 +75,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
         if (host.includes('aliyuncs') || host.includes('oss')) return 'alibaba-oss';
         if (host.includes('myqcloud') || host.includes('cos.')) return 'tencent-cos';
         if (host.includes('oraclecloud')) return 'oracle-cloud';
+        if (host.includes('minio') || host.includes(':9000')) return 'minio';
         if (host.includes('amazonaws') || host === '' || host === 's3.amazonaws.com') return 'amazon-s3';
     }
     if (proto === 'webdav') {
@@ -587,6 +588,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                             : host.includes('amazonaws') ? 'AWS S3'
                                                             : host.includes('wasabisys') ? 'Wasabi'
                                                             : host.includes('digitaloceanspaces') ? 'DigitalOcean'
+                                                            : (host.includes('minio') || host.includes(':9000')) ? 'MinIO'
                                                             : host.split('.')[0];
                                                         return `${bucket} — ${provider}`;
                                                     })()

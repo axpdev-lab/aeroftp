@@ -1136,7 +1136,8 @@
             "drimeDesc": "Bezpieczna chmura",
             "drimeTooltip": "Drime Cloud - 20GB bezpiecznej pamięci w chmurze z REST API",
             "jottacloudDesc": "Norweska chmura (5GB za darmo)",
-            "jottacloudTooltip": "Jottacloud - zgodna z GDPR norweska chmura z 5GB za darmo"
+            "jottacloudTooltip": "Jottacloud - zgodna z GDPR norweska chmura z 5GB za darmo",
+            "minioDesc": "Samoobsługowy S3-kompatybilny magazyn obiektów"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

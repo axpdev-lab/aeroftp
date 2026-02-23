@@ -1857,6 +1857,7 @@
       "region": "Region",
       "regionPlaceholder": "us-east-1",
       "s3Config": "S3 Configuration",
+      "minioDesc": "Self-hosted S3-compatible object storage",
       "s3Desc": "AWS S3, MinIO, R2, B2",
       "s3Endpoint": "Endpoint",
       "s3Tooltip": "S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2",

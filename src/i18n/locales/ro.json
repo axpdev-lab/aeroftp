@@ -1136,7 +1136,8 @@
             "drimeDesc": "Stocare securizată în cloud",
             "drimeTooltip": "Drime Cloud - 20GB stocare securizată în cloud cu REST API",
             "jottacloudDesc": "Cloud norvegian (5GB gratuit)",
-            "jottacloudTooltip": "Jottacloud - stocare cloud norvegiană conformă cu GDPR cu 5GB gratuit"
+            "jottacloudTooltip": "Jottacloud - stocare cloud norvegiană conformă cu GDPR cu 5GB gratuit",
+            "minioDesc": "Stocare de obiecte S3 auto-găzduită"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

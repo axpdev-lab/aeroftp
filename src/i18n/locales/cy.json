@@ -1136,7 +1136,8 @@
             "drimeDesc": "Stôr Cwmwl Diogel",
             "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API",
             "jottacloudDesc": "Cwmwl Norwyaidd (5GB am ddim)",
-            "jottacloudTooltip": "Jottacloud - Storfa cwmwl Norwyaidd sy'n cydymffurfio â GDPR gyda 5GB am ddim"
+            "jottacloudTooltip": "Jottacloud - Storfa cwmwl Norwyaidd sy'n cydymffurfio â GDPR gyda 5GB am ddim",
+            "minioDesc": "Storfa gwrthrychau S3 hunan-letyol"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

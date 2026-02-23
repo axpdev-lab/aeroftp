@@ -1136,7 +1136,8 @@
             "drimeDesc": "Sikker cloud-lagring",
             "drimeTooltip": "Drime Cloud - 20GB gratis sikker cloud-lagring med REST API",
             "jottacloudDesc": "Norsk sky (5GB gratis)",
-            "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk skylagring med 5GB gratis"
+            "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk skylagring med 5GB gratis",
+            "minioDesc": "Selvhostet S3-kompatibelt objektlager"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

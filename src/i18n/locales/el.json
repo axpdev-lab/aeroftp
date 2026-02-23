@@ -1136,7 +1136,8 @@
             "drimeDesc": "Ασφαλής αποθήκευση στο νέφος",
             "drimeTooltip": "Drime Cloud - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API",
             "jottacloudDesc": "Νορβηγικό cloud (5GB δωρεάν)",
-            "jottacloudTooltip": "Jottacloud - Νορβηγική υπηρεσία cloud συμβατή με GDPR με 5GB δωρεάν"
+            "jottacloudTooltip": "Jottacloud - Νορβηγική υπηρεσία cloud συμβατή με GDPR με 5GB δωρεάν",
+            "minioDesc": "Αυτο-φιλοξενούμενος S3-συμβατός χώρος αποθήκευσης"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
