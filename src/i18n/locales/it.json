@@ -427,6 +427,7 @@
       "encryptionOptional": "Imposta Password (AES-256)",
       "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia",
       "createAeroVault": "Crea AeroVault...",
+      "openWithAeroVault": "Apri con AeroVault",
       "createCryptomator": "Crea Vault Cryptomator...",
       "cut": "Taglia",
       "copy": "Copia",

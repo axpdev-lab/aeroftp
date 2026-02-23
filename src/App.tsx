@@ -269,7 +269,7 @@ const App: React.FC = () => {
   }, [debugMode]);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open' }>(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[] }>(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
@@ -4536,7 +4536,7 @@ const App: React.FC = () => {
         label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
         icon: <Shield size={14} className="text-emerald-500" />,
         action: () => {
-          setShowVaultPanel({ mode: 'open' });
+          setShowVaultPanel({ mode: 'open', path: file.path });
         },
       });
     }
@@ -4556,7 +4556,11 @@ const App: React.FC = () => {
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <Shield size={14} className="text-emerald-500" />,
         action: () => {
-          setShowVaultPanel({ mode: 'create' });
+          const paths = filesToUpload.map(name => {
+            const f = sortedLocalFiles.find(lf => lf.name === name);
+            return f ? f.path : `${currentLocalPath}/${name}`;
+          });
+          setShowVaultPanel({ mode: 'create', files: paths });
         },
       });
 
@@ -5216,7 +5220,7 @@ const App: React.FC = () => {
         isOpen={showCloudPanel}
         onClose={() => setShowCloudPanel(false)}
       />
-      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} />}
+      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} />}
       {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
       {archiveBrowserState && (
         <ArchiveBrowser
