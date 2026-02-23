@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.2] - 2026-02-23
+
+### Amazon S3 Provider & Protocol Enablement
+
+Dedicated Amazon S3 provider with 28 AWS region presets, official AWS logo, and simplified connection UI. Azure Blob and Drime Cloud protocols re-enabled for production after successful testing.
+
+#### Added
+
+- **Amazon S3 dedicated provider**: Pre-configured provider with 28 AWS region dropdown, official AWS logo, no manual endpoint/path-style configuration needed
+- **AWS logo**: Official Amazon Web Services SVG logo on provider card in saved servers and connection screen
+
+#### Fixed
+
+- **S3 bucket name trimming**: Trailing whitespace in bucket/region fields caused "invalid international domain name" IDNA errors — now trimmed in `S3Config::from_provider_config`
+- **S3 endpoint field visibility**: Amazon S3 provider hides unnecessary Endpoint and Path-Style fields since they are auto-configured
+
+#### Changed
+
+- **Azure Blob enabled**: Protocol re-enabled for production release after testing
+- **Drime Cloud enabled**: Protocol re-enabled for production release after testing
+
+---
+
 ## [2.6.1] - 2026-02-23
 
 ### VS Code-Style Titlebar & UX Polish

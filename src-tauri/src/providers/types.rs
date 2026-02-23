@@ -314,12 +314,13 @@ impl S3Config {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let bucket = config.extra.get("bucket")
             .ok_or_else(|| ProviderError::InvalidConfig("S3 bucket name is required".to_string()))?
-            .clone();
-        
+            .trim().to_string();
+
         let region = config.extra.get("region")
             .cloned()
-            .unwrap_or_else(|| "us-east-1".to_string());
-        
+            .unwrap_or_else(|| "us-east-1".to_string())
+            .trim().to_string();
+
         let endpoint = if config.host.is_empty() || config.host == "s3.amazonaws.com" {
             None
         } else {
@@ -335,7 +336,7 @@ impl S3Config {
         let path_style = config.extra.get("path_style")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
-        
+
         Ok(Self {
             endpoint,
             region,

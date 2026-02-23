@@ -1808,18 +1808,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 ) : (
                                     /* Traditional connection fields (FTP/S3/WebDAV) */
                                     <>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">
-                                                {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={connectionParams.server}
-                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                                placeholder={getServerPlaceholder()}
-                                            />
-                                        </div>
+                                        {(() => {
+                                            const providerHasNoEndpoint = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.fields?.find(f => f.key === 'endpoint');
+                                            return providerHasNoEndpoint ? null : (
+                                                <div>
+                                                    <label className="block text-sm font-medium mb-1.5">
+                                                        {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={connectionParams.server}
+                                                        onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                                        placeholder={getServerPlaceholder()}
+                                                    />
+                                                </div>
+                                            );
+                                        })()}
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{getUsernameLabel()}</label>
                                             <input

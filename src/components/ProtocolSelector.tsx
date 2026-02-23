@@ -139,7 +139,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         badge: 'HMAC',
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
-        disabled: !import.meta.env.DEV,
     },
     // Cloud Storage Providers (AeroCloud FIRST!)
     {
@@ -285,7 +284,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-green-500',
         isCloudStorage: true,
         tooltip: t('protocol.drimeTooltip'),
-        disabled: !import.meta.env.DEV,
     },
     {
         type: 'pcloud',
@@ -644,7 +642,55 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
                     )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                {endpointField ? (
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5">
+                                {regionField?.label || t('protocol.region')}
+                            </label>
+                            {hasRegionSelect ? (
+                                <select
+                                    value={options.region || ''}
+                                    onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                    disabled={disabled}
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                >
+                                    <option value="">{t('protocol.selectRegion')}</option>
+                                    {regionField!.options!.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <input
+                                    type="text"
+                                    value={options.region || ''}
+                                    onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                    disabled={disabled}
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                    placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
+                                />
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5">
+                                {endpointField?.label || t('protocol.customEndpoint')}
+                            </label>
+                            <input
+                                type="text"
+                                value={options.endpoint || ''}
+                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
+                            />
+                            {!isEditing && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {endpointField?.helpText || t('protocol.endpointHelp')}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                ) : (
                     <div>
                         <label className="block text-sm font-medium mb-1.5">
                             {regionField?.label || t('protocol.region')}
@@ -672,35 +718,19 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             />
                         )}
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">
-                            {endpointField?.label || t('protocol.customEndpoint')}
-                        </label>
+                )}
+                {endpointField && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
-                            type="text"
-                            value={options.endpoint || ''}
-                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                            type="checkbox"
+                            checked={options.pathStyle || false}
+                            onChange={(e) => onChange({ ...options, pathStyle: e.target.checked })}
                             disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
+                            className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                         />
-                        {!isEditing && (
-                            <p className="text-xs text-gray-500 mt-1">
-                                {endpointField?.helpText || t('protocol.endpointHelp')}
-                            </p>
-                        )}
-                    </div>
-                </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={options.pathStyle || false}
-                        onChange={(e) => onChange({ ...options, pathStyle: e.target.checked })}
-                        disabled={disabled}
-                        className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                    />
-                    {t('protocol.pathStyle')}
-                </label>
+                        {t('protocol.pathStyle')}
+                    </label>
+                )}
                 {!isEditing && providerConfig?.helpUrl && (
                     <a
                         href={providerConfig.helpUrl}

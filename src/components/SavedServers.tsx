@@ -75,7 +75,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
         if (host.includes('aliyuncs') || host.includes('oss')) return 'alibaba-oss';
         if (host.includes('myqcloud') || host.includes('cos.')) return 'tencent-cos';
         if (host.includes('oraclecloud')) return 'oracle-cloud';
-        if (host.includes('amazonaws')) return 'aws-s3';
+        if (host.includes('amazonaws') || host === '' || host === 's3.amazonaws.com') return 'amazon-s3';
     }
     if (proto === 'webdav') {
         if (host.includes('drivehq')) return 'drivehq';

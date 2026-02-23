@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.2" date="2026-02-23">
+      <description>
+        <p>Amazon S3 Provider and Protocol Enablement: Dedicated Amazon S3 provider with 28 AWS region presets, official AWS logo, and simplified connection UI (no manual endpoint or path-style configuration). S3 bucket name trimming fix for IDNA validation errors. Azure Blob and Drime Cloud protocols re-enabled for production after successful testing.</p>
+      </description>
+    </release>
     <release version="2.6.1" date="2026-02-23">
       <description>
         <p>VS Code-Style Titlebar and UX Polish: Unified VS Code-style titlebar with 4 custom dropdown menus (File, Edit, View, Help), theme-aware accent color hover, and migrated toolbar buttons. Native GTK menu bar eliminated. Cut/Copy/Paste in Edit menu with selection-aware disabled states. Consistent animate-scale-in animation on all 42 modal dialogs. Click-outside-to-close on AeroVault and Master Password dialogs. Default backgrounds updated (Waves for app, Isometric for lock screen). 147 provider security audit findings remediated across 8 cloud providers. ErrorBoundary and DebugPanel crash fixes. Settings button in titlebar. Simplified View menu labels in 47 languages.</p>
