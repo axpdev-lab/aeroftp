@@ -621,7 +621,7 @@ impl StorageProvider for FilenProvider {
                 .collect();
             // Check if derived_master_key is already present
             let already_present = decrypted_keys.iter()
-                .any(|k| k.expose_secret() == &derived_master_key);
+                .any(|k| k.expose_secret() == derived_master_key);
             self.master_keys = decrypted_keys;
             if !already_present {
                 self.master_keys.push(SecretString::from(derived_master_key));

@@ -236,12 +236,12 @@ impl MegaProvider {
     async fn ensure_daemon_running(&self) -> Result<(), ProviderError> {
         // Try mega-version as a connectivity check
         match self.run_mega_cmd("mega-version", &[]).await {
-            Ok(_) => return Ok(()),
+            Ok(_) => Ok(()),
             Err(ProviderError::ServerError(ref e)) if e.contains("Failed to execute") => {
                 // Binary not found — daemon can't be started
-                return Err(ProviderError::ConnectionFailed(
+                Err(ProviderError::ConnectionFailed(
                     "MEGAcmd is not installed. Install it from https://mega.nz/cmd".to_string()
-                ));
+                ))
             }
             Err(_) => {
                 // Daemon might not be running — try to start it

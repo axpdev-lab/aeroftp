@@ -409,13 +409,12 @@ impl JottacloudProvider {
                 jotta_log(&format!("Available devices: {:?}", devices));
 
                 // Pick device: prefer configured, then "Jotta", then first available
-                if !devices.is_empty() {
-                    if !devices.contains(&self.config.device) {
-                        if devices.contains(&"Jotta".to_string()) {
-                            self.config.device = "Jotta".to_string();
-                        } else {
-                            self.config.device = devices[0].clone();
-                        }
+                if !devices.is_empty()
+                    && !devices.contains(&self.config.device) {
+                    if devices.contains(&"Jotta".to_string()) {
+                        self.config.device = "Jotta".to_string();
+                    } else {
+                        self.config.device = devices[0].clone();
                     }
                 }
             }
@@ -434,15 +433,14 @@ impl JottacloudProvider {
                 jotta_log(&format!("Available mountpoints on {}: {:?}", self.config.device, mountpoints));
 
                 // Pick mountpoint: prefer configured, then "Archive", then "Sync", then first
-                if !mountpoints.is_empty() {
-                    if !mountpoints.contains(&self.config.mountpoint) {
-                        if mountpoints.contains(&"Archive".to_string()) {
-                            self.config.mountpoint = "Archive".to_string();
-                        } else if mountpoints.contains(&"Sync".to_string()) {
-                            self.config.mountpoint = "Sync".to_string();
-                        } else {
-                            self.config.mountpoint = mountpoints[0].clone();
-                        }
+                if !mountpoints.is_empty()
+                    && !mountpoints.contains(&self.config.mountpoint) {
+                    if mountpoints.contains(&"Archive".to_string()) {
+                        self.config.mountpoint = "Archive".to_string();
+                    } else if mountpoints.contains(&"Sync".to_string()) {
+                        self.config.mountpoint = "Sync".to_string();
+                    } else {
+                        self.config.mountpoint = mountpoints[0].clone();
                     }
                 }
             }
@@ -1147,7 +1145,7 @@ impl StorageProvider for JottacloudProvider {
 
         let used = customer.usage.max(0) as u64;
         let total = customer.quota.max(0) as u64;
-        let free = if total > used { total - used } else { 0 };
+        let free = total.saturating_sub(used);
 
         Ok(StorageInfo {
             used,
