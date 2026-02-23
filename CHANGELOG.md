@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.3] - 2026-02-23
+
+### AeroCloud Tab Switch & Menu Restoration
+
+Critical fix for AeroCloud tab switching and session protocol routing, plus restoration of the missing "Check for Updates" menu item.
+
+#### Fixed
+
+- **AeroCloud tab switch**: Switching from provider tabs (kDrive, Drime, etc.) back to AeroCloud now correctly disconnects the active provider before reconnecting, ensuring the remote panel updates properly
+- **Session protocol routing**: `switchSession` and `connectToFtp` now use `isNonFtpProvider()` instead of a hardcoded list, fixing routing for kDrive, Drime, Jottacloud, Internxt, and Azure Blob sessions
+- **Check for Updates menu**: Restored "Check for Updates" in Help menu — was lost during VS Code-style titlebar migration
+
+---
+
 ## [2.6.2] - 2026-02-23
 
 ### Amazon S3 Provider & Protocol Enablement

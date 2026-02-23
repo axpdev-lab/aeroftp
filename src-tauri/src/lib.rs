@@ -3910,11 +3910,16 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         ],
     ).map_err(|e| e.to_string())?;
 
+    let check_update_item = MenuItem::with_id(&app, "check_update", get("checkForUpdates", "Check for Updates"), true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
     let help_menu = Submenu::with_items(
         &app,
         get("help", "Help"),
         true,
         &[
+            &check_update_item,
+            &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &shortcuts,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &support,
@@ -6636,11 +6641,15 @@ pub fn run() {
             )?;
             
             // Help menu
+            let check_update = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
+
             let help_menu = Submenu::with_items(
                 app,
                 "Help",
                 true,
                 &[
+                    &check_update,
+                    &PredefinedMenuItem::separator(app)?,
                     &shortcuts,
                     &PredefinedMenuItem::separator(app)?,
                     &support,

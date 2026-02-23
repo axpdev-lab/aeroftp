@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.3" date="2026-02-23">
+      <description>
+        <p>AeroCloud Tab Switch and Menu Restoration: Critical fix for AeroCloud tab switching — switching from provider tabs (kDrive, Drime, etc.) back to AeroCloud now correctly disconnects the active provider before reconnecting. Session protocol routing expanded from hardcoded list to isNonFtpProvider() covering all 17 non-FTP protocols. Restored missing "Check for Updates" menu item in Help menu lost during VS Code-style titlebar migration.</p>
+      </description>
+    </release>
     <release version="2.6.2" date="2026-02-23">
       <description>
         <p>Amazon S3 Provider and Protocol Enablement: Dedicated Amazon S3 provider with 28 AWS region presets, official AWS logo, and simplified connection UI (no manual endpoint or path-style configuration). S3 bucket name trimming fix for IDNA validation errors. Azure Blob and Drime Cloud protocols re-enabled for production after successful testing.</p>

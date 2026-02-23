@@ -1748,7 +1748,7 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] connectionParams:', connectionParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
-    const isProvider = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
+    const isProvider = !!protocol && !isOAuth && isNonFtpProvider(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
@@ -2095,8 +2095,8 @@ const App: React.FC = () => {
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
-    // Treat 'mega' as a general provider like S3/WebDAV, not legacy FTP
-    const isS3OrWebDAV = protocol && ['s3', 'webdav', 'mega', 'sftp', 'filen'].includes(protocol);
+    // All non-FTP, non-OAuth providers use provider_connect/provider_list_files
+    const isS3OrWebDAV = !!protocol && !isOAuth && isNonFtpProvider(protocol);
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
@@ -2461,6 +2461,10 @@ const App: React.FC = () => {
         // If different server, we need to reconnect to the cloud server
         if (!isSameServer) {
           logger.debug('Different server, reconnecting to cloud server...');
+          // Disconnect any active provider/FTP before switching to AeroCloud
+          try { await invoke('provider_disconnect'); } catch { }
+          try { await invoke('disconnect_ftp'); } catch { }
+
           const params = {
             server: cloudServerString,
             username: cloudServer.username || '',
