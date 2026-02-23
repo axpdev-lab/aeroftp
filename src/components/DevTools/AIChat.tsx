@@ -1827,7 +1827,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             {showExtremeWarning && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)} role="dialog" aria-modal="true" aria-label="Extreme Mode Warning">
                     <div
-                        className="w-[380px] rounded-xl border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5"
+                        className="w-[380px] rounded-xl border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5 animate-scale-in"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-3 mb-4">

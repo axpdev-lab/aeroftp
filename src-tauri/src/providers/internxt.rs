@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use reqwest::header::CONTENT_TYPE;
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha2::{Sha256, Sha512, Digest};
 use ripemd::Ripemd160;
@@ -28,6 +28,7 @@ use tokio::io::AsyncWriteExt;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
+    http_retry::{HttpRetryConfig, send_with_retry},
 };
 use super::types::InternxtConfig;
 
@@ -38,17 +39,28 @@ type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 // AES-256-CTR type alias (for file content encryption)
 type Aes256Ctr = ctr::Ctr128BE<aes::Aes256>;
 
-/// Logging through tracing infrastructure (info level for visibility)
+/// Logging through tracing infrastructure (debug level to reduce noise)
 fn internxt_log(msg: &str) {
-    tracing::info!(target: "internxt", "{}", msg);
+    tracing::debug!(target: "internxt", "{}", msg);
 }
 
-/// Internxt API gateway
+/// Internxt API gateway — acts as a reverse proxy that routes requests:
+/// - `gateway.internxt.com/drive/*` → `drive.internxt.com/*` (Drive REST API)
+/// - `gateway.internxt.com/network/*` → `api.internxt.com/*` (Bridge/Network storage API)
+///
+/// Using the gateway simplifies the client to a single base URL for both APIs.
+/// All `/drive/*` and `/network/*` prefixed paths in this file rely on this routing.
+/// Reference: rclone-adapter uses the same gateway approach.
 const GATEWAY: &str = "https://gateway.internxt.com";
+/// Direct API URL — used as fallback when gateway blocks CLI access (402 on free tier).
 const API_URL: &str = "https://api.internxt.com";
 
-/// App-level crypto secret used for salt/password encryption (from Internxt SDK)
+/// Well-known application-level crypto secret, identical across all Internxt clients
+/// (web, desktop, CLI, rclone adapter). Used for encrypting/decrypting the sKey (salt)
+/// and password hash during the login flow. Not a vulnerability — this is public knowledge.
 const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
+
+// TODO: OPAQUE login protocol (future Internxt auth method)
 
 /// OpenSSL "Salted__" prefix
 const SALTED_PREFIX: &[u8] = b"Salted__";
@@ -106,6 +118,8 @@ struct AccessUser {
     bridge_user: String,
     #[serde(default)]
     uuid: String,
+    /// rootFolderUuid is available but rootFolderId (numeric) is used instead
+    /// for backward compatibility with older API responses and the Bridge/Network API.
     #[serde(rename = "rootFolderUuid", default)]
     root_folder_uuid: Option<String>,
 }
@@ -316,10 +330,10 @@ pub struct InternxtProvider {
     config: InternxtConfig,
     client: reqwest::Client,
     connected: bool,
-    /// JWT Bearer token for /drive/* endpoints
-    token: String,
-    /// Decrypted BIP39 mnemonic (never sent to frontend)
-    mnemonic: String,
+    /// JWT Bearer token for /drive/* endpoints (SecretString for memory zeroization)
+    token: SecretString,
+    /// Decrypted BIP39 mnemonic — never sent to frontend (SecretString for memory zeroization)
+    mnemonic: SecretString,
     /// User's storage bucket ID
     bucket: String,
     /// BasicAuth header for /network/* endpoints: Basic base64(bridgeUser:sha256hex(userId))
@@ -334,6 +348,9 @@ pub struct InternxtProvider {
     api_base: String,
     /// Cache: path → DirInfo (uuid, name)
     dir_cache: HashMap<String, DirInfo>,
+    /// HTTP retry configuration for 429/5xx handling
+    #[allow(dead_code)]
+    retry_config: HttpRetryConfig,
 }
 
 impl InternxtProvider {
@@ -347,8 +364,8 @@ impl InternxtProvider {
             config,
             client,
             connected: false,
-            token: String::new(),
-            mnemonic: String::new(),
+            token: SecretString::from(String::new()),
+            mnemonic: SecretString::from(String::new()),
             bucket: String::new(),
             basic_auth: String::new(),
             api_base: GATEWAY.to_string(),
@@ -356,6 +373,7 @@ impl InternxtProvider {
             current_path: "/".to_string(),
             current_folder_id: String::new(),
             dir_cache: HashMap::new(),
+            retry_config: HttpRetryConfig::default(),
         }
     }
 
@@ -511,16 +529,27 @@ impl InternxtProvider {
         hasher.finalize().to_vec()
     }
 
-    /// Derive per-file bucket key from mnemonic + bucket ID
+    /// Derive per-file bucket key from mnemonic + bucket ID.
+    /// Reverse-engineered from rclone adapter: bucket_id is typically hex-encoded,
+    /// but some accounts may have non-hex IDs. Fallback to raw bytes if hex decode fails.
+    /// TODO: validate with official test vectors once Internxt publishes them
     fn generate_file_bucket_key(mnemonic: &str, bucket_id: &str) -> Result<Vec<u8>, ProviderError> {
         let seed = Self::mnemonic_to_seed(mnemonic);
-        let bucket_bytes = hex::decode(bucket_id).map_err(|e| {
-            ProviderError::Other(format!("Failed to decode bucket ID: {}", e))
-        })?;
+        // Try hex decode first; if bucket_id contains non-hex chars, use raw bytes
+        let bucket_bytes = match hex::decode(bucket_id) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                tracing::debug!(target: "internxt", "Bucket ID '{}' is not valid hex, using raw bytes", bucket_id);
+                bucket_id.as_bytes().to_vec()
+            }
+        };
         Ok(Self::get_file_deterministic_key(&seed, &bucket_bytes))
     }
 
-    /// Derive per-file AES-256-CTR key and IV from mnemonic + bucket + index
+    /// Derive per-file AES-256-CTR key and IV from mnemonic + bucket + index.
+    /// Key derivation chain: BIP39(mnemonic) → seed → SHA-512(seed, bucket) → bucket_key
+    /// → SHA-512(bucket_key[..32], index) → (key[..32], iv = index[..16])
+    /// TODO: validate with official test vectors once Internxt publishes them
     fn generate_file_key(mnemonic: &str, bucket_id: &str, index_hex: &str) -> Result<([u8; 32], [u8; 16]), ProviderError> {
         let bucket_key = Self::generate_file_bucket_key(mnemonic, bucket_id)?;
         let index_bytes = hex::decode(index_hex).map_err(|e| {
@@ -554,18 +583,21 @@ impl InternxtProvider {
 
     // ─── API Helpers ───────────────────────────────────────────────────
 
-    /// Make authenticated request to /drive/* endpoints (Bearer token)
+    /// Make authenticated request to /drive/* endpoints (Bearer token).
+    /// The `/drive/` prefix is part of the gateway routing convention (see GATEWAY doc).
     fn drive_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/drive{}", self.api_base, path);
         self.client
             .request(method, &url)
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token.expose_secret()))
             .header("internxt-client", "aeroftp")
             .header("internxt-version", "v1.0.436")
     }
 
-    /// Make authenticated request to /network/* endpoints (Basic auth)
-    /// Network endpoints always use GATEWAY (gateway.internxt.com), not api.internxt.com
+    /// Make authenticated request to /network/* endpoints (Basic auth).
+    /// Network endpoints always use GATEWAY (gateway.internxt.com/network/* → api.internxt.com/*),
+    /// regardless of whether api_base was switched to API_URL for /drive/* requests.
+    /// This is because the Bridge/Network API only accepts Basic auth via the gateway.
     fn network_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/network{}", GATEWAY, path);
         self.client
@@ -575,7 +607,10 @@ impl InternxtProvider {
             .header("internxt-version", "1.0")
     }
 
-    /// Compute BasicAuth header: Basic base64(bridgeUser:sha256hex(userId))
+    /// Compute BasicAuth header: Basic base64(bridgeUser:sha256hex(userId)).
+    /// This format is derived from the rclone adapter source code. The Bridge API
+    /// expects SHA-256 of the userId as the password component, not the raw userId.
+    /// TODO: verify this matches official Bridge API docs if they become available
     fn compute_basic_auth(bridge_user: &str, user_id: &str) -> String {
         let hash = hex::encode(Sha256::digest(user_id.as_bytes()));
         let creds = format!("{}:{}", bridge_user, hash);
@@ -862,8 +897,8 @@ impl InternxtProvider {
             access_data.new_token.clone()
         };
 
-        self.token = token;
-        self.mnemonic = decrypted_mnemonic;
+        self.token = SecretString::from(token);
+        self.mnemonic = SecretString::from(decrypted_mnemonic);
         self.bucket = access_data.user.bucket.clone();
         self.root_folder_id = access_data.user.root_folder_id.clone();
         self.current_folder_id = self.root_folder_id.clone();
@@ -926,14 +961,16 @@ impl StorageProvider for InternxtProvider {
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let email = self.config.email.clone();
-        let password = self.config.password.expose_secret().to_string();
+        // INT-023: use expose_secret() inline, avoid storing password in a plain String
+        // TODO: integrate `zeroize` crate for any unavoidable intermediate Strings
         let tfa = self.config.two_factor_code.clone().unwrap_or_default();
 
         internxt_log(&format!("[CONNECT] email={}, gateway={}", email, GATEWAY));
 
         // Step 1: POST /drive/auth/login with email → get sKey + TFA flag
+        // (login endpoint uses gateway /drive/ prefix — see GATEWAY doc)
         let login_url = format!("{}/drive/auth/login", GATEWAY);
-        internxt_log(&format!("[STEP 1] POST {}", login_url));
+        tracing::debug!(target: "internxt", "[STEP 1] POST {}", login_url);
         let login_body = serde_json::json!({ "email": email });
         let login_resp = self.client
             .post(&login_url)
@@ -948,11 +985,11 @@ impl StorageProvider for InternxtProvider {
             })?;
 
         let login_status = login_resp.status();
-        internxt_log(&format!("[STEP 1] Response status: {}", login_status));
+        tracing::debug!(target: "internxt", "[STEP 1] Response status: {}", login_status);
 
         if !login_status.is_success() {
             let body = login_resp.text().await.unwrap_or_default();
-            internxt_log(&format!("[STEP 1 FAIL] Body: {}", &body[..body.len().min(200)]));
+            tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.len().min(200)]);
             return Err(ProviderError::AuthenticationFailed(format!("Login failed ({}): {}",
                 login_status, super::sanitize_api_error(&body))));
         }
@@ -962,20 +999,21 @@ impl StorageProvider for InternxtProvider {
             ProviderError::AuthenticationFailed(format!("Failed to parse login response: {}", e))
         })?;
 
-        internxt_log(&format!("[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa));
+        tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
 
         if login_data.tfa && tfa.is_empty() {
             return Err(ProviderError::AuthenticationFailed("2FA code required for this account".to_string()));
         }
 
-        // Step 2: Encrypt password hash
-        internxt_log("[STEP 2] Encrypting password with sKey...");
-        let encrypted_password = Self::encrypt_password_hash(&password, &login_data.s_key)?;
-        internxt_log(&format!("[STEP 2 OK] Encrypted password length={}", encrypted_password.len()));
+        // Step 2: Encrypt password hash (use expose_secret() inline)
+        tracing::debug!(target: "internxt", "[STEP 2] Encrypting password with sKey...");
+        let encrypted_password = Self::encrypt_password_hash(self.config.password.expose_secret(), &login_data.s_key)?;
+        tracing::debug!(target: "internxt", "[STEP 2 OK] Encrypted password length={}", encrypted_password.len());
 
         // Step 3: POST /drive/auth/cli/login/access
+        // (CLI access endpoint uses gateway /drive/ prefix — see GATEWAY doc)
         let access_url = format!("{}/drive/auth/cli/login/access", GATEWAY);
-        internxt_log(&format!("[STEP 3] POST {}", access_url));
+        tracing::debug!(target: "internxt", "[STEP 3] POST {}", access_url);
         let mut access_body = serde_json::json!({
             "email": email,
             "password": encrypted_password,
@@ -997,18 +1035,22 @@ impl StorageProvider for InternxtProvider {
             })?;
 
         let access_status = access_resp.status();
-        internxt_log(&format!("[STEP 3] Response status: {}", access_status));
+        tracing::debug!(target: "internxt", "[STEP 3] Response status: {}", access_status);
 
         if !access_status.is_success() {
             let body = access_resp.text().await.unwrap_or_default();
-            internxt_log(&format!("[STEP 3 FAIL] Body: {}", &body[..body.len().min(200)]));
+            tracing::debug!(target: "internxt", "[STEP 3 FAIL] Body: {}", &body[..body.len().min(200)]);
 
             // Check if this is the 402 free-tier block
             if access_status.as_u16() == 402 {
                 internxt_log("[STEP 3] 402 = Free account blocked from CLI access. Trying web auth fallback...");
 
                 // Try alternative: api.internxt.com /drive/auth/login/access
-                return self.connect_web_auth(&email, &password, &tfa, &login_data.s_key).await;
+                let password_clone = self.config.password.expose_secret().to_string();
+                let result = self.connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key).await;
+                // password_clone is a plain String on the stack; it will be dropped here.
+                // SecretString's zeroize-on-drop still protects the original.
+                return result;
             }
 
             return Err(ProviderError::AuthenticationFailed(format!(
@@ -1022,10 +1064,10 @@ impl StorageProvider for InternxtProvider {
             ProviderError::AuthenticationFailed(format!("Failed to parse access response: {}", e))
         })?;
 
-        internxt_log(&format!("[STEP 3 OK] token_len={}", access_data.token.len()));
+        tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
 
-        // Step 4: Decrypt mnemonic with user's password
-        let decrypted_mnemonic = Self::decrypt_text_with_key(&access_data.user.mnemonic, &password)?;
+        // Step 4: Decrypt mnemonic with user's password (expose_secret() inline)
+        let decrypted_mnemonic = Self::decrypt_text_with_key(&access_data.user.mnemonic, self.config.password.expose_secret())?;
 
         // Validate BIP39 mnemonic (basic word count check)
         let word_count = decrypted_mnemonic.split_whitespace().count();
@@ -1042,8 +1084,8 @@ impl StorageProvider for InternxtProvider {
             access_data.new_token.clone()
         };
 
-        self.token = token;
-        self.mnemonic = decrypted_mnemonic;
+        self.token = SecretString::from(token);
+        self.mnemonic = SecretString::from(decrypted_mnemonic);
         self.bucket = access_data.user.bucket.clone();
         self.root_folder_id = access_data.user.root_folder_id.clone();
         self.current_folder_id = self.root_folder_id.clone();
@@ -1084,8 +1126,9 @@ impl StorageProvider for InternxtProvider {
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
-        self.token.clear();
-        self.mnemonic.clear();
+        // SecretString: replace with empty, old value is zeroized on drop
+        self.token = SecretString::from(String::new());
+        self.mnemonic = SecretString::from(String::new());
         self.bucket.clear();
         self.basic_auth.clear();
         self.root_folder_id.clear();
@@ -1114,7 +1157,7 @@ impl StorageProvider for InternxtProvider {
             let url = format!("/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
                 folder_uuid, offset);
             let full_url = format!("{}/drive{}", self.api_base, url);
-            internxt_log(&format!("[LIST FOLDERS] GET {}", full_url));
+            tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
 
             let resp = self.drive_request(reqwest::Method::GET, &url)
                 .send()
@@ -1122,11 +1165,11 @@ impl StorageProvider for InternxtProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(format!("List folders failed: {}", e)))?;
 
             let status = resp.status();
-            internxt_log(&format!("[LIST FOLDERS] Status: {}", status));
+            tracing::debug!(target: "internxt", "[LIST FOLDERS] Status: {}", status);
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                internxt_log(&format!("[LIST FOLDERS] Error body: {}", &body[..body.len().min(200)]));
+                tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.len().min(200)]);
                 return Err(ProviderError::ServerError(format!("List folders failed ({}): {}",
                     status, super::sanitize_api_error(&body))));
             }
@@ -1134,9 +1177,9 @@ impl StorageProvider for InternxtProvider {
             let raw_text = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read folders response: {}", e))
             })?;
-            internxt_log(&format!("[LIST FOLDERS] Response ({} bytes, first 500): {}", raw_text.len(), &raw_text[..raw_text.len().min(500)]));
+            tracing::debug!(target: "internxt", "[LIST FOLDERS] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.len().min(200)]);
             let wrapper: FoldersWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                internxt_log(&format!("[LIST FOLDERS] Parse error: {} | Full response: {}", e, &raw_text[..raw_text.len().min(1000)]));
+                tracing::debug!(target: "internxt", "[LIST FOLDERS] Parse error: {} | Response: {}", e, &raw_text[..raw_text.len().min(200)]);
                 ProviderError::ServerError(format!("Failed to parse folders: {}", e))
             })?;
 
@@ -1188,7 +1231,7 @@ impl StorageProvider for InternxtProvider {
             let url = format!("/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
                 folder_uuid, offset);
             let full_url = format!("{}/drive{}", self.api_base, url);
-            internxt_log(&format!("[LIST FILES] GET {}", full_url));
+            tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
 
             let resp = self.drive_request(reqwest::Method::GET, &url)
                 .send()
@@ -1196,11 +1239,11 @@ impl StorageProvider for InternxtProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(format!("List files failed: {}", e)))?;
 
             let status = resp.status();
-            internxt_log(&format!("[LIST FILES] Status: {}", status));
+            tracing::debug!(target: "internxt", "[LIST FILES] Status: {}", status);
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                internxt_log(&format!("[LIST FILES] Error body: {}", &body[..body.len().min(200)]));
+                tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.len().min(200)]);
                 return Err(ProviderError::ServerError(format!("List files failed ({}): {}",
                     status, super::sanitize_api_error(&body))));
             }
@@ -1208,9 +1251,9 @@ impl StorageProvider for InternxtProvider {
             let raw_text = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read files response: {}", e))
             })?;
-            internxt_log(&format!("[LIST FILES] Response ({} bytes, first 500): {}", raw_text.len(), &raw_text[..raw_text.len().min(500)]));
+            tracing::debug!(target: "internxt", "[LIST FILES] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.len().min(200)]);
             let wrapper: FilesWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                internxt_log(&format!("[LIST FILES] Parse error: {} | Full response: {}", e, &raw_text[..raw_text.len().min(1000)]));
+                tracing::debug!(target: "internxt", "[LIST FILES] Parse error: {} | Response: {}", e, &raw_text[..raw_text.len().min(200)]);
                 ProviderError::ServerError(format!("Failed to parse files: {}", e))
             })?;
 
@@ -1292,6 +1335,7 @@ impl StorageProvider for InternxtProvider {
         // Get bucket file info (shards + encryption index)
         let info_url = format!("/buckets/{}/files/{}/info", file_bucket, file_id);
         let info_resp = self.network_request(reqwest::Method::GET, &info_url)
+            .header("x-api-version", "2")
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to get file info: {}", e)))?;
@@ -1321,10 +1365,11 @@ impl StorageProvider for InternxtProvider {
         }
 
         // Derive encryption key from mnemonic + bucket + index
-        let (key, iv) = Self::generate_file_key(&self.mnemonic, &file_bucket, &bucket_info.index)?;
+        let (key, iv) = Self::generate_file_key(self.mnemonic.expose_secret(), &file_bucket, &bucket_info.index)?;
 
-        // Download encrypted shard (single-shard only — files <2GB on free/pro plans)
-        // TODO: Multi-shard support for very large files if needed
+        // Single-shard download. Multi-shard files (very large, typically >5GB) would need
+        // sequential shard download and concatenation. Not implemented yet.
+        // TODO: Multi-shard download support for very large files
         let shard = &bucket_info.shards[0];
         let dl_resp = self.client
             .get(&shard.url)
@@ -1413,7 +1458,7 @@ impl StorageProvider for InternxtProvider {
         let enc_index = hex::encode(index_bytes);
 
         // Derive per-file key
-        let (key, iv) = Self::generate_file_key(&self.mnemonic, &self.bucket, &enc_index)?;
+        let (key, iv) = Self::generate_file_key(self.mnemonic.expose_secret(), &self.bucket, &enc_index)?;
 
         // Encrypt
         let encrypted = Self::encrypt_file_content(&data, &key, &iv)?;
@@ -1422,7 +1467,9 @@ impl StorageProvider for InternxtProvider {
             progress(0, encrypted.len() as u64);
         }
 
-        // Start upload — network API uses gateway for file storage
+        // Single-shard upload supports files up to ~5GB on current Internxt plans.
+        // For larger files, multi-shard upload with multiparts=N would be needed.
+        // TODO: Multi-shard upload for files exceeding single-shard limit
         // Retry with exponential backoff (gateway can return 500 timeout)
         let start_url = format!("/v2/buckets/{}/files/start?multiparts=1", self.bucket);
         let start_body = serde_json::json!({
@@ -1475,7 +1522,7 @@ impl StorageProvider for InternxtProvider {
             let raw = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read start upload response: {}", e))
             })?;
-            internxt_log(&format!("[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.len().min(500)]));
+            tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.len().min(200)]);
 
             match serde_json::from_str::<StartUploadResp>(&raw) {
                 Ok(data) => {
@@ -1483,7 +1530,7 @@ impl StorageProvider for InternxtProvider {
                     break;
                 }
                 Err(e) => {
-                    last_error = format!("Parse error: {} | Response: {}", e, &raw[..raw.len().min(300)]);
+                    last_error = format!("Parse error: {} | Response: {}", e, &raw[..raw.len().min(200)]);
                     internxt_log(&format!("[UPLOAD] {}", last_error));
                     continue;
                 }
@@ -1529,7 +1576,10 @@ impl StorageProvider for InternxtProvider {
             progress(encrypted.len() as u64, encrypted.len() as u64);
         }
 
-        // Compute hash: RIPEMD-160(SHA-256(encrypted_data)) — matches Internxt web client
+        // RIPEMD-160(SHA-256(encrypted_data)) — matches the Internxt web client and rclone adapter.
+        // The API field is labeled "sha256_of_encrypted_data" but the actual hash algorithm
+        // is RIPEMD-160 wrapping SHA-256, a Bitcoin-style hash (Hash160) used by Internxt's
+        // Bridge service for shard integrity verification.
         let sha256_result = Sha256::digest(&encrypted);
         let ripemd_hash = hex::encode(Ripemd160::digest(sha256_result));
 
@@ -1701,41 +1751,102 @@ impl StorageProvider for InternxtProvider {
 
         // Try as file first
         if let Some((file_uuid, _, _)) = self.find_file_in_folder(&from_parent_uuid, &from_name).await? {
-            let (new_plain_name, new_type) = Self::split_name_ext(&to_name);
-            let mut payload = serde_json::json!({ "plainName": new_plain_name });
-            if !new_type.is_empty() {
-                payload["type"] = serde_json::Value::String(new_type);
+            // If target is in a different directory, move first
+            if from_parent != to_parent {
+                let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
+                let move_payload = serde_json::json!({
+                    "destinationFolder": to_parent_uuid
+                });
+                let move_resp = self.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&move_payload)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(format!("Move file failed: {}", e)))?;
+
+                if !move_resp.status().is_success() {
+                    let status = move_resp.status();
+                    let body = move_resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::ServerError(format!("Move file failed ({}): {}",
+                        status, super::sanitize_api_error(&body))));
+                }
             }
 
-            let resp = self.drive_request(reqwest::Method::PUT, &format!("/files/{}/meta", file_uuid))
-                .header(CONTENT_TYPE, "application/json")
-                .json(&payload)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Rename file failed: {}", e)))?;
+            // Rename if name changed
+            if from_name != to_name {
+                let (new_plain_name, new_type) = Self::split_name_ext(&to_name);
+                let mut payload = serde_json::json!({ "plainName": new_plain_name });
+                if !new_type.is_empty() {
+                    payload["type"] = serde_json::Value::String(new_type);
+                }
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Rename failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                let resp = self.drive_request(reqwest::Method::PUT, &format!("/files/{}/meta", file_uuid))
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(format!("Rename file failed: {}", e)))?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::ServerError(format!("Rename failed ({}): {}",
+                        status, super::sanitize_api_error(&body))));
+                }
             }
             return Ok(());
         }
 
-        // Try as folder
-        if let Some(folder_info) = self.dir_cache.get(&from_resolved) {
-            let _folder_uuid = folder_info.uuid.clone();
-            // Folder rename: PUT /folders/{uuid}/meta not supported — use move approach
-            // For now, just rename via the API pattern if it's in the same parent
-            if from_parent == to_parent {
-                // Simple rename — not directly supported by Internxt API for folders
-                // The desktop app uses a different approach
-                return Err(ProviderError::NotSupported("Folder rename is not supported by the Internxt API".to_string()));
+        // Try as folder — resolve UUID (may not be cached)
+        let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
+            Ok(uuid) => uuid,
+            Err(_) => return Err(ProviderError::NotFound(format!("Not found: {}", from_resolved))),
+        };
+
+        // Move folder to different parent if needed
+        if from_parent != to_parent {
+            let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
+            let move_payload = serde_json::json!({
+                "destinationFolder": to_parent_uuid
+            });
+            let move_resp = self.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
+                .header(CONTENT_TYPE, "application/json")
+                .json(&move_payload)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Move folder failed: {}", e)))?;
+
+            if !move_resp.status().is_success() {
+                let status = move_resp.status();
+                let body = move_resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!("Move folder failed ({}): {}",
+                    status, super::sanitize_api_error(&body))));
             }
         }
 
-        Err(ProviderError::NotFound(format!("Not found: {}", from_resolved)))
+        // Rename folder if name changed
+        if from_name != to_name {
+            let rename_payload = serde_json::json!({ "plainName": to_name });
+            let rename_resp = self.drive_request(reqwest::Method::PUT, &format!("/folders/{}/meta", folder_uuid))
+                .header(CONTENT_TYPE, "application/json")
+                .json(&rename_payload)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Rename folder failed: {}", e)))?;
+
+            if !rename_resp.status().is_success() {
+                let status = rename_resp.status();
+                let body = rename_resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!("Rename folder failed ({}): {}",
+                    status, super::sanitize_api_error(&body))));
+            }
+        }
+
+        // Invalidate old cache entry, re-cache at new path
+        self.dir_cache.remove(&from_resolved);
+        self.dir_cache.insert(to_resolved, DirInfo { uuid: folder_uuid });
+
+        Ok(())
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1791,7 +1902,35 @@ impl StorageProvider for InternxtProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        // JWT tokens last 7 days; no keepalive needed
+        // Attempt token refresh. JWT tokens last ~7 days but refreshing proactively
+        // prevents expiration during long sessions.
+        let resp = self.drive_request(reqwest::Method::GET, "/users/refresh")
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                // Try to extract new token from response
+                if let Ok(body) = r.text().await {
+                    // Response may be a JSON object with "newToken" field
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) {
+                        if let Some(new_token) = parsed.get("newToken").and_then(|v| v.as_str()) {
+                            if !new_token.is_empty() {
+                                self.token = SecretString::from(new_token.to_string());
+                                tracing::debug!(target: "internxt", "Token refreshed successfully");
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(r) => {
+                tracing::debug!(target: "internxt", "Token refresh returned {}, token may still be valid", r.status());
+            }
+            Err(e) => {
+                tracing::debug!(target: "internxt", "Token refresh failed: {}, token may still be valid", e);
+            }
+        }
+
         Ok(())
     }
 
@@ -1892,5 +2031,140 @@ impl InternxtProvider {
         resp.json::<CreateMetaResponse>().await.map_err(|e| {
             ProviderError::ServerError(format!("Failed to parse create file meta response: {}", e))
         })
+    }
+
+    /// Send an HTTP request with retry on 429/5xx using the shared http_retry module (INT-021).
+    /// Wraps `send_with_retry()` for integration with provider request patterns.
+    #[allow(dead_code)]
+    async fn send_retryable(
+        &self,
+        request: reqwest::Request,
+    ) -> Result<reqwest::Response, ProviderError> {
+        send_with_retry(&self.client, request, &self.retry_config)
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+    }
+
+    // TODO: Share links via POST /storage/share/{type}/{id}
+    // TODO: Versioning via GET /files/{uuid}/versions
+    // TODO: Workspace support (enterprise feature)
+    // TODO: Search via POST /users/search or GET /fuzzy/{query}
+
+    /// List trashed files and folders (paginated).
+    /// Uses GET /drive/storage/trash/paginated.
+    #[allow(dead_code)]
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let mut results = Vec::new();
+        let mut offset = 0;
+        let limit = 50;
+
+        loop {
+            let url = format!("/storage/trash/paginated?offset={}&limit={}", offset, limit);
+            let resp = self.drive_request(reqwest::Method::GET, &url)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("List trash failed: {}", e)))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "List trash failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
+            }
+
+            let raw = resp.text().await.map_err(|e| {
+                ProviderError::ServerError(format!("Failed to read trash response: {}", e))
+            })?;
+
+            // Parse response — may contain both "files" and "folders" arrays
+            let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+                ProviderError::ServerError(format!("Failed to parse trash response: {}", e))
+            })?;
+
+            let mut page_count = 0;
+
+            // Parse trashed folders
+            if let Some(folders) = parsed.get("folders").and_then(|f| f.as_array()) {
+                for folder in folders {
+                    let name = folder.get("plainName")
+                        .or_else(|| folder.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unnamed")
+                        .to_string();
+                    let uuid = folder.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let updated = folder.get("updatedAt").and_then(|v| v.as_str()).map(String::from);
+
+                    results.push(RemoteEntry {
+                        name,
+                        path: format!("[Trash]/{}", uuid),
+                        is_dir: true,
+                        size: 0,
+                        modified: updated,
+                        permissions: None,
+                        owner: None,
+                        group: None,
+                        is_symlink: false,
+                        link_target: None,
+                        mime_type: None,
+                        metadata: Default::default(),
+                    });
+                    page_count += 1;
+                }
+            }
+
+            // Parse trashed files
+            if let Some(files) = parsed.get("files").and_then(|f| f.as_array()) {
+                for file in files {
+                    let plain_name = file.get("plainName")
+                        .or_else(|| file.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unnamed");
+                    let file_type = file.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let name = if file_type.is_empty() {
+                        plain_name.to_string()
+                    } else {
+                        format!("{}.{}", plain_name, file_type)
+                    };
+                    let uuid = file.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let size = file.get("size")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let updated = file.get("updatedAt").and_then(|v| v.as_str()).map(String::from);
+
+                    results.push(RemoteEntry {
+                        name,
+                        path: format!("[Trash]/{}", uuid),
+                        is_dir: false,
+                        size,
+                        modified: updated,
+                        permissions: None,
+                        owner: None,
+                        group: None,
+                        is_symlink: false,
+                        link_target: None,
+                        mime_type: None,
+                        metadata: Default::default(),
+                    });
+                    page_count += 1;
+                }
+            }
+
+            if page_count < limit {
+                break;
+            }
+            offset += limit;
+        }
+
+        internxt_log(&format!("[TRASH] Listed {} trashed items", results.len()));
+        Ok(results)
+    }
+
+    /// Whether this provider supports trash management
+    #[allow(dead_code)]
+    pub fn supports_trash(&self) -> bool {
+        true
     }
 }

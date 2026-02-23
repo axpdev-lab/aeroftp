@@ -199,7 +199,13 @@
       "connect": "Conectar",
       "drimeToken": "Token de API",
       "drimeTokenPlaceholder": "Pegue aquí su token de API de Drime",
-      "drimeTokenHelp": "Genere un token en app.drime.cloud → Configuración de cuenta → Desarrolladores"
+      "drimeTokenHelp": "Genere un token en app.drime.cloud → Configuración de cuenta → Desarrolladores",
+      "azureAccessKey": "Clave de acceso",
+      "azureAccountName": "Nombre de cuenta",
+      "azureEndpoint": "Endpoint (opcional)",
+      "jottacloudToken": "Token de inicio de sesión",
+      "jottacloudTokenPlaceholder": "Pegue su token de inicio de sesión de Jottacloud aquí",
+      "jottacloudTokenHelp": "Genere en jottacloud.com → Configuración → Seguridad. El token es de un solo uso y caduca rápidamente — péguelo inmediatamente después de copiar"
     },
     "browser": {
       "remote": "Remoto",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Conexión fallida",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesión cerrada — desconectado de {server}",
-      "disconnectedAllClosed": "Todas las sesiones cerradas — desconectado de {server}"
+      "disconnectedAllClosed": "Todas las sesiones cerradas — desconectado de {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Almacenamiento en la nube suizo",
       "kdriveTooltip": "kDrive de Infomaniak - Almacenamiento en la nube alojado en Suiza con 15GB gratis",
       "drimeDesc": "Almacenamiento seguro en la nube",
-      "drimeTooltip": "Drime Cloud - 20GB de almacenamiento seguro en la nube gratuito con REST API"
+      "drimeTooltip": "Drime Cloud - 20GB de almacenamiento seguro en la nube gratuito con REST API",
+      "jottacloudDesc": "Nube noruega (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - Almacenamiento en la nube noruego compatible con GDPR con 5GB gratis"
     },
     "shortcuts": {
       "title": "Atajos de Teclado",
@@ -2567,13 +2577,17 @@
       "refresh": "Actualizar",
       "toggleTheme": "Cambiar tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Alternar DevTools",
-      "toggleEditor": "Alternar editor",
-      "toggleTerminal": "Alternar terminal",
-      "toggleAgent": "Alternar agente",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Atajos de teclado",
       "support": "Apoyar el desarrollo",
-      "about": "Acerca de AeroFTP"
+      "about": "Acerca de AeroFTP",
+      "selectAll": "Seleccionar todo",
+      "cut": "Cortar",
+      "copy": "Copiar",
+      "paste": "Pegar"
     },
     "activityPanel": {
       "awaitingCommands": "Esperando comandos...",
@@ -3003,7 +3017,11 @@
         "manageInSettings": "Gestiona los plugins instalados en la pestaña Plugins",
         "search": "Buscar plugins...",
         "subtitle": "Descubre e instala plugins de la comunidad para AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Explorar",
+          "installed": "Instalados"
+        }
       }
     }
   }

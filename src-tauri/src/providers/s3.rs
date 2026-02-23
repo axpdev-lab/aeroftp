@@ -257,16 +257,33 @@ impl S3Provider {
         }
         request = request.header("Authorization", &authorization);
         
-        debug!("S3 Headers: {:?}", headers);
-        
+        // SEC-06: Redact sensitive headers before logging
+        {
+            let redacted: HashMap<&String, String> = headers.iter().map(|(k, v)| {
+                let lower = k.to_lowercase();
+                if lower == "authorization" || lower == "x-amz-security-token" {
+                    (k, "[REDACTED]".to_string())
+                } else {
+                    (k, v.clone())
+                }
+            }).collect();
+            debug!("S3 Headers: {:?}", redacted);
+        }
+
         if let Some(body_data) = body {
             // Explicitly set Content-Length for empty bodies (required by some S3-compatible services like Backblaze B2)
             request = request.header("Content-Length", body_data.len().to_string());
             request = request.body(body_data);
         }
-        
-        let response = request.send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504)
+        let built_request = request.build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
+        let response = super::send_with_retry(
+            &self.client,
+            built_request,
+            &super::HttpRetryConfig::default(),
+        ).await.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         
         let status = response.status();
         if !status.is_success() {
@@ -493,14 +510,38 @@ impl S3Provider {
     /// Part size for multipart upload chunks (5 MB)
     const MULTIPART_PART_SIZE: usize = 5 * 1024 * 1024;
 
-    /// Initiate a multipart upload, returns the UploadId
-    async fn create_multipart_upload(&self, key: &str) -> Result<String, ProviderError> {
-        let response = self.s3_request(
-            Method::POST,
-            key,
-            Some(&[("uploads", "")]),
-            Some(Vec::new()),
-        ).await?;
+    /// Initiate a multipart upload, returns the UploadId.
+    /// Optionally sets Content-Type for the resulting object (UPLOAD-01).
+    async fn create_multipart_upload(&self, key: &str, content_type: Option<&str>) -> Result<String, ProviderError> {
+        // For multipart, Content-Type must be set on initiation, not on individual parts.
+        // We build a custom request to include the header.
+        let url = {
+            let base = self.build_url(key);
+            format!("{}?uploads=", base)
+        };
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(b"");
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        if let Some(ct) = content_type {
+            headers.insert("content-type".to_string(), ct.to_string());
+        }
+        let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.post(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", "0");
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
@@ -575,41 +616,72 @@ impl S3Provider {
         ).await?;
 
         let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(
                 format!("CompleteMultipartUpload failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        // UPLOAD-07: AWS S3 can return HTTP 200 but include an <Error> in the XML body
+        if body.contains("<Error>") {
+            let error_msg = self.extract_xml_tag(&body, "Message")
+                .or_else(|| self.extract_xml_tag(&body, "Code"))
+                .unwrap_or_else(|| "Unknown error in CompleteMultipartUpload response".to_string());
+            return Err(ProviderError::TransferFailed(
+                format!("CompleteMultipartUpload 200-with-error: {}", sanitize_api_error(&error_msg)),
             ));
         }
 
         Ok(())
     }
 
-    /// Upload data using S3 multipart upload
-    async fn upload_multipart(
+    /// Upload a file using S3 multipart upload with streaming (no full-file buffering).
+    /// UPLOAD-02: Reads chunks from disk instead of loading entire file into RAM.
+    async fn upload_multipart_streaming(
         &self,
         key: &str,
-        data: Vec<u8>,
+        local_path: &str,
+        total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let total_size = data.len() as u64;
-        let upload_id = self.create_multipart_upload(key).await?;
+        use tokio::io::AsyncReadExt;
 
+        // UPLOAD-01: Detect MIME type from filename for multipart uploads
+        let content_type = mime_guess::from_path(local_path)
+            .first_or_octet_stream()
+            .to_string();
+        let upload_id = self.create_multipart_upload(key, Some(&content_type)).await?;
         let mut parts: Vec<(u32, String)> = Vec::new();
-        let mut offset = 0usize;
+        let mut file = tokio::fs::File::open(local_path).await
+            .map_err(ProviderError::IoError)?;
         let mut part_number = 1u32;
+        let mut uploaded: u64 = 0;
 
-        while offset < data.len() {
-            let end = std::cmp::min(offset + Self::MULTIPART_PART_SIZE, data.len());
-            let chunk = data[offset..end].to_vec();
-            let chunk_len = chunk.len();
+        loop {
+            let mut buf = vec![0u8; Self::MULTIPART_PART_SIZE];
+            let mut filled = 0;
+            // Read exactly MULTIPART_PART_SIZE bytes (or less at EOF)
+            while filled < Self::MULTIPART_PART_SIZE {
+                let n = file.read(&mut buf[filled..]).await
+                    .map_err(|e| ProviderError::TransferFailed(format!("Read error: {e}")))?;
+                if n == 0 {
+                    break; // EOF
+                }
+                filled += n;
+            }
+            if filled == 0 {
+                break; // No more data
+            }
+            buf.truncate(filled);
 
-            match self.upload_part(key, &upload_id, part_number, chunk).await {
+            match self.upload_part(key, &upload_id, part_number, buf).await {
                 Ok(etag) => {
                     parts.push((part_number, etag));
-                    offset += chunk_len;
+                    uploaded += filled as u64;
                     if let Some(ref progress) = on_progress {
-                        progress(offset as u64, total_size);
+                        progress(uploaded, total_size);
                     }
                     part_number += 1;
                 }
@@ -817,7 +889,8 @@ impl StorageProvider for S3Provider {
         
         let mut all_entries = Vec::new();
         let mut continuation_token: Option<String> = None;
-        
+
+        // LIST-01: Pagination loop handles >1000 items via NextContinuationToken
         loop {
             let mut params: Vec<(&str, &str)> = vec![
                 ("list-type", "2"),
@@ -955,6 +1028,7 @@ impl StorageProvider for S3Provider {
         }
         
         let key = remote_path.trim_start_matches('/');
+        // DL-01: Retry handled by s3_request → send_with_retry (429, 5xx)
         let response = self.s3_request(Method::GET, key, None, None).await?;
 
         match response.status() {
@@ -1028,12 +1102,10 @@ impl StorageProvider for S3Provider {
         let total_size = file_meta.len();
         let key = remote_path.trim_start_matches('/');
 
-        // Use multipart upload for files larger than 5MB
+        // UPLOAD-02: Use streaming multipart upload for files larger than 5MB
+        // Reads chunks from disk instead of buffering entire file in RAM
         if total_size > Self::MULTIPART_THRESHOLD as u64 {
-            // Multipart still needs buffered data for chunking
-            let data = tokio::fs::read(local_path).await
-                .map_err(ProviderError::IoError)?;
-            return self.upload_multipart(key, data, on_progress).await;
+            return self.upload_multipart_streaming(key, local_path, total_size, on_progress).await;
         }
 
         // Streaming upload for small files (< 5MB)
@@ -1050,12 +1122,18 @@ impl StorageProvider for S3Provider {
         let mut headers = HashMap::new();
         let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
 
+        // UPLOAD-01: Detect MIME type from filename extension
+        let content_type = mime_guess::from_path(local_path)
+            .first_or_octet_stream()
+            .to_string();
+
         let mut request = self.client.put(&url);
         for (k, v) in headers.iter() {
             request = request.header(k, v);
         }
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", total_size.to_string());
+        request = request.header("Content-Type", &content_type);
         request = request.body(body);
 
         let response = request.send().await
@@ -1126,8 +1204,59 @@ impl StorageProvider for S3Provider {
         let prefix = format!("{}/", path.trim_matches('/'));
         let keys = self.list_keys_with_prefix(&prefix).await?;
 
-        for key in &keys {
-            let _ = self.s3_request(Method::DELETE, key, None, None).await;
+        // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per request
+        for chunk in keys.chunks(1000) {
+            let mut xml = String::from("<Delete><Quiet>true</Quiet>");
+            for key in chunk {
+                xml.push_str(&format!(
+                    "<Object><Key>{}</Key></Object>",
+                    quick_xml::escape::escape(key)
+                ));
+            }
+            xml.push_str("</Delete>");
+
+            let xml_bytes = xml.into_bytes();
+
+            // S3 batch delete requires Content-MD5
+            let md5_digest = {
+                use md5::{Md5, Digest};
+                use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+                let mut hasher = Md5::new();
+                hasher.update(&xml_bytes);
+                BASE64.encode(hasher.finalize())
+            };
+
+            // Build signed request manually (need custom Content-MD5 header)
+            let url = format!("{}?delete", self.build_url(""));
+            let payload_hash = {
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(&xml_bytes);
+                hex::encode(hasher.finalize())
+            };
+
+            let mut headers = HashMap::new();
+            headers.insert("content-md5".to_string(), md5_digest);
+            let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
+
+            let mut request = self.client.post(&url);
+            for (k, v) in headers.iter() {
+                request = request.header(k, v);
+            }
+            request = request.header("Authorization", &authorization);
+            request = request.header("Content-Length", xml_bytes.len().to_string());
+            request = request.body(xml_bytes);
+
+            let response = request.send().await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if !response.status().is_success() {
+                // Fall back to sequential delete if batch fails
+                tracing::warn!("S3 batch delete failed ({}), falling back to sequential", response.status());
+                for key in chunk {
+                    let _ = self.s3_request(Method::DELETE, key, None, None).await;
+                }
+            }
         }
 
         Ok(())
@@ -1289,6 +1418,11 @@ impl StorageProvider for S3Provider {
         Ok(format!("S3 Storage: {} - Bucket: {}", endpoint, self.config.bucket))
     }
     
+    // QUOTA-01: S3 buckets have no inherent storage quota. AWS S3 provides unlimited storage
+    // with pay-per-use pricing. There is no API to query "used/total" space for a bucket.
+    // CloudWatch metrics (BucketSizeBytes) are delayed by ~24h and require separate permissions.
+    // Returning NotSupported is the correct behavior for S3.
+
     fn supports_share_links(&self) -> bool {
         true
     }
@@ -1524,9 +1658,10 @@ impl StorageProvider for S3Provider {
                 find_buf.clear();
             }
 
+            // FIND-01: Full pagination — no arbitrary result cap
             match next_tok_val {
-                Some(token) if all_entries.len() < 500 => continuation_token = Some(token),
-                _ => break,
+                Some(token) => continuation_token = Some(token),
+                None => break,
             }
         }
 
@@ -1557,6 +1692,8 @@ impl StorageProvider for S3Provider {
 
         let mut headers = HashMap::new();
         headers.insert("x-amz-copy-source".to_string(), copy_source);
+        // COPY-01: Preserve original object metadata during copy
+        headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
         let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
 
         let mut request = self.client.put(&url);

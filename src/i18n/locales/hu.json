@@ -199,7 +199,13 @@
       "connect": "Csatlakozás",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "Illessze be ide a Drime API tokenjét",
-      "drimeTokenHelp": "Tokent generálhat az app.drime.cloud → Fiókbeállítások → Fejlesztők menüpontban"
+      "drimeTokenHelp": "Tokent generálhat az app.drime.cloud → Fiókbeállítások → Fejlesztők menüpontban",
+      "azureAccessKey": "Hozzáférési kulcs",
+      "azureAccountName": "Fióknév",
+      "azureEndpoint": "Endpoint (opcionális)",
+      "jottacloudToken": "Bejelentkezési token",
+      "jottacloudTokenPlaceholder": "Illessze be a Jottacloud bejelentkezési tokent ide",
+      "jottacloudTokenHelp": "Hozzon létre a jottacloud.com → Beállítások → Biztonság helyen. A token egyszeri használatra alkalmas és gyorsan lejár — illessze be azonnal a másolás után"
     },
     "browser": {
       "remote": "Távoli",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Csatlakozás sikertelen",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Munkamenet lezárva — lecsatlakozva a következőről: {server}",
-      "disconnectedAllClosed": "Minden munkamenet lezárva — lecsatlakozva a következőről: {server}"
+      "disconnectedAllClosed": "Minden munkamenet lezárva — lecsatlakozva a következőről: {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Svájci felhőtárhely",
       "kdriveTooltip": "kDrive by Infomaniak - Svájcban tárolt felhőtárhely 15GB ingyenes tárhellyel",
       "drimeDesc": "Biztonságos felhőtárhely",
-      "drimeTooltip": "Drime Cloud - 20GB ingyenes, biztonságos felhőtárhely REST API-val"
+      "drimeTooltip": "Drime Cloud - 20GB ingyenes, biztonságos felhőtárhely REST API-val",
+      "jottacloudDesc": "Norvég felhő (5GB ingyenes)",
+      "jottacloudTooltip": "Jottacloud - GDPR-kompatibilis norvég felhőtárhely 5GB ingyenes tárhellyel"
     },
     "shortcuts": {
       "title": "Billentyűparancsok",
@@ -2567,13 +2577,17 @@
       "refresh": "Frissítés",
       "toggleTheme": "Téma váltása",
       "devtools": "AeroTools",
-      "toggleDevtools": "Fejlesztői eszközök váltása",
-      "toggleEditor": "Szerkesztő váltása",
-      "toggleTerminal": "Terminál váltása",
-      "toggleAgent": "Ügynök váltása",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Szerkesztő",
+      "toggleTerminal": "Terminál",
+      "toggleAgent": "Agent",
       "shortcuts": "Billentyűparancsok",
       "support": "Fejlesztés támogatása",
-      "about": "Az AeroFTP névjegye"
+      "about": "Az AeroFTP névjegye",
+      "selectAll": "Összes kijelölése",
+      "cut": "Kivágás",
+      "copy": "Másolás",
+      "paste": "Beillesztés"
     },
     "activityPanel": {
       "awaitingCommands": "Parancsokra vár...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "A telepített pluginok kezelése a Plugins fülön",
         "search": "Pluginok keresése...",
         "subtitle": "Közösségi pluginok felfedezése és telepítése az AeroAgent számára",
-        "title": "Plugin böngésző"
+        "title": "Plugin böngésző",
+        "tab": {
+          "browse": "Böngészés",
+          "installed": "Telepített"
+        }
       }
     }
   }

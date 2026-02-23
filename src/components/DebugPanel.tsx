@@ -112,6 +112,7 @@ function activateNetworkCapture() {
     // 2) Intercept __TAURI_INTERNALS__.invoke to log all IPC calls with timing
     const internals = (window as any).__TAURI_INTERNALS__;
     if (internals && !internals.__debugPatched) {
+        try {
         const origFn = internals.invoke.bind(internals);
         internals.__debugPatched = true;
         internals.invoke = async (cmd: string, args?: any, options?: any) => {
@@ -147,6 +148,7 @@ function activateNetworkCapture() {
                 throw err;
             }
         };
+        } catch { /* __TAURI_INTERNALS__ may be frozen/sealed */ }
     }
 }
 

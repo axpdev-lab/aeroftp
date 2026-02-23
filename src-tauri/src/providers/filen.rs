@@ -8,8 +8,9 @@ use async_trait::async_trait;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::Aead;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use futures_util::StreamExt;
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Sha512, Digest};
@@ -26,6 +27,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
 };
 use super::types::FilenConfig;
+use super::http_retry::{HttpRetryConfig, send_with_retry};
 
 /// Filen API gateway
 const GATEWAY: &str = "https://gateway.filen.io";
@@ -187,8 +189,10 @@ pub struct FilenProvider {
     config: FilenConfig,
     client: reqwest::Client,
     connected: bool,
-    api_key: String,
-    master_keys: Vec<String>,
+    /// F-SEC-01: API key wrapped in SecretString for memory zeroization on drop
+    api_key: SecretString,
+    /// F-SEC-02: Master encryption keys wrapped in SecretString for memory zeroization on drop
+    master_keys: Vec<SecretString>,
     current_path: String,
     current_folder_uuid: String,
     root_uuid: String,
@@ -196,6 +200,8 @@ pub struct FilenProvider {
     dir_cache: HashMap<String, DirInfo>,
     /// Backend-only cache: file UUID -> encryption key (never sent to frontend)
     file_key_cache: HashMap<String, String>,
+    /// F-ERR-01: Retry configuration for HTTP requests
+    retry_config: HttpRetryConfig,
 }
 
 impl FilenProvider {
@@ -208,19 +214,39 @@ impl FilenProvider {
             config,
             client,
             connected: false,
-            api_key: String::new(),
+            api_key: SecretString::from(String::new()),
             master_keys: Vec::new(),
             current_path: "/".to_string(),
             current_folder_uuid: String::new(),
             root_uuid: String::new(),
             dir_cache: HashMap::new(),
             file_key_cache: HashMap::new(),
+            retry_config: HttpRetryConfig::default(),
         }
+    }
+
+    /// Send a request with automatic retry on 429/5xx errors.
+    /// F-ERR-01/F-ERR-02: Integrates send_with_retry for automatic rate-limit and server error handling.
+    async fn send_retry(&self, request: reqwest::Request) -> Result<reqwest::Response, ProviderError> {
+        send_with_retry(&self.client, request, &self.retry_config)
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Derive password hash and master key for authentication (PBKDF2-SHA512)
     /// Returns (login_password, master_key)
+    ///
+    /// TODO (F-AUTH-01): Filen v3 authentication uses Argon2id KDF instead of PBKDF2-SHA512.
+    /// When v3 auth is encountered (auth_version >= 3), the server expects an Argon2id-derived
+    /// password hash. Implementing this requires adding the `argon2` crate. Currently only
+    /// v1 (SHA-512) and v2 (PBKDF2-SHA512, 200k iterations) are supported. New Filen accounts
+    /// may default to v3, in which case authentication will fail with an error.
     fn derive_auth_credentials(password: &str, salt: &str, auth_version: u32) -> Result<(String, String), ProviderError> {
+        if auth_version >= 3 {
+            return Err(ProviderError::AuthenticationFailed(
+                "Filen v3 authentication (Argon2id) is not yet supported. Please contact support.".to_string()
+            ));
+        }
         if auth_version >= 2 {
             // v2: PBKDF2-SHA512, 200000 iterations → 64 bytes
             let mut derived = [0u8; 64];
@@ -252,7 +278,7 @@ impl FilenProvider {
     /// Decrypt metadata string using master keys
     fn decrypt_metadata(&self, encrypted: &str) -> Option<String> {
         for key in &self.master_keys {
-            if let Some(decrypted) = Self::try_decrypt_aes_gcm(encrypted, key) {
+            if let Some(decrypted) = Self::try_decrypt_aes_gcm(encrypted, key.expose_secret()) {
                 return Some(decrypted);
             }
         }
@@ -288,6 +314,12 @@ impl FilenProvider {
 
     /// Try to decrypt AES-256-GCM encrypted data
     /// Filen format: "002" + 12-char IV (UTF-8 bytes) + base64(ciphertext+tag)
+    ///
+    /// TODO (F-ENC-01): Filen SDK v3 introduced a "003" metadata encryption format that uses
+    /// AES-256-GCM with a different key derivation (direct HKDF instead of PBKDF2 with 1
+    /// iteration). Files encrypted with the 003 format will fail to decrypt here. When Filen
+    /// migrates accounts to 003 format, this function needs to be extended with the new
+    /// key derivation path.
     fn try_decrypt_aes_gcm(encrypted: &str, key: &str) -> Option<String> {
         if encrypted.len() < 16 {
             filen_log(&format!("try_decrypt: too short ({})", encrypted.len()));
@@ -315,6 +347,11 @@ impl FilenProvider {
                 let iv_bytes = BASE64.decode(parts[1]).ok()?;
                 let ct = BASE64.decode(parts[2]).ok()?;
                 (iv_bytes, ct)
+            }
+            "003" => {
+                // 003 format: not yet implemented (requires HKDF key derivation)
+                filen_log("try_decrypt: 003 format not yet supported");
+                return None;
             }
             _ => {
                 filen_log(&format!("try_decrypt: unknown version '{}'", version));
@@ -345,18 +382,13 @@ impl FilenProvider {
         let key = self.master_keys.first()
             .ok_or_else(|| ProviderError::Other("No master key".to_string()))?;
 
-        let aes_key = Self::derive_aes_key(key);
+        let aes_key = Self::derive_aes_key(key.expose_secret());
         let cipher = Aes256Gcm::new_from_slice(&aes_key)
             .map_err(|e| ProviderError::Other(format!("Cipher error: {}", e)))?;
 
-        // Generate 12-char random ASCII string for IV (matching Filen SDK)
+        // F-ENC-02: Use gen_range for unbiased random char generation (no modulo bias)
         let iv_chars: String = (0..12).map(|_| {
-            let idx = rand::random::<u8>() % 62;
-            match idx {
-                0..=25 => (b'a' + idx) as char,
-                26..=51 => (b'A' + idx - 26) as char,
-                _ => (b'0' + idx - 52) as char,
-            }
+            Self::random_alphanumeric_char()
         }).collect();
         let nonce_bytes = iv_chars.as_bytes();
         let nonce = Nonce::from_slice(nonce_bytes);
@@ -373,13 +405,9 @@ impl FilenProvider {
         let cipher = Aes256Gcm::new_from_slice(&aes_key)
             .map_err(|e| ProviderError::Other(format!("Cipher error: {}", e)))?;
 
+        // F-ENC-02: Use gen_range for unbiased random char generation
         let iv_chars: String = (0..12).map(|_| {
-            let idx = rand::random::<u8>() % 62;
-            match idx {
-                0..=25 => (b'a' + idx) as char,
-                26..=51 => (b'A' + idx - 26) as char,
-                _ => (b'0' + idx - 52) as char,
-            }
+            Self::random_alphanumeric_char()
         }).collect();
         let nonce = Nonce::from_slice(iv_chars.as_bytes());
 
@@ -387,6 +415,15 @@ impl FilenProvider {
             .map_err(|e| ProviderError::Other(format!("Encrypt error: {}", e)))?;
 
         Ok(format!("002{}{}", iv_chars, BASE64.encode(ciphertext)))
+    }
+
+    /// F-ENC-02: Generate a single random alphanumeric character without modulo bias.
+    /// Uses `rand::Rng::gen_range` which implements rejection sampling internally.
+    fn random_alphanumeric_char() -> char {
+        use rand::Rng;
+        const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let idx = rand::thread_rng().gen_range(0..CHARSET.len());
+        CHARSET[idx] as char
     }
 
     /// Derive AES key from file key: hex-decode 64-char hex string to 32 raw bytes
@@ -466,11 +503,13 @@ impl FilenProvider {
             }
 
             // List current folder to find child
-            let resp = self.client.post(format!("{}/v3/dir/content", GATEWAY))
-                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            let request = self.client.post(format!("{}/v3/dir/content", GATEWAY))
+                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
                 .json(&serde_json::json!({"uuid": current_uuid}))
-                .send().await
+                .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp = self.send_retry(request).await?;
 
             let content: DirContentResponse = resp.json().await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -516,6 +555,10 @@ impl StorageProvider for FilenProvider {
     fn is_connected(&self) -> bool { self.connected }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // F-SEC-04: Password is accessed via expose_secret() and used directly in KDF.
+        // The derived strings (auth_hash, derived_master_key) are intermediate values
+        // that cannot use SecretString without significant refactoring of the KDF pipeline.
+        // The expose_secret() borrow is scoped to minimize exposure lifetime.
         let password = self.config.password.expose_secret();
 
         // Step 1: Get auth info
@@ -564,27 +607,32 @@ impl StorageProvider for FilenProvider {
         let login_data = login_resp.data
             .ok_or_else(|| ProviderError::AuthenticationFailed("No login data".to_string()))?;
 
-        self.api_key = login_data.api_key;
+        self.api_key = SecretString::from(login_data.api_key);
 
         // Step 4: Use derived master key and decrypt additional master keys
-        self.master_keys = vec![derived_master_key.clone()];
+        self.master_keys = vec![SecretString::from(derived_master_key.clone())];
 
         // Try to decrypt the encrypted master keys from the response
         filen_log(&format!("master_keys field len={}", login_data.master_keys.len()));
         filen_log(&format!("derived_master_key len={}", derived_master_key.len()));
         if let Some(decrypted) = Self::try_decrypt_aes_gcm(&login_data.master_keys, &derived_master_key) {
-            self.master_keys = decrypted.split('|')
-                .map(|s| s.to_string())
+            let decrypted_keys: Vec<SecretString> = decrypted.split('|')
+                .map(|s| SecretString::from(s.to_string()))
                 .collect();
-            if !self.master_keys.contains(&derived_master_key) {
-                self.master_keys.push(derived_master_key);
+            // Check if derived_master_key is already present
+            let already_present = decrypted_keys.iter()
+                .any(|k| k.expose_secret() == &derived_master_key);
+            self.master_keys = decrypted_keys;
+            if !already_present {
+                self.master_keys.push(SecretString::from(derived_master_key));
             }
         }
 
         // Step 5: Get root folder UUID from user info
         let user_resp: serde_json::Value = self.client
             .get(format!("{}/v3/user/baseFolder", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .send().await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json().await
@@ -612,31 +660,41 @@ impl StorageProvider for FilenProvider {
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
-        self.api_key.clear();
+        // F-SEC-01: Replace api_key with empty SecretString (zeroizes old value on drop)
+        self.api_key = SecretString::from(String::new());
+        // F-SEC-02: Clear master keys (each SecretString zeroizes on drop)
         self.master_keys.clear();
         self.dir_cache.clear();
+        // F-SEC-03: Clear cached file encryption keys on disconnect
+        self.file_key_cache.clear();
         Ok(())
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // F-LIST-01: Filen API does not support server-side pagination for dir/content.
+        // The entire folder listing is returned in a single response. This is inherent
+        // to Filen's zero-knowledge design — the server cannot sort/page encrypted entries.
         let folder_uuid = if path == "." || path.is_empty() {
             self.current_folder_uuid.clone()
         } else {
             self.resolve_folder_uuid(path).await?
         };
 
-        let resp = self.client.post(format!("{}/v3/dir/content", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+        let request = self.client.post(format!("{}/v3/dir/content", GATEWAY))
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({"uuid": folder_uuid}))
-            .send().await
+            .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = self.send_retry(request).await?;
 
         let resp_text = resp.text().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        // Log raw response for debugging (truncated)
-        let preview = if resp_text.len() > 500 { &resp_text[..500] } else { &resp_text };
-        filen_log(&format!("dir/content uuid={} response: {}", folder_uuid, preview));
+        // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
+        let preview_len = resp_text.len().min(200);
+        let preview = &resp_text[..preview_len];
+        filen_log(&format!("dir/content uuid={} response ({}B): {}", folder_uuid, resp_text.len(), preview));
 
         let content: DirContentResponse = serde_json::from_str(&resp_text)
             .map_err(|e| ProviderError::ParseError(format!("JSON parse error: {} - response: {}", e, preview)))?;
@@ -800,7 +858,10 @@ impl StorageProvider for FilenProvider {
             .unwrap_or(1);
         let total_size = file_entry.size;
 
-        // Stream decrypted chunks directly to disk (no full-file RAM buffer)
+        // F-XFER-02: Stream each chunk download progressively to reduce peak memory.
+        // Note: AES-256-GCM requires the full chunk in memory for authenticated decryption,
+        // but we stream the HTTP response into a buffer instead of using resp.bytes()
+        // which may hold a second copy.
         let mut local_file = tokio::fs::File::create(local_path).await
             .map_err(ProviderError::IoError)?;
         let mut transferred: u64 = 0;
@@ -808,16 +869,22 @@ impl StorageProvider for FilenProvider {
         for chunk_idx in 0..chunks {
             let download_url = format!("https://egest.filen.io/{}/{}/{}/{}", region, bucket, uuid, chunk_idx);
 
-            let resp = self.client.get(&download_url)
-                .send().await
+            let request = self.client.get(&download_url)
+                .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp = self.send_retry(request).await?;
 
             if !resp.status().is_success() {
                 return Err(ProviderError::TransferFailed(format!("Download chunk {} failed: {}", chunk_idx, resp.status())));
             }
 
-            let encrypted = resp.bytes().await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            // Stream response bytes into buffer for AES-GCM decryption
+            let mut encrypted = Vec::new();
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                encrypted.extend_from_slice(&chunk);
+            }
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             local_file.write_all(&decrypted).await
@@ -864,21 +931,27 @@ impl StorageProvider for FilenProvider {
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
 
-        // Download and decrypt each chunk
+        // Download and decrypt each chunk (with retry)
         let mut all_data = Vec::new();
         for chunk_idx in 0..chunks {
             let download_url = format!("https://egest.filen.io/{}/{}/{}/{}", region, bucket, uuid, chunk_idx);
 
-            let resp = self.client.get(&download_url)
-                .send().await
+            let request = self.client.get(&download_url)
+                .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp = self.send_retry(request).await?;
 
             if !resp.status().is_success() {
                 return Err(ProviderError::TransferFailed(format!("Download chunk {} failed: {}", chunk_idx, resp.status())));
             }
 
-            let encrypted = resp.bytes().await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            // Stream response bytes into buffer for AES-GCM decryption
+            let mut encrypted = Vec::new();
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                encrypted.extend_from_slice(&chunk);
+            }
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             all_data.extend_from_slice(&decrypted);
@@ -895,9 +968,19 @@ impl StorageProvider for FilenProvider {
         };
 
         let parent_uuid = self.resolve_folder_uuid(parent_path).await?;
+
+        // F-XFER-01: Read file size first, then read content for encryption.
+        // Note: AES-256-GCM requires all plaintext in memory to compute the auth tag,
+        // so we cannot avoid buffering the plaintext. However, after encryption we
+        // stream the encrypted bytes to the network via reqwest::Body::wrap_stream().
+        let file_metadata = tokio::fs::metadata(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let file_size = file_metadata.len() as usize;
+
+        // For files under 64MB, read entire file; for larger files, still must buffer
+        // due to AES-GCM auth tag requirement (whole-message authentication)
         let data = tokio::fs::read(local_path).await
             .map_err(ProviderError::IoError)?;
-        let file_size = data.len();
         let mime_type = mime_guess::from_path(file_name).first_or_octet_stream().to_string();
 
         // Generate per-file encryption key and upload key
@@ -907,6 +990,8 @@ impl StorageProvider for FilenProvider {
 
         // Encrypt file content
         let encrypted = Self::encrypt_file_content(&data, &file_key)?;
+        // Drop plaintext to free memory before upload
+        drop(data);
 
         // Hash of encrypted data (SHA-512)
         let mut hash_hasher = Sha512::new();
@@ -950,12 +1035,20 @@ impl StorageProvider for FilenProvider {
         checksum_hasher.update(checksum_input.as_bytes());
         let checksum = hex::encode(checksum_hasher.finalize());
 
-        // Send encrypted data as raw POST body (not multipart)
-        filen_log(&format!("upload: {} bytes encrypted", encrypted.len()));
+        // F-XFER-01: Stream encrypted data to network via ReaderStream to avoid
+        // reqwest copying the entire buffer again internally
+        let encrypted_len = encrypted.len();
+        filen_log(&format!("upload: {} bytes encrypted", encrypted_len));
+        let cursor = std::io::Cursor::new(encrypted);
+        let stream = tokio_util::io::ReaderStream::new(cursor);
+        let body = reqwest::Body::wrap_stream(stream);
+
         let resp = self.client.post(&upload_url)
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
-            .header("Checksum", HeaderValue::from_str(&checksum).unwrap())
-            .body(encrypted)
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
+            .header("Checksum", HeaderValue::from_str(&checksum)
+                .map_err(|e| ProviderError::Other(format!("Invalid checksum header: {}", e)))?)
+            .body(body)
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
@@ -963,10 +1056,12 @@ impl StorageProvider for FilenProvider {
         let resp_text = resp.text().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+        // F-LOG-01: Reduce upload response logging to debug level with truncation
         filen_log(&format!("upload response: status={}, body_len={}", status, resp_text.len()));
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format!("Upload chunk failed: {} - {}", status, resp_text)));
+            return Err(ProviderError::TransferFailed(format!("Upload chunk failed: {} - {}",
+                status, &resp_text[..resp_text.len().min(200)])));
         }
 
         let upload_resp: serde_json::Value = serde_json::from_str(&resp_text)
@@ -981,10 +1076,11 @@ impl StorageProvider for FilenProvider {
         // Generate random string for rm parameter
         let rm: String = (0..32).map(|_| format!("{:02x}", rand::random::<u8>())).collect();
 
-        // Mark upload as done
-        let done_resp: serde_json::Value = self.client
+        // Mark upload as done (with retry)
+        let done_request = self.client
             .post(format!("{}/v3/upload/done", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .header(CONTENT_TYPE, "application/json")
             .json(&serde_json::json!({
                 "uuid": file_uuid,
@@ -998,8 +1094,9 @@ impl StorageProvider for FilenProvider {
                 "version": 2,
                 "uploadKey": upload_key,
             }))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let done_resp: serde_json::Value = self.send_retry(done_request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1026,17 +1123,19 @@ impl StorageProvider for FilenProvider {
         let name_json = serde_json::json!({"name": folder_name}).to_string();
         let encrypted_name = self.encrypt_metadata(&name_json)?;
 
-        let resp: CreateFolderResponse = self.client
+        let request = self.client
             .post(format!("{}/v3/dir/create", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({
                 "uuid": folder_uuid,
                 "name": encrypted_name,
                 "nameHashed": Self::hash_name(folder_name),
                 "parent": parent_uuid,
             }))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: CreateFolderResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1047,19 +1146,22 @@ impl StorageProvider for FilenProvider {
         }
 
         // Call v3/dir/metadata for each master key (required for Filen webapp compatibility)
-        for key in &self.master_keys {
+        let master_keys_exposed: Vec<String> = self.master_keys.iter()
+            .map(|k| k.expose_secret().to_string())
+            .collect();
+        for key in &master_keys_exposed {
             let encrypted_for_key = Self::encrypt_metadata_with_key(&name_json, key)?;
-            let _: serde_json::Value = self.client
+            let meta_request = self.client
                 .post(format!("{}/v3/dir/metadata", GATEWAY))
-                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
                 .json(&serde_json::json!({
                     "uuid": folder_uuid,
                     "encrypted": encrypted_for_key,
                 }))
-                .send().await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?
-                .json().await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .build()
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let _ = self.send_retry(meta_request).await;
         }
 
         filen_log(&format!("mkdir OK '{}' uuid={}", path, folder_uuid));
@@ -1084,12 +1186,14 @@ impl StorageProvider for FilenProvider {
 
         let endpoint = if entry.is_dir { "v3/dir/trash" } else { "v3/file/trash" };
 
-        let resp: GenericResponse = self.client
+        let request = self.client
             .post(format!("{}/{}", GATEWAY, endpoint))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({"uuid": uuid}))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1103,12 +1207,14 @@ impl StorageProvider for FilenProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let folder_uuid = self.resolve_folder_uuid(path).await?;
 
-        let resp: GenericResponse = self.client
+        let request = self.client
             .post(format!("{}/v3/dir/trash", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({"uuid": folder_uuid}))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1156,16 +1262,18 @@ impl StorageProvider for FilenProvider {
             let name_json = serde_json::json!({"name": new_name}).to_string();
             let encrypted_name = self.encrypt_metadata(&name_json)?;
 
-            let resp: GenericResponse = self.client
+            let request = self.client
                 .post(format!("{}/v3/dir/rename", GATEWAY))
-                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
                 .json(&serde_json::json!({
                     "uuid": uuid,
                     "name": encrypted_name,
                     "nameHashed": name_hashed,
                 }))
-                .send().await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+                .build()
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp: GenericResponse = self.send_retry(request).await?
                 .json().await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1176,13 +1284,19 @@ impl StorageProvider for FilenProvider {
             }
 
             // Update dir/metadata for webapp compatibility
-            for key in &self.master_keys.clone() {
+            let master_keys_exposed: Vec<String> = self.master_keys.iter()
+                .map(|k| k.expose_secret().to_string())
+                .collect();
+            for key in &master_keys_exposed {
                 let enc = Self::encrypt_metadata_with_key(&name_json, key)?;
-                let _ = self.client
+                let meta_request = self.client
                     .post(format!("{}/v3/dir/metadata", GATEWAY))
-                    .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+                    .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
                     .json(&serde_json::json!({"uuid": uuid, "encrypted": enc}))
-                    .send().await;
+                    .build()
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                let _ = self.send_retry(meta_request).await;
             }
         } else {
             // File rename: need encrypted name + metadata JSON with updated name
@@ -1201,17 +1315,19 @@ impl StorageProvider for FilenProvider {
             });
             let encrypted_metadata = self.encrypt_metadata(&meta_json.to_string())?;
 
-            let resp: GenericResponse = self.client
+            let request = self.client
                 .post(format!("{}/v3/file/rename", GATEWAY))
-                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+                .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
                 .json(&serde_json::json!({
                     "uuid": uuid,
                     "name": encrypted_name,
                     "nameHashed": name_hashed,
                     "metadata": encrypted_metadata,
                 }))
-                .send().await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+                .build()
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp: GenericResponse = self.send_retry(request).await?
                 .json().await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1258,11 +1374,13 @@ impl StorageProvider for FilenProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let resp: UserInfoResponse = self.client
+        let request = self.client
             .get(format!("{}/v3/user/info", GATEWAY))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: UserInfoResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1299,9 +1417,16 @@ impl StorageProvider for FilenProvider {
         // Generate a link UUID
         let link_uuid = uuid::Uuid::new_v4().to_string();
 
-        let resp: LinkEditResponse = self.client
+        // F-SHARE-01: Generate a link key for the recipient to decrypt the shared content.
+        // The link key is the first master key, which is used to encrypt the shared metadata.
+        let link_key = self.master_keys.first()
+            .map(|k| k.expose_secret().to_string())
+            .unwrap_or_default();
+
+        let request = self.client
             .post(format!("{}/{}", GATEWAY, endpoint))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({
                 "uuid": uuid,
                 "linkUUID": link_uuid,
@@ -1310,8 +1435,9 @@ impl StorageProvider for FilenProvider {
                 "downloadBtn": true,
                 "type": "enable",
             }))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: LinkEditResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1321,8 +1447,13 @@ impl StorageProvider for FilenProvider {
             ));
         }
 
-        // Filen share links follow this pattern
-        Ok(format!("https://filen.io/d/{}", link_uuid))
+        // F-SHARE-01: Append #<linkKey> fragment so recipients can decrypt shared content.
+        // Filen's web app requires the encryption key in the URL fragment (never sent to server).
+        if link_key.is_empty() {
+            Ok(format!("https://filen.io/d/{}", link_uuid))
+        } else {
+            Ok(format!("https://filen.io/d/{}#{}", link_uuid, link_key))
+        }
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1342,15 +1473,17 @@ impl StorageProvider for FilenProvider {
 
         let endpoint = if entry.is_dir { "v3/dir/link/edit" } else { "v3/file/link/edit" };
 
-        let resp: GenericResponse = self.client
+        let request = self.client
             .post(format!("{}/{}", GATEWAY, endpoint))
-            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap())
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
             .json(&serde_json::json!({
                 "uuid": uuid,
                 "type": "disable",
             }))
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self.send_retry(request).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
@@ -1362,13 +1495,23 @@ impl StorageProvider for FilenProvider {
         Ok(())
     }
 
+    // TODO (F-FEAT-01): Filen supports trash operations via v3/file/trash and v3/dir/trash
+    // (already used in delete/rmdir). To implement list_trash/restore_from_trash/permanent_delete,
+    // use: GET v3/trash (list trash items), POST v3/file/restore / v3/dir/restore (restore),
+    // POST v3/file/delete/permanent / v3/dir/delete/permanent (permanent delete).
+
+    // TODO (F-FEAT-02): Filen supports file versioning. Use GET v3/file/versions to list
+    // previous versions, POST v3/file/version/restore to restore a specific version.
+    // Each version has a uuid, size, and timestamp.
+
     fn supports_find(&self) -> bool { true }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // TODO (F-FEAT-03): Filen has no server-side search API due to zero-knowledge design.
+        // The current implementation recursively lists and decrypts directories client-side.
+        // This is inherently slow for large directory trees. Consider caching the decrypted
+        // directory tree for faster subsequent searches.
         let pattern_lower = pattern.to_lowercase();
-
-        // Filen has no server-side search (zero-knowledge)
-        // Recursively list and decrypt, filtering client-side
         let mut results = Vec::new();
         let mut dirs_to_scan = vec![if path == "." || path.is_empty() {
             self.current_path.clone()

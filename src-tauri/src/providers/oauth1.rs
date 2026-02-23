@@ -36,7 +36,12 @@ pub fn percent_encode(input: &str) -> String {
     encoded
 }
 
-/// Generate a random nonce (32 alphanumeric chars)
+/// Generate a random nonce (32 alphanumeric chars).
+///
+/// FS-001: Uses `rand::thread_rng()` which is backed by a CSPRNG (ChaCha20 on most
+/// platforms). 32 chars from a 36-char alphabet yields ~1.65 × 10^49 combinations,
+/// making nonce collisions astronomically unlikely. Combined with the per-request
+/// Unix timestamp, this satisfies RFC 5849 Section 3.3 uniqueness requirements.
 pub fn generate_nonce() -> String {
     let mut rng = rand::thread_rng();
     (0..32)

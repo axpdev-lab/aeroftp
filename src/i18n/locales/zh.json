@@ -199,7 +199,13 @@
       "connect": "连接",
       "drimeToken": "API 令牌",
       "drimeTokenPlaceholder": "在此粘贴您的 Drime API 令牌",
-      "drimeTokenHelp": "在 app.drime.cloud → 账户设置 → 开发者 处生成令牌"
+      "drimeTokenHelp": "在 app.drime.cloud → 账户设置 → 开发者 处生成令牌",
+      "azureAccessKey": "访问密钥",
+      "azureAccountName": "账户名称",
+      "azureEndpoint": "终结点 (可选)",
+      "jottacloudToken": "登录令牌",
+      "jottacloudTokenPlaceholder": "在此粘贴您的 Jottacloud 登录令牌",
+      "jottacloudTokenHelp": "在 jottacloud.com → Settings → Security 处生成。令牌仅一次性使用并快速过期 — 复制后立即粘贴"
     },
     "browser": {
       "remote": "远程",
@@ -904,7 +910,9 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "saveFailed": "保存失败",
       "disconnectedTabClosed": "会话已关闭 — 已断开与 {server} 的连接",
-      "disconnectedAllClosed": "所有会话已关闭 — 已断开与 {server} 的连接"
+      "disconnectedAllClosed": "所有会话已关闭 — 已断开与 {server} 的连接",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "瑞士云存储",
       "kdriveTooltip": "Infomaniak 的 kDrive - 瑞士云存储，免费 15GB",
       "drimeDesc": "安全云存储",
-      "drimeTooltip": "Drime Cloud - 20GB 免费安全云存储，支持 REST API"
+      "drimeTooltip": "Drime Cloud - 20GB 免费安全云存储，支持 REST API",
+      "jottacloudDesc": "挪威云存储 (5GB 免费)",
+      "jottacloudTooltip": "Jottacloud - 符合 GDPR 的挪威云存储，提供 5GB 免费空间"
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -2567,13 +2577,17 @@
       "refresh": "刷新",
       "toggleTheme": "切换主题",
       "devtools": "AeroTools",
-      "toggleDevtools": "切换开发工具",
-      "toggleEditor": "切换编辑器",
-      "toggleTerminal": "切换终端",
-      "toggleAgent": "切换助手",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "编辑器",
+      "toggleTerminal": "终端",
+      "toggleAgent": "Agent",
       "shortcuts": "键盘快捷键",
       "support": "支持开发",
-      "about": "关于 AeroFTP"
+      "about": "关于 AeroFTP",
+      "selectAll": "全选",
+      "cut": "剪切",
+      "copy": "复制",
+      "paste": "粘贴"
     },
     "activityPanel": {
       "awaitingCommands": "等待命令...",
@@ -3003,7 +3017,11 @@
         "manageInSettings": "在 Plugins 选项卡中管理已安装的插件",
         "search": "搜索插件...",
         "subtitle": "发现并安装适用于 AeroAgent 的社区插件",
-        "title": "插件浏览器"
+        "title": "插件浏览器",
+        "tab": {
+          "browse": "浏览",
+          "installed": "已安装"
+        }
       }
     }
   }

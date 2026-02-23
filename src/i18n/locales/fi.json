@@ -199,7 +199,13 @@
       "connect": "Yhdistä",
       "drimeToken": "API-avain",
       "drimeTokenPlaceholder": "Liitä Drime API-avaimesi tähän",
-      "drimeTokenHelp": "Luo avain osoitteessa app.drime.cloud → Tilin asetukset → Kehittäjät"
+      "drimeTokenHelp": "Luo avain osoitteessa app.drime.cloud → Tilin asetukset → Kehittäjät",
+      "azureAccessKey": "Käyttöavain",
+      "azureAccountName": "Tilin nimi",
+      "azureEndpoint": "Endpoint (valinnainen)",
+      "jottacloudToken": "Kirjautumistunniste",
+      "jottacloudTokenPlaceholder": "Liitä Jottacloud-kirjautumistunniste tähän",
+      "jottacloudTokenHelp": "Luo osoitteessa jottacloud.com → Asetukset → Turvallisuus. Token on kertakäyttöinen ja vanhenee nopeasti — liitä se välittömästi kopioinnin jälkeen"
     },
     "browser": {
       "remote": "Etä",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Yhteys epäonnistui",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Istunto suljettu — yhteys katkaistu: {server}",
-      "disconnectedAllClosed": "Kaikki istunnot suljettu — yhteys katkaistu: {server}"
+      "disconnectedAllClosed": "Kaikki istunnot suljettu — yhteys katkaistu: {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Sveitsiläinen pilvitallennustila",
       "kdriveTooltip": "kDrive Infomaniakilta - Sveitsissä isännöity pilvitallennustila 15GB ilmaiseksi",
       "drimeDesc": "Turvallinen pilvitallennus",
-      "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla"
+      "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla",
+      "jottacloudDesc": "Norjalainen pilvi (5GB ilmaiseksi)",
+      "jottacloudTooltip": "Jottacloud - GDPR-yhteensopiva norjalainen pilvitallennus 5GB ilmaiseksi"
     },
     "shortcuts": {
       "title": "Pikanäppäimet",
@@ -2567,13 +2577,17 @@
       "refresh": "Päivitä",
       "toggleTheme": "Vaihda teemaa",
       "devtools": "AeroTools",
-      "toggleDevtools": "Vaihda kehitystyökalut",
-      "toggleEditor": "Vaihda editori",
-      "toggleTerminal": "Vaihda pääte",
-      "toggleAgent": "Vaihda agentti",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editori",
+      "toggleTerminal": "Terminaali",
+      "toggleAgent": "Agent",
       "shortcuts": "Pikanäppäimet",
       "support": "Tue kehitystä",
-      "about": "Tietoja AeroFTP:stä"
+      "about": "Tietoja AeroFTP:stä",
+      "selectAll": "Valitse kaikki",
+      "cut": "Leikkaa",
+      "copy": "Kopioi",
+      "paste": "Liitä"
     },
     "activityPanel": {
       "awaitingCommands": "Odotetaan komentoja...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Hallitse asennettuja plugineja Plugins-välilehdellä",
         "search": "Hae plugineja...",
         "subtitle": "Löydä ja asenna yhteisön plugineja AeroAgent-ille",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Selaa",
+          "installed": "Asennetut"
+        }
       }
     }
   }

@@ -199,7 +199,13 @@
       "connect": "Unganisha",
       "drimeToken": "Tokeni ya API",
       "drimeTokenPlaceholder": "Bandika tokeni yako ya API ya Drime hapa",
-      "drimeTokenHelp": "Tengeneza tokeni kwenye app.drime.cloud → Mipangilio ya Akaunti → Waendelezaji"
+      "drimeTokenHelp": "Tengeneza tokeni kwenye app.drime.cloud → Mipangilio ya Akaunti → Waendelezaji",
+      "azureAccessKey": "Ufunguo wa Ufikiaji",
+      "azureAccountName": "Jina la Akaunti",
+      "azureEndpoint": "Endpoint (si lazima)",
+      "jottacloudToken": "Tokeni ya kuingia",
+      "jottacloudTokenPlaceholder": "Bandika tokeni yako ya kuingia ya Jottacloud hapa",
+      "jottacloudTokenHelp": "Tengeneza kwenye jottacloud.com → Settings → Security. Token ni wa matumizi mara moja na huishia haraka — bonyeza moja kwa moja baada ya kunakili"
     },
     "browser": {
       "remote": "Mbali",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Muunganisho umeshindwa",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Kikao kimefungwa — imetenganishwa na {server}",
-      "disconnectedAllClosed": "Vikao vyote vimefungwa — imetenganishwa na {server}"
+      "disconnectedAllClosed": "Vikao vyote vimefungwa — imetenganishwa na {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Hifadhi ya wingu ya Uswisi",
       "kdriveTooltip": "kDrive na Infomaniak - hifadhi ya wingu ya Uswisi yenye 15GB bure",
       "drimeDesc": "Hifadhi salama ya wingu",
-      "drimeTooltip": "Drime Cloud - hifadhi salama ya wingu ya 20GB na REST API"
+      "drimeTooltip": "Drime Cloud - hifadhi salama ya wingu ya 20GB na REST API",
+      "jottacloudDesc": "Wingu la Norway (5GB bure)",
+      "jottacloudTooltip": "Jottacloud - hifadhi ya wingu ya Norway inayozingatia GDPR na 5GB bure"
     },
     "shortcuts": {
       "title": "Njia za Mkato",
@@ -2567,13 +2577,17 @@
       "refresh": "Onyesha Upya",
       "toggleTheme": "Badilisha Mandhari",
       "devtools": "AeroTools",
-      "toggleDevtools": "Badilisha DevTools",
-      "toggleEditor": "Badilisha Kihariri",
-      "toggleTerminal": "Badilisha Terminal",
-      "toggleAgent": "Badilisha Wakala",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Hariri",
+      "toggleTerminal": "Terminali",
+      "toggleAgent": "Agent",
       "shortcuts": "Njia za Mkato za Kibodi",
       "support": "Saidia Maendeleo",
-      "about": "Kuhusu AeroFTP"
+      "about": "Kuhusu AeroFTP",
+      "selectAll": "Chagua Zote",
+      "cut": "Kata",
+      "copy": "Nakili",
+      "paste": "Bandika"
     },
     "activityPanel": {
       "awaitingCommands": "Inasubiri amri...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Dhibiti plugini zilizosakinishwa kwenye kichupo cha Plugins",
         "search": "Tafuta plugini...",
         "subtitle": "Gundua na usakinishe plugini za jamii kwa AeroAgent",
-        "title": "Kivinjari cha plugini"
+        "title": "Kivinjari cha plugini",
+        "tab": {
+          "browse": "Vinjari",
+          "installed": "Imewekwa"
+        }
       }
     }
   }

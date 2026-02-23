@@ -199,7 +199,13 @@
       "connect": "Kết nối",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Dán token API Drime của bạn vào đây",
-      "drimeTokenHelp": "Tạo token tại app.drime.cloud → Cài đặt tài khoản → Nhà phát triển"
+      "drimeTokenHelp": "Tạo token tại app.drime.cloud → Cài đặt tài khoản → Nhà phát triển",
+      "azureAccessKey": "Khóa truy cập",
+      "azureAccountName": "Tên tài khoản",
+      "azureEndpoint": "Endpoint (tùy chọn)",
+      "jottacloudToken": "Mã đăng nhập",
+      "jottacloudTokenPlaceholder": "Dán mã đăng nhập Jottacloud của bạn vào đây",
+      "jottacloudTokenHelp": "Tạo tại jottacloud.com → Settings → Security. Token chỉ dùng một lần và hết hạn nhanh — dán nó ngay sau khi sao chép"
     },
     "browser": {
       "remote": "Từ xa",
@@ -904,7 +910,9 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "saveFailed": "Lưu thất bại",
       "disconnectedTabClosed": "Phiên đã đóng — đã ngắt kết nối khỏi {server}",
-      "disconnectedAllClosed": "Tất cả phiên đã đóng — đã ngắt kết nối khỏi {server}"
+      "disconnectedAllClosed": "Tất cả phiên đã đóng — đã ngắt kết nối khỏi {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Lưu trữ đám mây Thụy Sĩ",
       "kdriveTooltip": "kDrive của Infomaniak - lưu trữ đám mây Thụy Sĩ với 15GB miễn phí",
       "drimeDesc": "Lưu trữ đám mây an toàn",
-      "drimeTooltip": "Drime Cloud - 20GB lưu trữ đám mây an toàn miễn phí với REST API"
+      "drimeTooltip": "Drime Cloud - 20GB lưu trữ đám mây an toàn miễn phí với REST API",
+      "jottacloudDesc": "Đám mây Na Uy (5GB miễn phí)",
+      "jottacloudTooltip": "Jottacloud - lưu trữ đám mây Na Uy tuân thủ GDPR với 5GB miễn phí"
     },
     "shortcuts": {
       "title": "Phím tắt",
@@ -2567,13 +2577,17 @@
       "refresh": "Làm mới",
       "toggleTheme": "Chuyển giao diện",
       "devtools": "AeroTools",
-      "toggleDevtools": "Bật/tắt DevTools",
-      "toggleEditor": "Bật/tắt trình soạn thảo",
-      "toggleTerminal": "Bật/tắt Terminal",
-      "toggleAgent": "Bật/tắt trợ lý",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Trình soạn thảo",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Phím tắt",
       "support": "Ủng hộ phát triển",
-      "about": "Về AeroFTP"
+      "about": "Về AeroFTP",
+      "selectAll": "Chọn tất cả",
+      "cut": "Cắt",
+      "copy": "Sao chép",
+      "paste": "Dán"
     },
     "activityPanel": {
       "awaitingCommands": "Đang chờ lệnh...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Quản lý các plugin đã cài đặt trong tab Plugins",
         "search": "Tìm kiếm plugin...",
         "subtitle": "Khám phá và cài đặt plugin cộng đồng cho AeroAgent",
-        "title": "Trình duyệt plugin"
+        "title": "Trình duyệt plugin",
+        "tab": {
+          "browse": "Duyệt",
+          "installed": "Đã cài đặt"
+        }
       }
     }
   }

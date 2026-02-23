@@ -5,7 +5,6 @@ import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, 
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 
-/** RemoteEntry as returned by Rust (includes metadata with Zoho file ID) */
 interface TrashEntry {
   name: string;
   path: string;
@@ -15,12 +14,12 @@ interface TrashEntry {
   metadata: Record<string, string>;
 }
 
-interface ZohoTrashManagerProps {
+interface MegaTrashManagerProps {
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerProps) {
+export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerProps) {
   const t = useTranslation();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +31,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('zoho_list_trash');
+      const result = await invoke<TrashEntry[]>('mega_list_trash');
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -46,10 +45,8 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     loadTrash();
   }, [loadTrash]);
 
-  const getItemId = (item: TrashEntry): string => item.metadata?.id || item.path;
-
   const toggleSelect = (item: TrashEntry) => {
-    const id = getItemId(item);
+    const id = item.name;
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -62,18 +59,16 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     if (selected.size === items.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(items.map(getItemId)));
+      setSelected(new Set(items.map(i => i.name)));
     }
   };
 
-  const getSelectedIds = (): string[] => Array.from(selected);
-
   const handleRestore = async () => {
-    const ids = getSelectedIds();
-    if (ids.length === 0) return;
+    const filenames = Array.from(selected);
+    if (filenames.length === 0) return;
     setActionLoading('restore');
     try {
-      await invoke('zoho_restore_from_trash', { fileIds: ids });
+      await invoke('mega_restore_from_trash', { filenames });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
@@ -84,15 +79,15 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
   };
 
   const handlePermanentDelete = async () => {
-    const ids = getSelectedIds();
-    if (ids.length === 0) return;
+    const filenames = Array.from(selected);
+    if (filenames.length === 0) return;
     const confirmed = window.confirm(
-      t('contextMenu.permanentDeleteConfirm', { count: ids.length })
+      t('contextMenu.permanentDeleteConfirm', { count: filenames.length })
     );
     if (!confirmed) return;
     setActionLoading('delete');
     try {
-      await invoke('zoho_permanent_delete', { fileIds: ids });
+      await invoke('mega_permanent_delete', { filenames });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
@@ -102,7 +97,6 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     }
   };
 
-  // Escape key handler
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -123,9 +117,9 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2">
-            <Trash2 size={18} className="text-[var(--color-text-secondary)]" />
+            <Trash2 size={18} className="text-red-500" />
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
-              {t('contextMenu.trashTitle')} — Zoho WorkDrive
+              {t('contextMenu.trashTitle')} — MEGA
             </h2>
             <span className="text-xs text-[var(--color-text-tertiary)]">
               ({items.length})
@@ -207,42 +201,39 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
                 </tr>
               </thead>
               <tbody>
-                {items.map(item => {
-                  const itemId = getItemId(item);
-                  return (
-                    <tr
-                      key={itemId}
-                      className={`cursor-pointer hover:bg-[var(--color-bg-tertiary)] border-b border-[var(--color-border)]/30 ${
-                        selected.has(itemId) ? 'bg-[var(--color-accent)]/10' : ''
-                      }`}
-                      onClick={() => toggleSelect(item)}
-                    >
-                      <td className="px-2 py-1.5 text-center">
-                        {selected.has(itemId) ? (
-                          <CheckSquare size={13} className="text-[var(--color-accent)]" />
+                {items.map(item => (
+                  <tr
+                    key={item.name}
+                    className={`cursor-pointer hover:bg-[var(--color-bg-tertiary)] border-b border-[var(--color-border)]/30 ${
+                      selected.has(item.name) ? 'bg-[var(--color-accent)]/10' : ''
+                    }`}
+                    onClick={() => toggleSelect(item)}
+                  >
+                    <td className="px-2 py-1.5 text-center">
+                      {selected.has(item.name) ? (
+                        <CheckSquare size={13} className="text-[var(--color-accent)]" />
+                      ) : (
+                        <Square size={13} className="text-[var(--color-text-tertiary)]" />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        {item.is_dir ? (
+                          <Folder size={13} className="text-yellow-500 shrink-0" />
                         ) : (
-                          <Square size={13} className="text-[var(--color-text-tertiary)]" />
+                          <File size={13} className="text-[var(--color-text-tertiary)] shrink-0" />
                         )}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                          {item.is_dir ? (
-                            <Folder size={13} className="text-yellow-500 shrink-0" />
-                          ) : (
-                            <File size={13} className="text-[var(--color-text-tertiary)] shrink-0" />
-                          )}
-                          <span className="truncate text-[var(--color-text-primary)]">{item.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-[var(--color-text-secondary)] tabular-nums">
-                        {item.is_dir ? '—' : formatSize(item.size)}
-                      </td>
-                      <td className="px-2 py-1.5 text-[var(--color-text-tertiary)]">
-                        {item.modified || '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <span className="truncate text-[var(--color-text-primary)]">{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 text-right text-[var(--color-text-secondary)] tabular-nums">
+                      {item.is_dir ? '—' : formatSize(item.size)}
+                    </td>
+                    <td className="px-2 py-1.5 text-[var(--color-text-tertiary)]">
+                      {item.modified || '—'}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}

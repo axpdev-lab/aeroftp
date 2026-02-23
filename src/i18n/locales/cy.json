@@ -199,7 +199,13 @@
       "connect": "Cysylltu",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Gludwch eich token API Drime yma",
-      "drimeTokenHelp": "Cynhyrchwch docen yn app.drime.cloud → Gosodiadau Cyfrif → Datblygwyr"
+      "drimeTokenHelp": "Cynhyrchwch docen yn app.drime.cloud → Gosodiadau Cyfrif → Datblygwyr",
+      "azureAccessKey": "Allwedd Mynediad",
+      "azureAccountName": "Enw Cyfrif",
+      "azureEndpoint": "Endpoint (dewisol)",
+      "jottacloudToken": "Tocyn mewngofnodi",
+      "jottacloudTokenPlaceholder": "Gludiwch eich tocyn mewngofnodi Jottacloud yma",
+      "jottacloudTokenHelp": "Cynhyrchu ar jottacloud.com → Gosodiadau → Diogelwch. Mae'r tocen yn untro ac yn dod i ben yn gyflym — glynwch ef ar unwaith ar ôl copïo"
     },
     "browser": {
       "remote": "Pell",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Cysylltiad wedi methu",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesiwn wedi'i gau — wedi datgysylltu oddi wrth {server}",
-      "disconnectedAllClosed": "Pob sesiwn wedi'i chau — wedi datgysylltu oddi wrth {server}"
+      "disconnectedAllClosed": "Pob sesiwn wedi'i chau — wedi datgysylltu oddi wrth {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Storfa Cwmwl y Swistir",
       "kdriveTooltip": "kDrive gan Infomaniak - Storfa cwmwl wedi'i lletya yn y Swistir gyda 15GB am ddim",
       "drimeDesc": "Stôr Cwmwl Diogel",
-      "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API"
+      "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API",
+      "jottacloudDesc": "Cwmwl Norwyaidd (5GB am ddim)",
+      "jottacloudTooltip": "Jottacloud - Storfa cwmwl Norwyaidd sy'n cydymffurfio â GDPR gyda 5GB am ddim"
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",
@@ -2567,13 +2577,17 @@
       "refresh": "Adnewyddu",
       "toggleTheme": "Toglo Thema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Toglo DevTools",
-      "toggleEditor": "Toglo Golygydd",
-      "toggleTerminal": "Toglo Terfynell",
-      "toggleAgent": "Toglo Asiant",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Golygydd",
+      "toggleTerminal": "Terfynell",
+      "toggleAgent": "Agent",
       "shortcuts": "Llwybrau Byr Bysellfwrdd",
       "support": "Cefnogi Datblygiad",
-      "about": "Ynghylch AeroFTP"
+      "about": "Ynghylch AeroFTP",
+      "selectAll": "Dewis Popeth",
+      "cut": "Torri",
+      "copy": "Copïo",
+      "paste": "Gludo"
     },
     "activityPanel": {
       "awaitingCommands": "Yn aros am orchmynion...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Rheolwch y plugins sydd wedi'u gosod yn y tab Plugins",
         "search": "Chwilio plugins...",
         "subtitle": "Darganfyddwch a gosodwch plugins cymunedol ar gyfer AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Pori",
+          "installed": "Wedi gosod"
+        }
       }
     },
     "commandPalette.category.ai": {},

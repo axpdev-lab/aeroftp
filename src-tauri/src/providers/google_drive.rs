@@ -345,7 +345,6 @@ impl GoogleDriveProvider {
     }
 
     /// List files in the trash
-    #[allow(dead_code)]
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_files = Vec::new();
         let mut page_token: Option<String> = None;
@@ -391,7 +390,6 @@ impl GoogleDriveProvider {
     }
 
     /// Move a file to trash by path
-    #[allow(dead_code)]
     pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -431,7 +429,6 @@ impl GoogleDriveProvider {
     }
 
     /// Restore a file from trash by file ID
-    #[allow(dead_code)]
     pub async fn restore_from_trash(&mut self, file_id: &str) -> Result<(), ProviderError> {
         let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
         let body = serde_json::json!({ "trashed": false });
@@ -455,7 +452,6 @@ impl GoogleDriveProvider {
     }
 
     /// Permanently delete a file by file ID (bypasses trash)
-    #[allow(dead_code)]
     pub async fn permanent_delete(&mut self, file_id: &str) -> Result<(), ProviderError> {
         let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
 

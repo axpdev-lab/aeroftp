@@ -124,7 +124,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <div
                 className="relative w-full max-w-3xl max-h-[80vh] rounded-xl overflow-hidden
-                    bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col"
+                    bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}

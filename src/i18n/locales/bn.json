@@ -199,7 +199,13 @@
       "connect": "সংযোগ করুন",
       "drimeToken": "API টোকেন",
       "drimeTokenPlaceholder": "এখানে আপনার Drime API টোকেন পেস্ট করুন",
-      "drimeTokenHelp": "app.drime.cloud → অ্যাকাউন্ট সেটিংস → ডেভেলপারস-এ একটি টোকেন তৈরি করুন"
+      "drimeTokenHelp": "app.drime.cloud → অ্যাকাউন্ট সেটিংস → ডেভেলপারস-এ একটি টোকেন তৈরি করুন",
+      "azureAccessKey": "অ্যাক্সেস কী",
+      "azureAccountName": "অ্যাকাউন্টের নাম",
+      "azureEndpoint": "Endpoint (ঐচ্ছিক)",
+      "jottacloudToken": "লগইন টোকেন",
+      "jottacloudTokenPlaceholder": "আপনার Jottacloud লগইন টোকেন এখানে পেস্ট করুন",
+      "jottacloudTokenHelp": "jottacloud.com → সেটিংস → সিকিউরিটিতে তৈরি করুন। টোকেন একবার ব্যবহারযোগ্য এবং দ্রুত মেয়াদ শেষ হয় — অনুলিপি করার পরে অবিলম্বে আটকান"
     },
     "browser": {
       "remote": "রিমোট",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "সংযোগ ব্যর্থ",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "সেশন বন্ধ হয়েছে — {server} থেকে সংযোগ বিচ্ছিন্ন",
-      "disconnectedAllClosed": "সব সেশন বন্ধ হয়েছে — {server} থেকে সংযোগ বিচ্ছিন্ন"
+      "disconnectedAllClosed": "সব সেশন বন্ধ হয়েছে — {server} থেকে সংযোগ বিচ্ছিন্ন",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "সুইস ক্লাউড স্টোরেজ",
       "kdriveTooltip": "Infomaniak এর kDrive - 15GB বিনামূল্যে সুইস-হোস্টেড ক্লাউড স্টোরেজ",
       "drimeDesc": "নিরাপদ ক্লাউড স্টোরেজ",
-      "drimeTooltip": "Drime Cloud - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ"
+      "drimeTooltip": "Drime Cloud - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ",
+      "jottacloudDesc": "নরওয়েজিয়ান ক্লাউড (5GB বিনামূল্যে)",
+      "jottacloudTooltip": "Jottacloud - 5GB বিনামূল্যে সহ GDPR-সম্মত নরওয়েজিয়ান ক্লাউড স্টোরেজ"
     },
     "shortcuts": {
       "title": "কীবোর্ড শর্টকাট",
@@ -2567,13 +2577,17 @@
       "refresh": "রিফ্রেশ",
       "toggleTheme": "থিম টগল করুন",
       "devtools": "AeroTools",
-      "toggleDevtools": "DevTools টগল করুন",
-      "toggleEditor": "এডিটর টগল করুন",
-      "toggleTerminal": "টার্মিনাল টগল করুন",
-      "toggleAgent": "এজেন্ট টগল করুন",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "এডিটর",
+      "toggleTerminal": "টার্মিনাল",
+      "toggleAgent": "Agent",
       "shortcuts": "কীবোর্ড শর্টকাট",
       "support": "ডেভেলপমেন্ট সমর্থন করুন",
-      "about": "AeroFTP সম্পর্কে"
+      "about": "AeroFTP সম্পর্কে",
+      "selectAll": "সবগুলো নির্বাচন করুন",
+      "cut": "কাটুন",
+      "copy": "অনুলিপি করুন",
+      "paste": "আটকান"
     },
     "activityPanel": {
       "awaitingCommands": "কমান্ডের অপেক্ষায়...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Plugins ট্যাবে ইনস্টল করা plugins পরিচালনা করুন",
         "search": "Plugins অনুসন্ধান করুন...",
         "subtitle": "AeroAgent-এর জন্য কমিউনিটি plugins আবিষ্কার ও ইনস্টল করুন",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "ব্রাউজ",
+          "installed": "ইনস্টল করা"
+        }
       }
     }
   }

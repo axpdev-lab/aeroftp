@@ -199,7 +199,13 @@
       "connect": "연결",
       "drimeToken": "API 토큰",
       "drimeTokenPlaceholder": "여기에 Drime API 토큰을 붙여넣으세요",
-      "drimeTokenHelp": "app.drime.cloud → 계정 설정 → 개발자에서 토큰을 생성하세요"
+      "drimeTokenHelp": "app.drime.cloud → 계정 설정 → 개발자에서 토큰을 생성하세요",
+      "azureAccessKey": "액세스 키",
+      "azureAccountName": "계정 이름",
+      "azureEndpoint": "엔드포인트 (선택 사항)",
+      "jottacloudToken": "로그인 토큰",
+      "jottacloudTokenPlaceholder": "Jottacloud 로그인 토큰을 여기에 붙여넣으세요",
+      "jottacloudTokenHelp": "jottacloud.com → 설정 → 보안에서 생성합니다. 토큰은 일회용이며 빠르게 만료됩니다. 복사 후 즉시 붙여넣기하십시오"
     },
     "browser": {
       "remote": "원격",
@@ -904,7 +910,9 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "saveFailed": "저장 실패",
       "disconnectedTabClosed": "세션이 닫혔습니다 — {server}에서 연결 해제되었습니다",
-      "disconnectedAllClosed": "모든 세션이 닫혔습니다 — {server}에서 연결 해제되었습니다"
+      "disconnectedAllClosed": "모든 세션이 닫혔습니다 — {server}에서 연결 해제되었습니다",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "스위스 클라우드 스토리지",
       "kdriveTooltip": "kDrive by Infomaniak - 15GB 무료 스위스 호스팅 클라우드 스토리지",
       "drimeDesc": "안전한 클라우드 스토리지",
-      "drimeTooltip": "Drime Cloud - REST API를 지원하는 20GB 무료 안전한 클라우드 스토리지"
+      "drimeTooltip": "Drime Cloud - REST API를 지원하는 20GB 무료 안전한 클라우드 스토리지",
+      "jottacloudDesc": "노르웨이 클라우드 (5GB 무료)",
+      "jottacloudTooltip": "Jottacloud - GDPR 준수 노르웨이 클라우드 저장소, 5GB 무료"
     },
     "shortcuts": {
       "title": "단축키",
@@ -2567,13 +2577,17 @@
       "refresh": "새로고침",
       "toggleTheme": "테마 전환",
       "devtools": "AeroTools",
-      "toggleDevtools": "개발자 도구 전환",
-      "toggleEditor": "편집기 전환",
-      "toggleTerminal": "터미널 전환",
-      "toggleAgent": "에이전트 전환",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "편집기",
+      "toggleTerminal": "터미널",
+      "toggleAgent": "Agent",
       "shortcuts": "키보드 단축키",
       "support": "개발 지원",
-      "about": "AeroFTP 정보"
+      "about": "AeroFTP 정보",
+      "selectAll": "모두 선택",
+      "cut": "잘라내기",
+      "copy": "복사",
+      "paste": "붙여넣기"
     },
     "activityPanel": {
       "awaitingCommands": "명령 대기 중...",
@@ -3003,7 +3017,11 @@
         "manageInSettings": "설치된 플러그인은 Plugins 탭에서 관리하세요",
         "search": "플러그인 검색...",
         "subtitle": "AeroAgent용 커뮤니티 플러그인을 발견하고 설치하세요",
-        "title": "플러그인 브라우저"
+        "title": "플러그인 브라우저",
+        "tab": {
+          "browse": "탐색",
+          "installed": "설치됨"
+        }
       }
     }
   }

@@ -196,7 +196,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col animate-scale-in"
         role="dialog"
         aria-label={t('duplicates.title')}
         aria-modal="true"

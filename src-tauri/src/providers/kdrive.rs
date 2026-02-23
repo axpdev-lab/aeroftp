@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
-    sanitize_api_error, KDriveConfig,
+    FileVersion, ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+    sanitize_api_error, KDriveConfig, HttpRetryConfig, send_with_retry,
 };
 
 const API_BASE: &str = "https://api.infomaniak.com";
@@ -92,6 +92,55 @@ struct UploadResponse {
     name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ShareLinkData {
+    url: Option<String>,
+    #[allow(dead_code)]
+    uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KDriveVersion {
+    id: i64,
+    #[allow(dead_code)]
+    file_id: Option<i64>,
+    size: Option<i64>,
+    created_at: Option<i64>,
+    #[allow(dead_code)]
+    user_id: Option<i64>,
+    version_number: Option<i64>,
+}
+
+// KD-010: Trash types — ready for use when StorageProvider trait adds trash methods.
+// See docs/dev/guides/kDrive/14-trash.md for API details.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct TrashFile {
+    id: i64,
+    name: Option<String>,
+    #[serde(rename = "type")]
+    file_type: Option<String>,
+    size: Option<i64>,
+    #[serde(rename = "last_modified_at")]
+    last_modified: Option<i64>,
+    deleted_at: Option<i64>,
+    path: Option<String>,
+}
+
+/// Paginated response shape for trash listings
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum TrashPayload {
+    Paginated {
+        #[serde(default)]
+        data: Vec<TrashFile>,
+        has_more: Option<bool>,
+        cursor: Option<String>,
+    },
+    Flat(Vec<TrashFile>),
+}
+
 // ─── Dir Cache ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -134,6 +183,41 @@ impl KDriveProvider {
     fn auth_header(&self) -> HeaderValue {
         HeaderValue::from_str(&format!("Bearer {}", self.config.api_token.expose_secret()))
             .unwrap_or_else(|_| HeaderValue::from_static(""))
+    }
+
+    /// KD-004: Send a GET request with automatic retry on 429/5xx
+    async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        let request = self.client.get(url)
+            .header(AUTHORIZATION, self.auth_header())
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+    }
+
+    /// KD-004: Send a POST request with automatic retry on 429/5xx
+    async fn post_with_retry(&self, url: &str, content_type: &str, body: Vec<u8>) -> Result<reqwest::Response, ProviderError> {
+        let request = self.client.post(url)
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, content_type)
+            .body(body)
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+    }
+
+    /// KD-004: Send a DELETE request with automatic retry on 429/5xx
+    async fn delete_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        let request = self.client.delete(url)
+            .header(AUTHORIZATION, self.auth_header())
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     fn api_url_v2(&self, path: &str) -> String {
@@ -203,40 +287,66 @@ impl KDriveProvider {
                 continue;
             }
 
-            // List children to find the folder
-            let url = self.api_url_v3(&format!("/files/{}/files?with=path", current_id));
-            let resp: reqwest::Response = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List {} failed ({}): {}", current_path, status, sanitize_api_error(&body)
-                )));
-            }
-
-            let api_resp: ApiResponse<Vec<KDriveFile>> = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Parse list response failed: {}", e))
-            })?;
-
-            let files = api_resp.data.unwrap_or_default();
+            // KD-011: List children with pagination to handle directories with >200 entries
+            let base_url = self.api_url_v3(&format!("/files/{}/files", current_id));
+            let mut cursor: Option<String> = None;
             let mut found = false;
 
-            for file in &files {
-                if file.file_type.as_deref() == Some("dir") {
-                    if let Some(ref name) = file.name {
-                        if name.eq_ignore_ascii_case(part) {
-                            self.dir_cache.insert(current_path.clone(), DirInfo { id: file.id });
-                            current_id = file.id;
-                            found = true;
-                            break;
+            'pagination: loop {
+                let url = match cursor {
+                    Some(ref c) => format!("{}?with=path&cursor={}", base_url, c),
+                    None => format!("{}?with=path", base_url),
+                };
+
+                let resp = self.get_with_retry(&url).await?;
+
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::ServerError(format!(
+                        "List {} failed ({}): {}", current_path, status, sanitize_api_error(&body)
+                    )));
+                }
+
+                let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+                    ProviderError::ServerError(format!("Parse list response failed: {}", e))
+                })?;
+
+                let (files, has_more, next_cursor) = match api_resp.data {
+                    Some(FilesPayload::Paginated { data, has_more, cursor: c }) => (data, has_more, c),
+                    Some(FilesPayload::Flat(data)) => (data, Some(false), None),
+                    None => (vec![], Some(false), None),
+                };
+
+                // KD-003: Try exact match first, then case-insensitive fallback
+                let mut case_insensitive_match: Option<i64> = None;
+
+                for file in &files {
+                    if file.file_type.as_deref() == Some("dir") {
+                        if let Some(ref name) = file.name {
+                            if name == *part {
+                                // Exact match — use immediately
+                                self.dir_cache.insert(current_path.clone(), DirInfo { id: file.id });
+                                current_id = file.id;
+                                found = true;
+                                break 'pagination;
+                            } else if case_insensitive_match.is_none() && name.eq_ignore_ascii_case(part) {
+                                case_insensitive_match = Some(file.id);
+                            }
                         }
                     }
                 }
+
+                if has_more != Some(true) || next_cursor.is_none() {
+                    // No more pages — use case-insensitive match if found
+                    if let Some(id) = case_insensitive_match {
+                        self.dir_cache.insert(current_path.clone(), DirInfo { id });
+                        current_id = id;
+                        found = true;
+                    }
+                    break;
+                }
+                cursor = next_cursor;
             }
 
             if !found {
@@ -248,9 +358,12 @@ impl KDriveProvider {
     }
 
     /// Find a file by name in a given folder, returns (file_id, is_dir)
+    /// KD-003: Exact match first, case-insensitive fallback
+    /// KD-004: Uses retry wrapper for transient errors
     async fn find_file_in_folder(&self, folder_id: i64, filename: &str) -> Result<Option<(i64, bool)>, ProviderError> {
         let base_url = self.api_url_v3(&format!("/files/{}/files", folder_id));
         let mut cursor: Option<String> = None;
+        let mut case_insensitive_match: Option<(i64, bool)> = None;
 
         loop {
             let url = match cursor {
@@ -258,10 +371,7 @@ impl KDriveProvider {
                 None => base_url.clone(),
             };
 
-            let resp: reqwest::Response = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send().await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Find file failed: {}", e)))?;
+            let resp = self.get_with_retry(&url).await?;
 
             if !resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
@@ -275,16 +385,19 @@ impl KDriveProvider {
             })?;
 
             let (files, has_more, next_cursor) = match api_resp.data {
-                Some(FilesPayload::Paginated { data, has_more, cursor }) => (data, has_more, cursor),
+                Some(FilesPayload::Paginated { data, has_more, cursor: c }) => (data, has_more, c),
                 Some(FilesPayload::Flat(data)) => (data, Some(false), None),
                 None => (vec![], Some(false), None),
             };
 
             for file in &files {
                 if let Some(ref name) = file.name {
-                    if name.eq_ignore_ascii_case(filename) {
-                        let is_dir = file.file_type.as_deref() == Some("dir");
+                    let is_dir = file.file_type.as_deref() == Some("dir");
+                    if name == filename {
+                        // Exact match — return immediately
                         return Ok(Some((file.id, is_dir)));
+                    } else if case_insensitive_match.is_none() && name.eq_ignore_ascii_case(filename) {
+                        case_insensitive_match = Some((file.id, is_dir));
                     }
                 }
             }
@@ -295,7 +408,8 @@ impl KDriveProvider {
             cursor = next_cursor;
         }
 
-        Ok(None)
+        // Fall back to case-insensitive match if no exact match found
+        Ok(case_insensitive_match)
     }
 }
 
@@ -319,14 +433,10 @@ impl StorageProvider for KDriveProvider {
         // Validate token + drive_id by fetching drive info
         let url = self.api_url_v2("");
         kdrive_log(&format!("Connect URL: {}", url));
-        let resp: reqwest::Response = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| {
-                kdrive_log(&format!("Connection error: {} (is_timeout={}, is_connect={})", e, e.is_timeout(), e.is_connect()));
-                ProviderError::ConnectionFailed(format!("Connection failed: {}", e))
-            })?;
+        let resp = self.get_with_retry(&url).await.map_err(|e| {
+            kdrive_log(&format!("Connection error: {}", e));
+            ProviderError::ConnectionFailed(format!("Connection failed: {}", e))
+        })?;
 
         let status = resp.status();
         if status.as_u16() == 401 {
@@ -437,10 +547,7 @@ impl StorageProvider for KDriveProvider {
                 None => base_url.clone(),
             };
 
-            let resp: reqwest::Response = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send().await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
+            let resp = self.get_with_retry(&url).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -455,7 +562,7 @@ impl StorageProvider for KDriveProvider {
             })?;
 
             let (files, has_more, next_cursor) = match api_resp.data {
-                Some(FilesPayload::Paginated { data, has_more, cursor }) => (data, has_more, cursor),
+                Some(FilesPayload::Paginated { data, has_more, cursor: c }) => (data, has_more, c),
                 Some(FilesPayload::Flat(data)) => (data, Some(false), None),
                 None => (vec![], Some(false), None),
             };
@@ -532,11 +639,7 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Downloading file {} (id={})", filename, file_id));
 
         let url = self.api_url_v2(&format!("/files/{}/download", file_id));
-        let resp: reqwest::Response = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Download request failed: {}", e)))?;
+        let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -546,18 +649,30 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        let total_size = resp.content_length().unwrap_or(0);
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to read download body: {}", e)))?;
+        // KD-002: Streaming download — write chunks progressively instead of buffering in RAM
+        // KD-005: Call progress callback with bytes_written/total_size
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
 
-        if let Some(ref cb) = on_progress {
-            cb(bytes.len() as u64, total_size);
+        let total_size = resp.content_length().unwrap_or(0);
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let mut downloaded: u64 = 0;
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
+            downloaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(downloaded, total_size);
+            }
         }
 
-        tokio::fs::write(local_path, &bytes).await
-            .map_err(ProviderError::IoError)?;
+        file.flush().await.map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
-        kdrive_log(&format!("Downloaded {} ({} bytes)", filename, bytes.len()));
+        kdrive_log(&format!("Downloaded {} ({} bytes)", filename, downloaded));
         Ok(())
     }
 
@@ -570,11 +685,7 @@ impl StorageProvider for KDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("File '{}' not found", filename)))?;
 
         let url = self.api_url_v2(&format!("/files/{}/download", file_id));
-        let resp: reqwest::Response = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Download failed: {}", e)))?;
+        let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -599,28 +710,19 @@ impl StorageProvider for KDriveProvider {
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
-        let data = tokio::fs::read(local_path).await
+        // KD-001: Stream file instead of reading entire file into RAM
+        let file_meta = tokio::fs::metadata(local_path).await
             .map_err(ProviderError::IoError)?;
-
-        let file_size = data.len() as u64;
+        let file_size = file_meta.len();
         kdrive_log(&format!("Uploading {} ({} bytes) to folder {}", filename, file_size, parent_id));
 
-        // Preemptive delete if file already exists
-        if let Some((existing_id, _)) = self.find_file_in_folder(parent_id, filename).await? {
-            kdrive_log(&format!("File {} exists (id={}), deleting before overwrite", filename, existing_id));
-            let del_url = self.api_url_v2(&format!("/files/{}", existing_id));
-            let _ = self.client.delete(&del_url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send()
-                .await;
-        }
+        // KD-008: Removed preemptive delete — use conflict=version to let the API
+        // create a new version atomically. This prevents data loss if the upload fails.
 
         if let Some(ref cb) = on_progress {
             cb(0, file_size);
         }
 
-        // Upload via POST with query params + raw body
-        // kDrive API: directory_id/file_name/total_size as query params, file bytes as body
         let last_modified = std::fs::metadata(local_path)
             .and_then(|m| m.modified())
             .ok()
@@ -636,19 +738,25 @@ impl StorageProvider for KDriveProvider {
             file_size, last_modified
         );
 
+        // KD-001: Use ReaderStream for streaming upload body
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+
         let resp: reqwest::Response = self.client.post(&url)
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_TYPE, "application/octet-stream")
-            .body(data)
+            .body(body)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Upload request failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body_text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Upload failed ({}): {}", status, sanitize_api_error(&body)
+                "Upload failed ({}): {}", status, sanitize_api_error(&body_text)
             )));
         }
 
@@ -656,6 +764,7 @@ impl StorageProvider for KDriveProvider {
             ProviderError::ServerError(format!("Parse upload response failed: {}", e))
         })?;
 
+        // KD-005: Report progress after successful upload completion
         if let Some(ref cb) = on_progress {
             cb(file_size, file_size);
         }
@@ -672,13 +781,8 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Creating directory '{}' in folder {}", dir_name, parent_id));
 
         let url = self.api_url_v3(&format!("/files/{}/directory", parent_id));
-        let resp: reqwest::Response = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, "application/json")
-            .body(serde_json::json!({ "name": dir_name }).to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Mkdir failed: {}", e)))?;
+        let body_json = serde_json::json!({ "name": dir_name }).to_string().into_bytes();
+        let resp = self.post_with_retry(&url, "application/json", body_json).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -710,11 +814,7 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Deleting {} (id={})", filename, file_id));
 
         let url = self.api_url_v2(&format!("/files/{}", file_id));
-        let resp: reqwest::Response = self.client.delete(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Delete failed: {}", e)))?;
+        let resp = self.delete_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -748,13 +848,8 @@ impl StorageProvider for KDriveProvider {
         };
 
         let url = self.api_url_v3(&format!("/files/{}/move/{}", file_id, to_parent_id));
-        let resp: reqwest::Response = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, "application/json")
-            .body(serde_json::json!({ "name": to_name }).to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Rename failed: {}", e)))?;
+        let body_json = serde_json::json!({ "name": to_name }).to_string().into_bytes();
+        let resp = self.post_with_retry(&url, "application/json", body_json).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -787,11 +882,7 @@ impl StorageProvider for KDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
         let url = self.api_url_v3(&format!("/files/{}", file_id));
-        let resp: reqwest::Response = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Stat failed: {}", e)))?;
+        let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -871,13 +962,8 @@ impl StorageProvider for KDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", from_name)))?;
 
         let url = self.api_url_v3(&format!("/files/{}/copy/{}", file_id, to_parent_id));
-        let resp: reqwest::Response = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, "application/json")
-            .body(serde_json::json!({ "name": to_name }).to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Copy failed: {}", e)))?;
+        let body_json = serde_json::json!({ "name": to_name }).to_string().into_bytes();
+        let resp = self.post_with_retry(&url, "application/json", body_json).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -892,11 +978,7 @@ impl StorageProvider for KDriveProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = self.api_url_v2("");
-        let resp: reqwest::Response = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Quota request failed: {}", e)))?;
+        let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -922,4 +1004,277 @@ impl StorageProvider for KDriveProvider {
             free: total.saturating_sub(used),
         })
     }
+
+    // ─── KD-006: Search via kDrive search API ─────────────────────────
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let base_url = self.api_url_v3("/files/search");
+        let mut entries = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let url = match cursor {
+                Some(ref c) => format!("{}?query={}&cursor={}", base_url, urlencoding::encode(pattern), c),
+                None => format!("{}?query={}", base_url, urlencoding::encode(pattern)),
+            };
+
+            let resp = self.get_with_retry(&url).await?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Search failed ({}): {}", status, sanitize_api_error(&body)
+                )));
+            }
+
+            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+                ProviderError::ServerError(format!("Parse search response failed: {}", e))
+            })?;
+
+            let (files, has_more, next_cursor) = match api_resp.data {
+                Some(FilesPayload::Paginated { data, has_more, cursor: c }) => (data, has_more, c),
+                Some(FilesPayload::Flat(data)) => (data, Some(false), None),
+                None => (vec![], Some(false), None),
+            };
+
+            for file in files {
+                let name = file.name.unwrap_or_else(|| format!("unnamed_{}", file.id));
+                let is_dir = file.file_type.as_deref() == Some("dir");
+                let size = file.size.unwrap_or(0).max(0) as u64;
+                let modified = file.last_modified.map(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                        .unwrap_or_default()
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                });
+                let file_path = file.path.unwrap_or_else(|| format!("/{}", name));
+
+                entries.push(RemoteEntry {
+                    name,
+                    path: file_path,
+                    is_dir,
+                    size,
+                    modified,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    metadata: HashMap::new(),
+                    mime_type: None,
+                });
+            }
+
+            if has_more != Some(true) || next_cursor.is_none() {
+                break;
+            }
+            cursor = next_cursor;
+        }
+
+        Ok(entries)
+    }
+
+    // ─── KD-007: Share links via kDrive link API ──────────────────────
+
+    fn supports_share_links(&self) -> bool {
+        true
+    }
+
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        _expires_in_secs: Option<u64>,
+    ) -> Result<String, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        // Build share link request body with optional expiry
+        let mut body_obj = serde_json::json!({
+            "right": "public",
+            "can_download": true,
+            "can_edit": false
+        });
+        if let Some(secs) = _expires_in_secs {
+            let expires_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() + secs;
+            body_obj["valid_until"] = serde_json::json!(expires_at);
+        }
+
+        let url = self.api_url_v2(&format!("/files/{}/link", file_id));
+        let body_bytes = body_obj.to_string().into_bytes();
+        let resp = self.post_with_retry(&url, "application/json", body_bytes).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Create share link failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse share link response failed: {}", e))
+        })?;
+
+        let link_data = api_resp.data.ok_or_else(|| {
+            ProviderError::ServerError("No share link data in response".to_string())
+        })?;
+
+        link_data.url.ok_or_else(|| {
+            ProviderError::ServerError("No URL in share link response".to_string())
+        })
+    }
+
+    async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = self.api_url_v2(&format!("/files/{}/link", file_id));
+        let resp = self.delete_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Remove share link failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        Ok(())
+    }
+
+    // ─── KD-009: File versioning via kDrive versions API ──────────────
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = self.api_url_v3(&format!("/files/{}/versions", file_id));
+        let resp = self.get_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "List versions failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse versions response failed: {}", e))
+        })?;
+
+        let versions = api_resp.data.unwrap_or_default();
+        Ok(versions.iter().map(|v| {
+            let modified = v.created_at.map(|ts| {
+                chrono::DateTime::from_timestamp(ts, 0)
+                    .unwrap_or_default()
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            });
+            FileVersion {
+                id: v.id.to_string(),
+                modified,
+                size: v.size.unwrap_or(0).max(0) as u64,
+                modified_by: v.version_number.map(|n| format!("v{}", n)),
+            }
+        }).collect())
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/download", file_id, version_id));
+        let resp = self.get_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Download version failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        // Stream version download to file
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
+        let mut stream = resp.bytes_stream();
+        let mut file = tokio::fs::File::create(local_path).await
+            .map_err(ProviderError::IoError)?;
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("Version download error: {}", e)))?;
+            file.write_all(&chunk).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/restore", file_id, version_id));
+        let resp = self.post_with_retry(&url, "application/json", vec![]).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Restore version failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        Ok(())
+    }
+
+    // ─── KD-010: Trash management via kDrive trash API ────────────────
+
+    // Note: StorageProvider trait does not define list_trash/restore_from_trash/permanent_delete
+    // as trait methods. The trash API is documented in docs/dev/guides/kDrive/14-trash.md
+    // and can be integrated when the trait is extended.
+    // TODO: Implement trash management when StorageProvider trait adds trash methods.
+    //   - List trash:      GET /3/drive/{drive_id}/trash (cursor-paginated)
+    //   - Restore:         POST /2/drive/{drive_id}/trash/{file_id}/restore
+    //   - Permanent delete: DELETE /2/drive/{drive_id}/trash/{file_id}
+    //   - Empty trash:     DELETE /2/drive/{drive_id}/trash
 }

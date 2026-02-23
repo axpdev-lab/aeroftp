@@ -108,7 +108,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
             aria-modal="true"
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 p-6 w-[420px] max-w-[90vw]">
+            <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 p-6 w-[420px] max-w-[90vw] animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-5">
                     <h2 className="text-lg font-semibold text-gray-100">

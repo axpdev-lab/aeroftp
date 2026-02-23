@@ -119,6 +119,9 @@
       "allFiles": "Tutti i File",
       "sshKeys": "Chiavi SSH",
       "accessKeyId": "ID chiave di accesso",
+      "azureAccessKey": "Chiave di Accesso",
+      "azureAccountName": "Nome Account",
+      "azureEndpoint": "Endpoint (opzionale)",
       "secretAccessKey": "Chiave di accesso segreta",
       "selectProtocolPrompt": "Seleziona un protocollo sopra per configurare la connessione",
       "securityTitle": "Credenziali crittografate",
@@ -221,6 +224,9 @@
       "kdriveTokenPlaceholder": "Incolla qui il tuo token API",
       "kdriveDriveIdPlaceholder": "Il tuo ID kDrive (numerico)",
       "kdriveTokenHelp": "Genera un token su manager.infomaniak.com → Developer → API Tokens",
+      "jottacloudToken": "Login Token",
+      "jottacloudTokenPlaceholder": "Incolla qui il tuo token di accesso Jottacloud",
+      "jottacloudTokenHelp": "Genera su jottacloud.com → Impostazioni → Sicurezza. Il token è monouso e scade rapidamente — incollalo subito dopo averlo copiato",
       "connect": "Connetti",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "Incolla qui il tuo token API Drime",
@@ -324,6 +330,8 @@
       "internxtTooltip": "Internxt - Cloud crittografato a conoscenza zero, con sede in EU",
       "kdriveDesc": "Archiviazione Cloud Svizzera",
       "kdriveTooltip": "kDrive by Infomaniak - Archiviazione cloud svizzera con 15GB gratuiti",
+      "jottacloudDesc": "Cloud Norvegese (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - Archiviazione cloud norvegese conforme al GDPR con 5GB gratuiti",
       "drimeDesc": "Archiviazione Cloud Sicura",
       "drimeTooltip": "Drime Cloud - 20GB di archiviazione cloud sicura gratuita con REST API"
     },
@@ -1067,6 +1075,8 @@
       "batchRenameSuccess": "Rinomina multipla completata",
       "batchRenamePartial": "Rinomina multipla completata con errori",
       "loadTrashFailed": "Caricamento cestino fallito",
+      "movedToTrash": "{count} elemento/i spostato/i nel cestino",
+      "moveToTrashFailed": "Spostamento nel cestino fallito",
       "restoreFailed": "Ripristino fallito",
       "emptyTrashFailed": "Svuotamento cestino fallito",
       "sizeFailed": "Calcolo dimensione fallito",
@@ -2644,13 +2654,17 @@
       "refresh": "Aggiorna",
       "toggleTheme": "Cambia Tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Mostra/Nascondi Strumenti",
-      "toggleEditor": "Mostra/Nascondi Editor",
-      "toggleTerminal": "Mostra/Nascondi Terminale",
-      "toggleAgent": "Mostra/Nascondi Agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminale",
+      "toggleAgent": "Agent",
       "shortcuts": "Scorciatoie da Tastiera",
       "support": "Sostieni lo Sviluppo",
-      "about": "Info su AeroFTP"
+      "about": "Info su AeroFTP",
+      "selectAll": "Seleziona tutto",
+      "cut": "Taglia",
+      "copy": "Copia",
+      "paste": "Incolla"
     },
     "activityPanel": {
       "title": "Registro attività",
@@ -2901,7 +2915,11 @@
         "manageInSettings": "Gestisci i plugin installati nella scheda Plugin",
         "search": "Cerca plugin...",
         "subtitle": "Scopri e installa plugin della community per AeroAgent",
-        "title": "Browser Plugin"
+        "title": "Browser Plugin",
+        "tab": {
+          "browse": "Esplora",
+          "installed": "Installati"
+        }
       }
     },
     "savedServers": {

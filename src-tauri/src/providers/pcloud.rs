@@ -10,6 +10,8 @@ use tracing::info;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
+    sanitize_api_error,
+    http_retry::{HttpRetryConfig, send_with_retry},
     oauth2::{OAuth2Manager, OAuthConfig},
 };
 use super::types::PCloudConfig;
@@ -30,6 +32,8 @@ struct PCloudMetadata {
     path: Option<String>,
     folderid: Option<u64>,
     fileid: Option<u64>,
+    /// PA-012: MIME type from pCloud API (e.g. "image/jpeg", "application/pdf")
+    contenttype: Option<String>,
     #[serde(default)]
     contents: Option<Vec<PCloudMetadata>>,
 }
@@ -64,11 +68,43 @@ struct PCloudUserInfo {
 
 /// pCloud public link response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct PCloudPubLink {
     result: u32,
     #[serde(default)]
     error: Option<String>,
     link: Option<String>,
+    /// PA-001: linkid returned by getfilepublink, needed for deletepublink
+    linkid: Option<u64>,
+}
+
+/// PA-001: Response for listpublinks containing all public links
+#[derive(Debug, Deserialize)]
+struct PCloudPubLinksResponse {
+    result: u32,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    publinks: Vec<PCloudPubLinkEntry>,
+}
+
+/// PA-001: Individual public link entry from listpublinks
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct PCloudPubLinkEntry {
+    linkid: u64,
+    #[serde(default)]
+    path: Option<String>,
+    /// Metadata contains the path for the linked file/folder
+    metadata: Option<PCloudPubLinkMeta>,
+}
+
+/// PA-001: Minimal metadata within a public link entry
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct PCloudPubLinkMeta {
+    path: Option<String>,
+    name: Option<String>,
 }
 
 /// pCloud revision entry
@@ -99,6 +135,14 @@ struct PCloudThumbLink {
     error: Option<String>,
     hosts: Option<Vec<String>>,
     path: Option<String>,
+}
+
+/// PA-008: pCloud upload response (different structure from standard PCloudResponse)
+#[derive(Debug, Deserialize)]
+struct PCloudUploadResponse {
+    result: u32,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 /// pCloud Storage Provider
@@ -153,6 +197,18 @@ impl PCloudProvider {
         }
     }
 
+    /// GAP-A01/PA-010: Send GET request with retry on 429/5xx via http_retry.rs
+    async fn get_with_retry(&self, url: &str, auth: &str) -> Result<reqwest::Response, ProviderError> {
+        let request = self.client.get(url)
+            .header("Authorization", auth)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+    }
+
     /// Recursively collect entries matching a pattern
     fn collect_matching(&self, meta: &PCloudMetadata, base_path: &str, pattern: &str, results: &mut Vec<RemoteEntry>) {
         if let Some(contents) = &meta.contents {
@@ -171,7 +227,9 @@ impl PCloudProvider {
                         size: item.size,
                         modified: item.modified.clone(),
                         permissions: None, owner: None, group: None,
-                        is_symlink: false, link_target: None, mime_type: None,
+                        is_symlink: false, link_target: None,
+                        // PA-012: Populate MIME type from pCloud contenttype field
+                        mime_type: item.contenttype.clone(),
                         metadata: Default::default(),
                     });
                 }
@@ -183,10 +241,11 @@ impl PCloudProvider {
         }
     }
 
-    /// Check pCloud API response for errors
+    /// Check pCloud API response for errors (PA-014: sanitized messages)
     fn check_response(resp: &PCloudResponse) -> Result<(), ProviderError> {
         if resp.result != 0 {
-            let msg = resp.error.clone().unwrap_or_else(|| format!("Error code: {}", resp.result));
+            let raw_msg = resp.error.clone().unwrap_or_else(|| format!("Error code: {}", resp.result));
+            let msg = sanitize_api_error(&raw_msg);
             return Err(match resp.result {
                 2009 | 2010 => ProviderError::NotFound(msg),
                 2003 | 2028 => ProviderError::PermissionDenied(msg),
@@ -214,10 +273,8 @@ impl StorageProvider for PCloudProvider {
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let url = format!("{}/userinfo", self.config.api_base());
-        let resp = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        let auth = self.auth_header().await?;
+        let resp = self.get_with_retry(&url, &auth).await?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::AuthenticationFailed("pCloud authentication failed".to_string()));
@@ -243,16 +300,16 @@ impl StorageProvider for PCloudProvider {
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let resolved = self.resolve_path(path);
+        // PA-009: pCloud listfolder returns ALL items in a single response (no pagination needed).
+        // The API does not support offset/limit parameters for listfolder.
         let url = format!("{}/listfolder?path={}",
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
 
@@ -275,7 +332,9 @@ impl StorageProvider for PCloudProvider {
                 size: item.size,
                 modified: item.modified,
                 permissions: None, owner: None, group: None,
-                is_symlink: false, link_target: None, mime_type: None,
+                is_symlink: false, link_target: None,
+                // PA-012: Populate MIME type from pCloud contenttype field
+                mime_type: item.contenttype,
                 metadata: Default::default(),
             }
         }).collect())
@@ -289,12 +348,10 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&new_path));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         self.current_path = new_path;
@@ -324,16 +381,13 @@ impl StorageProvider for PCloudProvider {
         let url = format!("{}/getfilelink?path={}",
             self.config.api_base(), urlencoding::encode(&resolved));
 
-        let link_resp: PCloudFileLink = self.client.get(&url)
-            .header("Authorization", &auth)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let link_resp: PCloudFileLink = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(
-                link_resp.error.unwrap_or_else(|| "Failed to get download link".to_string())
+                sanitize_api_error(&link_resp.error.unwrap_or_else(|| "Failed to get download link".to_string()))
             ));
         }
 
@@ -344,7 +398,7 @@ impl StorageProvider for PCloudProvider {
 
         let download_url = format!("https://{}{}", host, path);
 
-        // Step 2: Streaming download
+        // Step 2: Streaming download (no retry for data stream — only the link request is retried)
         let resp = self.client.get(&download_url).send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
@@ -378,16 +432,13 @@ impl StorageProvider for PCloudProvider {
         let url = format!("{}/getfilelink?path={}",
             self.config.api_base(), urlencoding::encode(&resolved));
 
-        let link_resp: PCloudFileLink = self.client.get(&url)
-            .header("Authorization", &auth)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let link_resp: PCloudFileLink = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(
-                link_resp.error.unwrap_or_else(|| "Failed to get download link".to_string())
+                sanitize_api_error(&link_resp.error.unwrap_or_else(|| "Failed to get download link".to_string()))
             ));
         }
 
@@ -408,7 +459,7 @@ impl StorageProvider for PCloudProvider {
         Ok(bytes.to_vec())
     }
 
-    async fn upload(&mut self, local_path: &str, remote_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+    async fn upload(&mut self, local_path: &str, remote_path: &str, progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let (dir_path, file_name) = match resolved.rfind('/') {
             Some(pos) if pos > 0 => (&resolved[..pos], &resolved[pos + 1..]),
@@ -416,6 +467,11 @@ impl StorageProvider for PCloudProvider {
         };
 
         let auth = self.auth_header().await?;
+
+        // PA-005: Get file size for progress tracking
+        let file_metadata = tokio::fs::metadata(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let file_size = file_metadata.len();
 
         // Streaming upload: read file as a stream instead of loading into memory
         let file = tokio::fs::File::open(local_path).await
@@ -431,6 +487,8 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(dir_path),
             urlencoding::encode(file_name));
 
+        // Note: multipart uploads cannot use send_with_retry because the stream body
+        // is consumed on first attempt and cannot be cloned/replayed.
         let resp = self.client.post(&url)
             .header("Authorization", auth)
             .multipart(form)
@@ -438,7 +496,25 @@ impl StorageProvider for PCloudProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::TransferFailed(format!("Upload failed: {}", resp.status())));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(
+                format!("Upload failed ({}): {}", status, sanitize_api_error(&body))
+            ));
+        }
+
+        // PA-008: Check pCloud JSON result field — pCloud returns result:0 for success
+        let upload_resp: PCloudUploadResponse = resp.json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if upload_resp.result != 0 {
+            let msg = upload_resp.error.unwrap_or_else(|| format!("Upload error code: {}", upload_resp.result));
+            return Err(ProviderError::TransferFailed(sanitize_api_error(&msg)));
+        }
+
+        // PA-005: Report upload completion to progress callback
+        if let Some(ref cb) = progress {
+            cb(file_size, file_size);
         }
 
         Ok(())
@@ -450,12 +526,10 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -463,16 +537,29 @@ impl StorageProvider for PCloudProvider {
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
+        let auth = self.auth_header().await?;
+
+        // PA-007: Try deletefile first; if it fails, fall back to deletefolder
         let url = format!("{}/deletefile?path={}",
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if resp.result == 0 {
+            return Ok(());
+        }
+
+        // Fall back to deletefolder for directory paths
+        let url = format!("{}/deletefolder?path={}",
+            self.config.api_base(),
+            urlencoding::encode(&resolved));
+
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -484,12 +571,10 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -502,6 +587,7 @@ impl StorageProvider for PCloudProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
+        let auth = self.auth_header().await?;
 
         // Try file rename first
         let url = format!("{}/renamefile?path={}&topath={}",
@@ -509,12 +595,9 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == 0 {
             return Ok(());
@@ -526,12 +609,9 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -539,18 +619,44 @@ impl StorageProvider for PCloudProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
+        let auth = self.auth_header().await?;
+
+        // PA-006: Try stat first (works for both files and folders in pCloud API)
         let url = format!("{}/stat?path={}",
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
-        Self::check_response(&resp)?;
+        // PA-006: If stat fails, fall back to listfolder to get folder metadata
+        if resp.result != 0 {
+            let url = format!("{}/listfolder?path={}&nofiles=1",
+                self.config.api_base(),
+                urlencoding::encode(&resolved));
+
+            let folder_resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
+                .json().await
+                .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+            Self::check_response(&folder_resp)?;
+
+            let meta = folder_resp.metadata
+                .ok_or_else(|| ProviderError::ParseError("No metadata".to_string()))?;
+
+            return Ok(RemoteEntry {
+                name: meta.name,
+                path: resolved,
+                is_dir: true,
+                size: meta.size,
+                modified: meta.modified,
+                permissions: None, owner: None, group: None,
+                is_symlink: false, link_target: None,
+                mime_type: None,
+                metadata: Default::default(),
+            });
+        }
 
         let meta = resp.metadata
             .ok_or_else(|| ProviderError::ParseError("No metadata".to_string()))?;
@@ -562,7 +668,9 @@ impl StorageProvider for PCloudProvider {
             size: meta.size,
             modified: meta.modified,
             permissions: None, owner: None, group: None,
-            is_symlink: false, link_target: None, mime_type: None,
+            is_symlink: false, link_target: None,
+            // PA-012: Populate MIME type from pCloud contenttype field
+            mime_type: meta.contenttype,
             metadata: Default::default(),
         })
     }
@@ -588,12 +696,10 @@ impl StorageProvider for PCloudProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = format!("{}/userinfo", self.config.api_base());
-        let info: PCloudUserInfo = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let info: PCloudUserInfo = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         let total = info.quota.unwrap_or(0);
         let used = info.usedquota.unwrap_or(0);
@@ -613,15 +719,15 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudPubLink = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudPubLink = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
-            return Err(ProviderError::Other(resp.error.unwrap_or_else(|| "Failed to create link".to_string())));
+            return Err(ProviderError::Other(
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Failed to create link".to_string()))
+            ));
         }
 
         resp.link.ok_or_else(|| ProviderError::Other("No link in response".to_string()))
@@ -629,31 +735,48 @@ impl StorageProvider for PCloudProvider {
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        // Try file first, then folder
-        let url = format!("{}/deletepublink?path={}",
-            self.config.api_base(),
-            urlencoding::encode(&resolved));
+        let auth = self.auth_header().await?;
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        // PA-001 (CRITICAL): pCloud deletepublink requires `linkid`, not path.
+        // First, list all public links to find the one matching this path.
+        let list_url = format!("{}/listpublinks", self.config.api_base());
+
+        let links_resp: PCloudPubLinksResponse = self.get_with_retry(&list_url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
-        if resp.result == 0 { return Ok(()); }
+        if links_resp.result != 0 {
+            return Err(ProviderError::Other(
+                sanitize_api_error(&links_resp.error.unwrap_or_else(|| "Failed to list public links".to_string()))
+            ));
+        }
 
-        // Try folder variant
-        let url = format!("{}/deletepublink?path={}",
-            self.config.api_base(),
-            urlencoding::encode(&resolved));
+        // Find the link whose metadata path matches the resolved path
+        let link_id = links_resp.publinks.iter()
+            .find(|link| {
+                // Check metadata.path first, then top-level path
+                if let Some(ref meta) = link.metadata {
+                    if let Some(ref p) = meta.path {
+                        if p == &resolved { return true; }
+                    }
+                }
+                if let Some(ref p) = link.path {
+                    if p == &resolved { return true; }
+                }
+                false
+            })
+            .map(|link| link.linkid)
+            .ok_or_else(|| ProviderError::NotFound(
+                format!("No public link found for path: {}", resolved)
+            ))?;
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        // Now delete using the correct linkid parameter
+        let delete_url = format!("{}/deletepublink?linkid={}",
+            self.config.api_base(), link_id);
+
+        let resp: PCloudResponse = self.get_with_retry(&delete_url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -664,6 +787,7 @@ impl StorageProvider for PCloudProvider {
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
+        let auth = self.auth_header().await?;
 
         // Try copyfile first
         let url = format!("{}/copyfile?path={}&topath={}",
@@ -671,12 +795,9 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == 0 { return Ok(()); }
 
@@ -686,12 +807,9 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -705,16 +823,14 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudThumbLink = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudThumbLink = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::NotFound(
-                resp.error.unwrap_or_else(|| "No thumbnail available".to_string())
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "No thumbnail available".to_string()))
             ));
         }
 
@@ -734,6 +850,7 @@ impl StorageProvider for PCloudProvider {
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
     }
 
+    // PA-013: Version support implemented via pCloud revisions API (listrevisions/getfilelink?revisionid)
     fn supports_versions(&self) -> bool { true }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
@@ -742,16 +859,14 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudRevisions = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudRevisions = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::Other(
-                resp.error.unwrap_or_else(|| "Failed to list revisions".to_string())
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Failed to list revisions".to_string()))
             ));
         }
 
@@ -777,16 +892,13 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved), version_id);
 
-        let link_resp: PCloudFileLink = self.client.get(&url)
-            .header("Authorization", &auth)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let link_resp: PCloudFileLink = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(
-                link_resp.error.unwrap_or_else(|| "Failed to get version link".to_string())
+                sanitize_api_error(&link_resp.error.unwrap_or_else(|| "Failed to get version link".to_string()))
             ));
         }
 
@@ -825,16 +937,14 @@ impl StorageProvider for PCloudProvider {
             md5: Option<String>,
         }
 
-        let resp: ChecksumResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: ChecksumResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::Other(
-                resp.error.unwrap_or_else(|| "Checksum failed".to_string())
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Checksum failed".to_string()))
             ));
         }
 
@@ -849,18 +959,18 @@ impl StorageProvider for PCloudProvider {
 
     async fn remote_upload(&mut self, url: &str, dest_path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(dest_path);
-        // pCloud's downloadfile tells the server to fetch a URL and save it
+        // PA-003: pCloud's `downloadfile` is the correct endpoint for server-side URL fetch.
+        // Despite the name, this tells pCloud's server to download a file FROM the given URL
+        // and save it to the user's account. This is NOT the same as client-side download.
         let api_url = format!("{}/downloadfile?url={}&path={}",
             self.config.api_base(),
             urlencoding::encode(url),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&api_url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&api_url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         info!("Remote upload from {} to {}", url, dest_path);
@@ -874,16 +984,15 @@ impl StorageProvider for PCloudProvider {
         let pattern_lower = pattern.to_lowercase();
 
         // Use recursive listfolder and filter client-side
+        // PA-009: pCloud returns all items in a single recursive response (no pagination)
         let url = format!("{}/listfolder?path={}&recursive=1",
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let resp: PCloudResponse = self.client.get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send().await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self.get_with_retry(&url, &auth).await?
             .json().await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
 

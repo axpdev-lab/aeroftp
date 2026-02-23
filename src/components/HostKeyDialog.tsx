@@ -41,7 +41,7 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
             aria-label="Host Key Verification"
         >
             <div
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6">

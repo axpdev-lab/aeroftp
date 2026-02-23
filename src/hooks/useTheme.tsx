@@ -126,11 +126,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
 
     const getIcon = () => {
         switch (theme) {
-            case 'light': return <Sun size={18} />;
-            case 'dark': return <Moon size={18} />;
-            case 'tokyo': return <CherryBlossomIcon size={18} className="text-purple-400" />;
-            case 'cyber': return <HackerIcon size={18} className="text-emerald-400" />;
-            case 'auto': return <Monitor size={18} />;
+            case 'light': return <Sun size={14} />;
+            case 'dark': return <Moon size={14} />;
+            case 'tokyo': return <CherryBlossomIcon size={14} className="text-purple-400" />;
+            case 'cyber': return <HackerIcon size={14} className="text-emerald-400" />;
+            case 'auto': return <Monitor size={14} />;
         }
     };
 
@@ -146,16 +146,18 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
 
     const getButtonStyle = () => {
         switch (theme) {
+            case 'auto': return 'hover:bg-[var(--color-bg-tertiary)]';
+            case 'light': return 'bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/50';
+            case 'dark': return 'bg-slate-600/40 hover:bg-slate-500/50';
             case 'tokyo': return 'bg-purple-900/50 hover:bg-purple-800/50';
             case 'cyber': return 'bg-emerald-900/50 hover:bg-emerald-800/50';
-            default: return 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600';
         }
     };
 
     return (
         <button
             onClick={() => setTheme(nextTheme())}
-            className={`p-2 rounded-lg transition-colors ${getButtonStyle()}`}
+            className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${getButtonStyle()}`}
             title={`${t('settings.themeLabel')}: ${getLabel()}`}
         >
             {getIcon()}

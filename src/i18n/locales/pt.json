@@ -199,7 +199,13 @@
       "connect": "Conectar",
       "drimeToken": "Token de API",
       "drimeTokenPlaceholder": "Cole seu token de API do Drime aqui",
-      "drimeTokenHelp": "Gere um token em app.drime.cloud → Configurações da conta → Desenvolvedores"
+      "drimeTokenHelp": "Gere um token em app.drime.cloud → Configurações da conta → Desenvolvedores",
+      "azureAccessKey": "Chave de acesso",
+      "azureAccountName": "Nome da conta",
+      "azureEndpoint": "Endpoint (opcional)",
+      "jottacloudToken": "Token de login",
+      "jottacloudTokenPlaceholder": "Cole aqui o seu token de login do Jottacloud",
+      "jottacloudTokenHelp": "Gere em jottacloud.com → Settings → Security. O token é de uso único e expira rapidamente — cole-o imediatamente após copiar"
     },
     "browser": {
       "remote": "Remoto",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Ligação falhada",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sessão encerrada — desconectado de {server}",
-      "disconnectedAllClosed": "Todas as sessões encerradas — desconectado de {server}"
+      "disconnectedAllClosed": "Todas as sessões encerradas — desconectado de {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Armazenamento na nuvem suíço",
       "kdriveTooltip": "kDrive da Infomaniak - armazenamento na nuvem suíço com 15GB gratuitos",
       "drimeDesc": "Armazenamento seguro na nuvem",
-      "drimeTooltip": "Drime Cloud - 20GB de armazenamento seguro na nuvem com REST API"
+      "drimeTooltip": "Drime Cloud - 20GB de armazenamento seguro na nuvem com REST API",
+      "jottacloudDesc": "Nuvem norueguesa (5GB grátis)",
+      "jottacloudTooltip": "Jottacloud - armazenamento em nuvem norueguês compatível com GDPR com 5GB grátis"
     },
     "shortcuts": {
       "title": "Atalhos de Teclado",
@@ -2567,13 +2577,17 @@
       "refresh": "Atualizar",
       "toggleTheme": "Alternar Tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Alternar DevTools",
-      "toggleEditor": "Alternar Editor",
-      "toggleTerminal": "Alternar Terminal",
-      "toggleAgent": "Alternar Agente",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Atalhos de Teclado",
       "support": "Apoiar o Desenvolvimento",
-      "about": "Sobre o AeroFTP"
+      "about": "Sobre o AeroFTP",
+      "selectAll": "Selecionar tudo",
+      "cut": "Recortar",
+      "copy": "Copiar",
+      "paste": "Colar"
     },
     "activityPanel": {
       "awaitingCommands": "Aguardando comandos...",
@@ -3000,7 +3014,11 @@
         "manageInSettings": "Gerir plugins instalados no separador Plugins",
         "search": "Pesquisar plugins...",
         "subtitle": "Descubra e instale plugins da comunidade para o AeroAgent",
-        "title": "Explorador de Plugins"
+        "title": "Explorador de Plugins",
+        "tab": {
+          "browse": "Explorar",
+          "installed": "Instalados"
+        }
       }
     }
   }

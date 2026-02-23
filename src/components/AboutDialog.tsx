@@ -267,7 +267,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" style={{ maxHeight: '85vh' }}>
+            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
                     <div className="flex items-center gap-2.5">

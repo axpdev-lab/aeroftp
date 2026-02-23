@@ -199,7 +199,13 @@
       "connect": "Połącz",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Wklej swój token API Drime tutaj",
-      "drimeTokenHelp": "Wygeneruj token na app.drime.cloud → Ustawienia konta → Deweloperzy"
+      "drimeTokenHelp": "Wygeneruj token na app.drime.cloud → Ustawienia konta → Deweloperzy",
+      "azureAccessKey": "Klucz dostępu",
+      "azureAccountName": "Nazwa konta",
+      "azureEndpoint": "Endpoint (opcjonalnie)",
+      "jottacloudToken": "Token logowania",
+      "jottacloudTokenPlaceholder": "Wklej tutaj swój token logowania Jottacloud",
+      "jottacloudTokenHelp": "Generuj na jottacloud.com → Settings → Security. Token jest jednokrotnego użytku i szybko wygasa — wklej go natychmiast po skopiowaniu"
     },
     "browser": {
       "remote": "Zdalny",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Połączenie nieudane",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesja zamknięta — rozłączono z {server}",
-      "disconnectedAllClosed": "Wszystkie sesje zamknięte — rozłączono z {server}"
+      "disconnectedAllClosed": "Wszystkie sesje zamknięte — rozłączono z {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Szwajcarska chmura",
       "kdriveTooltip": "kDrive od Infomaniak - szwajcarska chmura z 15GB za darmo",
       "drimeDesc": "Bezpieczna chmura",
-      "drimeTooltip": "Drime Cloud - 20GB bezpiecznej pamięci w chmurze z REST API"
+      "drimeTooltip": "Drime Cloud - 20GB bezpiecznej pamięci w chmurze z REST API",
+      "jottacloudDesc": "Norweska chmura (5GB za darmo)",
+      "jottacloudTooltip": "Jottacloud - zgodna z GDPR norweska chmura z 5GB za darmo"
     },
     "shortcuts": {
       "title": "Skróty klawiszowe",
@@ -2567,13 +2577,17 @@
       "refresh": "Odśwież",
       "toggleTheme": "Zmień motyw",
       "devtools": "AeroTools",
-      "toggleDevtools": "Narzędzia deweloperskie",
+      "toggleDevtools": "AeroTools",
       "toggleEditor": "Edytor",
       "toggleTerminal": "Terminal",
       "toggleAgent": "Agent",
       "shortcuts": "Skróty klawiszowe",
       "support": "Wesprzyj rozwój",
-      "about": "O AeroFTP"
+      "about": "O AeroFTP",
+      "selectAll": "Zaznacz wszystko",
+      "cut": "Wytnij",
+      "copy": "Kopiuj",
+      "paste": "Wklej"
     },
     "activityPanel": {
       "awaitingCommands": "Oczekiwanie na polecenia...",
@@ -3000,7 +3014,11 @@
         "manageInSettings": "Zarządzaj zainstalowanymi pluginami w zakładce Plugins",
         "search": "Szukaj pluginów...",
         "subtitle": "Odkrywaj i instaluj pluginy społeczności dla AeroAgent",
-        "title": "Przeglądarka pluginów"
+        "title": "Przeglądarka pluginów",
+        "tab": {
+          "browse": "Przeglądaj",
+          "installed": "Zainstalowane"
+        }
       }
     }
   }

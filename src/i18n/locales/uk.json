@@ -199,7 +199,13 @@
       "connect": "Підключитися",
       "drimeToken": "API-токен",
       "drimeTokenPlaceholder": "Вставте ваш API-токен Drime сюди",
-      "drimeTokenHelp": "Згенеруйте токен на app.drime.cloud → Налаштування облікового запису → Розробники"
+      "drimeTokenHelp": "Згенеруйте токен на app.drime.cloud → Налаштування облікового запису → Розробники",
+      "azureAccessKey": "Ключ доступу",
+      "azureAccountName": "Назва облікового запису",
+      "azureEndpoint": "Endpoint (необов'язково)",
+      "jottacloudToken": "Токен входу",
+      "jottacloudTokenPlaceholder": "Вставте ваш токен входу Jottacloud тут",
+      "jottacloudTokenHelp": "Створіть токен на jottacloud.com → Settings → Security. Токен одноразовий і швидко закінчується — вставте його негайно після копіювання"
     },
     "browser": {
       "remote": "Віддалений",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Помилка підключення",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесію закрито — відключено від {server}",
-      "disconnectedAllClosed": "Усі сесії закрито — відключено від {server}"
+      "disconnectedAllClosed": "Усі сесії закрито — відключено від {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Швейцарське хмарне сховище",
       "kdriveTooltip": "kDrive від Infomaniak — швейцарське хмарне сховище з 15ГБ безкоштовно",
       "drimeDesc": "Безпечне хмарне сховище",
-      "drimeTooltip": "Drime Cloud - 20GB безпечного хмарного сховища з REST API"
+      "drimeTooltip": "Drime Cloud - 20GB безпечного хмарного сховища з REST API",
+      "jottacloudDesc": "Норвезька хмара (5GB безкоштовно)",
+      "jottacloudTooltip": "Jottacloud - норвезьке хмарне сховище, сумісне з GDPR, з 5GB безкоштовно"
     },
     "shortcuts": {
       "title": "Грячі клавіші",
@@ -2567,13 +2577,17 @@
       "refresh": "Оновити",
       "toggleTheme": "Змінити тему",
       "devtools": "AeroTools",
-      "toggleDevtools": "Інструменти розробника",
+      "toggleDevtools": "AeroTools",
       "toggleEditor": "Редактор",
       "toggleTerminal": "Термінал",
-      "toggleAgent": "Агент",
+      "toggleAgent": "Agent",
       "shortcuts": "Комбінації клавіш",
       "support": "Підтримати розробку",
-      "about": "Про AeroFTP"
+      "about": "Про AeroFTP",
+      "selectAll": "Вибрати все",
+      "cut": "Вирізати",
+      "copy": "Копіювати",
+      "paste": "Вставити"
     },
     "activityPanel": {
       "awaitingCommands": "Очікування команд...",
@@ -3003,7 +3017,11 @@
         "manageInSettings": "Керуйте встановленими плагінами у вкладці Plugins",
         "search": "Пошук плагінів...",
         "subtitle": "Відкривайте та встановлюйте плагіни спільноти для AeroAgent",
-        "title": "Браузер плагінів"
+        "title": "Браузер плагінів",
+        "tab": {
+          "browse": "Огляд",
+          "installed": "Встановлені"
+        }
       }
     }
   }

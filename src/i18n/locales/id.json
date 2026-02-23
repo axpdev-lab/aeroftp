@@ -199,7 +199,13 @@
       "connect": "Hubungkan",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "Tempel token API Drime Anda di sini",
-      "drimeTokenHelp": "Buat token di app.drime.cloud → Pengaturan Akun → Pengembang"
+      "drimeTokenHelp": "Buat token di app.drime.cloud → Pengaturan Akun → Pengembang",
+      "azureAccessKey": "Kunci Akses",
+      "azureAccountName": "Nama Akun",
+      "azureEndpoint": "Endpoint (opsional)",
+      "jottacloudToken": "Token Login",
+      "jottacloudTokenPlaceholder": "Tempel token login Jottacloud Anda di sini",
+      "jottacloudTokenHelp": "Hasilkan di jottacloud.com → Pengaturan → Keamanan. Token adalah sekali pakai dan kedaluwarsa dengan cepat — tempel segera setelah menyalin"
     },
     "browser": {
       "remote": "Jarak Jauh",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Koneksi gagal",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesi ditutup — terputus dari {server}",
-      "disconnectedAllClosed": "Semua sesi ditutup — terputus dari {server}"
+      "disconnectedAllClosed": "Semua sesi ditutup — terputus dari {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Penyimpanan Awan Swiss",
       "kdriveTooltip": "kDrive by Infomaniak - Penyimpanan awan berbasis Swiss dengan 15GB gratis",
       "drimeDesc": "Penyimpanan Awan Aman",
-      "drimeTooltip": "Drime Cloud - 20GB penyimpanan awan aman gratis dengan REST API"
+      "drimeTooltip": "Drime Cloud - 20GB penyimpanan awan aman gratis dengan REST API",
+      "jottacloudDesc": "Cloud Norwegia (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - Penyimpanan cloud Norwegia yang sesuai GDPR dengan 5GB gratis"
     },
     "shortcuts": {
       "title": "Pintasan Keyboard",
@@ -2567,13 +2577,17 @@
       "refresh": "Segarkan",
       "toggleTheme": "Ganti Tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Ganti DevTools",
-      "toggleEditor": "Ganti Editor",
-      "toggleTerminal": "Ganti Terminal",
-      "toggleAgent": "Ganti Agen",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Pintasan Keyboard",
       "support": "Dukung Pengembangan",
-      "about": "Tentang AeroFTP"
+      "about": "Tentang AeroFTP",
+      "selectAll": "Pilih Semua",
+      "cut": "Potong",
+      "copy": "Salin",
+      "paste": "Tempel"
     },
     "activityPanel": {
       "awaitingCommands": "Menunggu perintah...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Kelola plugin yang terpasang di tab Plugins",
         "search": "Cari plugin...",
         "subtitle": "Temukan dan pasang plugin komunitas untuk AeroAgent",
-        "title": "Penjelajah Plugin"
+        "title": "Penjelajah Plugin",
+        "tab": {
+          "browse": "Jelajahi",
+          "installed": "Terpasang"
+        }
       }
     }
   }

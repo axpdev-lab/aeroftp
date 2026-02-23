@@ -81,7 +81,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[520px] max-h-[70vh] flex flex-col"
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[520px] max-h-[70vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

@@ -105,7 +105,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={message}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-sm">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in">
                 <p className="text-gray-900 dark:text-gray-100 mb-4">{message}</p>
                 <div className="flex justify-end gap-2">
                     <button
@@ -150,7 +150,7 @@ export const InputDialog: React.FC<InputDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl w-96">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl w-96 animate-scale-in">
                 <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{title}</h3>
                 <div className="relative mb-4">
                     <input
@@ -212,7 +212,7 @@ export const SyncNavDialog: React.FC<SyncNavDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={missingPath}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-md">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-md animate-scale-in">
                 <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
                     📁 {t('browser.newFolder')}
                 </h3>
@@ -428,7 +428,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={onClose}>
             <div
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[420px] max-h-[80vh] overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[420px] max-h-[80vh] overflow-hidden animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -726,8 +726,8 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-scale-in">
                 {/* Header — matches LockScreen / AeroVault style */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />

@@ -114,7 +114,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Multi-Path Editor">
             <div
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}

@@ -33,7 +33,7 @@ export const CyberToolsModal: React.FC<CyberToolsModalProps> = ({ onClose }) => 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" onClick={onClose}>
             <div
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[85vh] flex flex-col"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[85vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}

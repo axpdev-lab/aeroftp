@@ -199,7 +199,13 @@
       "connect": "Поврзи се",
       "drimeToken": "API Токен",
       "drimeTokenPlaceholder": "Залепете го вашиот Drime API токен овде",
-      "drimeTokenHelp": "Генерирајте токен на app.drime.cloud → Поставки на сметката → Програмери"
+      "drimeTokenHelp": "Генерирајте токен на app.drime.cloud → Поставки на сметката → Програмери",
+      "azureAccessKey": "Клуч за пристап",
+      "azureAccountName": "Име на сметката",
+      "azureEndpoint": "Endpoint (опционално)",
+      "jottacloudToken": "Токен за пријавување",
+      "jottacloudTokenPlaceholder": "Залепете го вашиот Jottacloud токен за пријавување овде",
+      "jottacloudTokenHelp": "Генерирај на jottacloud.com → Поставки → Безбедност. Токенот е за еднократна употреба и брзо истекува — залепи го веднас откако ќе го копираш"
     },
     "browser": {
       "remote": "Далечински",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Поврзувањето неуспешно",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесијата е затворена — одврзано од {server}",
-      "disconnectedAllClosed": "Сите сесии се затворени — одврзано од {server}"
+      "disconnectedAllClosed": "Сите сесии се затворени — одврзано од {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Швајцарско складирање во облак",
       "kdriveTooltip": "kDrive by Infomaniak - Швајцарско складирање во облак со 15GB бесплатно",
       "drimeDesc": "Безбедно складирање во облак",
-      "drimeTooltip": "Drime Cloud - 20GB бесплатно безбедно складирање во облак со REST API"
+      "drimeTooltip": "Drime Cloud - 20GB бесплатно безбедно складирање во облак со REST API",
+      "jottacloudDesc": "Норвешки облак (5GB бесплатно)",
+      "jottacloudTooltip": "Jottacloud - GDPR-усогласено норвешко складирање во облак со 5GB бесплатно"
     },
     "shortcuts": {
       "title": "Кратенки на тастатура",
@@ -2567,13 +2577,17 @@
       "refresh": "Освежи",
       "toggleTheme": "Промени тема",
       "devtools": "AeroTools",
-      "toggleDevtools": "Вклучи/исклучи DevTools",
-      "toggleEditor": "Вклучи/исклучи уредувач",
-      "toggleTerminal": "Вклучи/исклучи терминал",
-      "toggleAgent": "Вклучи/исклучи агент",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Уредник",
+      "toggleTerminal": "Терминал",
+      "toggleAgent": "Agent",
       "shortcuts": "Тастатурни кратенки",
       "support": "Поддржи го развојот",
-      "about": "За AeroFTP"
+      "about": "За AeroFTP",
+      "selectAll": "Избери ги сите",
+      "cut": "Исечи",
+      "copy": "Копирај",
+      "paste": "Залепи"
     },
     "activityPanel": {
       "awaitingCommands": "Чека команди...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Управувајте со инсталираните додатоци во јазичето Plugins",
         "search": "Пребарај додатоци...",
         "subtitle": "Откријте и инсталирајте додатоци од заедницата за AeroAgent",
-        "title": "Прегледувач на додатоци"
+        "title": "Прегледувач на додатоци",
+        "tab": {
+          "browse": "Прегледај",
+          "installed": "Инсталирани"
+        }
       }
     },
     "commandPalette.category.ai": {},

@@ -199,7 +199,13 @@
       "connect": "Conectare",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Lipiți tokenul dvs. API Drime aici",
-      "drimeTokenHelp": "Generați un token la app.drime.cloud → Setările contului → Dezvoltatori"
+      "drimeTokenHelp": "Generați un token la app.drime.cloud → Setările contului → Dezvoltatori",
+      "azureAccessKey": "Cheie de acces",
+      "azureAccountName": "Numele contului",
+      "azureEndpoint": "Endpoint (opțional)",
+      "jottacloudToken": "Token de autentificare",
+      "jottacloudTokenPlaceholder": "Lipește aici tokenul tău de autentificare Jottacloud",
+      "jottacloudTokenHelp": "Generează la jottacloud.com → Settings → Security. Token-ul este de o singură utilizare și expiră rapid — lipește-l imediat după copiere"
     },
     "browser": {
       "remote": "La distanță",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Conectarea a eșuat",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesiune închisă — deconectat de la {server}",
-      "disconnectedAllClosed": "Toate sesiunile închise — deconectat de la {server}"
+      "disconnectedAllClosed": "Toate sesiunile închise — deconectat de la {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Stocare în cloud elvețiană",
       "kdriveTooltip": "kDrive de la Infomaniak - stocare în cloud elvețiană cu 15GB gratuit",
       "drimeDesc": "Stocare securizată în cloud",
-      "drimeTooltip": "Drime Cloud - 20GB stocare securizată în cloud cu REST API"
+      "drimeTooltip": "Drime Cloud - 20GB stocare securizată în cloud cu REST API",
+      "jottacloudDesc": "Cloud norvegian (5GB gratuit)",
+      "jottacloudTooltip": "Jottacloud - stocare cloud norvegiană conformă cu GDPR cu 5GB gratuit"
     },
     "shortcuts": {
       "title": "Scurtături tastatură",
@@ -2567,13 +2577,17 @@
       "refresh": "Reîmprospătare",
       "toggleTheme": "Comutare temă",
       "devtools": "AeroTools",
-      "toggleDevtools": "Comutare instrumente dezvoltare",
-      "toggleEditor": "Comutare editor",
-      "toggleTerminal": "Comutare terminal",
-      "toggleAgent": "Comutare agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Scurtături de tastatură",
       "support": "Susține dezvoltarea",
-      "about": "Despre AeroFTP"
+      "about": "Despre AeroFTP",
+      "selectAll": "Selectează tot",
+      "cut": "Decupare",
+      "copy": "Copiere",
+      "paste": "Lipire"
     },
     "activityPanel": {
       "awaitingCommands": "Se asteapta comenzi...",
@@ -3000,7 +3014,11 @@
         "manageInSettings": "Gestionați pluginurile instalate în fila Plugins",
         "search": "Căutare pluginuri...",
         "subtitle": "Descoperă și instalează pluginuri comunitare pentru AeroAgent",
-        "title": "Browser de pluginuri"
+        "title": "Browser de pluginuri",
+        "tab": {
+          "browse": "Răsfoiește",
+          "installed": "Instalate"
+        }
       }
     }
   }

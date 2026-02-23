@@ -199,7 +199,13 @@
       "connect": "Tengjast",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "Límdu Drime API-tókenið þitt hér",
-      "drimeTokenHelp": "Búðu til tóken á app.drime.cloud → Reikningsstillingar → Forritarar"
+      "drimeTokenHelp": "Búðu til tóken á app.drime.cloud → Reikningsstillingar → Forritarar",
+      "azureAccessKey": "Aðgangslykill",
+      "azureAccountName": "Heiti reiknings",
+      "azureEndpoint": "Endpoint (valfrjálst)",
+      "jottacloudToken": "Innskráningartóki",
+      "jottacloudTokenPlaceholder": "Límið Jottacloud innskráningartókanum þínum hér",
+      "jottacloudTokenHelp": "Búðu til á jottacloud.com → Stillingar → Öryggi. Token er til einnar notkunar og rennur hratt út — límdu því strax eftir að afrita"
     },
     "browser": {
       "remote": "Fjartengdur",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Tenging mistókst",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Lota lokað — aftengt frá {server}",
-      "disconnectedAllClosed": "Öllum lotum lokað — aftengt frá {server}"
+      "disconnectedAllClosed": "Öllum lotum lokað — aftengt frá {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Svissneskur skýgeymsla",
       "kdriveTooltip": "kDrive by Infomaniak - Svissneskur skýgeymsla með 15GB ókeypis",
       "drimeDesc": "Örugg skýjageymsla",
-      "drimeTooltip": "Drime Cloud - 20GB ókeypis örugg skýjageymsla með REST API"
+      "drimeTooltip": "Drime Cloud - 20GB ókeypis örugg skýjageymsla með REST API",
+      "jottacloudDesc": "Norskt ský (5GB frelsi)",
+      "jottacloudTooltip": "Jottacloud - GDPR-samhæfð norsk skýageymsla með 5GB frelsi"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -2567,13 +2577,17 @@
       "refresh": "Endurhlaða",
       "toggleTheme": "Skipta um Þema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Víxla Hönnuðatólum",
-      "toggleEditor": "Víxla Ritli",
-      "toggleTerminal": "Víxla Útstöð",
-      "toggleAgent": "Víxla Umboðsmanni (Agent)",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Ritill",
+      "toggleTerminal": "Flugstöð",
+      "toggleAgent": "Agent",
       "shortcuts": "Flýtilyklar",
       "support": "Styðja Þróun",
-      "about": "Um AeroFTP"
+      "about": "Um AeroFTP",
+      "selectAll": "Velja allt",
+      "cut": "Klippa",
+      "copy": "Afrita",
+      "paste": "Líma"
     },
     "activityPanel": {
       "awaitingCommands": "Bíð eftir skipunum...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Stjórna uppsettum viðbótum í Plugins flipanum",
         "search": "Leita að viðbótum...",
         "subtitle": "Uppgötvaðu og settu upp samfélagsviðbætur fyrir AeroAgent",
-        "title": "Viðbótavafri"
+        "title": "Viðbótavafri",
+        "tab": {
+          "browse": "Skoða",
+          "installed": "Uppsett"
+        }
       }
     },
     "commandPalette.category.ai": {},

@@ -156,7 +156,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[650px] max-h-[80vh] flex flex-col">
+            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                     <div className="flex items-center gap-2">

@@ -246,6 +246,13 @@ export const KDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// Jottacloud — official purple "J" mark (Norwegian GDPR cloud)
+export const JottacloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 26 33" fill="none">
+        <path fill="#7D5FE6" d="M25.699 7v17.334a8.72 8.72 0 0 1-2.51 6.128A8.52 8.52 0 0 1 17.133 33h-3.427V15.667a8.72 8.72 0 0 1 2.51-6.129A8.52 8.52 0 0 1 22.271 7zM0 20.867h3.427c2.272 0 4.45.913 6.058 2.538a8.72 8.72 0 0 1 2.509 6.128V33H8.567a8.52 8.52 0 0 1-6.058-2.538A8.72 8.72 0 0 1 0 24.334z"/>
+    </svg>
+);
+
 // Drime Cloud — official green "D" logo
 export const DrimeCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512" fill="none">
@@ -286,5 +293,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'zoho-workdrive': ZohoWorkDriveLogo,
     'internxt': InternxtLogo,
     'kdrive': KDriveLogo,
+    'jottacloud': JottacloudLogo,
     'drime': DrimeCloudLogo,
 };

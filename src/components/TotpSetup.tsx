@@ -112,7 +112,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
             <div
                 ref={dialogRef}
                 tabIndex={-1}
-                className="relative w-full max-w-md rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6 outline-none"
+                className="relative w-full max-w-md rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6 outline-none animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between mb-4">

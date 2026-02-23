@@ -199,7 +199,13 @@
       "connect": "Свързване",
       "drimeToken": "API токен",
       "drimeTokenPlaceholder": "Поставете вашия Drime API токен тук",
-      "drimeTokenHelp": "Генерирайте токен на app.drime.cloud → Настройки на акаунта → Разработчици"
+      "drimeTokenHelp": "Генерирайте токен на app.drime.cloud → Настройки на акаунта → Разработчици",
+      "azureAccessKey": "Ключ за достъп",
+      "azureAccountName": "Име на акаунта",
+      "azureEndpoint": "Endpoint (по избор)",
+      "jottacloudToken": "Токен за вход",
+      "jottacloudTokenPlaceholder": "Поставете вашия токен за вход в Jottacloud тук",
+      "jottacloudTokenHelp": "Генерирайте на jottacloud.com → Настройки → Безопасност. Токенът е еднократен и изтича бързо — поставете го веднага след копиране"
     },
     "browser": {
       "remote": "Отдалечен",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Неуспешно свързване",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесията е затворена — прекъсната връзка с {server}",
-      "disconnectedAllClosed": "Всички сесии са затворени — прекъсната връзка с {server}"
+      "disconnectedAllClosed": "Всички сесии са затворени — прекъсната връзка с {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Швейцарско облачно хранилище",
       "kdriveTooltip": "kDrive от Infomaniak - Облачно хранилище в Швейцария с 15GB безплатно",
       "drimeDesc": "Сигурно облачно хранилище",
-      "drimeTooltip": "Drime Cloud - 20GB безплатно сигурно облачно хранилище с REST API"
+      "drimeTooltip": "Drime Cloud - 20GB безплатно сигурно облачно хранилище с REST API",
+      "jottacloudDesc": "Норвежки облак (5GB безплатно)",
+      "jottacloudTooltip": "Jottacloud - GDPR-съвместимо норвежко облачно съхранение с 5GB безплатно"
     },
     "shortcuts": {
       "title": "Клавишни комбинации",
@@ -2567,13 +2577,17 @@
       "refresh": "Опресняване",
       "toggleTheme": "Превключване на темата",
       "devtools": "AeroTools",
-      "toggleDevtools": "Превключване на DevTools",
-      "toggleEditor": "Превключване на редактора",
-      "toggleTerminal": "Превключване на терминала",
-      "toggleAgent": "Превключване на агента",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Редактор",
+      "toggleTerminal": "Терминал",
+      "toggleAgent": "Agent",
       "shortcuts": "Клавишни комбинации",
       "support": "Подкрепа за разработката",
-      "about": "Относно AeroFTP"
+      "about": "Относно AeroFTP",
+      "selectAll": "Избери всички",
+      "cut": "Изрязване",
+      "copy": "Копиране",
+      "paste": "Поставяне"
     },
     "activityPanel": {
       "awaitingCommands": "Очакване на команди...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Управлявайте инсталираните plugins в раздела Plugins",
         "search": "Търсене на plugins...",
         "subtitle": "Открийте и инсталирайте plugins от общността за AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Преглед",
+          "installed": "Инсталирани"
+        }
       }
     }
   }

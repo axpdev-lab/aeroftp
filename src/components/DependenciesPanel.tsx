@@ -139,7 +139,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-[720px] max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-[720px] max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700 animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">

@@ -286,7 +286,7 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[900px] max-h-[85vh] flex flex-col border border-gray-700"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[900px] max-h-[85vh] flex flex-col border border-gray-700 animate-scale-in"
                 role="dialog"
                 aria-label={t('diskUsage.title')}
                 aria-modal="true"

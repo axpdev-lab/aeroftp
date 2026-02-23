@@ -199,7 +199,13 @@
       "connect": "Подключиться",
       "drimeToken": "API-токен",
       "drimeTokenPlaceholder": "Вставьте ваш API-токен Drime сюда",
-      "drimeTokenHelp": "Сгенерируйте токен на app.drime.cloud → Настройки аккаунта → Разработчики"
+      "drimeTokenHelp": "Сгенерируйте токен на app.drime.cloud → Настройки аккаунта → Разработчики",
+      "azureAccessKey": "Ключ доступа",
+      "azureAccountName": "Имя учётной записи",
+      "azureEndpoint": "Endpoint (необязательно)",
+      "jottacloudToken": "Токен входа",
+      "jottacloudTokenPlaceholder": "Вставьте сюда ваш токен входа Jottacloud",
+      "jottacloudTokenHelp": "Создайте токен на jottacloud.com → Settings → Security. Токен одноразовый и быстро истекает — вставьте его сразу после копирования"
     },
     "browser": {
       "remote": "Удалённый",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Ошибка подключения",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сессия закрыта — отключено от {server}",
-      "disconnectedAllClosed": "Все сессии закрыты — отключено от {server}"
+      "disconnectedAllClosed": "Все сессии закрыты — отключено от {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Больше чем FTP. Полный инструментарий разработчика.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Швейцарское облачное хранилище",
       "kdriveTooltip": "kDrive от Infomaniak — швейцарское облачное хранилище с 15ГБ бесплатно",
       "drimeDesc": "Безопасное облачное хранилище",
-      "drimeTooltip": "Drime Cloud - 20GB безопасного облачного хранилища с REST API"
+      "drimeTooltip": "Drime Cloud - 20GB безопасного облачного хранилища с REST API",
+      "jottacloudDesc": "Норвежское облако (5GB бесплатно)",
+      "jottacloudTooltip": "Jottacloud - норвежское облачное хранилище, соответствующее GDPR, с 5GB бесплатно"
     },
     "shortcuts": {
       "title": "Горячие клавиши",
@@ -2567,13 +2577,17 @@
       "refresh": "Обновить",
       "toggleTheme": "Сменить тему",
       "devtools": "AeroTools",
-      "toggleDevtools": "Инструменты разработчика",
+      "toggleDevtools": "AeroTools",
       "toggleEditor": "Редактор",
       "toggleTerminal": "Терминал",
-      "toggleAgent": "Агент",
+      "toggleAgent": "Agent",
       "shortcuts": "Горячие клавиши",
       "support": "Поддержать разработку",
-      "about": "О AeroFTP"
+      "about": "О AeroFTP",
+      "selectAll": "Выбрать всё",
+      "cut": "Вырезать",
+      "copy": "Копировать",
+      "paste": "Вставить"
     },
     "activityPanel": {
       "awaitingCommands": "Ожидание команд...",
@@ -3000,7 +3014,11 @@
         "manageInSettings": "Управление установленными плагинами во вкладке Plugins",
         "search": "Поиск плагинов...",
         "subtitle": "Находите и устанавливайте плагины сообщества для AeroAgent",
-        "title": "Браузер плагинов"
+        "title": "Браузер плагинов",
+        "tab": {
+          "browse": "Обзор",
+          "installed": "Установлено"
+        }
       }
     }
   }

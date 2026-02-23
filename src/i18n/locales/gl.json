@@ -199,7 +199,13 @@
       "connect": "Conectar",
       "drimeToken": "Token de API",
       "drimeTokenPlaceholder": "Pegue aquí o seu token de API de Drime",
-      "drimeTokenHelp": "Xere un token en app.drime.cloud → Configuración da conta → Desenvolvedores"
+      "drimeTokenHelp": "Xere un token en app.drime.cloud → Configuración da conta → Desenvolvedores",
+      "azureAccessKey": "Clave de acceso",
+      "azureAccountName": "Nome da conta",
+      "azureEndpoint": "Endpoint (opcional)",
+      "jottacloudToken": "Token de inicio de sesión",
+      "jottacloudTokenPlaceholder": "Pegue o seu token de inicio de sesión de Jottacloud aquí",
+      "jottacloudTokenHelp": "Xera en jottacloud.com → Configuración → Seguridade. O token é de uso único e caduca axiña — pégao inmediatamente despois de copiar"
     },
     "browser": {
       "remote": "Remoto",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Conexión fallida",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesión pechada — desconectado de {server}",
-      "disconnectedAllClosed": "Todas as sesións pechadas — desconectado de {server}"
+      "disconnectedAllClosed": "Todas as sesións pechadas — desconectado de {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Almacenamento na nube suízo",
       "kdriveTooltip": "kDrive de Infomaniak - Almacenamento na nube aloxado en Suíza con 15GB de balde",
       "drimeDesc": "Almacenamento seguro na nube",
-      "drimeTooltip": "Drime Cloud - 20GB de almacenamento seguro na nube gratuíto con REST API"
+      "drimeTooltip": "Drime Cloud - 20GB de almacenamento seguro na nube gratuíto con REST API",
+      "jottacloudDesc": "Nube norueguesa (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - Almacenamento na nube noruegués compatible con GDPR con 5GB gratis"
     },
     "shortcuts": {
       "title": "Atallos de teclado",
@@ -2567,13 +2577,17 @@
       "refresh": "Actualizar",
       "toggleTheme": "Alternar tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Alternar ferramentas",
-      "toggleEditor": "Alternar editor",
-      "toggleTerminal": "Alternar terminal",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
       "shortcuts": "Atallos de teclado",
       "support": "Apoiar desenvolvemento",
       "about": "Sobre AeroFTP",
-      "toggleAgent": "Alternar Axente"
+      "toggleAgent": "Agent",
+      "selectAll": "Seleccionar todo",
+      "cut": "Cortar",
+      "copy": "Copiar",
+      "paste": "Pegar"
     },
     "activityPanel": {
       "awaitingCommands": "Agardando comandos...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Xestiona os plugins instalados na pestana Plugins",
         "search": "Buscar plugins...",
         "subtitle": "Descobre e instala plugins da comunidade para AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Explorar",
+          "installed": "Instalados"
+        }
       }
     },
     "commandPalette.category.ai": {},

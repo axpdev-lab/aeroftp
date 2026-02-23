@@ -894,8 +894,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     const isSftp = protocol === 'sftp';
                                     const isInternxt = protocol === 'internxt';
                                     const isKDrive = protocol === 'kdrive';
+                                    const isJottacloud = protocol === 'jottacloud';
                                     const isDrime = protocol === 'drime';
-                                    const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isDrime;
+                                    const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime;
                                     const needsPassword = !isOAuth;
                                     const isNewServer = !servers.some(s => s.id === editingServer.id);
 
@@ -917,6 +918,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         { value: 'zohoworkdrive', label: t('settings.protocolZohoworkdrive'), port: 443 },
                                         { value: 'internxt', label: 'Internxt Drive', port: 443 },
                                         { value: 'kdrive', label: 'kDrive', port: 443 },
+                                        { value: 'jottacloud', label: 'Jottacloud', port: 443 },
                                         { value: 'drime', label: 'Drime Cloud', port: 443 },
                                         { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                     ];
@@ -1120,6 +1122,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </>
                                                     )}
 
+                                                    {/* Jottacloud - Login Token only */}
+                                                    {isJottacloud && (
+                                                        <>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.jottacloudToken')}</label>
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type={showEditPassword ? 'text' : 'password'}
+                                                                        placeholder={t('connection.jottacloudTokenPlaceholder')}
+                                                                        value={editingServer.password || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'jfs.jottacloud.com', port: 443, username: 'token' })}
+                                                                        className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                    <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">{t('connection.jottacloudTokenHelp')}</p>
+                                                        </>
+                                                    )}
+
                                                     {/* Drime Cloud - API Token only */}
                                                     {isDrime && (
                                                         <>
@@ -1147,11 +1171,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <div className="flex gap-2">
                                                             <div className="flex-1">
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                    {isS3 ? t('settings.endpointUrl') : t('settings.host')}
+                                                                    {isS3 ? t('settings.endpointUrl') : isAzure ? t('connection.azureEndpoint') : t('settings.host')}
                                                                 </label>
                                                                 <input
                                                                     type="text"
-                                                                    placeholder={isS3 ? 's3.amazonaws.com' : 'ftp.example.com'}
+                                                                    placeholder={isS3 ? 's3.amazonaws.com' : isAzure ? 'myaccount.blob.core.windows.net' : 'ftp.example.com'}
                                                                     value={editingServer.host}
                                                                     onChange={e => setEditingServer({ ...editingServer, host: e.target.value })}
                                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1174,11 +1198,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {needsHostPort && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                {isS3 ? t('settings.accessKeyId') : t('settings.username')}
+                                                                {isS3 ? t('settings.accessKeyId') : isAzure ? t('connection.azureAccountName') : t('settings.username')}
                                                             </label>
                                                             <input
                                                                 type="text"
-                                                                placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : 'username'}
+                                                                placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : isAzure ? 'aeroftp2026' : 'username'}
                                                                 value={editingServer.username}
                                                                 onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
                                                                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
@@ -1190,7 +1214,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                {isS3 ? t('settings.secretAccessKey') : t('settings.password')}
+                                                                {isS3 ? t('settings.secretAccessKey') : isAzure ? t('connection.azureAccessKey') : t('settings.password')}
                                                             </label>
                                                             <div className="relative">
                                                                 <input
@@ -1241,6 +1265,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                 />
                                                             </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Azure Specific Fields */}
+                                                    {isAzure && (
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('protocol.azureContainerName')}</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder={t('protocol.azureContainerPlaceholder')}
+                                                                value={editingServer.options?.bucket || ''}
+                                                                onChange={e => setEditingServer({
+                                                                    ...editingServer,
+                                                                    options: { ...editingServer.options, bucket: e.target.value }
+                                                                })}
+                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                            />
                                                         </div>
                                                     )}
 

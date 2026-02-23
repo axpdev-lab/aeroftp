@@ -128,7 +128,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files">
-            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[480px] flex flex-col">
+            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[480px] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                     <div className="flex items-center gap-2">

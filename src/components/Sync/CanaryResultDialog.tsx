@@ -89,7 +89,7 @@ export const CanaryResultDialog: React.FC<CanaryResultDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Canary Sync Results">
             <div
-                className="bg-[var(--color-bg-primary,#fff)] dark:bg-[var(--color-bg-primary,#1f2937)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]"
+                className="bg-[var(--color-bg-primary,#fff)] dark:bg-[var(--color-bg-primary,#1f2937)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}

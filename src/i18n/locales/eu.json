@@ -199,7 +199,13 @@
       "connect": "Konektatu",
       "drimeToken": "API tokena",
       "drimeTokenPlaceholder": "Itsatsi hemen zure Drime API tokena",
-      "drimeTokenHelp": "Sortu token bat app.drime.cloud → Kontuaren ezarpenak → Garatzaileak"
+      "drimeTokenHelp": "Sortu token bat app.drime.cloud → Kontuaren ezarpenak → Garatzaileak",
+      "azureAccessKey": "Sarbide-gakoa",
+      "azureAccountName": "Kontuaren izena",
+      "azureEndpoint": "Endpoint (aukerakoa)",
+      "jottacloudToken": "Saioa hasteko tokena",
+      "jottacloudTokenPlaceholder": "Itsatsi zure Jottacloud saioa hasteko tokena hemen",
+      "jottacloudTokenHelp": "Sortu jottacloud.com → Ezarpenak → Seguritatea gunean. Tokena behin-behinekoa da eta azkar iraungitzen da — itsatsi ezazu berehala kopiatzearen ondoren"
     },
     "browser": {
       "remote": "Urrunekoa",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Konexio hutsa",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Saioa itxia — {server}-tik deskonektatua",
-      "disconnectedAllClosed": "Saio guztiak itxita — {server}-tik deskonektatua"
+      "disconnectedAllClosed": "Saio guztiak itxita — {server}-tik deskonektatua",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Suitzako hodeiko biltegiratzea",
       "kdriveTooltip": "Infomaniaken kDrive - Suitzan ostatutako hodeiko biltegiratzea 15GB doan",
       "drimeDesc": "Hodei-biltegi segurua",
-      "drimeTooltip": "Drime Cloud - 20GB doako hodei-biltegi segurua REST API-rekin"
+      "drimeTooltip": "Drime Cloud - 20GB doako hodei-biltegi segurua REST API-rekin",
+      "jottacloudDesc": "Norvegiar hodeia (5GB doan)",
+      "jottacloudTooltip": "Jottacloud - GDPRrekin bateragarria den Norvegiar hodeiko biltegia 5GB doan"
     },
     "shortcuts": {
       "title": "Teklatu lasterbideak",
@@ -2567,13 +2577,17 @@
       "refresh": "Freskatu",
       "toggleTheme": "Aldatu gaia",
       "devtools": "AeroTools",
-      "toggleDevtools": "Txandakatu DevTools",
-      "toggleEditor": "Txandakatu Editorea",
-      "toggleTerminal": "Txandakatu Terminala",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editorea",
+      "toggleTerminal": "Terminala",
       "shortcuts": "Teklatu lasterbideak",
       "support": "Lagundu Garapena",
       "about": "AeroFTP-ri buruz",
-      "toggleAgent": "Agentea Txandakatu"
+      "toggleAgent": "Agent",
+      "selectAll": "Denak hautatu",
+      "cut": "Ebaki",
+      "copy": "Kopiatu",
+      "paste": "Itsatsi"
     },
     "activityPanel": {
       "awaitingCommands": "Komandoen zain...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Kudeatu instalatutako pluginak Plugins fitxan",
         "search": "Bilatu pluginak...",
         "subtitle": "Aurkitu eta instalatu komunitateko pluginak AeroAgent-entzat",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Arakatu",
+          "installed": "Instalatuta"
+        }
       }
     },
     "commandPalette.category.ai": {},

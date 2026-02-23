@@ -199,7 +199,13 @@
       "connect": "Prisijungti",
       "drimeToken": "API Prieigos Raktas",
       "drimeTokenPlaceholder": "Įklijuokite savo Drime API raktą čia",
-      "drimeTokenHelp": "Sugeneruokite raktą adresu app.drime.cloud → Paskyros Nustatymai → Kūrėjai"
+      "drimeTokenHelp": "Sugeneruokite raktą adresu app.drime.cloud → Paskyros Nustatymai → Kūrėjai",
+      "azureAccessKey": "Prieigos raktas",
+      "azureAccountName": "Paskyros pavadinimas",
+      "azureEndpoint": "Endpoint (neprivaloma)",
+      "jottacloudToken": "Prisijungimo raktas",
+      "jottacloudTokenPlaceholder": "Įklijuokite savo Jottacloud prisijungimo raktą čia",
+      "jottacloudTokenHelp": "Sugeneruokite jottacloud.com → Nustatymai → Saugumas. Žeton yra vienkartinis ir greitai baigia galioti — įklijuokite jį iškart po kopijavimo"
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Prisijungimas nepavyko",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesija uždaryta — atjungta nuo {server}",
-      "disconnectedAllClosed": "Visos sesijos uždarytos — atjungta nuo {server}"
+      "disconnectedAllClosed": "Visos sesijos uždarytos — atjungta nuo {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Šveicarijos debesų saugykla",
       "kdriveTooltip": "kDrive by Infomaniak - Šveicarijoje talpinama debesų saugykla su 15GB nemokamai",
       "drimeDesc": "Saugi Debesų Saugykla",
-      "drimeTooltip": "Drime Cloud - 20GB nemokama saugi debesų saugykla su REST API"
+      "drimeTooltip": "Drime Cloud - 20GB nemokama saugi debesų saugykla su REST API",
+      "jottacloudDesc": "Norvegijos debesis (5GB nemokamai)",
+      "jottacloudTooltip": "Jottacloud - GDPR atitinkanti norvegiška debesų saugykla su 5GB nemokamai"
     },
     "shortcuts": {
       "title": "Klaviatūros trumpiniai",
@@ -2567,13 +2577,17 @@
       "refresh": "Atnaujinti",
       "toggleTheme": "Perjungti temą",
       "devtools": "AeroTools",
-      "toggleDevtools": "Perjungti kūrėjo įrankius",
-      "toggleEditor": "Perjungti redaktorių",
-      "toggleTerminal": "Perjungti terminalą",
-      "toggleAgent": "Perjungti agentą",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Redaktorius",
+      "toggleTerminal": "Terminalas",
+      "toggleAgent": "Agent",
       "shortcuts": "Sparčieji klavišai",
       "support": "Remti kūrimą",
-      "about": "Apie AeroFTP"
+      "about": "Apie AeroFTP",
+      "selectAll": "Pasirinkti viską",
+      "cut": "Iškirpti",
+      "copy": "Kopijuoti",
+      "paste": "Įklijuoti"
     },
     "activityPanel": {
       "awaitingCommands": "Laukiama komandų...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Tvarkykite įdiegtus papildinius Plugins skirtuke",
         "search": "Ieškoti papildinių...",
         "subtitle": "Atraskite ir įdiekite bendruomenės papildinius, skirtus AeroAgent",
-        "title": "Papildinių naršyklė"
+        "title": "Papildinių naršyklė",
+        "tab": {
+          "browse": "Naršyti",
+          "installed": "Įdiegta"
+        }
       }
     }
   }

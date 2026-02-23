@@ -199,7 +199,13 @@
       "connect": "Σύνδεση",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Επικολλήστε το token API του Drime εδώ",
-      "drimeTokenHelp": "Δημιουργήστε ένα token στο app.drime.cloud → Ρυθμίσεις λογαριασμού → Προγραμματιστές"
+      "drimeTokenHelp": "Δημιουργήστε ένα token στο app.drime.cloud → Ρυθμίσεις λογαριασμού → Προγραμματιστές",
+      "azureAccessKey": "Κλειδί πρόσβασης",
+      "azureAccountName": "Όνομα λογαριασμού",
+      "azureEndpoint": "Endpoint (προαιρετικό)",
+      "jottacloudToken": "Token σύνδεσης",
+      "jottacloudTokenPlaceholder": "Επικολλήστε το token σύνδεσης Jottacloud εδώ",
+      "jottacloudTokenHelp": "Δημιουργήστε στο jottacloud.com → Ρυθμίσεις → Ασφάλεια. Το διακριτικό είναι μιας χρήσης και λήγει γρήγορα — επικολλήστε το αμέσως μετά την αντιγραφή"
     },
     "browser": {
       "remote": "Απομακρυσμένο",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Αποτυχία σύνδεσης",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Η σύνδεση έκλεισε — αποσύνδεση από {server}",
-      "disconnectedAllClosed": "Όλες οι συνδέσεις έκλεισαν — αποσύνδεση από {server}"
+      "disconnectedAllClosed": "Όλες οι συνδέσεις έκλεισαν — αποσύνδεση από {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Ελβετική αποθήκευση cloud",
       "kdriveTooltip": "kDrive από την Infomaniak - Αποθήκευση cloud φιλοξενούμενη στην Ελβετία με 15GB δωρεάν",
       "drimeDesc": "Ασφαλής αποθήκευση στο νέφος",
-      "drimeTooltip": "Drime Cloud - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API"
+      "drimeTooltip": "Drime Cloud - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API",
+      "jottacloudDesc": "Νορβηγικό cloud (5GB δωρεάν)",
+      "jottacloudTooltip": "Jottacloud - Νορβηγική υπηρεσία cloud συμβατή με GDPR με 5GB δωρεάν"
     },
     "shortcuts": {
       "title": "Συντομεύσεις πληκτρολογίου",
@@ -2567,13 +2577,17 @@
       "refresh": "Ανανέωση",
       "toggleTheme": "Εναλλαγή Θέματος",
       "devtools": "AeroTools",
-      "toggleDevtools": "Εναλλαγή DevTools",
-      "toggleEditor": "Εναλλαγή Επεξεργαστή",
-      "toggleTerminal": "Εναλλαγή Τερματικού",
-      "toggleAgent": "Εναλλαγή Πράκτορα",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Επεξεργαστής",
+      "toggleTerminal": "Τερματικό",
+      "toggleAgent": "Agent",
       "shortcuts": "Συντομεύσεις Πληκτρολογίου",
       "support": "Υποστήριξη Ανάπτυξης",
-      "about": "Σχετικά με AeroFTP"
+      "about": "Σχετικά με AeroFTP",
+      "selectAll": "Επιλογή όλων",
+      "cut": "Αποκοπή",
+      "copy": "Αντιγραφή",
+      "paste": "Επικόλληση"
     },
     "activityPanel": {
       "awaitingCommands": "Αναμονή εντολών...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Διαχειριστείτε τα εγκατεστημένα plugins στην καρτέλα Plugins",
         "search": "Αναζήτηση plugins...",
         "subtitle": "Ανακαλύψτε και εγκαταστήστε plugins κοινότητας για το AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Περιήγηση",
+          "installed": "Εγκατεστημένα"
+        }
       }
     }
   }

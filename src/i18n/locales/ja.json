@@ -199,7 +199,13 @@
       "connect": "接続",
       "drimeToken": "API トークン",
       "drimeTokenPlaceholder": "Drime API トークンをここに貼り付けてください",
-      "drimeTokenHelp": "app.drime.cloud → アカウント設定 → 開発者 でトークンを生成してください"
+      "drimeTokenHelp": "app.drime.cloud → アカウント設定 → 開発者 でトークンを生成してください",
+      "azureAccessKey": "アクセスキー",
+      "azureAccountName": "アカウント名",
+      "azureEndpoint": "エンドポイント (任意)",
+      "jottacloudToken": "ログイントークン",
+      "jottacloudTokenPlaceholder": "Jottacloud のログイントークンをここに貼り付けてください",
+      "jottacloudTokenHelp": "jottacloud.com → 設定 → セキュリティで生成します。トークンは一度限りの使用で、すぐに期限切れになります。コピー後、直ちに貼り付けてください"
     },
     "browser": {
       "remote": "リモート",
@@ -904,7 +910,9 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "saveFailed": "保存失敗",
       "disconnectedTabClosed": "セッションを終了しました — {server} から切断しました",
-      "disconnectedAllClosed": "すべてのセッションを終了しました — {server} から切断しました"
+      "disconnectedAllClosed": "すべてのセッションを終了しました — {server} から切断しました",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "スイスのクラウドストレージ",
       "kdriveTooltip": "kDrive by Infomaniak - スイスでホストされたクラウドストレージ（15GB無料）",
       "drimeDesc": "セキュアクラウドストレージ",
-      "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ"
+      "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ",
+      "jottacloudDesc": "ノルウェークラウド (5GB無料)",
+      "jottacloudTooltip": "Jottacloud - GDPR準拠のノルウェークラウドストレージ、5GB無料"
     },
     "shortcuts": {
       "title": "キーボードショートカット",
@@ -2532,13 +2542,17 @@
       "refresh": "更新",
       "toggleTheme": "テーマを切り替え",
       "devtools": "AeroTools",
-      "toggleDevtools": "DevToolsを切り替え",
-      "toggleEditor": "エディターを切り替え",
-      "toggleTerminal": "ターミナルを切り替え",
-      "toggleAgent": "エージェントを切り替え",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "エディター",
+      "toggleTerminal": "ターミナル",
+      "toggleAgent": "Agent",
       "shortcuts": "キーボードショートカット",
       "support": "開発を支援",
-      "about": "AeroFTPについて"
+      "about": "AeroFTPについて",
+      "selectAll": "すべて選択",
+      "cut": "切り取り",
+      "copy": "コピー",
+      "paste": "貼り付け"
     },
     "activityPanel": {
       "awaitingCommands": "コマンド待機中...",
@@ -3000,7 +3014,11 @@
         "manageInSettings": "インストール済みプラグインはPluginsタブで管理できます",
         "search": "プラグインを検索...",
         "subtitle": "AeroAgent用のコミュニティプラグインを発見してインストール",
-        "title": "プラグインブラウザ"
+        "title": "プラグインブラウザ",
+        "tab": {
+          "browse": "参照",
+          "installed": "インストール済み"
+        }
       }
     }
   }

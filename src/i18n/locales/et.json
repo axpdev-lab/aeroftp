@@ -199,7 +199,13 @@
       "connect": "Ühenda",
       "drimeToken": "API-token",
       "drimeTokenPlaceholder": "Kleepige siia oma Drime API-token",
-      "drimeTokenHelp": "Looge token aadressil app.drime.cloud → Konto seaded → Arendajad"
+      "drimeTokenHelp": "Looge token aadressil app.drime.cloud → Konto seaded → Arendajad",
+      "azureAccessKey": "Juurdepääsuvõti",
+      "azureAccountName": "Konto nimi",
+      "azureEndpoint": "Endpoint (valikuline)",
+      "jottacloudToken": "Sisselogimise tõend",
+      "jottacloudTokenPlaceholder": "Kleepige oma Jottacloud sisselogimise tõend siia",
+      "jottacloudTokenHelp": "Looge lehel jottacloud.com → Seaded → Turvalisus. Märk on ainekordne ja aegub kiiresti — kleepige see kohe pärast kopeerimist"
     },
     "browser": {
       "remote": "Kaugserver",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Ühendus ebaõnnestus",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Seanss suletud — ühendus katkestatud: {server}",
-      "disconnectedAllClosed": "Kõik seansid suletud — ühendus katkestatud: {server}"
+      "disconnectedAllClosed": "Kõik seansid suletud — ühendus katkestatud: {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Šveitsi pilvsalvestus",
       "kdriveTooltip": "kDrive Infomaniakilt - Šveitsis majutatud pilvsalvestus 15GB tasuta",
       "drimeDesc": "Turvaline pilvesalvestus",
-      "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga"
+      "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga",
+      "jottacloudDesc": "Norra pilv (5GB tasuta)",
+      "jottacloudTooltip": "Jottacloud - GDPR-ühildne Norra pilvesalvestus 5GB tasuta"
     },
     "shortcuts": {
       "title": "Kiirklahvid",
@@ -2567,13 +2577,17 @@
       "refresh": "Värskenda",
       "toggleTheme": "Vaheta teemat",
       "devtools": "AeroTools",
-      "toggleDevtools": "Lülita arendustööriistu",
-      "toggleEditor": "Lülita redaktorit",
-      "toggleTerminal": "Lülita terminali",
-      "toggleAgent": "Lülita agenti",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Redaktor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Kiirklahvid",
       "support": "Toeta arendust",
-      "about": "AeroFTP kohta"
+      "about": "AeroFTP kohta",
+      "selectAll": "Vali kõik",
+      "cut": "Lõika",
+      "copy": "Kopeeri",
+      "paste": "Kleebi"
     },
     "activityPanel": {
       "awaitingCommands": "Käskude ootamine...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Halda paigaldatud pluginaid vahekaardil Plugins",
         "search": "Otsi pluginaid...",
         "subtitle": "Avastage ja paigaldage kogukonna pluginaid AeroAgent jaoks",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Sirvi",
+          "installed": "Paigaldatud"
+        }
       }
     }
   }

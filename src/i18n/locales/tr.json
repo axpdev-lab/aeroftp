@@ -199,7 +199,13 @@
       "connect": "Bağlan",
       "drimeToken": "API Anahtarı",
       "drimeTokenPlaceholder": "Drime API anahtarınızı buraya yapıştırın",
-      "drimeTokenHelp": "app.drime.cloud → Hesap Ayarları → Geliştiriciler adresinden anahtar oluşturun"
+      "drimeTokenHelp": "app.drime.cloud → Hesap Ayarları → Geliştiriciler adresinden anahtar oluşturun",
+      "azureAccessKey": "Erişim Anahtarı",
+      "azureAccountName": "Hesap Adı",
+      "azureEndpoint": "Endpoint (isteğe bağlı)",
+      "jottacloudToken": "Giriş jetonu",
+      "jottacloudTokenPlaceholder": "Jottacloud giriş jetonunuzu buraya yapıştırın",
+      "jottacloudTokenHelp": "jottacloud.com → Settings → Security adresinde oluşturun. Token tek kullanımlık ve hızla sona erer — kopyalandıktan hemen sonra yapıştırın"
     },
     "browser": {
       "remote": "Uzak",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Bağlantı başarısız",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Oturum kapatıldı — {server} bağlantısı kesildi",
-      "disconnectedAllClosed": "Tüm oturumlar kapatıldı — {server} bağlantısı kesildi"
+      "disconnectedAllClosed": "Tüm oturumlar kapatıldı — {server} bağlantısı kesildi",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "İsviçre bulut depolama",
       "kdriveTooltip": "Infomaniak'tan kDrive - 15GB ücretsiz İsviçre bulut depolama",
       "drimeDesc": "Güvenli Bulut Depolama",
-      "drimeTooltip": "Drime Cloud - REST API ile 20GB ücretsiz güvenli bulut depolama"
+      "drimeTooltip": "Drime Cloud - REST API ile 20GB ücretsiz güvenli bulut depolama",
+      "jottacloudDesc": "Norveç Bulutu (5GB ücretsiz)",
+      "jottacloudTooltip": "Jottacloud - 5GB ücretsiz ile GDPR uyumlu Norveç bulut depolama"
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",
@@ -2567,13 +2577,17 @@
       "refresh": "Yenile",
       "toggleTheme": "Temayı Değiştir",
       "devtools": "AeroTools",
-      "toggleDevtools": "GeliştiriciAraçlarını Aç/Kapat",
-      "toggleEditor": "Düzenleyiciyi Aç/Kapat",
-      "toggleTerminal": "Terminali Aç/Kapat",
-      "toggleAgent": "Ajanı Aç/Kapat",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editör",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Klavye Kısayolları",
       "support": "Geliştirmeyi Destekle",
-      "about": "AeroFTP Hakkında"
+      "about": "AeroFTP Hakkında",
+      "selectAll": "Tümünü Seç",
+      "cut": "Kes",
+      "copy": "Kopyala",
+      "paste": "Yapıştır"
     },
     "activityPanel": {
       "awaitingCommands": "Komut bekleniyor...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Yüklü eklentileri Plugins sekmesinde yönetin",
         "search": "Eklenti ara...",
         "subtitle": "AeroAgent için topluluk eklentilerini keşfedin ve yükleyin",
-        "title": "Eklenti Tarayıcısı"
+        "title": "Eklenti Tarayıcısı",
+        "tab": {
+          "browse": "Göz at",
+          "installed": "Yüklü"
+        }
       }
     }
   }

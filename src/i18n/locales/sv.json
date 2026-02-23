@@ -199,7 +199,13 @@
       "connect": "Anslut",
       "drimeToken": "API-token",
       "drimeTokenPlaceholder": "Klistra in ditt Drime API-token här",
-      "drimeTokenHelp": "Generera ett token på app.drime.cloud → Kontoinställningar → Utvecklare"
+      "drimeTokenHelp": "Generera ett token på app.drime.cloud → Kontoinställningar → Utvecklare",
+      "azureAccessKey": "Åtkomstnyckel",
+      "azureAccountName": "Kontonamn",
+      "azureEndpoint": "Endpoint (valfritt)",
+      "jottacloudToken": "Inloggningstoken",
+      "jottacloudTokenPlaceholder": "Klistra in din Jottacloud-inloggningstoken här",
+      "jottacloudTokenHelp": "Generera på jottacloud.com → Settings → Security. Token är för engångsbruk och förfaller snabbt — klistra in den omedelbar efter kopiering"
     },
     "browser": {
       "remote": "Fjärr",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Anslutningen misslyckades",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Session stängd — frånkopplad från {server}",
-      "disconnectedAllClosed": "Alla sessioner stängda — frånkopplad från {server}"
+      "disconnectedAllClosed": "Alla sessioner stängda — frånkopplad från {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Schweizisk molnlagring",
       "kdriveTooltip": "kDrive från Infomaniak - schweizisk molnlagring med 15GB gratis",
       "drimeDesc": "Säker molnlagring",
-      "drimeTooltip": "Drime Cloud - 20GB säker molnlagring med REST API"
+      "drimeTooltip": "Drime Cloud - 20GB säker molnlagring med REST API",
+      "jottacloudDesc": "Norskt moln (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk molnlagring med 5GB gratis"
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -2567,13 +2577,17 @@
       "refresh": "Uppdatera",
       "toggleTheme": "Byt tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Växla DevTools",
-      "toggleEditor": "Växla redigerare",
-      "toggleTerminal": "Växla terminal",
-      "toggleAgent": "Växla agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Redigerare",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Tangentbordsgenvägar",
       "support": "Stöd utvecklingen",
-      "about": "Om AeroFTP"
+      "about": "Om AeroFTP",
+      "selectAll": "Markera alla",
+      "cut": "Klipp ut",
+      "copy": "Kopiera",
+      "paste": "Klistra in"
     },
     "activityPanel": {
       "awaitingCommands": "Vantar pa kommandon...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Hantera installerade plugins i fliken Plugins",
         "search": "Sök plugins...",
         "subtitle": "Upptäck och installera community-plugins för AeroAgent",
-        "title": "Pluginbläddrare"
+        "title": "Pluginbläddrare",
+        "tab": {
+          "browse": "Bläddra",
+          "installed": "Installerade"
+        }
       }
     }
   }

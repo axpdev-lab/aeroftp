@@ -199,7 +199,13 @@
       "connect": "Միանալ",
       "drimeToken": "API թոկեն",
       "drimeTokenPlaceholder": "Տեղադրեք ձեր Drime API թոկենը այստեղ",
-      "drimeTokenHelp": "Ստեղծեք թոկեն app.drime.cloud → Հաշվի կարգավորումներ → Մշակողներ"
+      "drimeTokenHelp": "Ստեղծեք թոկեն app.drime.cloud → Հաշվի կարգավորումներ → Մշակողներ",
+      "azureAccessKey": "Մուտքի բանալի",
+      "azureAccountName": "Հաշվի անուն",
+      "azureEndpoint": "Endpoint (ոչ պարտադիր)",
+      "jottacloudToken": "Մուտքի Նշան",
+      "jottacloudTokenPlaceholder": "Տեղադրեք ձեր Jottacloud մուտքի նշանը այստեղ",
+      "jottacloudTokenHelp": "Նիրդում jottacloud.com → Հնդավոփը → Դլնութդադ֓. ՄայՈւղն պուրնակ նմու ե օգնող ղադրղ — բաչխեք անւնկ բՠանելաջ րու անքաح"
     },
     "browser": {
       "remote": "Հեռավոր",
@@ -897,7 +903,9 @@
       "connectionFailedTitle": "Կապը ձախողվեց",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Նիստը փակվել է — Անջատվել է {server}-ից",
-      "disconnectedAllClosed": "Բոլոր նիստերը փակվել են — Անջատվել է {server}-ից"
+      "disconnectedAllClosed": "Բոլոր նիստերը փակվել են — Անջատվել է {server}-ից",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -1118,7 +1126,9 @@
       "kdriveDesc": "Սույցարական ամպային պահեստան",
       "kdriveTooltip": "kDrive by Infomaniak - Սույցարական հոսթինգով ամպային պահեստան՝ 15GB անվճար",
       "drimeDesc": "Անվտանգ Ամպային Պահոց",
-      "drimeTooltip": "Drime Cloud - 20GB անվճար ամպային պահոց REST API-ով"
+      "drimeTooltip": "Drime Cloud - 20GB անվճար ամպային պահոց REST API-ով",
+      "jottacloudDesc": "Նորվեգական ամպ (5GB անվճար)",
+      "jottacloudTooltip": "Jottacloud - GDPR-համապատասխան նորվեգական ամպային պահեստավորում 5GB անվճար"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",
@@ -2560,13 +2570,17 @@
       "refresh": "Թարմացնել",
       "toggleTheme": "Փոխել թեման",
       "devtools": "AeroTools",
-      "toggleDevtools": "Փոխել DevTools-ը",
-      "toggleEditor": "Փոխել խմբագրիչը",
-      "toggleTerminal": "Փոխել տերմինալը",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Խմբագիր",
+      "toggleTerminal": "Տերմինալ",
       "shortcuts": "Ստեղնաշարի դյուրանցումներ",
       "support": "Աջակցել զարգացմանը",
       "about": "AeroFTP-ի մասին",
-      "toggleAgent": "Փոխարկել գործակալը"
+      "toggleAgent": "Agent",
+      "selectAll": "Ընտրել բոլորը",
+      "cut": "Կտրել",
+      "copy": "Պատճենել",
+      "paste": "Տեղադրել"
     },
     "activityPanel": {
       "awaitingCommands": "Սպասում է հրամանների...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Կառավարեք տեղադրված պլագինները Plugins ներդիրում",
         "search": "Որոնել պլագիններ...",
         "subtitle": "Գտեք և տեղադրեք համայնքի պլագիններ AeroAgent-ի համար",
-        "title": "Plugin դիտարկիչ"
+        "title": "Plugin դիտարկիչ",
+        "tab": {
+          "browse": "Դիտարկել",
+          "installed": "Տեղադրված"
+        }
       }
     }
   }

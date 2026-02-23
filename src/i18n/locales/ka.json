@@ -199,7 +199,13 @@
       "connect": "დაკავშირება",
       "drimeToken": "API ტოკენი",
       "drimeTokenPlaceholder": "ჩასვით თქვენი Drime API ტოკენი აქ",
-      "drimeTokenHelp": "შექმენით ტოკენი app.drime.cloud → ანგარიშის პარამეტრები → დეველოპერები"
+      "drimeTokenHelp": "შექმენით ტოკენი app.drime.cloud → ანგარიშის პარამეტრები → დეველოპერები",
+      "azureAccessKey": "წვდომის გასაღები",
+      "azureAccountName": "ანგარიშის სახელი",
+      "azureEndpoint": "Endpoint (არასავალდებულო)",
+      "jottacloudToken": "შესვლის ტოკენი",
+      "jottacloudTokenPlaceholder": "ჩასვით თქვენი Jottacloud შესვლის ტოკენი აქ",
+      "jottacloudTokenHelp": "გენერირება jottacloud.com → პარამეტრები → უსაფრთხოება. ტოკენი ერთჯერადი გამოყენებისთის შექმნილია და სწრაფად ეწურება — ჩასვით მხოლოდ ის გადაკოპირებიდან დაუყოვნებლივ"
     },
     "browser": {
       "remote": "დისტანციური",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "კავშირი ვერ მოხერხდა",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "სესია დახურულია — გათიშულია {server}-დან",
-      "disconnectedAllClosed": "ყველა სესია დახურულია — გათიშულია {server}-დან"
+      "disconnectedAllClosed": "ყველა სესია დახურულია — გათიშულია {server}-დან",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "შვეიცარიული ღრუბლოვანი საცავი",
       "kdriveTooltip": "kDrive by Infomaniak - შვეიცარიაში განთავსებული ღრუბლოვანი საცავი 15GB უფასოდ",
       "drimeDesc": "უსაფრთხო ღრუბლოვანი საცავი",
-      "drimeTooltip": "Drime Cloud - 20GB უფასო უსაფრთხო ღრუბლოვანი საცავი REST API-ით"
+      "drimeTooltip": "Drime Cloud - 20GB უფასო უსაფრთხო ღრუბლოვანი საცავი REST API-ით",
+      "jottacloudDesc": "ნორვეგიული ღრუბელი (5GB უფასო)",
+      "jottacloudTooltip": "Jottacloud - GDPR-თავსებადი ნორვეგიული ღრუბლოვანი საცავი 5GB უფასო"
     },
     "shortcuts": {
       "title": "კლავიატურის მალსახმობები",
@@ -2567,13 +2577,17 @@
       "refresh": "განახლება",
       "toggleTheme": "თემის შეცვლა",
       "devtools": "AeroTools",
-      "toggleDevtools": "DevTools-ის ჩართვა/გამორთვა",
-      "toggleEditor": "რედაქტორის ჩართვა/გამორთვა",
-      "toggleTerminal": "ტერმინალის ჩართვა/გამორთვა",
-      "toggleAgent": "აგენტის ჩართვა/გამორთვა",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "რედაქტორი",
+      "toggleTerminal": "ტერმინალი",
+      "toggleAgent": "Agent",
       "shortcuts": "კლავიატურის მალსახმობები",
       "support": "განვითარების მხარდაჭერა",
-      "about": "AeroFTP-ის შესახებ"
+      "about": "AeroFTP-ის შესახებ",
+      "selectAll": "ყველას არჩევა",
+      "cut": "ამოჭრა",
+      "copy": "კოპირება",
+      "paste": "ჩასმა"
     },
     "activityPanel": {
       "awaitingCommands": "ბრძანებების მოლოდინში...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "მართეთ დაინსტალირებული პლაგინები Plugins ჩანართში",
         "search": "პლაგინების ძიება...",
         "subtitle": "აღმოაჩინეთ და დააინსტალირეთ საზოგადოების პლაგინები AeroAgent-ისთვის",
-        "title": "პლაგინების ბრაუზერი"
+        "title": "პლაგინების ბრაუზერი",
+        "tab": {
+          "browse": "დათვალიერება",
+          "installed": "დაინსტალირებული"
+        }
       }
     }
   }

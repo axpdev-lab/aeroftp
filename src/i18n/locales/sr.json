@@ -199,7 +199,13 @@
       "connect": "Повежи се",
       "drimeToken": "API токен",
       "drimeTokenPlaceholder": "Налепите свој API токен Drime овде",
-      "drimeTokenHelp": "Генеришите токен на app.drime.cloud → Подешавања налога → Програмери"
+      "drimeTokenHelp": "Генеришите токен на app.drime.cloud → Подешавања налога → Програмери",
+      "azureAccessKey": "Приступни кључ",
+      "azureAccountName": "Назив налога",
+      "azureEndpoint": "Endpoint (опционално)",
+      "jottacloudToken": "Токен за пријаву",
+      "jottacloudTokenPlaceholder": "Налепите свој Jottacloud токен за пријаву овде",
+      "jottacloudTokenHelp": "Генериши на jottacloud.com → Settings → Security. Токен је за једнократну употребу и брзо истиче — залепи га одмах после копирања"
     },
     "browser": {
       "remote": "Удаљено",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Повезивање неуспешно",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесија затворена — одспојено са {server}",
-      "disconnectedAllClosed": "Све сесије затворене — одспојено са {server}"
+      "disconnectedAllClosed": "Све сесије затворене — одспојено са {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Швајцарско складиште у облаку",
       "kdriveTooltip": "kDrive од Infomaniak - швајцарско складиште у облаку са 15GB бесплатно",
       "drimeDesc": "Безбедно складиштење у облаку",
-      "drimeTooltip": "Drime Cloud - 20GB безбедног складиштења у облаку са REST API"
+      "drimeTooltip": "Drime Cloud - 20GB безбедног складиштења у облаку са REST API",
+      "jottacloudDesc": "Норвешки облак (5GB бесплатно)",
+      "jottacloudTooltip": "Jottacloud - норвешко складиштење у облаку усклађено са GDPR са 5GB бесплатно"
     },
     "shortcuts": {
       "title": "Prečice na tastaturi",
@@ -2567,13 +2577,17 @@
       "refresh": "Osveži",
       "toggleTheme": "Promeni temu",
       "devtools": "AeroTools",
-      "toggleDevtools": "Prikaži/Sakrij razvojne alate",
-      "toggleEditor": "Prikaži/Sakrij editor",
-      "toggleTerminal": "Prikaži/Sakrij terminal",
-      "toggleAgent": "Prikaži/Sakrij agenta",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Уређивач",
+      "toggleTerminal": "Терминал",
+      "toggleAgent": "Agent",
       "shortcuts": "Prečice na tastaturi",
       "support": "Podržite razvoj",
-      "about": "O programu AeroFTP"
+      "about": "O programu AeroFTP",
+      "selectAll": "Изабери све",
+      "cut": "Исеци",
+      "copy": "Копирај",
+      "paste": "Налепи"
     },
     "activityPanel": {
       "awaitingCommands": "Чекање на команде...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Управљајте инсталираним плагинима у картици Plugins",
         "search": "Претражи плагине...",
         "subtitle": "Откријте и инсталирајте плагине заједнице за AeroAgent",
-        "title": "Претраживач плагина"
+        "title": "Претраживач плагина",
+        "tab": {
+          "browse": "Претражи",
+          "installed": "Инсталирано"
+        }
       }
     }
   }

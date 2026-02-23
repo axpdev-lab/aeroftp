@@ -47,6 +47,8 @@ pub enum ProviderType {
     Internxt,
     /// Infomaniak kDrive (Swiss Cloud)
     KDrive,
+    /// Jottacloud (Norwegian Secure Cloud)
+    Jottacloud,
     /// Drime Cloud (20GB Secure Cloud)
     DrimeCloud,
 }
@@ -72,6 +74,7 @@ impl fmt::Display for ProviderType {
             ProviderType::ZohoWorkdrive => write!(f, "Zoho WorkDrive"),
             ProviderType::Internxt => write!(f, "Internxt Drive"),
             ProviderType::KDrive => write!(f, "kDrive"),
+            ProviderType::Jottacloud => write!(f, "Jottacloud"),
             ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
         }
     }
@@ -99,6 +102,7 @@ impl ProviderType {
             ProviderType::ZohoWorkdrive => 443,
             ProviderType::Internxt => 443,
             ProviderType::KDrive => 443,
+            ProviderType::Jottacloud => 443,
             ProviderType::DrimeCloud => 443,
         }
     }
@@ -124,6 +128,7 @@ impl ProviderType {
             ProviderType::ZohoWorkdrive |
             ProviderType::Internxt |
             ProviderType::KDrive |
+            ProviderType::Jottacloud |
             ProviderType::DrimeCloud
         )
     }
@@ -517,7 +522,9 @@ impl AzureConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("Container name required for Azure".to_string()))?
             .clone();
         let sas_token: Option<secrecy::SecretString> = config.extra.get("sas_token").map(|s| s.clone().into());
-        let endpoint = if config.host.is_empty() || config.host == "blob.core.windows.net" {
+        // Host may arrive as ":443" when the endpoint field is empty but port is set
+        let clean_host = config.host.split(':').next().unwrap_or("").trim();
+        let endpoint = if clean_host.is_empty() || clean_host == "blob.core.windows.net" {
             None
         } else {
             Some(config.host.clone())
@@ -528,7 +535,12 @@ impl AzureConfig {
     /// Get the blob service endpoint URL
     pub fn blob_endpoint(&self) -> String {
         if let Some(ref ep) = self.endpoint {
-            ep.clone()
+            // Ensure custom endpoint has a scheme
+            if ep.starts_with("http://") || ep.starts_with("https://") {
+                ep.clone()
+            } else {
+                format!("https://{}", ep)
+            }
         } else {
             format!("https://{}.blob.core.windows.net", self.account_name)
         }
@@ -606,6 +618,43 @@ impl KDriveConfig {
         Ok(Self {
             api_token: token.into(),
             drive_id,
+            initial_path: config.initial_path.clone(),
+        })
+    }
+}
+
+/// Jottacloud configuration (Personal Login Token)
+#[derive(Debug, Clone)]
+pub struct JottacloudConfig {
+    /// Base64-encoded Personal Login Token from Jottacloud settings
+    pub login_token: secrecy::SecretString,
+    /// Device name (default "Jotta")
+    pub device: String,
+    /// Mountpoint name (default "Archive")
+    pub mountpoint: String,
+    /// Optional initial remote path
+    pub initial_path: Option<String>,
+}
+
+impl JottacloudConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let token = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("Login token required for Jottacloud".to_string()))?;
+        let device = config.extra.get("device").cloned()
+            .unwrap_or_else(|| "Jotta".to_string());
+        let mountpoint = config.extra.get("mountpoint").cloned()
+            .unwrap_or_else(|| "Archive".to_string());
+        // Validate device/mountpoint don't contain path traversal
+        if device.contains("..") || device.contains('/') {
+            return Err(ProviderError::InvalidConfig("Invalid device name".to_string()));
+        }
+        if mountpoint.contains("..") || mountpoint.contains('/') {
+            return Err(ProviderError::InvalidConfig("Invalid mountpoint name".to_string()));
+        }
+        Ok(Self {
+            login_token: token.into(),
+            device,
+            mountpoint,
             initial_path: config.initial_path.clone(),
         })
     }

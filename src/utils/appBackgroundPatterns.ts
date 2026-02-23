@@ -89,4 +89,4 @@ export const APP_BACKGROUND_PATTERNS: AppBackgroundPattern[] = [
 ];
 
 export const APP_BACKGROUND_KEY = 'aeroftp_app_background_pattern';
-export const DEFAULT_APP_BACKGROUND = 'hexagon';
+export const DEFAULT_APP_BACKGROUND = 'waves';

@@ -159,7 +159,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
             className={`fixed inset-0 ${bgOverlay} flex items-center justify-center z-50`}
             onClick={e => e.target === e.currentTarget && onSkip()}
         >
-            <div className={`${bgPanel} rounded-xl shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col`}>
+            <div className={`${bgPanel} rounded-xl shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
                 {/* Header */}
                 <div className={`flex items-center justify-between px-5 py-4 border-b ${borderColor}`}>
                     <div className="flex items-center gap-3">

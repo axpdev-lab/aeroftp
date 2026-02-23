@@ -199,7 +199,13 @@
       "connect": "Connecta",
       "drimeToken": "Token API",
       "drimeTokenPlaceholder": "Enganxeu aquí el vostre token API de Drime",
-      "drimeTokenHelp": "Genereu un token a app.drime.cloud → Configuració del compte → Desenvolupadors"
+      "drimeTokenHelp": "Genereu un token a app.drime.cloud → Configuració del compte → Desenvolupadors",
+      "azureAccessKey": "Clau d'accés",
+      "azureAccountName": "Nom del compte",
+      "azureEndpoint": "Endpoint (opcional)",
+      "jottacloudToken": "Token d'inici de sessió",
+      "jottacloudTokenPlaceholder": "Enganxeu el vostre token d'inici de sessió de Jottacloud aquí",
+      "jottacloudTokenHelp": "Genera a jottacloud.com → Configuració → Seguretat. El token és d'un sol ús i caduca ràpidament — enganxa'l immediatament després de copiar"
     },
     "browser": {
       "remote": "Remot",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Connexió fallida",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sessió tancada — desconnectat de {server}",
-      "disconnectedAllClosed": "Totes les sessions tancades — desconnectat de {server}"
+      "disconnectedAllClosed": "Totes les sessions tancades — desconnectat de {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Emmagatzematge al núvol suís",
       "kdriveTooltip": "kDrive d'Infomaniak - Emmagatzematge al núvol allotjat a Suïssa amb 15GB gratuïts",
       "drimeDesc": "Emmagatzematge al núvol segur",
-      "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API"
+      "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API",
+      "jottacloudDesc": "Núvol noruec (5GB gratuït)",
+      "jottacloudTooltip": "Jottacloud - Emmagatzematge al núvol noruec compatible amb GDPR amb 5GB gratuïts"
     },
     "shortcuts": {
       "title": "Dreceres de Teclat",
@@ -2567,13 +2577,17 @@
       "refresh": "Actualitzar",
       "toggleTheme": "Canviar tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Alternar DevTools",
-      "toggleEditor": "Alternar editor",
-      "toggleTerminal": "Alternar terminal",
-      "toggleAgent": "Alternar agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Dreceres de teclat",
       "support": "Donar suport al desenvolupament",
-      "about": "Quant a AeroFTP"
+      "about": "Quant a AeroFTP",
+      "selectAll": "Seleccionar tot",
+      "cut": "Retalla",
+      "copy": "Copia",
+      "paste": "Enganxa"
     },
     "activityPanel": {
       "awaitingCommands": "Esperant comandes...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Gestioneu els plugins instal·lats a la pestanya Plugins",
         "search": "Cercar plugins...",
         "subtitle": "Descobriu i instal·leu plugins de la comunitat per a AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Explorar",
+          "installed": "Instal·lats"
+        }
       }
     },
     "commandPalette.category.ai": {},

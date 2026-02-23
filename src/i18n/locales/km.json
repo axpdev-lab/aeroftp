@@ -199,7 +199,13 @@
       "connect": "ភ្ជាប់",
       "drimeToken": "ថូខេន API",
       "drimeTokenPlaceholder": "បិទភ្ជាប់ថូខេន API Drime របស់អ្នកនៅទីនេះ",
-      "drimeTokenHelp": "បង្កើតថូខេននៅ app.drime.cloud → ការកំណត់គណនី → អ្នកអភិវឌ្ឍន៍"
+      "drimeTokenHelp": "បង្កើតថូខេននៅ app.drime.cloud → ការកំណត់គណនី → អ្នកអភិវឌ្ឍន៍",
+      "azureAccessKey": "សោចូលប្រើ",
+      "azureAccountName": "ឈ្មោះគណនី",
+      "azureEndpoint": "Endpoint (ជាជម្រើស)",
+      "jottacloudToken": "ស្លៀកប័ណ្ណចូល",
+      "jottacloudTokenPlaceholder": "បិទចំដាប់ស្លៀកប័ណ្ណចូល Jottacloud របស់អ្នកនៅត្រង់នេះ",
+      "jottacloudTokenHelp": "បង្កើត នៅ jottacloud.com → ការកំណត់ → សន្ដិសsecurity។ ថូកបង្ហាញ គឺ ដោះស្រាយ ម្តង ប៉ុណ្ណាក្ខ ហើយ ផុតកំណត់ ដោះ ឆាប់ — អង្គុយ វា ឱ្យ បាននឹង លឿន បន្ទាប់ ពី ក្ដល់"
     },
     "browser": {
       "remote": "ពីចម្ងាយ",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "ការភ្ជាប់បរាជ័យ",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "វគ្គត្រូវបានបិទ — ផ្តាច់ការតភ្ជាប់ពី {server}",
-      "disconnectedAllClosed": "វគ្គទាំងអស់ត្រូវបានបិទ — ផ្តាច់ការតភ្ជាប់ពី {server}"
+      "disconnectedAllClosed": "វគ្គទាំងអស់ត្រូវបានបិទ — ផ្តាច់ការតភ្ជាប់ពី {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "ឃ្លាំងផ្ទុកពពកស្វ៊ីស",
       "kdriveTooltip": "kDrive by Infomaniak - ឃ្លាំងផ្ទុកពពកដែលបង្ហោះនៅស្វ៊ីស មាន 15GB ឥតគិតថ្លៃ",
       "drimeDesc": "ការផ្ទុកពពកដែលមានសុវត្ថិភាព",
-      "drimeTooltip": "Drime Cloud - ការផ្ទុកពពកដែលមានសុវត្ថិភាពឥតគិតថ្លៃ 20GB ជាមួយ REST API"
+      "drimeTooltip": "Drime Cloud - ការផ្ទុកពពកដែលមានសុវត្ថិភាពឥតគិតថ្លៃ 20GB ជាមួយ REST API",
+      "jottacloudDesc": "ពម្ពៀកន័រវ៉េ (5GB ភ្លើ)",
+      "jottacloudTooltip": "Jottacloud - ការជ្រាប់ជ្រុលពម្ពៀកន័រវ៉េតាម GDPR ជាមួយ 5GB ភ្លើ"
     },
     "shortcuts": {
       "title": "ផ្លូវកាត់ក្តារចុច",
@@ -2567,13 +2577,17 @@
       "refresh": "ផ្ទុកឡើងវិញ",
       "toggleTheme": "ប្តូររូបរាង",
       "devtools": "AeroTools",
-      "toggleDevtools": "ប្តូរ DevTools",
-      "toggleEditor": "ប្តូរកម្មវិធីនិពន្ធ",
-      "toggleTerminal": "ប្តូរស្ថានីយ",
-      "toggleAgent": "ប្តូរភ្នាក់ងារ",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "កម្មវិធីកែសម្រួល",
+      "toggleTerminal": "ស្ថានីយ",
+      "toggleAgent": "Agent",
       "shortcuts": "ផ្លូវកាត់",
       "support": "គាំទ្រ",
-      "about": "អំពី"
+      "about": "អំពី",
+      "selectAll": "ជ្រើសរើសទាំងអស់",
+      "cut": "កាត់",
+      "copy": "ចម្លង",
+      "paste": "បិទភ្ជាប់"
     },
     "activityPanel": {
       "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "គ្រប់គ្រង Plugin ដែលបានដំឡើងនៅក្នុងផ្ទាំង Plugins",
         "search": "ស្វែងរក Plugin...",
         "subtitle": "រកឃើញ និងដំឡើង Plugin សហគមន៍សម្រាប់ AeroAgent",
-        "title": "កម្មវិធីរុករក Plugin"
+        "title": "កម្មវិធីរុករក Plugin",
+        "tab": {
+          "browse": "រុករក",
+          "installed": "បានដំឡើង"
+        }
       }
     },
     "commandPalette.category.ai": {},

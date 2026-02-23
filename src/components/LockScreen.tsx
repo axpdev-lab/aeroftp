@@ -80,7 +80,7 @@ export const LOCK_SCREEN_PATTERNS: LockPattern[] = [
 ];
 
 const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
-const DEFAULT_PATTERN = 'hexagon';
+const DEFAULT_PATTERN = 'isometric';
 
 interface LockScreenProps {
     onUnlock: () => void;

@@ -180,6 +180,7 @@ impl OAuthConfig {
     }
 
     /// Create OneDrive OAuth config with dynamic callback port
+    /// Microsoft Entra ID requires http://localhost (not 127.0.0.1) for redirect URIs
     pub fn onedrive_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
         Self {
             provider: OAuthProvider::OneDrive,
@@ -192,7 +193,7 @@ impl OAuthConfig {
                 "Files.ReadWrite.All".to_string(),
                 "offline_access".to_string(),
             ],
-            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            redirect_uri: format!("http://localhost:{}/callback", port),
             extra_auth_params: vec![],
         }
     }

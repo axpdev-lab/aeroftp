@@ -1,15 +1,62 @@
-# AeroFTP v2.5.0 — Independent Security & Quality Audit Report
+# AeroFTP — Independent Security & Quality Audit Reports
 
 > **Classification**: Public
-> **Date**: 20 February 2026
+> **Last Updated**: 22 February 2026
+
+This document contains all public security and quality audit reports for AeroFTP releases.
+
+---
+
+## v2.6.0 — Provider Security Audit (22 February 2026)
+
+> **Subject**: 8 Cloud Storage Providers — Post-Release Security & Quality Audit
+> **Methodology**: Per-Provider Independent Parallel Review
+> **Auditors**: 8 Independent AI Code Review Agents (Claude Opus 4.6)
+> **Scope**: S3, pCloud, kDrive, Azure Blob, 4shared, Filen, Internxt, MEGA (~6,500 lines Rust)
+
+### Executive Summary
+
+All 8 cloud storage providers underwent independent parallel security audit immediately following the v2.6.0 release. Each provider was reviewed by a dedicated agent with full source access, targeting security vulnerabilities, input validation, error handling, credential management, and API interaction patterns.
+
+The audit identified **147 findings** across all 8 providers. **All 147 findings were remediated** and verified via `cargo check` (0 errors, 2 pre-existing dead_code warnings).
+
+### Findings by Provider
+
+| Provider | Findings | Key Areas |
+|----------|----------|-----------|
+| **S3** | 22 | URL injection prevention, SSRF endpoint validation, pagination continuation token safeguards, XML bomb limits, presigned URL expiry bounds |
+| **Azure Blob** | 20 | HMAC canonicalization hardening, container name regex validation, XML entity limits, Content-Length on copy, SAS token validation |
+| **pCloud** | 19 | Path traversal prevention, OAuth token lifecycle, EU/US region validation, error response parsing, share link expiry |
+| **Filen** | 19 | E2E key derivation hardening, chunk integrity verification, metadata decryption guards, 2FA token validation, upload chunk bounds |
+| **kDrive** | 18 | Cursor pagination bounds, Bearer token SecretString wrapping, drive_id validation, server-side copy path validation |
+| **Internxt** | 18 | BIP39 mnemonic handling, AES-CTR nonce management, JWT expiry validation, plainName metadata sanitization |
+| **4shared** | 17 | OAuth 1.0 nonce entropy (OsRng), ID format validation, JSON parsing guards, folder cache invalidation |
+| **MEGA** | 14 | MEGAcmd injection prevention, AES key buffer validation, transfer size limits, process timeout enforcement |
+| **Total** | **147** | |
+
+### Verification
+
+| Check | Result |
+|-------|--------|
+| `cargo check` | Pass — 0 errors, 2 warnings (pre-existing dead_code) |
+| Provider connectivity | Azure Blob + OneDrive verified end-to-end on Windows 11 |
+
+### Additional Fixes (Post-Audit)
+
+- **Azure Blob UX**: Proper form labels (Account Name, Access Key, Endpoint), connection flow fix for empty server field, rename Content-Length header
+- **OneDrive OAuth**: Redirect URI changed to `http://localhost` for Microsoft Entra ID compliance, fixed callback port 27154
+- **3 Azure i18n keys** translated in all 47 languages
+
+---
+
+## v2.5.0 — 6-Domain Independent Audit (20 February 2026)
+
 > **Subject**: AeroFTP Desktop File Transfer Client v2.5.0
 > **Methodology**: Parallel Independent Multi-Domain Review (PIMDR)
 > **Auditors**: 6 Independent AI Code Review Agents (Claude Opus 4.6)
 > **Scope**: Full codebase — ~35,000 lines Rust backend, ~25,000 lines React/TypeScript frontend
 
----
-
-## Executive Summary
+### Summary
 
 AeroFTP v2.5.0 underwent a comprehensive six-domain audit conducted by six independent code review agents operating in parallel with full source access. The audit covered Security & Cryptography, Rust Code Quality, CI/CD & Testing, Documentation & OpenSSF Compliance, Performance & Resource Management, and Frontend Quality & Accessibility.
 
@@ -303,6 +350,7 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Version | Date | Auditors | Grade |
 |---------|------|----------|-------|
+| v2.6.0 | 22 Feb 2026 | 8x Claude Opus 4.6 (per-provider) | **147/147 remediated** |
 | v2.5.0 | 20 Feb 2026 | 6x Claude Opus 4.6 (PIMDR) | **A-** (post-remediation) |
 | v2.4.0 | 19 Feb 2026 | 12 auditors, 4 phases | A- |
 | v2.3.0 | 18 Feb 2026 | 5 independent auditors | Pass |
@@ -326,8 +374,8 @@ This audit was conducted by AI-powered code review agents with full source acces
 
 ---
 
-**Document**: AeroFTP v2.5.0 Independent Security & Quality Audit Report
-**Revision**: 1.0
+**Document**: AeroFTP Independent Security & Quality Audit Reports
+**Revision**: 2.0
 **Date**: 20 February 2026
 **Classification**: Public
 **Repository**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)

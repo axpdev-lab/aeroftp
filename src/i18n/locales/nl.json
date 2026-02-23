@@ -199,7 +199,13 @@
       "connect": "Verbinden",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "Plak hier uw Drime API-token",
-      "drimeTokenHelp": "Genereer een token op app.drime.cloud → Accountinstellingen → Ontwikkelaars"
+      "drimeTokenHelp": "Genereer een token op app.drime.cloud → Accountinstellingen → Ontwikkelaars",
+      "azureAccessKey": "Toegangssleutel",
+      "azureAccountName": "Accountnaam",
+      "azureEndpoint": "Endpoint (optioneel)",
+      "jottacloudToken": "Inlogtoken",
+      "jottacloudTokenPlaceholder": "Plak hier uw Jottacloud inlogtoken",
+      "jottacloudTokenHelp": "Genereer op jottacloud.com → Instellingen → Beveiliging. Token is voor eenmalig gebruik en verloopt snel — plak het onmiddellijk na kopiëren"
     },
     "browser": {
       "remote": "Extern",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Verbinding mislukt",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sessie gesloten — verbroken met {server}",
-      "disconnectedAllClosed": "Alle sessies gesloten — verbroken met {server}"
+      "disconnectedAllClosed": "Alle sessies gesloten — verbroken met {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Zwitserse cloudopslag",
       "kdriveTooltip": "kDrive by Infomaniak - In Zwitserland gehoste cloudopslag met 15GB gratis",
       "drimeDesc": "Veilige Cloudopslag",
-      "drimeTooltip": "Drime Cloud - 20GB gratis veilige cloudopslag met REST API"
+      "drimeTooltip": "Drime Cloud - 20GB gratis veilige cloudopslag met REST API",
+      "jottacloudDesc": "Noorse cloud (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - AVG-conforme Noorse cloudopslag met 5GB gratis"
     },
     "shortcuts": {
       "title": "Sneltoetsen",
@@ -2567,13 +2577,17 @@
       "refresh": "Vernieuwen",
       "toggleTheme": "Thema wisselen",
       "devtools": "AeroTools",
-      "toggleDevtools": "DevTools in-/uitschakelen",
-      "toggleEditor": "Editor in-/uitschakelen",
-      "toggleTerminal": "Terminal in-/uitschakelen",
-      "toggleAgent": "Agent in-/uitschakelen",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Sneltoetsen",
       "support": "Ontwikkeling ondersteunen",
-      "about": "Over AeroFTP"
+      "about": "Over AeroFTP",
+      "selectAll": "Alles selecteren",
+      "cut": "Knippen",
+      "copy": "Kopiëren",
+      "paste": "Plakken"
     },
     "activityPanel": {
       "awaitingCommands": "Wacht op opdrachten...",
@@ -3003,7 +3017,11 @@
         "manageInSettings": "Beheer geïnstalleerde plugins in het tabblad Plugins",
         "search": "Plugins zoeken...",
         "subtitle": "Ontdek en installeer communityplugins voor AeroAgent",
-        "title": "Pluginbrowser"
+        "title": "Pluginbrowser",
+        "tab": {
+          "browse": "Bladeren",
+          "installed": "Geïnstalleerd"
+        }
       }
     }
   }

@@ -199,7 +199,13 @@
       "connect": "कनेक्ट करें",
       "drimeToken": "API टोकन",
       "drimeTokenPlaceholder": "यहाँ अपना Drime API टोकन पेस्ट करें",
-      "drimeTokenHelp": "app.drime.cloud → खाता सेटिंग → डेवलपर्स पर एक टोकन जनरेट करें"
+      "drimeTokenHelp": "app.drime.cloud → खाता सेटिंग → डेवलपर्स पर एक टोकन जनरेट करें",
+      "azureAccessKey": "एक्सेस कुंजी",
+      "azureAccountName": "खाता नाम",
+      "azureEndpoint": "Endpoint (वैकल्पिक)",
+      "jottacloudToken": "लॉगिन टोकन",
+      "jottacloudTokenPlaceholder": "अपना Jottacloud लॉगिन टोकन यहाँ पेस्ट करें",
+      "jottacloudTokenHelp": "jottacloud.com → सेटिंग्स → सुरक्षा पर जनरेट करें। टोकन एकबारी उपयोग के लिए है और जल्दी समाप्त हो जाता है — कॉपी करने के तुरंत बाद पेस्ट करें"
     },
     "browser": {
       "remote": "दूरस्थ",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "कनेक्शन विफल",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "सत्र बंद — {server} से कनेक्शन समाप्त",
-      "disconnectedAllClosed": "सभी सत्र बंद — {server} से कनेक्शन समाप्त"
+      "disconnectedAllClosed": "सभी सत्र बंद — {server} से कनेक्शन समाप्त",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "स्विस क्लाउड स्टोरेज",
       "kdriveTooltip": "Infomaniak द्वारा kDrive - 15GB मुफ़्त के साथ स्विस-होस्टेड क्लाउड स्टोरेज",
       "drimeDesc": "सुरक्षित क्लाउड स्टोरेज",
-      "drimeTooltip": "Drime Cloud - REST API के साथ 20GB मुफ़्त सुरक्षित क्लाउड स्टोरेज"
+      "drimeTooltip": "Drime Cloud - REST API के साथ 20GB मुफ़्त सुरक्षित क्लाउड स्टोरेज",
+      "jottacloudDesc": "नॉर्वेजियन क्लाउड (5GB मुफ्त)",
+      "jottacloudTooltip": "Jottacloud - 5GB मुफ्त के साथ GDPR-अनुपालन नॉर्वेजियन क्लाउड स्टोरेज"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",
@@ -2567,13 +2577,17 @@
       "refresh": "ताज़ा करें",
       "toggleTheme": "थीम टॉगल करें",
       "devtools": "AeroTools",
-      "toggleDevtools": "डेवटूल्स टॉगल करें",
-      "toggleEditor": "संपादक टॉगल करें",
-      "toggleTerminal": "टर्मिनल टॉगल करें",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "एडिटर",
+      "toggleTerminal": "टर्मिनल",
       "shortcuts": "कीबोर्ड शॉर्टकट",
       "support": "विकास का समर्थन करें",
       "about": "AeroFTP के बारे में",
-      "toggleAgent": "एजेंट टॉगल करें"
+      "toggleAgent": "Agent",
+      "selectAll": "सभी चुनें",
+      "cut": "काटें",
+      "copy": "कॉपी करें",
+      "paste": "चिपकाएँ"
     },
     "activityPanel": {
       "awaitingCommands": "कमांड की प्रतीक्षा में...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Plugins टैब में इंस्टॉल किए गए plugins प्रबंधित करें",
         "search": "Plugins खोजें...",
         "subtitle": "AeroAgent के लिए सामुदायिक plugins खोजें और इंस्टॉल करें",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "ब्राउज़ करें",
+          "installed": "इंस्टॉल किए गए"
+        }
       }
     }
   }

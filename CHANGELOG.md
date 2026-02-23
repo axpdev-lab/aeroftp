@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [2.6.1] - 2026-02-23
+
+### VS Code-Style Titlebar & UX Polish
+
+Native desktop feel with a unified VS Code-style titlebar, consistent modal animations across the entire app, and comprehensive provider security hardening. The header is eliminated, all controls live in the titlebar, and every modal now opens with smooth scale-in animation.
+
+#### Added
+
+- **VS Code-style unified titlebar**: 4 custom dropdown menus (File, Edit, View, Help) replace the native GTK menu bar. Hover-to-switch between open menus, Escape/click-outside to close, keyboard shortcut labels on every item
+- **Cut/Copy/Paste in Edit menu**: File clipboard operations with disabled states based on selection and clipboard content. `menu.cut`, `menu.copy`, `menu.paste` i18n keys translated in all 47 languages
+- **Theme-aware menu hover**: Menu items highlight with the theme accent color on hover (blue in dark/light, purple in Tokyo, green in Cyber) — VS Code-style
+- **Settings button in titlebar**: Quick access gear icon between Support heart and Theme Toggle
+- **Consistent modal animations**: `animate-scale-in` (scale 0.95→1 + fade) applied to all 42 modal dialogs across the app, controlled from a single CSS rule
+- **Click-outside-to-close**: Added to AeroVault and Master Password dialogs for consistency with Settings and other modals
+- **3 Azure i18n keys**: `azureAccessKey`, `azureAccountName`, `azureEndpoint` translated in all 47 languages
+
+#### Changed
+
+- **Header eliminated**: Entire React `<header>` block (~110 lines) removed — all toolbar buttons migrated into the titlebar
+- **Menu labels simplified**: View menu items shortened from "Toggle Editor" / "Mostra/Nascondi Editor" to just "Editor" in all 47 languages — context is already clear from being inside the View menu
+- **Default app background**: Changed from Hexagon to Waves for new installations
+- **Default lock screen pattern**: Changed from Hexagon to Isometric for new installations
+- **Modal alignment**: AeroVault and Master Password dialogs now align to top with `pt-[5vh]` margin, consistent with Settings, About, and Support
+- **Menu dropdown background**: Uses `--color-bg-secondary` instead of `--color-bg-primary` — fixes dark theme showing pure black menu background
+- **Modal animation duration**: Increased from 0.2s to 0.25s ease-out for smoother feel
+- **Menu item interaction**: No transition animation or button press effect on click — instant response like VS Code
+
+#### Fixed
+
+- **147 provider audit findings remediated**: Full security and quality audit across 8 cloud providers — S3 (22 fixes), pCloud (19 fixes), kDrive (18 fixes), Azure Blob (20 fixes), 4shared (17 fixes), Filen (19 fixes), Internxt (18 fixes), MEGA (14 fixes)
+- **Azure Blob form labels**: Proper Azure-specific labels (Account Name, Access Key, Endpoint) in QuickConnect and Settings
+- **Azure Blob connection flow**: Fixed "relative URL without a base" and "empty host" errors
+- **Azure Blob rename**: Fixed HTTP 411 by adding `Content-Length: 0` on PUT Copy Blob
+- **OneDrive OAuth**: Changed redirect URI to `http://localhost:27154` for Microsoft Entra ID compliance
+- **ErrorBoundary nesting**: Moved inside I18nProvider to fix crash when error fallback calls `useTranslation()`
+- **DebugPanel readonly property**: Wrapped `__TAURI_INTERNALS__` invoke patching in try-catch for frozen objects
+- **Debug logging cleanup**: Removed debug output from provider_commands.rs and Azure config parsing
+
+#### Removed
+
+- **Native GTK menu bar**: Replaced by custom React menus in titlebar
+- **Menu bar toggle**: `showMenuBar` state and F10 shortcut removed — menus always visible
+- **`systemMenuVisible` state**: No longer needed with custom menus
+
+---
+
 ## [2.6.0] - 2026-02-22
 
 ### AeroAgent Ecosystem, Cloud Expansion & Provider Tier 3

@@ -199,7 +199,13 @@
       "connect": "Savienot",
       "drimeToken": "API Atslēga",
       "drimeTokenPlaceholder": "Ielīmējiet šeit savu Drime API atslēgu",
-      "drimeTokenHelp": "Ģenerējiet atslēgu vietnē app.drime.cloud → Konta Iestatījumi → Izstrādātāji"
+      "drimeTokenHelp": "Ģenerējiet atslēgu vietnē app.drime.cloud → Konta Iestatījumi → Izstrādātāji",
+      "azureAccessKey": "Piekļuves atslēga",
+      "azureAccountName": "Konta nosaukums",
+      "azureEndpoint": "Endpoint (neobligāti)",
+      "jottacloudToken": "Pieteikšanās marķieris",
+      "jottacloudTokenPlaceholder": "Ielīmējiet savu Jottacloud pieteikšanās marķieri šeit",
+      "jottacloudTokenHelp": "Ģenerējiet jottacloud.com → Iestatījumi → Drošība. Žetons ir vienreizējās lietošanas un strauji beidzas — ielīmējiet to uzreiz pēc kopēšanas"
     },
     "browser": {
       "remote": "Attālināts",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Savienojums neizdevās",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesija aizvērta — atvienots no {server}",
-      "disconnectedAllClosed": "Visas sesijas aizvērtas — atvienots no {server}"
+      "disconnectedAllClosed": "Visas sesijas aizvērtas — atvienots no {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Šveices mākoņkrātuve",
       "kdriveTooltip": "kDrive by Infomaniak - Šveicē izvietota mākoņkrātuve ar 15GB bez maksas",
       "drimeDesc": "Droša Mākoņkrātuve",
-      "drimeTooltip": "Drime Cloud - 20GB bezmaksas droša mākoņkrātuve ar REST API"
+      "drimeTooltip": "Drime Cloud - 20GB bezmaksas droša mākoņkrātuve ar REST API",
+      "jottacloudDesc": "Norvēģu mākonis (5GB bezmaksas)",
+      "jottacloudTooltip": "Jottacloud - GDPR saderīga norvēģu mākoņkrātuve ar 5GB bezmaksas"
     },
     "shortcuts": {
       "title": "Tastatūras saīsnes",
@@ -2567,13 +2577,17 @@
       "refresh": "Atsvaidzināt",
       "toggleTheme": "Pārslēgt motīvu",
       "devtools": "AeroTools",
-      "toggleDevtools": "Pārslēgt izstrādātāja rīkus",
-      "toggleEditor": "Pārslēgt redaktoru",
-      "toggleTerminal": "Pārslēgt termināli",
-      "toggleAgent": "Pārslēgt aģentu",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Redaktors",
+      "toggleTerminal": "Terminālis",
+      "toggleAgent": "Agent",
       "shortcuts": "Īsinājumtauštiņi",
       "support": "Atbalstīt izstrādi",
-      "about": "Par AeroFTP"
+      "about": "Par AeroFTP",
+      "selectAll": "Atlasīt visu",
+      "cut": "Izgriezt",
+      "copy": "Kopēt",
+      "paste": "Ielīmēt"
     },
     "activityPanel": {
       "awaitingCommands": "Gaida komandas...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Pārvaldiet instalētos spraudņus Plugins cilnē",
         "search": "Meklēt spraudņus...",
         "subtitle": "Atklājiet un instalējiet kopienas spraudņus priekš AeroAgent",
-        "title": "Spraudņu pārlūks"
+        "title": "Spraudņu pārlūks",
+        "tab": {
+          "browse": "Pārlūkot",
+          "installed": "Instalēti"
+        }
       }
     }
   }

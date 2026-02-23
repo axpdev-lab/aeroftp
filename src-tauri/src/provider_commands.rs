@@ -98,6 +98,7 @@ impl ProviderConnectionParams {
             "filen" => ProviderType::Filen,
             "internxt" => ProviderType::Internxt,
             "kdrive" => ProviderType::KDrive,
+            "jottacloud" => ProviderType::Jottacloud,
             "drime" => ProviderType::DrimeCloud,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
@@ -206,8 +207,17 @@ impl ProviderConnectionParams {
             "gateway.internxt.com".to_string()
         } else if provider_type == ProviderType::KDrive {
             "api.infomaniak.com".to_string()
+        } else if provider_type == ProviderType::Jottacloud {
+            "jfs.jottacloud.com".to_string()
         } else if provider_type == ProviderType::DrimeCloud {
             "app.drime.cloud".to_string()
+        } else if provider_type == ProviderType::Azure {
+            // Azure constructs endpoint from account_name if server is empty
+            if self.server.is_empty() {
+                String::new()
+            } else {
+                self.server.clone()
+            }
         } else {
             self.server.clone()
         };
@@ -248,7 +258,7 @@ pub async fn provider_connect(
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
     info!("Connecting to {} provider: {}", params.protocol, params.server);
-    
+
     let config = params.to_provider_config()?;
     
     // Create provider using factory
@@ -1071,6 +1081,7 @@ pub async fn oauth2_full_auth(
     let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
         "box" => 9484,
         "dropbox" => 17548,
+        "onedrive" | "microsoft" => 27154,
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => 18765,
         _ => 0,
     };
@@ -2183,6 +2194,300 @@ pub async fn zoho_restore_from_trash(
         zoho.restore_from_trash_batch(&file_ids).await
             .map_err(|e| format!("Restore batch failed: {}", e))
     }
+}
+
+// ── Jottacloud Trash Operations ───────────────────────────────────────
+
+/// Move files to Jottacloud Trash (soft delete)
+#[tauri::command]
+pub async fn jottacloud_move_to_trash(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Jottacloud {
+        return Err("This operation is only available for Jottacloud".to_string());
+    }
+
+    let jotta = provider.as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
+
+    for path in &paths {
+        jotta.move_to_trash(path).await
+            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// List items in Jottacloud Trash
+#[tauri::command]
+pub async fn jottacloud_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Jottacloud {
+        return Err("This operation is only available for Jottacloud".to_string());
+    }
+
+    let jotta = provider.as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
+
+    jotta.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Restore files from Jottacloud Trash to their original location
+#[tauri::command]
+pub async fn jottacloud_restore_from_trash(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Jottacloud {
+        return Err("This operation is only available for Jottacloud".to_string());
+    }
+
+    let jotta = provider.as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
+
+    for path in &paths {
+        jotta.restore_from_trash(path).await
+            .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// Permanently delete files from Jottacloud Trash
+#[tauri::command]
+pub async fn jottacloud_permanent_delete(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Jottacloud {
+        return Err("This operation is only available for Jottacloud".to_string());
+    }
+
+    let jotta = provider.as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
+
+    for path in &paths {
+        jotta.permanent_delete_from_trash(path).await
+            .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+// ── MEGA Trash Operations ────────────────────────────────────────────
+
+/// Move files to MEGA Rubbish Bin (soft delete)
+#[tauri::command]
+pub async fn mega_move_to_trash(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Mega {
+        return Err("This operation is only available for MEGA".to_string());
+    }
+
+    let mega = provider.as_any_mut()
+        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
+
+    for path in &paths {
+        mega.move_to_trash(path).await
+            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// List items in MEGA Rubbish Bin
+#[tauri::command]
+pub async fn mega_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Mega {
+        return Err("This operation is only available for MEGA".to_string());
+    }
+
+    let mega = provider.as_any_mut()
+        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
+
+    mega.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Restore files from MEGA Rubbish Bin to cloud root
+#[tauri::command]
+pub async fn mega_restore_from_trash(
+    state: State<'_, ProviderState>,
+    filenames: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Mega {
+        return Err("This operation is only available for MEGA".to_string());
+    }
+
+    let mega = provider.as_any_mut()
+        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
+
+    for filename in &filenames {
+        mega.restore_from_trash(filename, "/").await
+            .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
+    }
+    Ok(())
+}
+
+/// Permanently delete files from MEGA Rubbish Bin
+#[tauri::command]
+pub async fn mega_permanent_delete(
+    state: State<'_, ProviderState>,
+    filenames: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Mega {
+        return Err("This operation is only available for MEGA".to_string());
+    }
+
+    let mega = provider.as_any_mut()
+        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
+
+    for filename in &filenames {
+        mega.permanent_delete_from_trash(filename).await
+            .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
+    }
+    Ok(())
+}
+
+// ── Google Drive Trash Operations ────────────────────────────────────
+
+/// Move files to Google Drive Trash (soft delete)
+#[tauri::command]
+pub async fn google_drive_trash_file(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("This operation is only available for Google Drive".to_string());
+    }
+
+    let gdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
+
+    for path in &paths {
+        gdrive.trash_file(path).await
+            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// List items in Google Drive Trash
+#[tauri::command]
+pub async fn google_drive_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("This operation is only available for Google Drive".to_string());
+    }
+
+    let gdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
+
+    gdrive.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Restore files from Google Drive Trash
+#[tauri::command]
+pub async fn google_drive_restore_from_trash(
+    state: State<'_, ProviderState>,
+    file_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("This operation is only available for Google Drive".to_string());
+    }
+
+    let gdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
+
+    for file_id in &file_ids {
+        gdrive.restore_from_trash(file_id).await
+            .map_err(|e| format!("Restore failed for {}: {}", file_id, e))?;
+    }
+    Ok(())
+}
+
+/// Permanently delete files from Google Drive Trash
+#[tauri::command]
+pub async fn google_drive_permanent_delete(
+    state: State<'_, ProviderState>,
+    file_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("This operation is only available for Google Drive".to_string());
+    }
+
+    let gdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
+
+    for file_id in &file_ids {
+        gdrive.permanent_delete(file_id).await
+            .map_err(|e| format!("Permanent delete failed for {}: {}", file_id, e))?;
+    }
+    Ok(())
 }
 
 /// Check if 4shared tokens exist

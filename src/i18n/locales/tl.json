@@ -199,7 +199,13 @@
       "connect": "Kumonekta",
       "drimeToken": "API Token",
       "drimeTokenPlaceholder": "I-paste ang iyong Drime API token dito",
-      "drimeTokenHelp": "Gumawa ng token sa app.drime.cloud → Mga Setting ng Account → Mga Developer"
+      "drimeTokenHelp": "Gumawa ng token sa app.drime.cloud → Mga Setting ng Account → Mga Developer",
+      "azureAccessKey": "Access Key",
+      "azureAccountName": "Pangalan ng Account",
+      "azureEndpoint": "Endpoint (opsyonal)",
+      "jottacloudToken": "Token sa pag-login",
+      "jottacloudTokenPlaceholder": "I-paste dito ang iyong Jottacloud login token",
+      "jottacloudTokenHelp": "Lumikha sa jottacloud.com → Settings → Security. Ang token ay isang pagkakataon lamang at mabilis na nag-expire — idiin ito agad pagkatapos makuha"
     },
     "browser": {
       "remote": "Remote",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Nabigong kumonekta",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sarado ang sesyon — nadiskonekta mula sa {server}",
-      "disconnectedAllClosed": "Sarado ang lahat ng sesyon — nadiskonekta mula sa {server}"
+      "disconnectedAllClosed": "Sarado ang lahat ng sesyon — nadiskonekta mula sa {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Cloud storage mula sa Switzerland",
       "kdriveTooltip": "kDrive ng Infomaniak - cloud storage mula sa Switzerland na may libreng 15GB",
       "drimeDesc": "Ligtas na Cloud Storage",
-      "drimeTooltip": "Drime Cloud - 20GB libreng ligtas na cloud storage na may REST API"
+      "drimeTooltip": "Drime Cloud - 20GB libreng ligtas na cloud storage na may REST API",
+      "jottacloudDesc": "Norwegian Cloud (5GB libre)",
+      "jottacloudTooltip": "Jottacloud - GDPR-compliant na Norwegian cloud storage na may 5GB libre"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -2567,13 +2577,17 @@
       "refresh": "I-refresh",
       "toggleTheme": "Palitan ang Tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "I-toggle ang DevTools",
-      "toggleEditor": "I-toggle ang Editor",
-      "toggleTerminal": "I-toggle ang Terminal",
-      "toggleAgent": "I-toggle ang Agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Mga Keyboard Shortcut",
       "support": "Suportahan ang Development",
-      "about": "Tungkol sa AeroFTP"
+      "about": "Tungkol sa AeroFTP",
+      "selectAll": "Piliin Lahat",
+      "cut": "Gupitin",
+      "copy": "Kopyahin",
+      "paste": "Idikit"
     },
     "activityPanel": {
       "awaitingCommands": "Naghihintay ng mga command...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "Pamahalaan ang mga naka-install na plugin sa tab na Plugins",
         "search": "Maghanap ng mga plugin...",
         "subtitle": "Tumuklas at mag-install ng mga community plugin para sa AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Mag-browse",
+          "installed": "Naka-install"
+        }
       }
     },
     "commandPalette.category.ai": {},

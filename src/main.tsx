@@ -21,14 +21,14 @@ if ('requestIdleCallback' in window) {
 // Render the app with i18n, activity log, and icon theme support
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <I18nProvider>
+    <I18nProvider>
+      <ErrorBoundary>
         <ActivityLogProvider>
           <IconThemeProvider>
             <App />
           </IconThemeProvider>
         </ActivityLogProvider>
-      </I18nProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </I18nProvider>
   </React.StrictMode>
 );

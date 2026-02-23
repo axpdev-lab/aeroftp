@@ -211,7 +211,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
       aria-modal="true"
     >
       <div
-        className="bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 w-[80vw] max-w-4xl h-[80vh] max-h-[800px] flex flex-col overflow-hidden"
+        className="bg-gray-900 rounded-xl shadow-2xl border border-gray-700/50 w-[80vw] max-w-4xl h-[80vh] max-h-[800px] flex flex-col overflow-hidden animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

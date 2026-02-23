@@ -18,7 +18,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, DrimeCloudLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -130,6 +130,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-amber-600',
         tooltip: t('protocol.s3Tooltip'),
     },
+    {
+        type: 'azure',
+        name: 'Azure Blob',
+        icon: <AzureLogo size={18} />,
+        description: t('protocol.azureDesc'),
+        defaultPort: 443,
+        badge: 'HMAC',
+        color: 'text-blue-500',
+        tooltip: t('protocol.azureTooltip'),
+        disabled: !import.meta.env.DEV,
+    },
     // Cloud Storage Providers (AeroCloud FIRST!)
     {
         type: 'aerocloud',
@@ -225,10 +236,21 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <KDriveLogo size={18} />,
         description: t('protocol.kdriveDesc'),
         defaultPort: 443,
-        badge: 'Swiss',
+        badge: 'TLS',
         color: 'text-blue-500',
         isCloudStorage: true,
         tooltip: t('protocol.kdriveTooltip'),
+    },
+    {
+        type: 'jottacloud',
+        name: 'Jottacloud',
+        icon: <JottacloudLogo size={18} />,
+        description: t('protocol.jottacloudDesc'),
+        defaultPort: 443,
+        badge: 'TLS',
+        color: 'text-purple-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.jottacloudTooltip'),
     },
     {
         type: 'box',
@@ -259,7 +281,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <DrimeCloudLogo size={18} />,
         description: t('protocol.drimeDesc'),
         defaultPort: 443,
-        badge: '20GB',
+        badge: 'TLS',
         color: 'text-green-500',
         isCloudStorage: true,
         tooltip: t('protocol.drimeTooltip'),
@@ -277,18 +299,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.pcloudTooltip'),
         disabled: !import.meta.env.DEV,
     },
-    {
-        type: 'azure',
-        name: 'Azure Blob',
-        icon: <AzureLogo size={18} />,
-        description: t('protocol.azureDesc'),
-        defaultPort: 443,
-        badge: 'HMAC',
-        color: 'text-blue-500',
-        isCloudStorage: true,
-        tooltip: t('protocol.azureTooltip'),
-        disabled: !import.meta.env.DEV,
-    },
 ];
 
 // Temporary fallback for getProtocolInfo when called outside component (no t function available)
@@ -298,6 +308,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, description: 'SSH File Transfer', defaultPort: 22, badge: 'SSH', color: 'text-emerald-500', tooltip: 'SFTP over SSH' },
     { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
     { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
+    { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal FTP-based cloud', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any FTP server into your personal cloud' },
     { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Connect with Google Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
     { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Connect with Dropbox Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
@@ -306,12 +317,12 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Connect with Box Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
-    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Swiss Cloud Storage', defaultPort: 443, badge: 'Swiss', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive' },
-    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: '20GB', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud 20GB', disabled: !import.meta.env.DEV },
-    { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'Connect with pCloud Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
+    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Swiss Cloud Storage', defaultPort: 443, badge: 'TLS', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
+    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5GB free)', defaultPort: 443, badge: 'TLS', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '15 GB Free Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Team Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
-    { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
+    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: 'TLS', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
+    { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'Connect with pCloud Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -960,6 +971,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         filen: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
         internxt: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         kdrive: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+        jottacloud: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
         drime: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',

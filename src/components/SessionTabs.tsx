@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, DrimeCloudLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 
 interface CloudTabState {
@@ -45,7 +45,7 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'drime'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -120,6 +120,8 @@ const ProviderIcon: React.FC<{
             return <InternxtLogo size={size} />;
         case 'kdrive':
             return <KDriveLogo size={size} />;
+        case 'jottacloud':
+            return <JottacloudLogo size={size} />;
         case 'drime':
             return <DrimeCloudLogo size={size} />;
         case 'sftp':
@@ -148,6 +150,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'zohoworkdrive': return 'text-red-500';
         case 'internxt': return 'text-blue-600';
         case 'kdrive': return 'text-blue-500';
+        case 'jottacloud': return 'text-purple-500';
         case 'drime': return 'text-green-500';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)

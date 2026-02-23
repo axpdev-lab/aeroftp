@@ -199,7 +199,13 @@
       "connect": "Připojit",
       "drimeToken": "API token",
       "drimeTokenPlaceholder": "Vložte sem svůj Drime API token",
-      "drimeTokenHelp": "Vygenerujte token na app.drime.cloud → Nastavení účtu → Vývojáři"
+      "drimeTokenHelp": "Vygenerujte token na app.drime.cloud → Nastavení účtu → Vývojáři",
+      "azureAccessKey": "Přístupový klíč",
+      "azureAccountName": "Název účtu",
+      "azureEndpoint": "Endpoint (volitelné)",
+      "jottacloudToken": "Přihlašovací token",
+      "jottacloudTokenPlaceholder": "Vložte svůj přihlašovací token Jottacloud zde",
+      "jottacloudTokenHelp": "Vygenerujte na jottacloud.com → Nastavení → Zabezpečení. Token je jednorázový a rychle vyprší — vložte ho okamžitě po zkopírování"
     },
     "browser": {
       "remote": "Vzdálený",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Připojení selhalo",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Relace ukončena — odpojeno od {server}",
-      "disconnectedAllClosed": "Všechny relace ukončeny — odpojeno od {server}"
+      "disconnectedAllClosed": "Všechny relace ukončeny — odpojeno od {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Švýcarské cloudové úložiště",
       "kdriveTooltip": "kDrive od Infomaniak - Cloudové úložiště hostované ve Švýcarsku s 15GB zdarma",
       "drimeDesc": "Bezpečné cloudové úložiště",
-      "drimeTooltip": "Drime Cloud - 20GB bezplatné zabezpečené cloudové úložiště s REST API"
+      "drimeTooltip": "Drime Cloud - 20GB bezplatné zabezpečené cloudové úložiště s REST API",
+      "jottacloudDesc": "Norský cloud (5GB zdarma)",
+      "jottacloudTooltip": "Jottacloud - Norské cloudové úložiště kompatibilní s GDPR s 5GB zdarma"
     },
     "shortcuts": {
       "title": "Klávesové zkratky",
@@ -2567,13 +2577,17 @@
       "refresh": "Obnovit",
       "toggleTheme": "Zmenit motiv",
       "devtools": "AeroTools",
-      "toggleDevtools": "Vyvojarske nastroje",
+      "toggleDevtools": "AeroTools",
       "toggleEditor": "Editor",
-      "toggleTerminal": "Terminal",
+      "toggleTerminal": "Terminál",
       "toggleAgent": "Agent",
       "shortcuts": "Klavesove zkratky",
       "support": "Podporit vyvoj",
-      "about": "O AeroFTP"
+      "about": "O AeroFTP",
+      "selectAll": "Vybrat vše",
+      "cut": "Vyjmout",
+      "copy": "Kopírovat",
+      "paste": "Vložit"
     },
     "activityPanel": {
       "awaitingCommands": "Čekání na příkazy...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Spravujte nainstalované plugins na kartě Plugins",
         "search": "Hledat plugins...",
         "subtitle": "Objevte a nainstalujte komunitní plugins pro AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Procházet",
+          "installed": "Nainstalované"
+        }
       }
     }
   }

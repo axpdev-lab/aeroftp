@@ -14,10 +14,10 @@ use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::{
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+    FileVersion, ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
     sanitize_api_error, DrimeCloudConfig,
 };
 
@@ -71,15 +71,82 @@ struct DrimeListResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct DrimeStorageResponse {
-    /// Bedrive returns "used" in bytes
-    #[serde(alias = "usedSpace")]
-    used: Option<u64>,
-    /// Bedrive returns "total" or "availableSpace" in bytes
-    #[serde(alias = "availableSpace")]
-    total: Option<u64>,
+struct DrimeUser {
+    id: Option<u64>,
     #[allow(dead_code)]
-    percentage: Option<f64>,
+    email: Option<String>,
+    #[allow(dead_code)]
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeUserResponse {
+    user: Option<DrimeUser>,
+}
+
+// ─── S3 Multipart Upload Response Types ─────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct DrimeMultipartCreateResponse {
+    key: Option<String>,
+    #[serde(rename = "uploadId")]
+    upload_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeSignedUrl {
+    #[serde(rename = "partNumber")]
+    part_number: u32,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeSignPartUrlsResponse {
+    urls: Option<Vec<DrimeSignedUrl>>,
+}
+
+// ─── Share Link Response ─────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct DrimeShareLink {
+    hash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeShareLinkResponse {
+    link: Option<DrimeShareLink>,
+}
+
+// ─── File Backup/Version Response ───────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct DrimeBackupEntry {
+    id: Option<serde_json::Value>,
+    name: Option<String>,
+    file_size: Option<u64>,
+    created_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeBackupPagination {
+    data: Option<Vec<DrimeBackupEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeBackupResponse {
+    pagination: Option<DrimeBackupPagination>,
+}
+
+// ─── Storage Response ───────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct DrimeStorageResponse {
+    /// Storage consumed in bytes
+    #[serde(default)]
+    used: Option<u64>,
+    /// Remaining capacity in bytes (API field: "available")
+    #[serde(default)]
+    available: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,6 +171,12 @@ struct DrimeFileResponse {
     id: Option<serde_json::Value>,
     #[allow(dead_code)]
     name: Option<String>,
+}
+
+/// Response from /file-entries/duplicate: { entries: [...], status: "success" }
+#[derive(Debug, Deserialize)]
+struct DrimeEntriesResponse {
+    entries: Option<Vec<DrimeFileResponse>>,
 }
 
 impl DrimeFileResponse {
@@ -132,6 +205,8 @@ pub struct DrimeCloudProvider {
     current_path: String,
     current_folder_id: String,
     dir_cache: HashMap<String, DirInfo>,
+    /// Authenticated user ID (from /cli/loggedUser)
+    user_id: Option<u64>,
 }
 
 impl DrimeCloudProvider {
@@ -151,6 +226,7 @@ impl DrimeCloudProvider {
             current_path: "/".to_string(),
             current_folder_id: String::new(), // root has no ID, empty = root
             dir_cache: HashMap::new(),
+            user_id: None,
         }
     }
 
@@ -229,9 +305,9 @@ impl DrimeCloudProvider {
 
             loop {
                 let url = if current_id.is_empty() {
-                    format!("{}?page={}&perPage=100&type=folder", Self::api_url("/file-entries"), page)
+                    format!("{}?page={}&perPage=100&workspaceId=0&type=folder", Self::api_url("/drive/file-entries"), page)
                 } else {
-                    format!("{}?page={}&perPage=100&parentId={}", Self::api_url("/file-entries"), page, current_id)
+                    format!("{}?page={}&perPage=100&workspaceId=0&parentIds[]={}", Self::api_url("/drive/file-entries"), page, current_id)
                 };
 
                 let resp = self.client.get(&url)
@@ -289,9 +365,9 @@ impl DrimeCloudProvider {
 
         loop {
             let url = if folder_id.is_empty() {
-                format!("{}?page={}&perPage=100", Self::api_url("/file-entries"), page)
+                format!("{}?page={}&perPage=100&workspaceId=0", Self::api_url("/drive/file-entries"), page)
             } else {
-                format!("{}?page={}&perPage=100&parentId={}", Self::api_url("/file-entries"), page, folder_id)
+                format!("{}?page={}&perPage=100&workspaceId=0&parentIds[]={}", Self::api_url("/drive/file-entries"), page, folder_id)
             };
 
             let resp = self.client.get(&url)
@@ -349,6 +425,242 @@ impl DrimeCloudProvider {
         }
         None
     }
+
+    /// S3 multipart upload for files >= 5 MB
+    /// Flow: create → sign URLs → PUT chunks → complete → register entry
+    async fn upload_multipart(
+        &self,
+        data: Vec<u8>,
+        filename: &str,
+        parent_id: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        const CHUNK_SIZE: usize = 5 * 1024 * 1024; // 5 MB per Drime API spec
+        let file_size = data.len() as u64;
+        let total_parts = data.len().div_ceil(CHUNK_SIZE) as u32;
+
+        // Infer MIME and extension from filename
+        let extension = filename.rsplit('.').next().unwrap_or("bin").to_string();
+        let mime = mime_guess::from_ext(&extension)
+            .first_or_octet_stream()
+            .to_string();
+
+        drime_log(&format!(
+            "Multipart upload: {} ({} bytes, {} parts)", filename, file_size, total_parts
+        ));
+
+        // Step 1: Create multipart upload
+        let create_body = serde_json::json!({
+            "filename": filename,
+            "mime": mime,
+            "size": file_size,
+            "extension": extension,
+            "workspaceId": 0
+        });
+        if !parent_id.is_empty() {
+            // parentId added below via mutable json
+        }
+        let mut create_json: serde_json::Value = create_body;
+        if !parent_id.is_empty() {
+            create_json["parentId"] = serde_json::json!(parent_id.parse::<i64>().unwrap_or(0));
+        }
+
+        let resp = self.client.post(Self::api_url("/s3/multipart/create"))
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/json")
+            .body(create_json.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Multipart create failed: {}", sanitize_api_error(&body)
+            )));
+        }
+
+        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse multipart create response: {}", e))
+        })?;
+
+        let key = create_resp.key.ok_or_else(|| {
+            ProviderError::ServerError("Missing 'key' in multipart create response".to_string())
+        })?;
+        let upload_id = create_resp.upload_id.ok_or_else(|| {
+            ProviderError::ServerError("Missing 'uploadId' in multipart create response".to_string())
+        })?;
+
+        drime_log(&format!("Multipart created: uploadId={}", &upload_id[..20.min(upload_id.len())]));
+
+        // Step 2: Get signed URLs for all parts
+        let part_numbers: Vec<u32> = (1..=total_parts).collect();
+        let sign_body = serde_json::json!({
+            "key": key,
+            "uploadId": upload_id,
+            "partNumbers": part_numbers
+        });
+
+        let resp = self.client.post(Self::api_url("/s3/multipart/batch-sign-part-urls"))
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/json")
+            .body(sign_body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Sign part URLs failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Sign part URLs failed: {}", sanitize_api_error(&body)
+            )));
+        }
+
+        let sign_resp: DrimeSignPartUrlsResponse = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse sign URLs response: {}", e))
+        })?;
+
+        let signed_urls = sign_resp.urls.ok_or_else(|| {
+            ProviderError::ServerError("Missing 'urls' in sign response".to_string())
+        })?;
+
+        // Step 3: Upload each chunk to its signed URL
+        let mut completed_parts: Vec<serde_json::Value> = Vec::new();
+        let mut bytes_uploaded: u64 = 0;
+
+        for signed in &signed_urls {
+            let part_num = signed.part_number as usize;
+            let start = (part_num - 1) * CHUNK_SIZE;
+            let end = (start + CHUNK_SIZE).min(data.len());
+            let chunk = &data[start..end];
+
+            let resp = self.client.put(&signed.url)
+                .body(chunk.to_vec())
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!(
+                    "Upload part {} failed: {}", part_num, e
+                )))?;
+
+            if !resp.status().is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Upload part {} failed: {}", part_num, sanitize_api_error(&body)
+                )));
+            }
+
+            // Extract ETag from response headers (with quotes)
+            let etag = resp.headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+
+            completed_parts.push(serde_json::json!({
+                "PartNumber": signed.part_number,
+                "ETag": etag
+            }));
+
+            bytes_uploaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(bytes_uploaded, file_size);
+            }
+        }
+
+        // Step 4: Complete multipart upload
+        let complete_body = serde_json::json!({
+            "key": key,
+            "uploadId": upload_id,
+            "parts": completed_parts
+        });
+
+        let resp = self.client.post(Self::api_url("/s3/multipart/complete"))
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/json")
+            .body(complete_body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Multipart complete failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Multipart complete failed: {}", sanitize_api_error(&body)
+            )));
+        }
+
+        // Step 5: Register file entry in Drime
+        let s3_filename = key.rsplit('/').next().unwrap_or(&key);
+        let mut entry_body = serde_json::json!({
+            "filename": s3_filename,
+            "size": file_size,
+            "clientName": filename,
+            "clientMime": mime,
+            "clientExtension": extension,
+            "workspaceId": 0
+        });
+        if !parent_id.is_empty() {
+            entry_body["parentId"] = serde_json::json!(parent_id.parse::<i64>().unwrap_or(0));
+        }
+
+        let resp = self.client.post(Self::api_url("/s3/entries"))
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/json")
+            .body(entry_body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("S3 entry registration failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "S3 entry registration failed: {}", sanitize_api_error(&body)
+            )));
+        }
+
+        drime_log(&format!("Multipart upload complete: {} ({} bytes, {} parts)", filename, file_size, total_parts));
+        Ok(())
+    }
+
+    /// Execute a request with exponential backoff on 429 (rate limit)
+    async fn request_with_retry(
+        &self,
+        build_request: impl Fn() -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ProviderError> {
+        const MAX_RETRIES: u32 = 3;
+        let mut delay = std::time::Duration::from_secs(1);
+
+        for attempt in 0..=MAX_RETRIES {
+            let resp = build_request()
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))?;
+
+            if resp.status().as_u16() == 429 {
+                if attempt < MAX_RETRIES {
+                    // Use Retry-After header if present, otherwise exponential backoff
+                    let wait = resp.headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .map(std::time::Duration::from_secs)
+                        .unwrap_or(delay);
+
+                    warn!("[DRIME] Rate limited (429), retrying in {:?} (attempt {}/{})", wait, attempt + 1, MAX_RETRIES);
+                    tokio::time::sleep(wait).await;
+                    delay *= 2; // exponential backoff: 1s, 2s, 4s
+                    continue;
+                }
+                return Err(ProviderError::ServerError(
+                    "Rate limited by Drime Cloud API (429). Please try again later.".to_string()
+                ));
+            }
+
+            return Ok(resp);
+        }
+
+        unreachable!()
+    }
 }
 
 // ─── StorageProvider Implementation ──────────────────────────────────────
@@ -368,8 +680,8 @@ impl StorageProvider for DrimeCloudProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         drime_log("Connecting to Drime Cloud");
 
-        // Validate token by listing root file-entries (most reliable Bedrive endpoint)
-        let url = format!("{}?page=1&perPage=1", Self::api_url("/file-entries"));
+        // Validate token via /cli/loggedUser (purpose-built for auth check + returns user info)
+        let url = Self::api_url("/cli/loggedUser");
         let resp = self.client.get(&url)
             .header(AUTHORIZATION, self.auth_header())
             .send()
@@ -385,14 +697,13 @@ impl StorageProvider for DrimeCloudProvider {
         })?;
         drime_log(&format!("Auth check response: status={}, len={}", status, body.len()));
 
-        // Bedrive returns HTML for non-existent routes — detect SPA catch-all
+        // Detect HTML response (SPA catch-all for non-existent routes)
         if body.starts_with("<!") || body.starts_with("<html") {
             return Err(ProviderError::ConnectionFailed(
                 "Server returned HTML instead of JSON. The API might not be available.".to_string()
             ));
         }
 
-        // Bedrive returns "Unauthenticated." for invalid tokens
         if status.as_u16() == 401 || body.contains("Unauthenticated") {
             return Err(ProviderError::AuthenticationFailed(
                 "Invalid API token. Generate one at app.drime.cloud → Account Settings → Developers".to_string()
@@ -403,6 +714,14 @@ impl StorageProvider for DrimeCloudProvider {
             return Err(ProviderError::ConnectionFailed(format!(
                 "Drime Cloud connection failed ({}): {}", status, sanitize_api_error(&body)
             )));
+        }
+
+        // Extract user ID for folder tree operations
+        if let Ok(user_resp) = serde_json::from_str::<DrimeUserResponse>(&body) {
+            if let Some(user) = user_resp.user {
+                self.user_id = user.id;
+                drime_log(&format!("Authenticated as user_id={:?}", self.user_id));
+            }
         }
 
         // Initialize root
@@ -484,9 +803,9 @@ impl StorageProvider for DrimeCloudProvider {
 
         loop {
             let url = if folder_id.is_empty() {
-                format!("{}?page={}&perPage=50", Self::api_url("/file-entries"), page)
+                format!("{}?page={}&perPage=50&workspaceId=0", Self::api_url("/drive/file-entries"), page)
             } else {
-                format!("{}?page={}&perPage=50&parentId={}", Self::api_url("/file-entries"), page, folder_id)
+                format!("{}?page={}&perPage=50&workspaceId=0&parentIds[]={}", Self::api_url("/drive/file-entries"), page, folder_id)
             };
 
             let resp = self.client.get(&url)
@@ -652,6 +971,8 @@ impl StorageProvider for DrimeCloudProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        const MULTIPART_THRESHOLD: u64 = 5 * 1024 * 1024; // 5 MB
+
         let resolved = self.resolve_path(remote_path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
@@ -662,12 +983,14 @@ impl StorageProvider for DrimeCloudProvider {
         let file_size = data.len() as u64;
         drime_log(&format!("Uploading {} ({} bytes) to folder '{}'", filename, file_size, parent_id));
 
-        // Preemptive delete if file already exists
+        // Delete existing file before overwrite
         if let Some((existing_id, _, _)) = self.find_file_in_folder(&parent_id, filename).await? {
             drime_log(&format!("File {} exists (id={}), deleting before overwrite", filename, existing_id));
-            let del_url = Self::api_url(&format!("/file-entries/{}", existing_id));
-            let _ = self.client.delete(&del_url)
+            let del_body = serde_json::json!({ "entryIds": [existing_id.parse::<i64>().unwrap_or(0)] });
+            let _ = self.client.post(Self::api_url("/file-entries/delete"))
                 .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_TYPE, "application/json")
+                .body(del_body.to_string())
                 .send()
                 .await;
         }
@@ -676,38 +999,41 @@ impl StorageProvider for DrimeCloudProvider {
             cb(0, file_size);
         }
 
-        // Upload via multipart POST (Bedrive)
-        let mut form = reqwest::multipart::Form::new();
+        // Route by file size: < 5MB direct upload, >= 5MB S3 multipart
+        if file_size >= MULTIPART_THRESHOLD {
+            self.upload_multipart(data, filename, &parent_id, on_progress).await?;
+        } else {
+            // Direct upload via multipart POST
+            let mut form = reqwest::multipart::Form::new();
+            if !parent_id.is_empty() {
+                form = form.text("parentId", parent_id.clone());
+            }
+            form = form.text("workspaceId", "0");
 
-        // Add parentId if not root
-        if !parent_id.is_empty() {
-            form = form.text("parentId", parent_id.clone());
-        }
+            let part = reqwest::multipart::Part::bytes(data)
+                .file_name(filename.to_string())
+                .mime_str("application/octet-stream")
+                .map_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
+            form = form.part("file", part);
 
-        let part = reqwest::multipart::Part::bytes(data)
-            .file_name(filename.to_string())
-            .mime_str("application/octet-stream")
-            .map_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
-        form = form.part("file", part);
+            let resp = self.client.post(Self::api_url("/uploads"))
+                .header(AUTHORIZATION, self.auth_header())
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Upload request failed: {}", e)))?;
 
-        let url = Self::api_url("/uploads");
-        let resp = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Upload request failed: {}", e)))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Upload failed ({}): {}", status, sanitize_api_error(&body)
+                )));
+            }
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Upload failed ({}): {}", status, sanitize_api_error(&body)
-            )));
-        }
-
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
+            if let Some(ref cb) = on_progress {
+                cb(file_size, file_size);
+            }
         }
 
         drime_log(&format!("Uploaded {} successfully", filename));
@@ -732,7 +1058,7 @@ impl StorageProvider for DrimeCloudProvider {
             })
         };
 
-        let url = Self::api_url("/folders");
+        let url = Self::api_url("/folders?workspaceId=0");
         let resp = self.client.post(&url)
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_TYPE, "application/json")
@@ -769,9 +1095,12 @@ impl StorageProvider for DrimeCloudProvider {
 
         drime_log(&format!("Deleting {} (id={})", filename, file_id));
 
-        let url = Self::api_url(&format!("/file-entries/{}", file_id));
-        let resp = self.client.delete(&url)
+        // Batch delete endpoint (moves to trash by default)
+        let body = serde_json::json!({ "entryIds": [file_id.parse::<i64>().unwrap_or(0)] });
+        let resp = self.client.post(Self::api_url("/file-entries/delete"))
             .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Delete failed: {}", e)))?;
@@ -784,9 +1113,7 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        // Remove from cache if directory
         self.dir_cache.remove(&resolved);
-
         Ok(())
     }
 
@@ -794,33 +1121,68 @@ impl StorageProvider for DrimeCloudProvider {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
         let (from_parent, from_name) = Self::split_path(&resolved_from);
-        let (_to_parent, to_name) = Self::split_path(&resolved_to);
+        let (to_parent, to_name) = Self::split_path(&resolved_to);
         let from_parent_id = self.resolve_folder_id(from_parent).await?;
 
         let (file_id, _, _) = self.find_file_in_folder(&from_parent_id, from_name).await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", from_name)))?;
 
-        drime_log(&format!("Renaming {} → {} (id={})", from_name, to_name, file_id));
+        let file_id_num = file_id.parse::<i64>().unwrap_or(0);
 
-        // Bedrive API: PUT /file-entries/{id} with {name}
-        let url = Self::api_url(&format!("/file-entries/{}", file_id));
-        let resp = self.client.put(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, "application/json")
-            .body(serde_json::json!({ "name": to_name }).to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Rename failed: {}", e)))?;
+        // Cross-folder move: use /file-entries/move first
+        if from_parent != to_parent {
+            let to_parent_id = self.resolve_folder_id(to_parent).await?;
+            drime_log(&format!("Moving {} to folder '{}'", from_name, to_parent_id));
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Rename failed ({}): {}", status, sanitize_api_error(&body)
-            )));
+            let dest_id: serde_json::Value = if to_parent_id.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!(to_parent_id.parse::<i64>().unwrap_or(0))
+            };
+
+            let move_body = serde_json::json!({
+                "entryIds": [file_id_num],
+                "destinationId": dest_id
+            });
+            let resp = self.client.post(Self::api_url("/file-entries/move?workspaceId=0"))
+                .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_TYPE, "application/json")
+                .body(move_body.to_string())
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Move failed: {}", e)))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Move failed ({}): {}", status, sanitize_api_error(&body)
+                )));
+            }
         }
 
-        // Update cache
+        // Rename if name changed
+        if from_name != to_name {
+            drime_log(&format!("Renaming {} → {} (id={})", from_name, to_name, file_id));
+
+            let url = Self::api_url(&format!("/file-entries/{}?workspaceId=0", file_id));
+            let resp = self.client.put(&url)
+                .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_TYPE, "application/json")
+                .body(serde_json::json!({ "name": to_name }).to_string())
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(format!("Rename failed: {}", e)))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Rename failed ({}): {}", status, sanitize_api_error(&body)
+                )));
+            }
+        }
+
         self.dir_cache.remove(&resolved_from);
         Ok(())
     }
@@ -843,9 +1205,9 @@ impl StorageProvider for DrimeCloudProvider {
 
         loop {
             let url = if parent_id.is_empty() {
-                format!("{}?page={}&perPage=100", Self::api_url("/file-entries"), page)
+                format!("{}?page={}&perPage=100&workspaceId=0", Self::api_url("/drive/file-entries"), page)
             } else {
-                format!("{}?page={}&perPage=100&parentId={}", Self::api_url("/file-entries"), page, parent_id)
+                format!("{}?page={}&perPage=100&workspaceId=0&parentIds[]={}", Self::api_url("/drive/file-entries"), page, parent_id)
             };
 
             let resp = self.client.get(&url)
@@ -929,20 +1291,36 @@ impl StorageProvider for DrimeCloudProvider {
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let resolved_from = self.resolve_path(from);
+        let resolved_to = self.resolve_path(to);
         let (from_parent, from_name) = Self::split_path(&resolved_from);
+        let (to_parent, to_name) = Self::split_path(&resolved_to);
         let from_parent_id = self.resolve_folder_id(from_parent).await?;
 
         let (file_id, _, _) = self.find_file_in_folder(&from_parent_id, from_name).await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", from_name)))?;
 
-        drime_log(&format!("Duplicating {} (id={})", from_name, file_id));
+        let file_id_num = file_id.parse::<i64>().unwrap_or(0);
 
-        // Bedrive API: POST /file-entries/duplicate with entryIds array
-        let url = Self::api_url("/file-entries/duplicate");
-        let resp = self.client.post(&url)
+        // Resolve destination folder (may differ from source)
+        let to_parent_id = self.resolve_folder_id(to_parent).await?;
+
+        drime_log(&format!("Duplicating {} (id={}) → {}", from_name, file_id, resolved_to));
+
+        // POST /file-entries/duplicate with destinationId for direct cross-folder copy
+        let mut dup_body = serde_json::json!({ "entryIds": [file_id_num] });
+        if from_parent != to_parent {
+            let dest_id: serde_json::Value = if to_parent_id.is_empty() {
+                serde_json::Value::Null // root
+            } else {
+                serde_json::json!(to_parent_id.parse::<i64>().unwrap_or(0))
+            };
+            dup_body["destinationId"] = dest_id;
+        }
+
+        let resp = self.client.post(Self::api_url("/file-entries/duplicate?workspaceId=0"))
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_TYPE, "application/json")
-            .body(serde_json::json!({ "entryIds": [file_id.parse::<i64>().unwrap_or(0)] }).to_string())
+            .body(dup_body.to_string())
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Copy failed: {}", e)))?;
@@ -955,42 +1333,24 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        // If destination is different directory, move the duplicate
-        let resolved_to = self.resolve_path(to);
-        let (to_parent, to_name) = Self::split_path(&resolved_to);
-        let to_parent_id = self.resolve_folder_id(to_parent).await?;
+        // Rename if destination name differs from source
+        // API returns { entries: [...], status: "success" }
+        if from_name != to_name {
+            if let Ok(resp_data) = resp.json::<DrimeEntriesResponse>().await {
+                if let Some(first) = resp_data.entries.as_ref().and_then(|e| e.first()) {
+                    if let Some(dup_id) = first.id_str() {
+                        let rename_url = Self::api_url(&format!("/file-entries/{}?workspaceId=0", dup_id));
+                        let rename_resp = self.client.put(&rename_url)
+                            .header(AUTHORIZATION, self.auth_header())
+                            .header(CONTENT_TYPE, "application/json")
+                            .body(serde_json::json!({ "name": to_name }).to_string())
+                            .send()
+                            .await
+                            .map_err(|e| ProviderError::ConnectionFailed(format!("Rename after copy failed: {}", e)))?;
 
-        // Try to get the duplicated file info from response
-        if let Ok(Some(resp_data)) = resp.json::<DrimeFileResponse>().await.map(Some) {
-            if let Some(dup_id) = resp_data.id_str() {
-                // Move if different parent
-                if from_parent != to_parent {
-                    let move_url = Self::api_url("/file-entries/move");
-                    let dup_id_num = dup_id.parse::<i64>().unwrap_or(0);
-                    if let Err(e) = self.client.post(&move_url)
-                        .header(AUTHORIZATION, self.auth_header())
-                        .header(CONTENT_TYPE, "application/json")
-                        .body(serde_json::json!({
-                            "entryIds": [dup_id_num],
-                            "destinationId": to_parent_id
-                        }).to_string())
-                        .send()
-                        .await
-                    {
-                        drime_log(&format!("Warning: move after duplicate failed: {}", e));
-                    }
-                }
-                // Rename if needed
-                if from_name != to_name {
-                    let rename_url = Self::api_url(&format!("/file-entries/{}", dup_id));
-                    if let Err(e) = self.client.put(&rename_url)
-                        .header(AUTHORIZATION, self.auth_header())
-                        .header(CONTENT_TYPE, "application/json")
-                        .body(serde_json::json!({ "name": to_name }).to_string())
-                        .send()
-                        .await
-                    {
-                        drime_log(&format!("Warning: rename after duplicate failed: {}", e));
+                        if !rename_resp.status().is_success() {
+                            drime_log(&format!("Warning: rename after duplicate failed ({})", rename_resp.status()));
+                        }
                     }
                 }
             }
@@ -1000,12 +1360,11 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = Self::api_url("/user/space-usage");
-        let resp = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Quota request failed: {}", e)))?;
+        let url = Self::api_url("/user/space-usage?workspaceId=0");
+        let resp = self.request_with_retry(|| {
+            self.client.get(&url)
+                .header(AUTHORIZATION, self.auth_header())
+        }).await?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1019,12 +1378,222 @@ impl StorageProvider for DrimeCloudProvider {
         })?;
 
         let used = storage.used.unwrap_or(0);
-        let total = storage.total.unwrap_or(0);
+        let available = storage.available.unwrap_or(0);
 
         Ok(StorageInfo {
             used,
-            total,
-            free: total.saturating_sub(used),
+            total: used + available,
+            free: available,
         })
+    }
+
+    // ─── Search ─────────────────────────────────────────────────────────
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        drime_log(&format!("Searching for '{}'", pattern));
+
+        let mut entries = Vec::new();
+        let mut page = 1u32;
+
+        loop {
+            let url = format!(
+                "{}?workspaceId=0&query={}&page={}&perPage=50",
+                Self::api_url("/drive/file-entries"),
+                urlencoding::encode(pattern),
+                page
+            );
+
+            let resp = self.request_with_retry(|| {
+                self.client.get(&url)
+                    .header(AUTHORIZATION, self.auth_header())
+            }).await?;
+
+            if !resp.status().is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Search failed: {}", sanitize_api_error(&body)
+                )));
+            }
+
+            let list_resp: DrimeListResponse = resp.json().await.map_err(|e| {
+                ProviderError::ServerError(format!("Parse search response: {}", e))
+            })?;
+
+            let files = list_resp.data.unwrap_or_default();
+            let last_page = list_resp.last_page.unwrap_or(1);
+
+            for file in files {
+                let name = file.name.clone().unwrap_or_default();
+                let is_dir = file.file_type.as_deref() == Some("folder");
+
+                entries.push(RemoteEntry {
+                    name: name.clone(),
+                    path: format!("/{}", name), // search results don't include full path
+                    is_dir,
+                    size: file.size.unwrap_or(0),
+                    modified: file.updated_at.as_deref().and_then(Self::parse_date),
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    metadata: HashMap::new(),
+                    mime_type: file.mime_type,
+                });
+            }
+
+            if page >= last_page {
+                break;
+            }
+            page += 1;
+        }
+
+        drime_log(&format!("Search '{}' found {} results", pattern, entries.len()));
+        Ok(entries)
+    }
+
+    // ─── Share Links ────────────────────────────────────────────────────
+
+    fn supports_share_links(&self) -> bool {
+        true
+    }
+
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        expires_in_secs: Option<u64>,
+    ) -> Result<String, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _, _) = self.find_file_in_folder(&parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        drime_log(&format!("Creating share link for {} (id={})", filename, file_id));
+
+        let mut body = serde_json::json!({
+            "allow_download": true,
+            "allow_edit": false
+        });
+
+        if let Some(secs) = expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            body["expires_at"] = serde_json::json!(expires_at.to_rfc3339());
+        }
+
+        let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
+        let resp = self.request_with_retry(|| {
+            self.client.post(&url)
+                .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_TYPE, "application/json")
+                .body(body.to_string())
+        }).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let resp_body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Create share link failed ({}): {}", status, sanitize_api_error(&resp_body)
+            )));
+        }
+
+        let link_resp: DrimeShareLinkResponse = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse share link response: {}", e))
+        })?;
+
+        let hash = link_resp.link
+            .and_then(|l| l.hash)
+            .ok_or_else(|| ProviderError::ServerError("Missing hash in share link response".to_string()))?;
+
+        let share_url = format!("https://app.drime.cloud/drive/shares/{}", hash);
+        drime_log(&format!("Share link created: {}", share_url));
+        Ok(share_url)
+    }
+
+    async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _, _) = self.find_file_in_folder(&parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        drime_log(&format!("Removing share link for {} (id={})", filename, file_id));
+
+        let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
+        let resp = self.request_with_retry(|| {
+            self.client.delete(&url)
+                .header(AUTHORIZATION, self.auth_header())
+        }).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Remove share link failed ({}): {}", status, sanitize_api_error(&body)
+            )));
+        }
+
+        Ok(())
+    }
+
+    // ─── File Versions ──────────────────────────────────────────────────
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _, _) = self.find_file_in_folder(&parent_id, filename).await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        drime_log(&format!("Listing versions for {} (id={})", filename, file_id));
+
+        let url = format!("{}?file_id={}&perPage=50", Self::api_url("/file-backup"), file_id);
+        let resp = self.request_with_retry(|| {
+            self.client.get(&url)
+                .header(AUTHORIZATION, self.auth_header())
+        }).await?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "List versions failed: {}", sanitize_api_error(&body)
+            )));
+        }
+
+        let backup_resp: DrimeBackupResponse = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse backup response: {}", e))
+        })?;
+
+        let versions = backup_resp.pagination
+            .and_then(|p| p.data)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|entry| {
+                let id = entry.id.as_ref().map(|v| match v {
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                })?;
+                Some(FileVersion {
+                    id,
+                    modified: entry.created_at.as_deref().and_then(Self::parse_date),
+                    size: entry.file_size.unwrap_or(0),
+                    modified_by: entry.name,
+                })
+            })
+            .collect();
+
+        Ok(versions)
     }
 }

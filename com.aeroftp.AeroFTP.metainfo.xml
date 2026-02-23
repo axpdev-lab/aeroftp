@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.1" date="2026-02-23">
+      <description>
+        <p>VS Code-Style Titlebar and UX Polish: Unified VS Code-style titlebar with 4 custom dropdown menus (File, Edit, View, Help), theme-aware accent color hover, and migrated toolbar buttons. Native GTK menu bar eliminated. Cut/Copy/Paste in Edit menu with selection-aware disabled states. Consistent animate-scale-in animation on all 42 modal dialogs. Click-outside-to-close on AeroVault and Master Password dialogs. Default backgrounds updated (Waves for app, Isometric for lock screen). 147 provider security audit findings remediated across 8 cloud providers. ErrorBoundary and DebugPanel crash fixes. Settings button in titlebar. Simplified View menu labels in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.6.0" date="2026-02-22">
       <description>
         <p>AeroAgent Ecosystem, Cloud Expansion and Provider Tier 3: Two new cloud storage protocols (Internxt Drive with E2E encryption, Infomaniak kDrive) bringing the total to 18. Four new AI providers (AI21 Labs, Cerebras, SambaNova, Fireworks AI) bringing the total to 19. Command Palette (Ctrl+Shift+P) with 25 commands across 5 categories. Plugin ecosystem with GitHub-based registry, SHA-256 integrity verification, Plugin Browser UI with install/update/remove, and event-driven plugin hooks. Context menu AI actions for instant file analysis. AI Status Widget in StatusBar with real-time state indicator. Drag and drop files to AeroAgent chat for analysis. AUR package (aeroftp-bin) for Arch Linux. 19 new i18n keys translated in all 47 languages. 8 dependency updates.</p>

@@ -199,7 +199,13 @@
       "connect": "เชื่อมต่อ",
       "drimeToken": "โทเค็น API",
       "drimeTokenPlaceholder": "วางโทเค็น API Drime ของคุณที่นี่",
-      "drimeTokenHelp": "สร้างโทเค็นที่ app.drime.cloud → การตั้งค่าบัญชี → นักพัฒนา"
+      "drimeTokenHelp": "สร้างโทเค็นที่ app.drime.cloud → การตั้งค่าบัญชี → นักพัฒนา",
+      "azureAccessKey": "คีย์การเข้าถึง",
+      "azureAccountName": "ชื่อบัญชี",
+      "azureEndpoint": "Endpoint (ไม่บังคับ)",
+      "jottacloudToken": "โทเค็นเข้าสู่ระบบ",
+      "jottacloudTokenPlaceholder": "วางโทเค็นเข้าสู่ระบบ Jottacloud ของคุณที่นี่",
+      "jottacloudTokenHelp": "สร้างที่ jottacloud.com → Settings → Security โทเค็นใช้ได้เพียงครั้งเดียวและหมดอายุอย่างรวดเร็ว — วางมันทันทีหลังคัดลอก"
     },
     "browser": {
       "remote": "ระยะไกล",
@@ -904,7 +910,9 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "saveFailed": "บันทึกล้มเหลว",
       "disconnectedTabClosed": "ปิดเซสชันแล้ว — ยกเลิกการเชื่อมต่อจาก {server}",
-      "disconnectedAllClosed": "ปิดทุกเซสชันแล้ว — ยกเลิกการเชื่อมต่อจาก {server}"
+      "disconnectedAllClosed": "ปิดทุกเซสชันแล้ว — ยกเลิกการเชื่อมต่อจาก {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "พื้นที่เก็บข้อมูลบนคลาวด์สวิส",
       "kdriveTooltip": "kDrive โดย Infomaniak - พื้นที่เก็บข้อมูลบนคลาวด์สวิส ฟรี 15GB",
       "drimeDesc": "พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย",
-      "drimeTooltip": "Drime Cloud - พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย 20GB พร้อม REST API"
+      "drimeTooltip": "Drime Cloud - พื้นที่เก็บข้อมูลบนคลาวด์ที่ปลอดภัย 20GB พร้อม REST API",
+      "jottacloudDesc": "คลาวด์นอร์เวย์ (5GB ฟรี)",
+      "jottacloudTooltip": "Jottacloud - พื้นที่เก็บข้อมูลคลาวด์นอร์เวย์ที่สอดคล้องกับ GDPR พร้อม 5GB ฟรี"
     },
     "shortcuts": {
       "title": "แป้นพิมพ์ลัด",
@@ -2567,13 +2577,17 @@
       "refresh": "รีเฟรช",
       "toggleTheme": "สลับธีม",
       "devtools": "AeroTools",
-      "toggleDevtools": "สลับ DevTools",
-      "toggleEditor": "สลับตัวแก้ไข",
-      "toggleTerminal": "สลับเทอร์มินัล",
-      "toggleAgent": "สลับเอเจนต์",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "ตัวแก้ไข",
+      "toggleTerminal": "เทอร์มินัล",
+      "toggleAgent": "Agent",
       "shortcuts": "แป้นพิมพ์ลัด",
       "support": "สนับสนุนการพัฒนา",
-      "about": "เกี่ยวกับ AeroFTP"
+      "about": "เกี่ยวกับ AeroFTP",
+      "selectAll": "เลือกทั้งหมด",
+      "cut": "ตัด",
+      "copy": "คัดลอก",
+      "paste": "วาง"
     },
     "activityPanel": {
       "awaitingCommands": "รอคำสั่ง...",
@@ -3013,7 +3027,11 @@
         "manageInSettings": "จัดการปลั๊กอินที่ติดตั้งในแท็บ Plugins",
         "search": "ค้นหาปลั๊กอิน...",
         "subtitle": "ค้นพบและติดตั้งปลั๊กอินชุมชนสำหรับ AeroAgent",
-        "title": "เบราว์เซอร์ปลั๊กอิน"
+        "title": "เบราว์เซอร์ปลั๊กอิน",
+        "tab": {
+          "browse": "เรียกดู",
+          "installed": "ติดตั้งแล้ว"
+        }
       }
     }
   }

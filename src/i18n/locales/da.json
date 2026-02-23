@@ -199,7 +199,13 @@
       "connect": "Opret forbindelse",
       "drimeToken": "API-token",
       "drimeTokenPlaceholder": "Indsæt dit Drime API-token her",
-      "drimeTokenHelp": "Generer et token på app.drime.cloud → Kontoindstillinger → Udviklere"
+      "drimeTokenHelp": "Generer et token på app.drime.cloud → Kontoindstillinger → Udviklere",
+      "azureAccessKey": "Adgangsnøgle",
+      "azureAccountName": "Kontonavn",
+      "azureEndpoint": "Endpoint (valgfrit)",
+      "jottacloudToken": "Login-token",
+      "jottacloudTokenPlaceholder": "Indsæt dit Jottacloud login-token her",
+      "jottacloudTokenHelp": "Generer på jottacloud.com → Indstillinger → Sikkerhed. Token er engangs og udløber hurtigt — indsæt det med det samme efter kopiering"
     },
     "browser": {
       "remote": "Ekstern",
@@ -904,7 +910,9 @@
       "connectionFailedTitle": "Forbindelse fejlede",
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Session lukket — afbrudt forbindelse til {server}",
-      "disconnectedAllClosed": "Alle sessioner lukket — afbrudt forbindelse til {server}"
+      "disconnectedAllClosed": "Alle sessioner lukket — afbrudt forbindelse til {server}",
+      "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
+      "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
     },
     "about": {
       "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",
@@ -1125,7 +1133,9 @@
       "kdriveDesc": "Schweizisk cloud-lagring",
       "kdriveTooltip": "kDrive fra Infomaniak - Schweizisk hostet cloud-lagring med 15GB gratis",
       "drimeDesc": "Sikker cloud-lagring",
-      "drimeTooltip": "Drime Cloud - 20GB gratis sikker cloud-lagring med REST API"
+      "drimeTooltip": "Drime Cloud - 20GB gratis sikker cloud-lagring med REST API",
+      "jottacloudDesc": "Norsk sky (5GB gratis)",
+      "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk skylagring med 5GB gratis"
     },
     "shortcuts": {
       "title": "Tastaturgenveje",
@@ -2567,13 +2577,17 @@
       "refresh": "Opdater",
       "toggleTheme": "Skift tema",
       "devtools": "AeroTools",
-      "toggleDevtools": "Skift udviklingsværktøjer",
-      "toggleEditor": "Skift editor",
-      "toggleTerminal": "Skift terminal",
-      "toggleAgent": "Skift agent",
+      "toggleDevtools": "AeroTools",
+      "toggleEditor": "Editor",
+      "toggleTerminal": "Terminal",
+      "toggleAgent": "Agent",
       "shortcuts": "Tastaturgenveje",
       "support": "Støt udviklingen",
-      "about": "Om AeroFTP"
+      "about": "Om AeroFTP",
+      "selectAll": "Vælg alle",
+      "cut": "Klip",
+      "copy": "Kopiér",
+      "paste": "Indsæt"
     },
     "activityPanel": {
       "awaitingCommands": "Afventer kommandoer...",
@@ -3010,7 +3024,11 @@
         "manageInSettings": "Administrer installerede plugins under fanen Plugins",
         "search": "Søg plugins...",
         "subtitle": "Opdag og installer fællesskabs-plugins til AeroAgent",
-        "title": "Plugin Browser"
+        "title": "Plugin Browser",
+        "tab": {
+          "browse": "Gennemse",
+          "installed": "Installeret"
+        }
       }
     }
   }

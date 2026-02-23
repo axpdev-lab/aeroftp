@@ -38,6 +38,7 @@ pub mod fourshared;
 pub mod zoho_workdrive;
 pub mod internxt;
 pub mod kdrive;
+pub mod jottacloud;
 pub mod drime_cloud;
 pub mod http_retry;
 
@@ -61,6 +62,7 @@ pub use fourshared::FourSharedProvider;
 pub use zoho_workdrive::ZohoWorkdriveProvider;
 pub use internxt::InternxtProvider;
 pub use kdrive::KDriveProvider;
+pub use jottacloud::JottacloudProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
@@ -519,6 +521,10 @@ impl ProviderFactory {
             ProviderType::KDrive => {
                 let kdrive_config = KDriveConfig::from_provider_config(config)?;
                 Ok(Box::new(KDriveProvider::new(kdrive_config)))
+            }
+            ProviderType::Jottacloud => {
+                let jotta_config = JottacloudConfig::from_provider_config(config)?;
+                Ok(Box::new(JottacloudProvider::new(jotta_config)))
             }
             ProviderType::DrimeCloud => {
                 let drime_config = DrimeCloudConfig::from_provider_config(config)?;
