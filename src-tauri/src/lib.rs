@@ -3718,13 +3718,13 @@ fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0);
 
-        let is_png = src.ends_with(".png") || icon.get("type").and_then(|t| t.as_str()).map_or(false, |t| t.contains("png"));
+        let is_png = src.ends_with(".png") || icon.get("type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("png"));
 
         match &best {
             None => best = Some((src.to_string(), size)),
             Some((_, best_size)) => {
                 // Prefer sizes between 48-192, favor PNG
-                if (size >= 48 && size <= 192 && (*best_size < 48 || *best_size > 192 || (is_png && size >= *best_size)))
+                if ((48..=192).contains(&size) && (!(48..=192).contains(best_size) || (is_png && size >= *best_size)))
                     || (*best_size == 0 && size > 0) {
                     best = Some((src.to_string(), size));
                 }
