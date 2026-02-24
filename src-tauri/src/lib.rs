@@ -563,8 +563,11 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
     info!("AppImage updated successfully, restarting...");
 
     // Restart via setsid-detached process — survives parent exit
-    let exe_path = current_exe.display().to_string();
-    spawn_detached_relaunch(&exe_path);
+    #[cfg(unix)]
+    {
+        let exe_path = current_exe.display().to_string();
+        spawn_detached_relaunch(&exe_path);
+    }
     app.exit(0);
 
     Ok(())
@@ -603,10 +606,13 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
     let _ = std::fs::remove_file(downloaded);
 
     // Restart via setsid-detached process — survives parent exit
-    let current_exe = std::env::current_exe()
-        .map_err(|e| format!("Cannot find current exe: {}", e))?;
-    let exe_path = current_exe.display().to_string();
-    spawn_detached_relaunch(&exe_path);
+    #[cfg(unix)]
+    {
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Cannot find current exe: {}", e))?;
+        let exe_path = current_exe.display().to_string();
+        spawn_detached_relaunch(&exe_path);
+    }
     app.exit(0);
 
     Ok(())
@@ -644,10 +650,13 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
     let _ = std::fs::remove_file(downloaded);
 
     // Restart via setsid-detached process — survives parent exit
-    let current_exe = std::env::current_exe()
-        .map_err(|e| format!("Cannot find current exe: {}", e))?;
-    let exe_path = current_exe.display().to_string();
-    spawn_detached_relaunch(&exe_path);
+    #[cfg(unix)]
+    {
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Cannot find current exe: {}", e))?;
+        let exe_path = current_exe.display().to_string();
+        spawn_detached_relaunch(&exe_path);
+    }
     app.exit(0);
 
     Ok(())
