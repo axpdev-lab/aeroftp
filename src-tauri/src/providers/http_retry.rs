@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! GAP-A01: Shared HTTP retry wrapper with 429/5xx handling and Retry-After support.
 //!
 //! Provides `send_with_retry()` as a drop-in replacement for `request.send()` that adds:

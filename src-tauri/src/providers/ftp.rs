@@ -45,6 +45,12 @@ impl FtpProvider {
     fn make_tls_connector(&self) -> Result<AsyncNativeTlsConnector, ProviderError> {
         let mut builder = native_tls::TlsConnector::builder();
         if !self.config.verify_cert {
+            // M6: Log a warning when TLS certificate verification is disabled.
+            // This exposes the connection to MITM attacks — acceptable only for self-signed certs.
+            tracing::warn!(
+                "[FTP] TLS certificate verification DISABLED for {}:{} — connection is vulnerable to MITM attacks",
+                self.config.host, self.config.port
+            );
             builder.danger_accept_invalid_certs(true);
             builder.danger_accept_invalid_hostnames(true);
         }
@@ -541,33 +547,61 @@ impl StorageProvider for FtpProvider {
     }
     
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::AsyncReadExt;
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
+
         let stream = self.stream_mut()?;
-        
+
+        // Check file size first if server supports SIZE command
+        if let Ok(size) = stream.size(remote_path).await {
+            if size as u64 > limit {
+                return Err(ProviderError::TransferFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                    size as f64 / 1_048_576.0,
+                    limit as f64 / 1_048_576.0,
+                )));
+            }
+        }
+
         // Set binary mode
         stream
             .transfer_type(FileType::Binary)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
+
+        // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
-        data_stream
-            .read_to_end(&mut data)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
+        let limit_usize = (limit + 1) as usize;
+        loop {
+            let mut buf = [0u8; 8192];
+            let n = data_stream.read(&mut buf).await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if n == 0 { break; }
+            data.extend_from_slice(&buf[..n]);
+            if data.len() > limit_usize { break; }
+        }
+        let bytes_read = data.len();
+
         // Finalize the stream
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
             .finalize_retr_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
+
+        if bytes_read as u64 > limit {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+
         Ok(data)
     }
     
@@ -777,6 +811,8 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt as _, AsyncSeekExt};
+
         let stream = self.stream_mut()?;
 
         // Get total file size
@@ -796,50 +832,56 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        // Now retrieve from offset
+        // Retrieve from offset
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        let mut data = Vec::new();
-        data_stream
-            .read_to_end(&mut data)
+        // H3: Stream directly to file instead of buffering entire file in memory
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(local_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(ProviderError::IoError)?;
+
+        // Seek to the resume offset
+        file.set_len(offset)
+            .await
+            .map_err(ProviderError::IoError)?;
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        // Stream chunks from FTP data stream directly to disk
+        let mut transferred = offset;
+        let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
+        loop {
+            let n = data_stream
+                .read(&mut buf)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n])
+                .await
+                .map_err(ProviderError::IoError)?;
+            transferred += n as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+        }
+
+        file.flush().await.map_err(ProviderError::IoError)?;
 
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
             .finalize_retr_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        if let Some(progress) = on_progress {
-            progress(offset + data.len() as u64, total_size);
-        }
-
-        // Append to existing local file or create new one
-        use tokio::io::AsyncWriteExt as _;
-        let mut file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .append(false)
-            .open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        // Seek to offset and write
-        file.set_len(offset)
-            .await
-            .map_err(ProviderError::IoError)?;
-        use tokio::io::AsyncSeekExt;
-        file.seek(std::io::SeekFrom::Start(offset))
-            .await
-            .map_err(ProviderError::IoError)?;
-        file.write_all(&data)
-            .await
-            .map_err(ProviderError::IoError)?;
 
         Ok(())
     }

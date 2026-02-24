@@ -403,7 +403,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     /** Auto-approval logic based on unified agent mode and session memory. */
     const isAutoApproved = useCallback((toolName: string) => {
         const mode = agentModeRef.current;
-        // Extreme: auto-approve everything
+        // Never auto-approve destructive tools, even in Extreme Mode
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress'];
+        if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
+        // Extreme: auto-approve everything else
         if (mode === 'extreme') return true;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
@@ -849,11 +852,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             const result = await executeToolByName(toolCall.toolName, toolCall.args);
 
-            // shell_execute: also show command in the visible terminal for user awareness
+            // shell_execute: show command in the visible terminal for user awareness (display only, NOT re-executed)
             if (toolCall.toolName === 'shell_execute' && result && typeof result === 'object') {
                 const cmd = (result as Record<string, unknown>).command as string;
                 if (cmd) {
-                    window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command: cmd } }));
+                    window.dispatchEvent(new CustomEvent('terminal-execute', { detail: { command: cmd, displayOnly: true } }));
                     window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
                 }
             }

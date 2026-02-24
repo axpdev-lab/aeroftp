@@ -338,10 +338,8 @@ impl GoogleDriveProvider {
             return Err(ProviderError::Other(format!("Download failed {}: {}", status, sanitize_api_error(&text))));
         }
 
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     /// List files in the trash

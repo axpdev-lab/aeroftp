@@ -18,8 +18,16 @@ function copyMonacoAssets(): Plugin {
     name: 'copy-monaco-assets',
     configureServer(server) {
       // Serve /vs/* from node_modules in dev mode
+      const monacoVsPath = resolve(monacoPath, 'vs');
       server.middlewares.use('/vs', (req, res, next) => {
-        const filePath = resolve(monacoPath, 'vs', (req.url || '').replace(/^\//, '').split('?')[0]);
+        const relativePath = (req.url || '').replace(/^\//, '').split('?')[0];
+        const filePath = resolve(monacoVsPath, relativePath);
+        // H30: Validate resolved path stays within Monaco directory (prevent path traversal)
+        if (!filePath.startsWith(monacoVsPath)) {
+          res.statusCode = 403;
+          res.end('Forbidden');
+          return;
+        }
         if (existsSync(filePath)) {
           const ext = filePath.split('.').pop() || '';
           const mime: Record<string, string> = { js: 'application/javascript', css: 'text/css', ttf: 'font/ttf', svg: 'image/svg+xml' };

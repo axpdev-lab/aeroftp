@@ -2,21 +2,29 @@ import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
+import type { ActivityLogContextValue } from './useActivityLog';
+import type { useHumanizedLog } from './useHumanizedLog';
+import type { useTransferQueue } from '../components/TransferQueue';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+interface NotifyMethods {
+  success: (title: string, message?: string) => string | null;
+  error: (title: string, message?: string) => string | null;
+  info: (title: string, message?: string) => string | null;
+  warning: (title: string, message?: string) => string | null;
+}
+
 interface UseTransferEventsOptions {
-  t: (key: string, params?: Record<string, string>) => string;
-  activityLog: any;
-  humanLog: any;
-  transferQueue: any;
-  notify: any;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  activityLog: ActivityLogContextValue;
+  humanLog: ReturnType<typeof useHumanizedLog>;
+  transferQueue: ReturnType<typeof useTransferQueue>;
+  notify: NotifyMethods;
   setActiveTransfer: (transfer: TransferProgress | null) => void;
   loadRemoteFiles: (overrideProtocol?: string) => unknown;
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
   currentRemotePath: string;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
   // Store ALL options in a ref to avoid stale closures AND prevent re-subscribing.
@@ -149,7 +157,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       } else if (data.event_type === 'file_skip') {
         // File skipped due to file_exists_action setting (identical/not newer)
         const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
-        humanLog.logRaw('activity.file_skipped', 'SKIP', { filename: displayName }, 'success');
+        humanLog.logRaw('activity.file_skipped', 'INFO', { filename: displayName }, 'success');
 
         // Add skipped file to queue and mark as completed
         const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
@@ -267,22 +275,24 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
         transferIdToDisplayPath.current.delete(data.transfer_id);
 
-        notify.error('Transfer Failed', data.message);
+        notify.error(t('transfer.failed'), data.message);
       } else if (data.event_type === 'cancelled') {
         setActiveTransfer(null);
         dispatchTransferToast(null);
 
+        const cancelledMsg = t('transfer.cancelledByUser');
+
         // Update activity log for this transfer
         const logId = transferIdToLogId.current.get(data.transfer_id);
         if (logId) {
-          activityLog.updateEntry(logId, { status: 'error', message: data.message || 'Cancelled by user' });
+          activityLog.updateEntry(logId, { status: 'error', message: data.message || cancelledMsg });
           transferIdToLogId.current.delete(data.transfer_id);
         }
 
         // Mark the queue item as failed
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
         if (queueId) {
-          transferQueue.failTransfer(queueId, 'Cancelled by user');
+          transferQueue.failTransfer(queueId, cancelledMsg);
           transferIdToQueueId.current.delete(data.transfer_id);
         }
         transferIdToDisplayPath.current.delete(data.transfer_id);
@@ -293,19 +303,19 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const cancelPrefix = data.transfer_id;
         for (const [fileKey, fileLogId] of pendingFileLogIds.current.entries()) {
           if (fileKey.startsWith(cancelPrefix)) {
-            activityLog.updateEntry(fileLogId, { status: 'error', message: 'Cancelled by user' });
+            activityLog.updateEntry(fileLogId, { status: 'error', message: cancelledMsg });
             pendingFileLogIds.current.delete(fileKey);
           }
         }
         // Also clean up file-level queue items
         for (const [fileKey, fileQueueId] of transferIdToQueueId.current.entries()) {
           if (fileKey.startsWith(cancelPrefix) && fileKey.includes(':')) {
-            transferQueue.failTransfer(fileQueueId, 'Cancelled by user');
+            transferQueue.failTransfer(fileQueueId, cancelledMsg);
             transferIdToQueueId.current.delete(fileKey);
           }
         }
 
-        notify.warning('Transfer Cancelled', data.message);
+        notify.warning(t('transfer.cancelled'), data.message);
       }
 
       // ========== DELETE EVENTS ==========

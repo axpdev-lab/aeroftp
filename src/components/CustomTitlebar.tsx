@@ -197,7 +197,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.newFolder'), shortcut: 'Ctrl+N', onClick: onNewFolder, disabled: !hasFilePanel },
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
         { separator: true },
-        { label: t('menu.debugMode'), shortcut: 'Ctrl+Shift+F12', onClick: onToggleDebugMode },
+        // L53: Debug Mode only visible in dev builds — in production, Cyber theme auto-enables it
+        ...(import.meta.env.DEV ? [{ label: t('menu.debugMode'), shortcut: 'Ctrl+Shift+F12', onClick: onToggleDebugMode }] : []),
         { label: t('menu.dependencies'), onClick: onShowDependencies },
         { separator: true },
         { label: t('menu.quit'), shortcut: 'Ctrl+Q', onClick: onQuit },

@@ -70,6 +70,46 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// H2: Maximum size for download_to_bytes operations (500 MB).
+/// Prevents OOM when a remote file is unexpectedly large.
+/// For larger files, use the streaming download() method instead.
+pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
+
+/// H2: Read a reqwest Response into Vec<u8> with a size cap.
+/// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
+pub async fn response_bytes_with_limit(
+    resp: reqwest::Response,
+    limit: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    // Check Content-Length header if present
+    if let Some(cl) = resp.content_length() {
+        if cl > limit {
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                cl as f64 / 1_048_576.0,
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+    }
+
+    // Stream the body with a size guard
+    let mut bytes = Vec::new();
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        if bytes.len() as u64 + chunk.len() as u64 > limit {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+
+    Ok(bytes)
+}
+
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
 pub fn sanitize_api_error(body: &str) -> String {

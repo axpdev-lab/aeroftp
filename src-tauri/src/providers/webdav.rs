@@ -170,6 +170,15 @@ pub struct WebDavProvider {
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
     pub fn new(config: WebDavConfig) -> Result<Self, ProviderError> {
+        // M6: Log a warning when TLS certificate verification is disabled.
+        // This exposes the connection to MITM attacks — acceptable only for self-signed certs
+        // in trusted networks (e.g. home NAS).
+        if !config.verify_cert {
+            tracing::warn!(
+                "[WEBDAV] TLS certificate verification DISABLED for {} — connection is vulnerable to MITM attacks",
+                config.url
+            );
+        }
         let client = Client::builder()
             .danger_accept_invalid_certs(!config.verify_cert)
             .timeout(std::time::Duration::from_secs(30))
@@ -815,17 +824,16 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let response = self.request(Method::GET, remote_path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK => {
-                let bytes = response.bytes().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                Ok(bytes.to_vec())
+                // H2: Size-limited download to prevent OOM on large files
+                super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
             }
             StatusCode::NOT_FOUND => {
                 Err(ProviderError::NotFound(remote_path.to_string()))

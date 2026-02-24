@@ -335,7 +335,7 @@
             "more": "Més",
             "openAsCryptomator": "Obre com a dipòsit Cryptomator",
             "askAeroAgent": "Pregunta a AeroAgent...",
-            "openWithAeroVault": "[NEEDS TRANSLATION] Open with AeroVault"
+            "openWithAeroVault": "Obrir amb AeroVault"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -368,7 +368,8 @@
             "retry": "Reintentar",
             "stopAll": "Aturar tot",
             "stopAllPending": "Aturar tots els pendents",
-            "forceStop": "Aturada forçada (interrompre el fitxer actual)"
+            "forceStop": "Aturada forçada (interrompre el fitxer actual)",
+            "cancelledByUser": "Cancel·lat per l'usuari"
         },
         "settings": {
             "title": "Configuracio",
@@ -694,9 +695,9 @@
             "iconsTab": "Icones",
             "protocolFourshared": "4shared",
             "protocolZohoworkdrive": "Zoho WorkDrive",
-            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
-            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
-            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
+            "chooseIcon": "Triar icona",
+            "removeIcon": "Eliminar icona",
+            "serverIcon": "Icona del servidor"
         },
         "devtools": {
             "title": "AeroTools",
@@ -915,8 +916,10 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "disconnectedTabClosed": "Sessió tancada — desconnectat de {server}",
             "disconnectedAllClosed": "Totes les sessions tancades — desconnectat de {server}",
-            "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
-            "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
+            "movedToTrash": "S'han mogut {count} element(s) a la paperera",
+            "moveToTrashFailed": "No s'ha pogut moure a la paperera",
+            "batchRenameResult": "{success} reanomenats, {errors} fallits",
+            "copyCompleted": "Copia completada"
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2270,8 +2273,8 @@
             "fast": "Ràpid",
             "normal": "Normal",
             "maximum": "Màxim",
-            "compressing": "[NEEDS TRANSLATION] Compressing...",
-            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
+            "compressing": "Comprimint...",
+            "estimatedSize": "Estimat"
         },
         "batchRename": {
             "title": "Reanomenament massiu",
@@ -2323,7 +2326,10 @@
             "patternWaves": "Ones",
             "patternConstellation": "Estrelles",
             "patternIsometric": "Isomètric",
-            "patternBubbles": "Bombolles"
+            "patternBubbles": "Bombolles",
+            "enter2FACode": "Autenticació de dos factors",
+            "enter2FAHint": "Introduïu el codi de 6 dígits de la vostra aplicació d'autenticació",
+            "invalid2FACode": "Codi 2FA no vàlid. Torneu-ho a provar."
         },
         "folderOverwrite": {
             "title": "La carpeta ja existeix",

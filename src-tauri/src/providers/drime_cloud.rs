@@ -209,6 +209,9 @@ pub struct DrimeCloudProvider {
     user_id: Option<u64>,
 }
 
+/// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
+const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+
 impl DrimeCloudProvider {
     pub fn new(config: DrimeCloudConfig) -> Self {
         let mut default_headers = reqwest::header::HeaderMap::new();
@@ -232,9 +235,24 @@ impl DrimeCloudProvider {
 
     // ─── Helpers ─────────────────────────────────────────────────────────
 
-    fn auth_header(&self) -> HeaderValue {
+    /// M3: Insert into dir_cache with eviction when cap is reached.
+    /// Clears the entire cache when it exceeds DIR_CACHE_MAX_ENTRIES,
+    /// allowing it to repopulate naturally during navigation.
+    fn dir_cache_insert(&mut self, key: String, value: DirInfo) {
+        if self.dir_cache.len() >= DIR_CACHE_MAX_ENTRIES {
+            tracing::debug!("[DRIME] dir_cache reached {} entries, evicting all", self.dir_cache.len());
+            self.dir_cache.clear();
+        }
+        self.dir_cache.insert(key, value);
+    }
+
+    /// M7: Returns Result instead of silently falling back to an empty header on invalid tokens.
+    /// An empty Authorization header would cause silent auth failures that are hard to debug.
+    fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         HeaderValue::from_str(&format!("Bearer {}", self.config.api_token.expose_secret()))
-            .unwrap_or_else(|_| HeaderValue::from_static(""))
+            .map_err(|e| ProviderError::AuthenticationFailed(
+                format!("Invalid characters in API token: {}", e)
+            ))
     }
 
     fn api_url(path: &str) -> String {
@@ -311,7 +329,7 @@ impl DrimeCloudProvider {
                 };
 
                 let resp = self.client.get(&url)
-                    .header(AUTHORIZATION, self.auth_header())
+                    .header(AUTHORIZATION, self.auth_header()?)
                     .send()
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
@@ -336,7 +354,7 @@ impl DrimeCloudProvider {
                     if is_folder {
                         if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
                             if name.eq_ignore_ascii_case(part) {
-                                self.dir_cache.insert(current_path.clone(), DirInfo { id: id.clone() });
+                                self.dir_cache_insert(current_path.clone(), DirInfo { id: id.clone() });
                                 current_id = id;
                                 found = true;
                                 break;
@@ -371,7 +389,7 @@ impl DrimeCloudProvider {
             };
 
             let resp = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .send().await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Find file failed: {}", e)))?;
 
@@ -466,7 +484,7 @@ impl DrimeCloudProvider {
         }
 
         let resp = self.client.post(Self::api_url("/s3/multipart/create"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(create_json.to_string())
             .send()
@@ -502,7 +520,7 @@ impl DrimeCloudProvider {
         });
 
         let resp = self.client.post(Self::api_url("/s3/multipart/batch-sign-part-urls"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(sign_body.to_string())
             .send()
@@ -575,7 +593,7 @@ impl DrimeCloudProvider {
         });
 
         let resp = self.client.post(Self::api_url("/s3/multipart/complete"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(complete_body.to_string())
             .send()
@@ -604,7 +622,7 @@ impl DrimeCloudProvider {
         }
 
         let resp = self.client.post(Self::api_url("/s3/entries"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(entry_body.to_string())
             .send()
@@ -683,7 +701,7 @@ impl StorageProvider for DrimeCloudProvider {
         // Validate token via /cli/loggedUser (purpose-built for auth check + returns user info)
         let url = Self::api_url("/cli/loggedUser");
         let resp = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
             .map_err(|e| {
@@ -727,7 +745,7 @@ impl StorageProvider for DrimeCloudProvider {
         // Initialize root
         self.current_folder_id = String::new();
         self.current_path = "/".to_string();
-        self.dir_cache.insert("/".to_string(), DirInfo { id: String::new() });
+        self.dir_cache_insert("/".to_string(), DirInfo { id: String::new() });
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
@@ -809,7 +827,7 @@ impl StorageProvider for DrimeCloudProvider {
             };
 
             let resp = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .send().await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
 
@@ -844,7 +862,7 @@ impl StorageProvider for DrimeCloudProvider {
                         } else {
                             format!("{}/{}", resolved, name)
                         };
-                        self.dir_cache.insert(dir_path, DirInfo { id });
+                        self.dir_cache_insert(dir_path, DirInfo { id });
                     }
                 }
 
@@ -905,7 +923,7 @@ impl StorageProvider for DrimeCloudProvider {
             Self::api_url(&format!("/file-entries/{}/download", file_id))
         };
         let resp = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Download request failed: {}", e)))?;
@@ -947,7 +965,7 @@ impl StorageProvider for DrimeCloudProvider {
             Self::api_url(&format!("/file-entries/{}/download", file_id))
         };
         let resp = self.client.get(&url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Download failed: {}", e)))?;
@@ -959,10 +977,8 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::ServerError(format!("Read body failed: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(
@@ -977,6 +993,9 @@ impl StorageProvider for DrimeCloudProvider {
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
+        // M9: Full file read into memory — no streaming upload API available for Drime Cloud.
+        // This limits practical upload size to available RAM. For files >500MB, users should
+        // consider alternative providers with chunked upload support (S3, OneDrive, Dropbox).
         let data = tokio::fs::read(local_path).await
             .map_err(ProviderError::IoError)?;
 
@@ -988,7 +1007,7 @@ impl StorageProvider for DrimeCloudProvider {
             drime_log(&format!("File {} exists (id={}), deleting before overwrite", filename, existing_id));
             let del_body = serde_json::json!({ "entryIds": [existing_id.parse::<i64>().unwrap_or(0)] });
             let _ = self.client.post(Self::api_url("/file-entries/delete"))
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .header(CONTENT_TYPE, "application/json")
                 .body(del_body.to_string())
                 .send()
@@ -1017,7 +1036,7 @@ impl StorageProvider for DrimeCloudProvider {
             form = form.part("file", part);
 
             let resp = self.client.post(Self::api_url("/uploads"))
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .multipart(form)
                 .send()
                 .await
@@ -1060,7 +1079,7 @@ impl StorageProvider for DrimeCloudProvider {
 
         let url = Self::api_url("/folders?workspaceId=0");
         let resp = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .send()
@@ -1078,7 +1097,7 @@ impl StorageProvider for DrimeCloudProvider {
         // Cache the new dir
         if let Ok(folder_resp) = resp.json::<DrimeFolderResponse>().await {
             if let Some(id) = folder_resp.id_str() {
-                self.dir_cache.insert(resolved, DirInfo { id });
+                self.dir_cache_insert(resolved, DirInfo { id });
             }
         }
 
@@ -1098,7 +1117,7 @@ impl StorageProvider for DrimeCloudProvider {
         // Batch delete endpoint (moves to trash by default)
         let body = serde_json::json!({ "entryIds": [file_id.parse::<i64>().unwrap_or(0)] });
         let resp = self.client.post(Self::api_url("/file-entries/delete"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .send()
@@ -1145,7 +1164,7 @@ impl StorageProvider for DrimeCloudProvider {
                 "destinationId": dest_id
             });
             let resp = self.client.post(Self::api_url("/file-entries/move?workspaceId=0"))
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .header(CONTENT_TYPE, "application/json")
                 .body(move_body.to_string())
                 .send()
@@ -1167,7 +1186,7 @@ impl StorageProvider for DrimeCloudProvider {
 
             let url = Self::api_url(&format!("/file-entries/{}?workspaceId=0", file_id));
             let resp = self.client.put(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .header(CONTENT_TYPE, "application/json")
                 .body(serde_json::json!({ "name": to_name }).to_string())
                 .send()
@@ -1211,7 +1230,7 @@ impl StorageProvider for DrimeCloudProvider {
             };
 
             let resp = self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, self.auth_header()?)
                 .send()
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Stat failed: {}", e)))?;
@@ -1318,7 +1337,7 @@ impl StorageProvider for DrimeCloudProvider {
         }
 
         let resp = self.client.post(Self::api_url("/file-entries/duplicate?workspaceId=0"))
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/json")
             .body(dup_body.to_string())
             .send()
@@ -1341,7 +1360,7 @@ impl StorageProvider for DrimeCloudProvider {
                     if let Some(dup_id) = first.id_str() {
                         let rename_url = Self::api_url(&format!("/file-entries/{}?workspaceId=0", dup_id));
                         let rename_resp = self.client.put(&rename_url)
-                            .header(AUTHORIZATION, self.auth_header())
+                            .header(AUTHORIZATION, self.auth_header()?)
                             .header(CONTENT_TYPE, "application/json")
                             .body(serde_json::json!({ "name": to_name }).to_string())
                             .send()
@@ -1361,9 +1380,10 @@ impl StorageProvider for DrimeCloudProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = Self::api_url("/user/space-usage?workspaceId=0");
+        let auth = self.auth_header()?;
         let resp = self.request_with_retry(|| {
             self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, auth.clone())
         }).await?;
 
         if !resp.status().is_success() {
@@ -1407,9 +1427,10 @@ impl StorageProvider for DrimeCloudProvider {
                 page
             );
 
+            let auth = self.auth_header()?;
             let resp = self.request_with_retry(|| {
                 self.client.get(&url)
-                    .header(AUTHORIZATION, self.auth_header())
+                    .header(AUTHORIZATION, auth.clone())
             }).await?;
 
             if !resp.status().is_success() {
@@ -1487,9 +1508,10 @@ impl StorageProvider for DrimeCloudProvider {
         }
 
         let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
+        let auth = self.auth_header()?;
         let resp = self.request_with_retry(|| {
             self.client.post(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, auth.clone())
                 .header(CONTENT_TYPE, "application/json")
                 .body(body.to_string())
         }).await?;
@@ -1526,9 +1548,10 @@ impl StorageProvider for DrimeCloudProvider {
         drime_log(&format!("Removing share link for {} (id={})", filename, file_id));
 
         let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
+        let auth = self.auth_header()?;
         let resp = self.request_with_retry(|| {
             self.client.delete(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, auth.clone())
         }).await?;
 
         if !resp.status().is_success() {
@@ -1559,9 +1582,10 @@ impl StorageProvider for DrimeCloudProvider {
         drime_log(&format!("Listing versions for {} (id={})", filename, file_id));
 
         let url = format!("{}?file_id={}&perPage=50", Self::api_url("/file-backup"), file_id);
+        let auth = self.auth_header()?;
         let resp = self.request_with_retry(|| {
             self.client.get(&url)
-                .header(AUTHORIZATION, self.auth_header())
+                .header(AUTHORIZATION, auth.clone())
         }).await?;
 
         if !resp.status().is_success() {

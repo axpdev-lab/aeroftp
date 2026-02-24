@@ -488,6 +488,12 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> = std::sy
         r"^\s*>\s*/dev/sd[a-z]",                         // overwrite disk
         r"^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+/",         // chmod 777 /
         r"^\s*chown\s+.*\s+/\s*$",                       // chown /
+        // L19 — belt+suspenders: also caught by meta-char filter, but explicit is better
+        r"^\s*python3?\s+-c\b",                          // python -c (arbitrary code exec)
+        r"\bcurl\b.*\|",                                 // curl piped to shell
+        r"\bwget\b.*\|",                                 // wget piped to shell
+        r"^\s*eval\s",                                   // eval (arbitrary execution)
+        r"^\s*base64\s+(-d|--decode)\b",                 // base64 decode (obfuscation bypass)
     ]
     .iter()
     .filter_map(|p| regex::Regex::new(p).ok())
@@ -522,6 +528,16 @@ pub async fn shell_execute(
 ) -> Result<Value, String> {
     if command.trim().is_empty() {
         return Err("No command specified".to_string());
+    }
+
+    // Defense-in-depth: reject shell meta-characters that enable denylist bypass
+    // (pipes, subshells, backticks, semicolons, eval chains, base64 decode, etc.)
+    let meta_chars = ['|', ';', '`', '$', '&', '(', ')', '{', '}'];
+    if meta_chars.iter().any(|c| command.contains(*c)) {
+        return Err(
+            "Command contains shell meta-characters (|;&`$(){}). Use simple commands only."
+                .to_string(),
+        );
     }
 
     // Security: check denied commands

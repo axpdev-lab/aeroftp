@@ -150,6 +150,9 @@ struct DirInfo {
 
 // ─── Provider ────────────────────────────────────────────────────────────
 
+/// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
+const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+
 pub struct KDriveProvider {
     config: KDriveConfig,
     client: reqwest::Client,
@@ -180,15 +183,30 @@ impl KDriveProvider {
 
     // ─── Helpers ─────────────────────────────────────────────────────────
 
-    fn auth_header(&self) -> HeaderValue {
+    /// M3: Insert into dir_cache with eviction when cap is reached.
+    /// Clears the entire cache when it exceeds DIR_CACHE_MAX_ENTRIES,
+    /// allowing it to repopulate naturally during navigation.
+    fn dir_cache_insert(&mut self, key: String, value: DirInfo) {
+        if self.dir_cache.len() >= DIR_CACHE_MAX_ENTRIES {
+            kdrive_log(&format!("dir_cache reached {} entries, evicting all", self.dir_cache.len()));
+            self.dir_cache.clear();
+        }
+        self.dir_cache.insert(key, value);
+    }
+
+    /// M7: Returns Result instead of silently falling back to an empty header on invalid tokens.
+    /// An empty Authorization header would cause silent auth failures that are hard to debug.
+    fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         HeaderValue::from_str(&format!("Bearer {}", self.config.api_token.expose_secret()))
-            .unwrap_or_else(|_| HeaderValue::from_static(""))
+            .map_err(|e| ProviderError::AuthenticationFailed(
+                format!("Invalid characters in API token: {}", e)
+            ))
     }
 
     /// KD-004: Send a GET request with automatic retry on 429/5xx
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.get(url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -199,7 +217,7 @@ impl KDriveProvider {
     /// KD-004: Send a POST request with automatic retry on 429/5xx
     async fn post_with_retry(&self, url: &str, content_type: &str, body: Vec<u8>) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.post(url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, content_type)
             .body(body)
             .build()
@@ -212,7 +230,7 @@ impl KDriveProvider {
     /// KD-004: Send a DELETE request with automatic retry on 429/5xx
     async fn delete_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.delete(url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -326,7 +344,7 @@ impl KDriveProvider {
                         if let Some(ref name) = file.name {
                             if name == *part {
                                 // Exact match — use immediately
-                                self.dir_cache.insert(current_path.clone(), DirInfo { id: file.id });
+                                self.dir_cache_insert(current_path.clone(), DirInfo { id: file.id });
                                 current_id = file.id;
                                 found = true;
                                 break 'pagination;
@@ -340,7 +358,7 @@ impl KDriveProvider {
                 if has_more != Some(true) || next_cursor.is_none() {
                     // No more pages — use case-insensitive match if found
                     if let Some(id) = case_insensitive_match {
-                        self.dir_cache.insert(current_path.clone(), DirInfo { id });
+                        self.dir_cache_insert(current_path.clone(), DirInfo { id });
                         current_id = id;
                         found = true;
                     }
@@ -465,7 +483,7 @@ impl StorageProvider for KDriveProvider {
         self.root_file_id = 1;
         self.current_file_id = self.root_file_id;
         self.current_path = "/".to_string();
-        self.dir_cache.insert("/".to_string(), DirInfo { id: self.root_file_id });
+        self.dir_cache_insert("/".to_string(), DirInfo { id: self.root_file_id });
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
@@ -585,7 +603,7 @@ impl StorageProvider for KDriveProvider {
                     } else {
                         format!("{}/{}", resolved, name)
                     };
-                    self.dir_cache.insert(dir_path, DirInfo { id: file.id });
+                    self.dir_cache_insert(dir_path, DirInfo { id: file.id });
                 }
 
                 let entry_path = if resolved == "/" {
@@ -694,10 +712,8 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::ServerError(format!("Read body failed: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(
@@ -745,7 +761,7 @@ impl StorageProvider for KDriveProvider {
         let body = reqwest::Body::wrap_stream(stream);
 
         let resp: reqwest::Response = self.client.post(&url)
-            .header(AUTHORIZATION, self.auth_header())
+            .header(AUTHORIZATION, self.auth_header()?)
             .header(CONTENT_TYPE, "application/octet-stream")
             .body(body)
             .send()
@@ -797,7 +813,7 @@ impl StorageProvider for KDriveProvider {
             result: None, data: None, error: None,
         });
         if let Some(file) = api_resp.data {
-            self.dir_cache.insert(resolved, DirInfo { id: file.id });
+            self.dir_cache_insert(resolved, DirInfo { id: file.id });
         }
 
         Ok(())

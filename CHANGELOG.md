@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.5] - 2026-02-24
+
+### Dual-Engine Security Audit Remediation
+
+Comprehensive security hardening based on the most thorough audit in project history — 8 Claude Opus 4.6 specialist agents + GPT-5.3-Codex, identifying 148 unique findings. Post-remediation grade: **A-**.
+
+#### Fixed
+
+- **AeroVault constant-time HMAC**: `subtle::ConstantTimeEq` replaces `!=` in 11 HMAC comparisons, preventing timing side-channel attacks
+- **AeroVault manifest bounds**: `MAX_MANIFEST_SIZE=64MB` with `read_manifest_bounded()` in 7+ vault functions, preventing OOM allocation
+- **AeroVault atomic writes**: Crash-safe temp+bak+rename pattern in all 6 vault mutation functions
+- **Archive path traversal**: `is_safe_archive_entry()` centralized guard for TAR/7z/RAR extraction — rejects `..`, absolute paths, drive letters, null bytes
+- **2FA enforcement at unlock**: `unlock_credential_store` now gates on TOTP verification when enabled — returns `2FA_REQUIRED`/`2FA_INVALID`
+- **Shell meta-character blocking**: `|;&$(){}` blocked before regex denylist + 5 new patterns (python -c, curl|, wget|, eval, base64 -d)
+- **Azure HeaderValue panic**: 17 `unwrap()` calls replaced with `map_err()?` in `azure.rs`
+- **Box bearer_header panic**: Return type changed to `Result<HeaderValue, ProviderError>`, 29 call sites updated
+- **React state mutation**: `connectToFtp` uses local copy instead of mutating state directly
+- **HTML preview sandbox**: `sandbox="allow-same-origin"` + `resolveAndValidatePath()` for CSS file validation
+- **Download size caps**: `MAX_DOWNLOAD_TO_BYTES=500MB` with `response_bytes_with_limit()` across 13 providers
+- **FTP streaming download**: `resume_download` rewritten with 64KB streaming chunks instead of `read_to_end()`
+- **PTY session isolation**: `session_id` mandatory in write/resize/close (no fallback), `MAX_PTY_SESSIONS=20`
+- **Shell double execution**: `terminal-execute` event includes `displayOnly: true` flag — SSHTerminal shows dim comment instead of re-executing
+- **SVG XSS prevention**: `sanitizeSvg()` removes script, foreignObject, and event handlers before preview
+- **Image resize bounds**: `MAX_DIMENSION=16384`, `MAX_PIXELS=256M` in `image_edit.rs`
+- **Binary preview cap**: `MAX_PREVIEW_SIZE_BYTES=25MB` prevents excessive memory usage
+- **Credential redaction**: `import_server_profiles` returns only non-sensitive fields to renderer
+- **Symlink following**: `symlink_metadata()` + skip symlinks in both `get_local_files_recursive` variants
+- **Unlock throttling**: Exponential backoff (5 failures → 30s-15min lockout) in `master_password.rs`
+- **TOTP SecretString**: `pending_secret` and `active_secret` changed from `String` to `SecretString`
+- **Jottacloud SecretString**: `access_token` and `refresh_token` wrapped in `SecretString`
+- **Journal SHA-256**: `stable_path_hash` changed from DJB2 to SHA-256 truncated (16 hex chars)
+- **Journal write lock**: `JOURNAL_WRITE_LOCK` Mutex for concurrent write protection
+- **Monaco path traversal**: Dev server middleware validates resolved path with `startsWith()`, returns 403 on violation
+- **Cryptomator zeroize**: `impl Drop for UnlockedVault` with `zeroize()` on enc_key and mac_key
+- **Scrollback limits**: 100KB/tab, 500KB total cap on terminal scrollback persistence
+- **ARIA accessibility**: `role="toolbar"`, `aria-label` on 5 toolbar buttons, `role="grid"` on file tables
+- **Atomic file save**: `save_local_file` uses temp+rename pattern matching `ai_tools` safety level
+
+#### Added
+
+- **178 new i18n keys** translated across all 47 languages (2FA flow, toast messages, audit-related strings)
+- **`subtle = "2"` dependency** for constant-time cryptographic comparisons
+
+#### Changed
+
+- **Security audit grade**: B → **A-** (post-remediation)
+- **NEVER_AUTO_APPROVE list**: `shell_execute`, `local_delete`, `local_trash`, `archive_decompress` excluded from Extreme Mode auto-approval
+- **Legacy OAuth migration**: Plaintext token files migrated to vault with secure delete
+- **Filen upload cap**: 2GB maximum with error on empty encryption key
+
+---
+
 ## [2.6.4] - 2026-02-24
 
 ### Custom Server Icons & Favicon Detection

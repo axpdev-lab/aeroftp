@@ -335,7 +335,7 @@
             "more": "Meira",
             "openAsCryptomator": "Opna sem Cryptomator vault",
             "askAeroAgent": "Spyrja AeroAgent...",
-            "openWithAeroVault": "[NEEDS TRANSLATION] Open with AeroVault"
+            "openWithAeroVault": "Opna með AeroVault"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -368,7 +368,8 @@
             "retry": "Reyna aftur",
             "stopAll": "Stöðva allt",
             "stopAllPending": "Stöðva allt í bið",
-            "forceStop": "Thvinga stodvun (truflad a nuverandi skra)"
+            "forceStop": "Thvinga stodvun (truflad a nuverandi skra)",
+            "cancelledByUser": "Hætt við af notanda"
         },
         "settings": {
             "title": "Stillingar",
@@ -694,9 +695,9 @@
             "iconsTab": "Taknir",
             "protocolFourshared": "4shared",
             "protocolZohoworkdrive": "Zoho WorkDrive",
-            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
-            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
-            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
+            "chooseIcon": "Velja tákn",
+            "removeIcon": "Fjarlægja tákn",
+            "serverIcon": "Þjónstákn"
         },
         "devtools": {
             "title": "AeroTools",
@@ -915,8 +916,10 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "disconnectedTabClosed": "Lota lokað — aftengt frá {server}",
             "disconnectedAllClosed": "Öllum lotum lokað — aftengt frá {server}",
-            "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
-            "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
+            "movedToTrash": "Flutti {count} atriði í ruslið",
+            "moveToTrashFailed": "Ekki tókst að færa í ruslið",
+            "batchRenameResult": "{success} endurnefnt, {errors} mistókst",
+            "copyCompleted": "Afritun lokið"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2270,8 +2273,8 @@
             "fast": "Hratt",
             "normal": "Venjulegt",
             "maximum": "Hámark",
-            "compressing": "[NEEDS TRANSLATION] Compressing...",
-            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
+            "compressing": "Þjappa...",
+            "estimatedSize": "Áætlað"
         },
         "batchRename": {
             "title": "Hópendurnefning",
@@ -2323,7 +2326,10 @@
             "patternWaves": "Bylgjur",
             "patternConstellation": "Stjörnumerki",
             "patternIsometric": "Jafnarma",
-            "patternBubbles": "Bólur"
+            "patternBubbles": "Bólur",
+            "enter2FACode": "Tvofasa auðkenning",
+            "enter2FAHint": "Sláðu inn 6 stafa kóðann úr auðkenningarforritinu þínu",
+            "invalid2FACode": "Ógildur 2FA kóði. Vinsamlegast reyndu aftur."
         },
         "folderOverwrite": {
             "title": "Mappa er til",

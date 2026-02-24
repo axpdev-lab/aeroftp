@@ -82,13 +82,18 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     }
   };
 
-  const handlePermanentDelete = async () => {
+  // Styled confirmation dialog state (replaces window.confirm)
+  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
+
+  const handlePermanentDelete = () => {
+    if (selected.size === 0) return;
+    setPendingDeleteConfirm(true);
+  };
+
+  const confirmPermanentDelete = async () => {
+    setPendingDeleteConfirm(false);
     const fileIds = getSelectedIds();
     if (fileIds.length === 0) return;
-    const confirmed = window.confirm(
-      t('contextMenu.permanentDeleteConfirm', { count: fileIds.length })
-    );
-    if (!confirmed) return;
     setActionLoading('delete');
     try {
       await invoke('google_drive_permanent_delete', { fileIds });
@@ -246,6 +251,31 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
           )}
         </div>
       </div>
+
+      {/* Styled confirmation dialog (replaces window.confirm) */}
+      {pendingDeleteConfirm && (
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
+          <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-[var(--color-text-primary)] mb-4">
+              {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingDeleteConfirm(false)}
+                className="px-4 py-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={confirmPermanentDelete}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
+              >
+                {t('contextMenu.permanentDelete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -500,6 +500,18 @@ impl StorageProvider for MegaProvider {
         self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str]).await
             .map_err(|e| ProviderError::TransferFailed(format!("Download to bytes failed: {}", e)))?;
 
+        // H2: Check file size before reading to prevent OOM
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
+        let metadata = tokio::fs::metadata(&temp_path).await.map_err(ProviderError::IoError)?;
+        if metadata.len() > limit {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                metadata.len() as f64 / 1_048_576.0,
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+
         let bytes = tokio::fs::read(&temp_path).await.map_err(|e| {
             ProviderError::IoError(e)
         })?;

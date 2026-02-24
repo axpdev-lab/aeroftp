@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Sha512};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
+use subtle::ConstantTimeEq;
 
 // ============================================================================
 // Constants
@@ -58,6 +59,9 @@ const HEADER_SIZE: usize = 512;
 const ARGON2_M_COST: u32 = 128 * 1024; // 128 MiB
 const ARGON2_T_COST: u32 = 4;          // 4 iterations
 const ARGON2_P_COST: u32 = 4;          // 4 parallelism
+
+/// Maximum allowed manifest size (64 MB) — prevents OOM from malicious/corrupted vaults (H9)
+const MAX_MANIFEST_SIZE: usize = 64 * 1024 * 1024;
 
 // ============================================================================
 // Data Structures
@@ -239,6 +243,55 @@ impl VaultHeader {
         let mut output = [0u8; 64];
         output.copy_from_slice(&result.into_bytes());
         output
+    }
+}
+
+// ============================================================================
+// Security Helpers (H9 + H10 fixes)
+// ============================================================================
+
+/// Read manifest from a BufReader with a 64MB size cap to prevent OOM (H9 fix).
+/// Returns (manifest_len, encrypted_manifest_bytes).
+fn read_manifest_bounded(reader: &mut BufReader<File>) -> Result<(usize, Vec<u8>), String> {
+    let mut manifest_len_buf = [0u8; 4];
+    reader.read_exact(&mut manifest_len_buf)
+        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
+    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
+
+    if manifest_len > MAX_MANIFEST_SIZE {
+        return Err(format!(
+            "Manifest size {} exceeds maximum allowed size of {} bytes",
+            manifest_len, MAX_MANIFEST_SIZE
+        ));
+    }
+
+    let mut manifest_encrypted = vec![0u8; manifest_len];
+    reader.read_exact(&mut manifest_encrypted)
+        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+
+    Ok((manifest_len, manifest_encrypted))
+}
+
+/// Validate manifest_len from an in-memory vault_data buffer (H9 fix).
+/// Returns Ok(()) if within bounds, Err otherwise.
+fn validate_manifest_len(manifest_len: usize) -> Result<(), String> {
+    if manifest_len > MAX_MANIFEST_SIZE {
+        return Err(format!(
+            "Manifest size {} exceeds maximum allowed size of {} bytes",
+            manifest_len, MAX_MANIFEST_SIZE
+        ));
+    }
+    Ok(())
+}
+
+/// Constant-time HMAC comparison to prevent timing side-channel attacks (H10 fix).
+/// Uses `subtle::ConstantTimeEq` which does not short-circuit on mismatch.
+fn verify_header_mac(header: &VaultHeader, mac_key: &[u8]) -> Result<(), String> {
+    let computed_mac = header.compute_mac(mac_key);
+    if computed_mac.ct_eq(&header.header_mac).into() {
+        Ok(())
+    } else {
+        Err("Header integrity check failed - file may be corrupted".into())
     }
 }
 
@@ -626,21 +679,11 @@ pub async fn vault_v2_open(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - file may be corrupted".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
-    // Read and decrypt manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read and decrypt manifest (bounded allocation — H9 fix)
+    let (_manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -792,11 +835,8 @@ pub async fn vault_v2_add_files(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Derive ChaCha key for cascade mode if needed
     let mut chacha_key = if cascade_mode {
@@ -805,15 +845,8 @@ pub async fn vault_v2_add_files(
         [0u8; 32]
     };
 
-    // Read manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix)
+    let (_manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -920,9 +953,10 @@ pub async fn vault_v2_add_files(
     // Zeroize ChaCha key
     chacha_key.zeroize();
 
-    // Write updated vault
-    let file = File::create(&vault_path)
-        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    // Write updated vault atomically (M67 — crash-safe temp+rename pattern)
+    let tmp_path = format!("{}.add.tmp", vault_path);
+    let file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     // Write header (unchanged)
@@ -943,7 +977,18 @@ pub async fn vault_v2_add_files(
         .map_err(|e| format!("Failed to write new data: {}", e))?;
 
     writer.flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     Ok(serde_json::json!({
         "added": added_count,
@@ -984,11 +1029,8 @@ pub async fn vault_v2_extract_entry(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Derive ChaCha key for cascade mode if needed
     let mut chacha_key = if cascade_mode {
@@ -997,15 +1039,8 @@ pub async fn vault_v2_extract_entry(
         [0u8; 32]
     };
 
-    // Read manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix)
+    let (manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -1126,11 +1161,8 @@ pub async fn vault_v2_change_password(
     old_kek_master.zeroize();
     old_kek_mac.zeroize();
 
-    // Verify header MAC with old password
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC with old password (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Generate new salt for new password
     let mut new_salt = [0u8; SALT_SIZE];
@@ -1167,9 +1199,19 @@ pub async fn vault_v2_change_password(
     let header_bytes = new_header.to_bytes();
     vault_data[..HEADER_SIZE].copy_from_slice(&header_bytes);
 
-    // Write updated vault back to disk
-    std::fs::write(&vault_path, &vault_data)
-        .map_err(|e| format!("Failed to write vault: {}", e))?;
+    // Write updated vault atomically (M67 — crash-safe temp+rename pattern)
+    let tmp_path = format!("{}.chpw.tmp", vault_path);
+    std::fs::write(&tmp_path, &vault_data)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     // Zeroize vault data buffer
     vault_data.zeroize();
@@ -1210,11 +1252,8 @@ pub async fn vault_v2_delete_entry(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Read manifest
     let mut pos = HEADER_SIZE;
@@ -1224,6 +1263,7 @@ pub async fn vault_v2_delete_entry(
     let manifest_len = u32::from_le_bytes([
         vault_data[pos], vault_data[pos + 1], vault_data[pos + 2], vault_data[pos + 3]
     ]) as usize;
+    validate_manifest_len(manifest_len)?;
     pos += 4;
 
     if vault_data.len() < pos + manifest_len {
@@ -1271,11 +1311,12 @@ pub async fn vault_v2_delete_entry(
     let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
     let new_manifest_bytes = new_encrypted_manifest.as_bytes();
 
-    // Rebuild vault: header + new manifest + existing data section
+    // Rebuild vault atomically (M67 — crash-safe temp+rename pattern)
     let data_section = &vault_data[pos..];
+    let tmp_path = format!("{}.del.tmp", vault_path);
 
-    let file = File::create(&vault_path)
-        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     // Write header (unchanged)
@@ -1294,7 +1335,18 @@ pub async fn vault_v2_delete_entry(
         .map_err(|e| format!("Failed to write data: {}", e))?;
 
     writer.flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     Ok(serde_json::json!({
         "deleted": entry_name,
@@ -1346,11 +1398,8 @@ pub async fn vault_v2_add_files_to_dir(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Derive ChaCha key for cascade mode if needed
     let mut chacha_key = if cascade_mode {
@@ -1359,15 +1408,8 @@ pub async fn vault_v2_add_files_to_dir(
         [0u8; 32]
     };
 
-    // Read manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix)
+    let (_manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -1486,9 +1528,11 @@ pub async fn vault_v2_add_files_to_dir(
 
     chacha_key.zeroize();
 
-    // Write updated vault
-    let file = File::create(&vault_path)
-        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    // Write updated vault atomically (M67 — crash-safe temp+rename pattern)
+    // TODO(M67): Extract atomic write helper to reduce duplication across vault mutations
+    let tmp_path = format!("{}.adddir.tmp", vault_path);
+    let file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     writer.write_all(&header_buf)
@@ -1506,7 +1550,18 @@ pub async fn vault_v2_add_files_to_dir(
         .map_err(|e| format!("Failed to write new data: {}", e))?;
 
     writer.flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     Ok(serde_json::json!({
         "added": added_count,
@@ -1558,11 +1613,8 @@ pub async fn vault_v2_create_directory(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Read manifest
     let mut pos = HEADER_SIZE;
@@ -1572,6 +1624,7 @@ pub async fn vault_v2_create_directory(
     let manifest_len = u32::from_le_bytes([
         vault_data[pos], vault_data[pos + 1], vault_data[pos + 2], vault_data[pos + 3]
     ]) as usize;
+    validate_manifest_len(manifest_len)?;
     pos += 4;
 
     if vault_data.len() < pos + manifest_len {
@@ -1638,11 +1691,12 @@ pub async fn vault_v2_create_directory(
     let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
     let new_manifest_bytes = new_encrypted_manifest.as_bytes();
 
-    // Rebuild vault: header + new manifest + existing data section
+    // Rebuild vault atomically (M67 — crash-safe temp+rename pattern)
     let data_section = &vault_data[pos..];
+    let tmp_path = format!("{}.mkdir.tmp", vault_path);
 
-    let file = File::create(&vault_path)
-        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     writer.write_all(&vault_data[..HEADER_SIZE])
@@ -1658,7 +1712,18 @@ pub async fn vault_v2_create_directory(
         .map_err(|e| format!("Failed to write data: {}", e))?;
 
     writer.flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     let created_count = dirs_to_create.len();
     Ok(serde_json::json!({
@@ -1701,11 +1766,8 @@ pub async fn vault_v2_delete_entries(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Read manifest
     let mut pos = HEADER_SIZE;
@@ -1715,6 +1777,7 @@ pub async fn vault_v2_delete_entries(
     let manifest_len = u32::from_le_bytes([
         vault_data[pos], vault_data[pos + 1], vault_data[pos + 2], vault_data[pos + 3]
     ]) as usize;
+    validate_manifest_len(manifest_len)?;
     pos += 4;
 
     if vault_data.len() < pos + manifest_len {
@@ -1805,11 +1868,12 @@ pub async fn vault_v2_delete_entries(
     let new_encrypted_manifest = encrypt_filename(master_key.expose_secret(), &new_manifest_json)?;
     let new_manifest_bytes = new_encrypted_manifest.as_bytes();
 
-    // Rebuild vault: header + new manifest + existing data section
+    // Rebuild vault atomically (M67 — crash-safe temp+rename pattern)
     let data_section = &vault_data[pos..];
+    let tmp_path = format!("{}.delm.tmp", vault_path);
 
-    let file = File::create(&vault_path)
-        .map_err(|e| format!("Failed to create vault: {}", e))?;
+    let file = File::create(&tmp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     writer.write_all(&vault_data[..HEADER_SIZE])
@@ -1825,7 +1889,18 @@ pub async fn vault_v2_delete_entries(
         .map_err(|e| format!("Failed to write data: {}", e))?;
 
     writer.flush()
-        .map_err(|e| format!("Failed to flush: {}", e))?;
+        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    drop(writer);
+
+    // Atomic rename: original → .bak, temp → original, delete .bak
+    let bak_path = format!("{}.bak", vault_path);
+    std::fs::rename(&vault_path, &bak_path)
+        .map_err(|e| format!("Failed to backup original vault: {}", e))?;
+    if let Err(e) = std::fs::rename(&tmp_path, &vault_path) {
+        let _ = std::fs::rename(&bak_path, &vault_path); // Rollback
+        return Err(format!("Failed to replace vault: {}", e));
+    }
+    let _ = std::fs::remove_file(&bak_path);
 
     let removed_count = original_count - manifest.entries.len();
     Ok(serde_json::json!({
@@ -1865,21 +1940,11 @@ pub async fn vault_v2_extract_all(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
-    // Read manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix)
+    let (_manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -1901,12 +1966,56 @@ pub async fn vault_v2_extract_all(
         entries_with_names.push((entry.clone(), name));
     }
 
+    // Canonicalize dest_dir for path containment checks (H11 fix)
+    let canonical_dest = std::fs::canonicalize(&dest_dir)
+        .map_err(|e| format!("Failed to canonicalize destination: {}", e))?;
+
     // Extract each entry
     let mut extracted = 0;
+    let mut skipped = 0;
     let total = entries_with_names.len();
 
     for (_entry, name) in entries_with_names {
-        let dest_path = std::path::Path::new(&dest_dir).join(&name);
+        // H11 fix: Validate entry name to prevent path traversal
+        if name.is_empty()
+            || name.contains('\0')
+            || name.starts_with('/')
+            || name.starts_with('\\')
+            || (name.len() >= 2 && name.as_bytes()[1] == b':' && name.as_bytes()[0].is_ascii_alphabetic())
+            || name.split('/').chain(name.split('\\')).any(|c| c == "..")
+        {
+            tracing::warn!("Skipping unsafe vault entry name: {:?}", name);
+            skipped += 1;
+            continue;
+        }
+
+        let dest_path = canonical_dest.join(&name);
+
+        // Verify the resolved path stays within the destination directory.
+        // For entries with subdirectories, ensure parent exists and canonicalize.
+        if let Some(parent) = dest_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent dir for '{}': {}", name, e))?;
+        }
+        let resolved = if dest_path.exists() {
+            std::fs::canonicalize(&dest_path)
+                .unwrap_or_else(|_| dest_path.clone())
+        } else if let Some(parent) = dest_path.parent() {
+            let canonical_parent = std::fs::canonicalize(parent)
+                .unwrap_or_else(|_| parent.to_path_buf());
+            canonical_parent.join(dest_path.file_name().unwrap_or_default())
+        } else {
+            dest_path.clone()
+        };
+
+        if !resolved.starts_with(&canonical_dest) {
+            tracing::warn!(
+                "Path traversal detected in vault entry '{}': {:?} escapes {:?}",
+                name, resolved, canonical_dest
+            );
+            skipped += 1;
+            continue;
+        }
 
         // Call extract_entry for each file
         match vault_v2_extract_entry(
@@ -1922,6 +2031,7 @@ pub async fn vault_v2_extract_all(
 
     Ok(serde_json::json!({
         "extracted": extracted,
+        "skipped": skipped,
         "total": total
     }))
 }
@@ -1987,11 +2097,8 @@ pub async fn vault_v2_compact(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    // Verify header MAC
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
     // Derive ChaCha key for cascade mode if needed
     let mut chacha_key = if cascade_mode {
@@ -2000,20 +2107,8 @@ pub async fn vault_v2_compact(
         [0u8; 32]
     };
 
-    // Read manifest
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    // Prevent OOM from corrupted or malicious manifest_len
-    if manifest_len > 64 * 1024 * 1024 {
-        return Err("Manifest exceeds maximum allowed size (64 MB)".to_string());
-    }
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix, uses centralized helper)
+    let (manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),
@@ -2258,19 +2353,11 @@ pub async fn vault_v2_sync_compare(
     kek_master.zeroize();
     kek_mac.zeroize();
 
-    let computed_mac = header.compute_mac(mac_key.expose_secret());
-    if computed_mac != header.header_mac {
-        return Err("Header integrity check failed - wrong password?".into());
-    }
+    // Verify header MAC (constant-time comparison — H10 fix)
+    verify_header_mac(&header, mac_key.expose_secret())?;
 
-    let mut manifest_len_buf = [0u8; 4];
-    reader.read_exact(&mut manifest_len_buf)
-        .map_err(|e| format!("Failed to read manifest length: {}", e))?;
-    let manifest_len = u32::from_le_bytes(manifest_len_buf) as usize;
-
-    let mut manifest_encrypted = vec![0u8; manifest_len];
-    reader.read_exact(&mut manifest_encrypted)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    // Read manifest (bounded allocation — H9 fix)
+    let (_manifest_len, mut manifest_encrypted) = read_manifest_bounded(&mut reader)?;
 
     let manifest_json = decrypt_filename(
         master_key.expose_secret(),

@@ -46,6 +46,14 @@ pub struct UnlockedVault {
     shortening_threshold: u32,
 }
 
+/// Zeroize master keys when vault is dropped (M64/A7-S5 fix)
+impl Drop for UnlockedVault {
+    fn drop(&mut self) {
+        self.enc_key.zeroize();
+        self.mac_key.zeroize();
+    }
+}
+
 /// A decrypted directory entry
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

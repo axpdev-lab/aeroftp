@@ -290,6 +290,9 @@ function nextTabId(): string {
 
 const SETTINGS_KEY = 'aeroftp-terminal-settings';
 const SCROLLBACK_KEY = 'aeroftp-terminal-scrollback';
+// L57: Size limits for scrollback persistence to prevent localStorage bloat
+const SCROLLBACK_MAX_PER_TAB = 100 * 1024;  // 100 KB per tab
+const SCROLLBACK_MAX_TOTAL = 500 * 1024;     // 500 KB total across all tabs
 
 interface TerminalSettings {
     themeName: string;
@@ -320,14 +323,28 @@ function saveScrollback(tabId: string, xterm: XTerm) {
         // Trim trailing empty lines
         while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
         if (lines.length === 0) return;
+        let text = lines.join('\n');
+        // L57: Truncate per-tab scrollback if it exceeds the size limit
+        if (text.length > SCROLLBACK_MAX_PER_TAB) {
+            text = text.slice(-SCROLLBACK_MAX_PER_TAB);
+        }
         const allScrollbacks = JSON.parse(localStorage.getItem(SCROLLBACK_KEY) || '{}');
-        allScrollbacks[tabId] = lines.join('\n');
+        allScrollbacks[tabId] = text;
         // Keep max 5 tabs worth of scrollback
         const keys = Object.keys(allScrollbacks);
         if (keys.length > 5) {
             delete allScrollbacks[keys[0]];
         }
-        localStorage.setItem(SCROLLBACK_KEY, JSON.stringify(allScrollbacks));
+        // L57: Enforce total size limit — evict oldest tabs until under budget
+        let serialized = JSON.stringify(allScrollbacks);
+        const sortedKeys = Object.keys(allScrollbacks);
+        while (serialized.length > SCROLLBACK_MAX_TOTAL && sortedKeys.length > 1) {
+            const oldest = sortedKeys.shift()!;
+            if (oldest === tabId) continue; // Keep the current tab
+            delete allScrollbacks[oldest];
+            serialized = JSON.stringify(allScrollbacks);
+        }
+        localStorage.setItem(SCROLLBACK_KEY, serialized);
     } catch { /* quota exceeded or other error */ }
 }
 
@@ -554,8 +571,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     const tab = tabs.find(t => t.id === tabId);
                     if (tab?.type === 'ssh' && sessionId) {
                         await invoke('ssh_shell_write', { sessionId, data });
-                    } else {
-                        await invoke('pty_write', { data, sessionId: sessionId || null });
+                    } else if (sessionId) {
+                        await invoke('pty_write', { data, sessionId });
                     }
                 } catch (e) {
                     console.error('Terminal write error:', e);
@@ -583,8 +600,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         const tab = tabs.find(t => t.id === activeTabId);
                         if (tab?.type === 'ssh' && sessionId) {
                             invoke('ssh_shell_resize', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
-                        } else {
-                            invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId: sessionId || null }).catch(() => {});
+                        } else if (sessionId) {
+                            invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId }).catch(() => {});
                         }
                     }
                 }
@@ -713,7 +730,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 if (fa) {
                     const dims = fa.proposeDimensions();
                     if (dims) {
-                        await invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId: sessionId || null });
+                        if (sessionId) {
+                            await invoke('pty_resize', { rows: dims.rows, cols: dims.cols, sessionId });
+                        }
                     }
                 }
             }
@@ -727,7 +746,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         const isWindows = navigator.platform.startsWith('Win');
                         // Windows: cls for cmd.exe/PowerShell; Linux: clear for bash/zsh
                         const clearCommand = isWindows ? 'cls\r\n' : 'clear\n';
-                        await invoke('pty_write', { data: clearCommand, sessionId: sessionId || null });
+                        if (sessionId) {
+                            await invoke('pty_write', { data: clearCommand, sessionId });
+                        }
                     } catch { /* ignore */ }
                 }, 300);
             }
@@ -742,7 +763,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                         if (tab.type === 'ssh' && sessionId) {
                             await invoke('ssh_shell_write', { sessionId, data: pendingCmd + '\n' });
                         } else {
-                            await invoke('pty_write', { data: pendingCmd + '\n', sessionId: sessionId || null });
+                            if (sessionId) {
+                                await invoke('pty_write', { data: pendingCmd + '\n', sessionId });
+                            }
                         }
                     } catch { /* ignore */ }
                 }, 600);
@@ -766,8 +789,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             const sessionId = ptySessionIds.current.get(tabId);
             if (tab?.type === 'ssh' && sessionId) {
                 await invoke('ssh_shell_close', { sessionId });
-            } else {
-                await invoke('pty_close', { sessionId: sessionId || null });
+            } else if (sessionId) {
+                await invoke('pty_close', { sessionId });
             }
         } catch { /* ignore */ }
 
@@ -815,8 +838,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         if (connectedTabs.current.has(tabId)) {
             if (tab?.type === 'ssh' && sessionId) {
                 invoke('ssh_shell_close', { sessionId }).catch(() => {});
-            } else {
-                invoke('pty_close', { sessionId: sessionId || null }).catch(() => {});
+            } else if (sessionId) {
+                invoke('pty_close', { sessionId }).catch(() => {});
             }
         }
         connectedTabs.current.delete(tabId);
@@ -850,7 +873,9 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             unlistenFns.current.forEach((fn) => fn());
             connectedTabs.current.forEach((tabId) => {
                 const sessionId = ptySessionIds.current.get(tabId);
-                invoke('pty_close', { sessionId: sessionId || null }).catch(() => {});
+                if (sessionId) {
+                    invoke('pty_close', { sessionId }).catch(() => {});
+                }
             });
         };
     }, []);
@@ -858,8 +883,25 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Listen for terminal-execute events from AeroAgent
     useEffect(() => {
         const handleTerminalExecute = (e: Event) => {
-            const { command } = (e as CustomEvent).detail;
+            const { command, displayOnly } = (e as CustomEvent).detail;
             if (!command) return;
+
+            // displayOnly: shell_execute already ran the command in Rust backend.
+            // Only display a visual note in the terminal — do NOT write to PTY (H34 audit fix).
+            if (displayOnly) {
+                const tabId = activeTabId;
+                const targetTab = tabId && connectedTabs.current.has(tabId)
+                    ? tabId
+                    : Array.from(connectedTabs.current)[0] || null;
+                if (targetTab) {
+                    const xterm = xtermInstances.current.get(targetTab);
+                    if (xterm) {
+                        // Display as dim comment — ANSI dim (2m) + reset (0m)
+                        xterm.write(`\r\n\x1b[2m# [AeroAgent] executed: ${command}\x1b[0m\r\n`);
+                    }
+                }
+                return;
+            }
 
             // Find active connected tab
             const tabId = activeTabId;
@@ -878,8 +920,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 const tab = tabs.find(t => t.id === targetTab);
                 if (tab?.type === 'ssh' && sessionId) {
                     invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
-                } else {
-                    invoke('pty_write', { data: command + '\n', sessionId: sessionId || null }).catch(() => {});
+                } else if (sessionId) {
+                    invoke('pty_write', { data: command + '\n', sessionId }).catch(() => {});
                 }
                 setActiveTabId(targetTab);
                 return;
@@ -890,8 +932,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             const tab = tabs.find(t => t.id === tabId);
             if (tab?.type === 'ssh' && sessionId) {
                 invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
-            } else {
-                invoke('pty_write', { data: command + '\n', sessionId: sessionId || null }).catch(() => {});
+            } else if (sessionId) {
+                invoke('pty_write', { data: command + '\n', sessionId }).catch(() => {});
             }
         };
 

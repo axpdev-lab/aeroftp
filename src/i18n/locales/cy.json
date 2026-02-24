@@ -335,7 +335,7 @@
             "more": "Mwy",
             "openAsCryptomator": "Agor fel Cryptomator Vault",
             "askAeroAgent": "Gofyn i AeroAgent...",
-            "openWithAeroVault": "[NEEDS TRANSLATION] Open with AeroVault"
+            "openWithAeroVault": "Agor gydag AeroVault"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -368,7 +368,8 @@
             "retry": "Ailgynnig",
             "stopAll": "Stopio'r cyfan",
             "stopAllPending": "Stopio'r rhai sy'n aros",
-            "forceStop": "Gorfodi stopio (torri ar draws y ffeil gyfredol)"
+            "forceStop": "Gorfodi stopio (torri ar draws y ffeil gyfredol)",
+            "cancelledByUser": "Wedi'i ganslo gan y defnyddiwr"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -694,9 +695,9 @@
             "iconsTab": "Eiconau",
             "protocolFourshared": "4shared",
             "protocolZohoworkdrive": "Zoho WorkDrive",
-            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
-            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
-            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
+            "chooseIcon": "Dewis Eicon",
+            "removeIcon": "Dileu Eicon",
+            "serverIcon": "Eicon Gweinydd"
         },
         "devtools": {
             "title": "AeroTools",
@@ -915,8 +916,10 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "disconnectedTabClosed": "Sesiwn wedi'i gau — wedi datgysylltu oddi wrth {server}",
             "disconnectedAllClosed": "Pob sesiwn wedi'i chau — wedi datgysylltu oddi wrth {server}",
-            "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
-            "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
+            "movedToTrash": "Symudwyd {count} eitem i'r sbwriel",
+            "moveToTrashFailed": "Methwyd symud i'r sbwriel",
+            "batchRenameResult": "{success} wedi'u hailenwi, {errors} wedi methu",
+            "copyCompleted": "Copïo wedi'i gwblhau"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -2270,8 +2273,8 @@
             "fast": "Cyflym",
             "normal": "Normal",
             "maximum": "Uchafswm",
-            "compressing": "[NEEDS TRANSLATION] Compressing...",
-            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
+            "compressing": "Yn cywasgu...",
+            "estimatedSize": "Amcangyfrif"
         },
         "batchRename": {
             "title": "Ailenwi Swp",
@@ -2323,7 +2326,10 @@
             "patternWaves": "Tonnau",
             "patternConstellation": "Sêr",
             "patternIsometric": "Isometrig",
-            "patternBubbles": "Swigod"
+            "patternBubbles": "Swigod",
+            "enter2FACode": "Dilysu Dau Ffactor",
+            "enter2FAHint": "Rhowch y cod 6 digid o'ch ap dilysu",
+            "invalid2FACode": "Cod 2FA annilys. Rhowch gynnig arall arni."
         },
         "folderOverwrite": {
             "title": "Mae'r Ffolder Eisoes yn Bodoli",

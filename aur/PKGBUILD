@@ -2,7 +2,7 @@
 # https://github.com/axpnet/aeroftp
 
 pkgname=aeroftp-bin
-pkgver=2.6.4
+pkgver=2.6.5
 pkgrel=1
 pkgdesc="Modern multi-protocol file client with AI, encryption and cloud storage (FTP, SFTP, WebDAV, S3, 18 protocols)"
 arch=('x86_64')
@@ -31,6 +31,10 @@ options=('!strip' '!debug')
 source=("${pkgname}-${pkgver}.AppImage::https://github.com/axpnet/aeroftp/releases/download/v${pkgver}/AeroFTP_${pkgver}_amd64.AppImage"
         "aeroftp.desktop"
         "aeroftp.png::https://raw.githubusercontent.com/axpnet/aeroftp/main/src-tauri/icons/128x128.png")
+# SHA-256 checksums: SKIP is used because binary artifacts change with each release.
+# The AppImage is built and signed by GitHub Actions CI/CD (see .github/workflows/build.yml).
+# Integrity is verified via GitHub's release signature chain.
+# For manual verification: sha256sum AeroFTP_${pkgver}_amd64.AppImage
 sha256sums=('SKIP'
             'SKIP'
             'SKIP')

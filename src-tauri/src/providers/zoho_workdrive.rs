@@ -1151,9 +1151,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
             return Err(ProviderError::Other(format!("Download failed ({}): {}", status, sanitize_api_error(&text))));
         }
 
-        Ok(resp.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Download read error: {}", e)))?
-            .to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(

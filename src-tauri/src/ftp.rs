@@ -301,32 +301,63 @@ impl FtpManager {
         Ok(())
     }
 
-    /// Download a file to memory (returns bytes directly)
+    /// Download a file to memory (returns bytes directly).
+    /// H2: Capped at 500 MB to prevent OOM — use download() for larger files.
     pub async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>> {
+        const LIMIT: u64 = 500 * 1024 * 1024; // 500 MB
+
         let stream = self.stream.as_mut()
             .ok_or(FtpManagerError::NotConnected)?;
-        
+
         info!("Downloading to memory: {}", remote_path);
-        
+
+        // Check file size first if server supports SIZE command
+        if let Ok(size) = stream.size(remote_path).await {
+            if size as u64 > LIMIT {
+                return Err(FtpManagerError::OperationFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Max: {:.0} MB.",
+                    size as f64 / 1_048_576.0,
+                    LIMIT as f64 / 1_048_576.0,
+                )).into());
+            }
+        }
+
         // Set binary transfer mode
         stream.transfer_type(FileType::Binary)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
         // Download using retr_as_stream
         let mut data_stream = stream.retr_as_stream(remote_path)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
-        // Read all data
+
+        // H2: Read with size cap to prevent OOM
         let mut buf = Vec::new();
-        data_stream.read_to_end(&mut buf).await?;
-        
+        let limit_usize = (LIMIT + 1) as usize;
+        loop {
+            let mut chunk = [0u8; 8192];
+            use tokio::io::AsyncReadExt;
+            let n = data_stream.read(&mut chunk).await
+                .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            if n == 0 { break; }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.len() > limit_usize { break; }
+        }
+        let bytes_read = buf.len();
+
         // Finalize the stream
         stream.finalize_retr_stream(data_stream)
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        
+
+        if bytes_read as u64 > LIMIT {
+            return Err(FtpManagerError::OperationFailed(format!(
+                "Download exceeded {:.0} MB size limit.",
+                LIMIT as f64 / 1_048_576.0,
+            )).into());
+        }
+
         info!("Downloaded {} bytes from: {}", buf.len(), remote_path);
         Ok(buf)
     }

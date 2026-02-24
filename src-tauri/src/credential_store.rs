@@ -18,6 +18,15 @@ use secrecy::zeroize::Zeroize;
 use tracing::info;
 
 // Cached unlocked vault state: (vault.db path, vault_key)
+//
+// M15 SECURITY NOTE: The 32-byte vault key is held in a static Mutex in user-space memory.
+// Ideally we would use mlock(2) to prevent the OS from swapping this page to disk, but:
+// 1. mlock requires platform-specific unsafe code (libc::mlock on Unix, VirtualLock on Windows)
+// 2. The static Mutex<Option<...>> layout doesn't guarantee the key bytes are page-aligned
+// 3. secrecy::SecretBox (used elsewhere) doesn't support mlock either
+// This means the key could theoretically be written to swap. On modern systems with encrypted
+// swap (default on macOS, optional on Linux with LUKS), this risk is mitigated.
+// TODO: Consider wrapping in a custom MlockedBox<[u8; 32]> if threat model requires it.
 static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
 
 // Serializes all vault write operations to prevent concurrent read-modify-write races

@@ -2739,6 +2739,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 try {
                                                                     const ok = await invoke<boolean>('totp_disable', { code: totpDisableCode });
                                                                     if (ok) {
+                                                                        // Remove TOTP secret from credential vault
+                                                                        invoke('delete_credential', { account: 'totp_secret' })
+                                                                            .catch((err) => console.error('Failed to remove TOTP secret from vault:', err));
                                                                         setTotpEnabled(false);
                                                                         setShowTotpDisable(false);
                                                                         setTotpDisableCode('');
@@ -2771,8 +2774,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             onEnabled={(secret) => {
                                 setTotpEnabled(true);
                                 setShowTotpSetup(false);
-                                // Store secret in vault for persistence
-                                invoke('vault_store', { key: 'totp_secret', value: secret }).catch(() => {});
+                                // Store TOTP secret in credential vault for persistence across restarts
+                                invoke('store_credential', { account: 'totp_secret', password: secret })
+                                    .catch((err) => {
+                                        console.error('Failed to persist TOTP secret to vault:', err);
+                                    });
                             }}
                         />
 

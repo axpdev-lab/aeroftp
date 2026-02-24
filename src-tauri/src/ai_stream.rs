@@ -6,7 +6,7 @@ use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 use futures_util::StreamExt;
 
-use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, AI_STREAM_CLIENT};
+use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, sanitize_error_message, AI_STREAM_CLIENT};
 
 /// Maximum SSE buffer size (50 MB) to prevent unbounded memory growth
 const MAX_BUFFER_SIZE: usize = 50 * 1024 * 1024;
@@ -63,8 +63,10 @@ pub async fn ai_chat_stream(
     match result {
         Ok(()) => Ok(()),
         Err(e) => {
+            // Sanitize error message to prevent API key leakage in streamed error events
+            let safe_msg = sanitize_error_message(&e.to_string());
             let _ = app.emit(&event_name, StreamChunk {
-                content: format!("Error: {}", e),
+                content: format!("Error: {}", safe_msg),
                 done: true,
                 tool_calls: None,
                 input_tokens: None,
@@ -74,7 +76,7 @@ pub async fn ai_chat_stream(
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
             });
-            Err(e.to_string())
+            Err(safe_msg)
         }
     }
 }
@@ -810,6 +812,9 @@ async fn stream_gemini(
     event_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
+    // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter (`key=`).
+    // This is Google's mandated authentication method — header-based auth is not supported.
+    // The key is sanitized from error messages via `sanitize_error_message()` in ai.rs.
     let url = format!(
         "{}/models/{}:streamGenerateContent?alt=sse&key={}",
         request.base_url, request.model, api_key
@@ -877,8 +882,9 @@ async fn stream_gemini(
     let response = client.post(&url).json(&body).send().await?;
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)).into());
+        let err_body = response.text().await.unwrap_or_default();
+        // Sanitize error to strip API key from any reflected URL in the error body
+        return Err(sanitize_error_message(&format!("HTTP {} — {}", status, truncate_safe(&err_body, 500))).into());
     }
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();

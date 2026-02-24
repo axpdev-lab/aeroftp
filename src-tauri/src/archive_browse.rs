@@ -6,6 +6,28 @@
 use serde::Serialize;
 use secrecy::{ExposeSecret, SecretString};
 
+/// M16: Validate archive entry paths to prevent path traversal attacks (ZipSlip).
+/// Rejects entries containing ".." components, absolute paths, or Windows drive prefixes.
+fn is_safe_archive_entry(entry_name: &str) -> bool {
+    // Reject entries with path traversal sequences
+    if entry_name.contains("..") {
+        return false;
+    }
+    // Reject absolute Unix paths
+    if entry_name.starts_with('/') {
+        return false;
+    }
+    // Reject absolute Windows paths (C:\, D:\, etc.)
+    if entry_name.len() >= 2 && entry_name.as_bytes()[1] == b':' {
+        return false;
+    }
+    // Reject backslash-prefixed paths
+    if entry_name.starts_with('\\') {
+        return false;
+    }
+    true
+}
+
 /// Metadata for a single entry inside an archive
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +117,11 @@ pub async fn extract_zip_entry(
     use std::fs::{self, File};
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
+
+    // M16: Validate entry name before extraction to prevent path traversal (ZipSlip)
+    if !is_safe_archive_entry(&entry_name) {
+        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+    }
 
     let file = File::open(&archive_path)
         .map_err(|e| format!("Failed to open archive: {}", e))?;
@@ -226,6 +253,11 @@ pub async fn extract_7z_entry(
     use std::fs::{self, File};
     use std::io::BufReader;
 
+    // M16: Validate entry name before extraction to prevent path traversal
+    if !is_safe_archive_entry(&entry_name) {
+        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+    }
+
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path)
@@ -340,6 +372,11 @@ pub async fn extract_tar_entry(
 ) -> Result<String, String> {
     use std::fs::{self, File};
 
+    // M16: Validate entry name before extraction to prevent path traversal
+    if !is_safe_archive_entry(&entry_name) {
+        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+    }
+
     let reader = open_tar_reader(&archive_path)?;
     let mut archive = tar::Archive::new(reader);
 
@@ -406,6 +443,11 @@ pub async fn extract_rar_entry(
     output_path: String,
     password: Option<String>,
 ) -> Result<String, String> {
+    // M16: Validate entry name before extraction to prevent path traversal
+    if !is_safe_archive_entry(&entry_name) {
+        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+    }
+
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let out_dir = std::path::Path::new(&output_path)

@@ -13,16 +13,16 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { logger } from '../utils/logger';
+import type { ActivityLogContextValue } from './useActivityLog';
+import type { useHumanizedLog } from './useHumanizedLog';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 interface UseCloudSyncOptions {
-  activityLog: any;
-  humanLog: any;
-  t: (key: string, params?: Record<string, string>) => string;
+  activityLog: ActivityLogContextValue;
+  humanLog: ReturnType<typeof useHumanizedLog>;
+  t: (key: string, params?: Record<string, string | number>) => string;
   checkForUpdate: (manual?: boolean) => void;
   isAppLocked: boolean;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function useCloudSync(options: UseCloudSyncOptions) {
   const { activityLog, humanLog, t, checkForUpdate, isAppLocked } = options;

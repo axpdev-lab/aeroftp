@@ -471,9 +471,8 @@ impl FourSharedProvider {
             ));
         }
 
-        resp.bytes().await
-            .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     /// Upload bytes to 4shared folder (FS-009: uses retry)

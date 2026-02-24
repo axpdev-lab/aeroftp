@@ -335,7 +335,7 @@
             "more": "Gehiago",
             "openAsCryptomator": "Ireki Cryptomator ganga gisa",
             "askAeroAgent": "Galdetu AeroAgent-i...",
-            "openWithAeroVault": "[NEEDS TRANSLATION] Open with AeroVault"
+            "openWithAeroVault": "Ireki AeroVault-ekin"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -368,7 +368,8 @@
             "retry": "Saiatu berriro",
             "stopAll": "Gelditu dena",
             "stopAllPending": "Gelditu zain daudenak",
-            "forceStop": "Behartu gelditzea (uneko fitxategia eten)"
+            "forceStop": "Behartu gelditzea (uneko fitxategia eten)",
+            "cancelledByUser": "Erabiltzaileak bertan behera utzia"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -694,9 +695,9 @@
             "iconsTab": "Ikonoak",
             "protocolFourshared": "4shared",
             "protocolZohoworkdrive": "Zoho WorkDrive",
-            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
-            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
-            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
+            "chooseIcon": "Aukeratu ikonoa",
+            "removeIcon": "Kendu ikonoa",
+            "serverIcon": "Zerbitzariaren ikonoa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -915,8 +916,10 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "disconnectedTabClosed": "Saioa itxia — {server}-tik deskonektatua",
             "disconnectedAllClosed": "Saio guztiak itxita — {server}-tik deskonektatua",
-            "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
-            "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
+            "movedToTrash": "{count} elementu zakarrontzira mugitu dira",
+            "moveToTrashFailed": "Ezin izan da zakarrontzira mugitu",
+            "batchRenameResult": "{success} berrizendatu, {errors} huts egin",
+            "copyCompleted": "Kopia osatua"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2270,8 +2273,8 @@
             "fast": "Azkarra",
             "normal": "Normala",
             "maximum": "Maximoa",
-            "compressing": "[NEEDS TRANSLATION] Compressing...",
-            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
+            "compressing": "Konprimatzen...",
+            "estimatedSize": "Estimatua"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",
@@ -2323,7 +2326,10 @@
             "patternWaves": "Olatuak",
             "patternConstellation": "Izarrak",
             "patternIsometric": "Isometrikoa",
-            "patternBubbles": "Burbuilak"
+            "patternBubbles": "Burbuilak",
+            "enter2FACode": "Bi faktoreko autentifikazioa",
+            "enter2FAHint": "Sartu zure autentifikazio aplikazioko 6 digituko kodea",
+            "invalid2FACode": "2FA kode baliogabea. Mesedez, saiatu berriro."
         },
         "folderOverwrite": {
             "title": "Karpeta badago lehendik",

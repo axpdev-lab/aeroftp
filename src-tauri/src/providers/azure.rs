@@ -181,7 +181,9 @@ impl AzureProvider {
         let mut builder = self.client.request(method.clone(), actual_url);
         let mut final_headers = headers.clone();
         if self.config.sas_token.is_none() {
-            final_headers.insert("Authorization", HeaderValue::from_str(&auth).unwrap());
+            final_headers.insert("Authorization", HeaderValue::from_str(&auth)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?
+            );
         }
         builder = builder.headers(final_headers);
         if let Some(ref body_bytes) = body {
@@ -388,7 +390,8 @@ impl AzureProvider {
 
             let mut headers = HeaderMap::new();
             let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-            headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+            headers.insert("x-ms-date", HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
             headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
             let resp = self.send_with_auth_and_retry(
@@ -428,9 +431,10 @@ impl AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        headers.insert(CONTENT_LENGTH, HeaderValue::from_str(&data_len.to_string()).unwrap());
+        headers.insert(CONTENT_LENGTH, HeaderValue::from(data_len));
 
         let resp = self.send_with_auth_and_retry(
             reqwest::Method::PUT, &url, headers, data_len, Some(data),
@@ -463,9 +467,10 @@ impl AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        headers.insert(CONTENT_LENGTH, HeaderValue::from_str(&body_len.to_string()).unwrap());
+        headers.insert(CONTENT_LENGTH, HeaderValue::from(body_len));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/xml"));
 
         let resp = self.send_with_auth_and_retry(
@@ -497,7 +502,8 @@ impl AzureProvider {
 
             let mut headers = HeaderMap::new();
             let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-            headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+            headers.insert("x-ms-date", HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
             headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
             let resp = self.send_with_auth_and_retry(
@@ -573,7 +579,8 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         // AZ-005: Use retry for connect test
@@ -683,7 +690,8 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         let resp = self.send_with_auth_and_retry(
@@ -727,7 +735,8 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         // AZ-005: Use retry
@@ -739,9 +748,8 @@ impl StorageProvider for AzureProvider {
             return Err(ProviderError::TransferFailed(format!("Download failed: {}", resp.status())));
         }
 
-        resp.bytes().await
-            .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     /// AZ-001: Upload with block upload support for files >100MB.
@@ -781,7 +789,8 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         // AZ-005: Use retry
@@ -833,9 +842,11 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        headers.insert("x-ms-copy-source", HeaderValue::from_str(&source_url).unwrap());
+        headers.insert("x-ms-copy-source", HeaderValue::from_str(&source_url)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         // Azure requires explicit Content-Length: 0 for PUT Copy Blob
         headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
 
@@ -879,7 +890,8 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         // AZ-005: Use retry
@@ -1019,10 +1031,11 @@ impl AzureProvider {
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-        headers.insert("x-ms-date", HeaderValue::from_str(&now).unwrap());
+        headers.insert("x-ms-date", HeaderValue::from_str(&now)
+            .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?);
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
         headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
-        headers.insert(CONTENT_LENGTH, HeaderValue::from_str(&file_len.to_string()).unwrap());
+        headers.insert(CONTENT_LENGTH, HeaderValue::from(file_len));
 
         let auth = self.sign_request("PUT", url, &headers, file_len)?;
 
@@ -1031,7 +1044,9 @@ impl AzureProvider {
         let resp = if self.config.sas_token.is_some() {
             self.client.put(&auth).headers(headers).body(body).send().await
         } else {
-            headers.insert("Authorization", HeaderValue::from_str(&auth).unwrap());
+            headers.insert("Authorization", HeaderValue::from_str(&auth)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?
+            );
             self.client.put(url).headers(headers).body(body).send().await
         }.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 

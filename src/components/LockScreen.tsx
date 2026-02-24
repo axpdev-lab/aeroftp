@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import { Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, KeyRound } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 // ============ Lock Screen Background Patterns ============
@@ -94,6 +94,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [unlockStep, setUnlockStep] = useState(0);
     const [appVersion, setAppVersion] = useState('');
+    // 2FA state
+    const [needs2FA, setNeeds2FA] = useState(false);
+    const [totpCode, setTotpCode] = useState('');
 
     useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
     const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -143,16 +146,42 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!password || isLoading) return;
+        // If 2FA is showing, require the code before submitting
+        if (needs2FA && totpCode.length !== 6) return;
 
         setIsLoading(true);
         setError('');
 
         try {
-            await invoke('unlock_credential_store', { password });
+            await invoke('unlock_credential_store', {
+                password,
+                totpCode: needs2FA ? totpCode : null,
+            });
             onUnlock();
         } catch (err) {
-            setError(t('lockScreen.invalidPassword'));
-            setPassword('');
+            const errStr = String(err);
+            if (errStr.includes('2FA_REQUIRED')) {
+                // Password was correct but 2FA is enabled — show TOTP input
+                setNeeds2FA(true);
+                setError('');
+                // Focus the TOTP input after state update
+                setTimeout(() => {
+                    document.getElementById('lock-totp-input')?.focus();
+                }, 100);
+            } else if (errStr.includes('2FA_INVALID')) {
+                // Password was correct but TOTP code was wrong
+                setError(t('lockScreen.invalid2FACode'));
+                setTotpCode('');
+                setTimeout(() => {
+                    document.getElementById('lock-totp-input')?.focus();
+                }, 100);
+            } else {
+                // Password was wrong — reset everything
+                setError(t('lockScreen.invalidPassword'));
+                setPassword('');
+                setTotpCode('');
+                setNeeds2FA(false);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -225,9 +254,38 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                                 </div>
                             </div>
 
+                            {/* TOTP 2FA input — shown when backend requires it */}
+                            {needs2FA && (
+                                <div>
+                                    <label htmlFor="lock-totp-input" className="flex items-center gap-2 text-sm font-medium text-gray-300 mb-2">
+                                        <KeyRound size={14} className="text-amber-400" />
+                                        {t('lockScreen.enter2FACode')}
+                                    </label>
+                                    <input
+                                        id="lock-totp-input"
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        maxLength={6}
+                                        value={totpCode}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                            setTotpCode(val);
+                                        }}
+                                        className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-gray-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all placeholder-gray-500 text-center text-2xl tracking-[0.5em] font-mono"
+                                        placeholder="000000"
+                                        autoComplete="one-time-code"
+                                        disabled={isLoading}
+                                    />
+                                    <p className="mt-1.5 text-xs text-gray-500">
+                                        {t('lockScreen.enter2FAHint')}
+                                    </p>
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
-                                disabled={!password || isLoading}
+                                disabled={!password || isLoading || (needs2FA && totpCode.length !== 6)}
                                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                             >
                                 {isLoading ? (

@@ -57,8 +57,49 @@ const VIEWPORT_WIDTHS: Record<ViewportPreset, number | null> = { mobile: 375, ta
 const ZOOM_LEVELS = [50, 75, 100, 125, 150];
 
 /**
+ * Resolve a relative path against a base directory, normalizing ".." and "." segments.
+ * Returns null if the resolved path escapes the base directory (path traversal).
+ */
+function resolveAndValidatePath(href: string, baseDir: string): string | null {
+    // Reject absolute paths — only allow relative within the HTML file's directory
+    if (href.startsWith('/')) return null;
+    // Reject backslash paths (Windows-style traversal attempt)
+    if (href.includes('\\')) return null;
+    // Reject null bytes
+    if (href.includes('\0')) return null;
+
+    // Resolve the relative path manually
+    const baseParts = baseDir.replace(/\/+$/, '').split('/');
+    const hrefParts = href.split('/');
+
+    const resolved = [...baseParts];
+    for (const part of hrefParts) {
+        if (part === '.' || part === '') continue;
+        if (part === '..') {
+            resolved.pop();
+        } else {
+            resolved.push(part);
+        }
+    }
+
+    const resolvedPath = resolved.join('/');
+
+    // Ensure the resolved path stays within the base directory
+    const normalizedBase = baseDir.replace(/\/+$/, '') + '/';
+    if (!resolvedPath.startsWith(normalizedBase.slice(0, -1))) return null;
+
+    // Must end with .css extension
+    if (!resolvedPath.toLowerCase().endsWith('.css')) return null;
+
+    return resolvedPath;
+}
+
+/**
  * For HTML files: inline local <link rel="stylesheet"> as <style> blocks
  * so the iframe srcdoc renders with correct styles.
+ *
+ * SEC: Only inlines CSS files from the same directory tree as the HTML file.
+ * Rejects absolute paths, path traversal (../), and non-.css extensions.
  */
 async function inlineLocalStyles(html: string, filePath: string): Promise<string> {
     const dir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
@@ -74,7 +115,11 @@ async function inlineLocalStyles(html: string, filePath: string): Promise<string
     for (const { fullMatch, href } of matches) {
         // Skip CDN / absolute URLs
         if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) continue;
-        const cssPath = href.startsWith('/') ? href : dir + href;
+
+        // SEC: Validate resolved path stays within the HTML file's directory tree
+        const cssPath = resolveAndValidatePath(href, dir);
+        if (!cssPath) continue;
+
         try {
             const cssContent = await invoke<string>('read_local_file', { path: cssPath });
             processed = processed.replace(fullMatch, `<style>/* ${href} */\n${cssContent}</style>`);
@@ -452,6 +497,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     >
                         <iframe
                             ref={iframeRef}
+                            sandbox="allow-same-origin"
                             src={htmlBlobUrl || undefined}
                             srcDoc={!htmlBlobUrl ? (processedHtml || content) : undefined}
                             className="w-full h-full bg-white border border-gray-700 rounded"

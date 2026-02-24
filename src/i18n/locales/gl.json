@@ -335,7 +335,7 @@
             "more": "Máis",
             "openAsCryptomator": "Abrir como Cryptomator Vault",
             "askAeroAgent": "Preguntar a AeroAgent...",
-            "openWithAeroVault": "[NEEDS TRANSLATION] Open with AeroVault"
+            "openWithAeroVault": "Abrir con AeroVault"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -368,7 +368,8 @@
             "retry": "Reintentar",
             "stopAll": "Deter todo",
             "stopAllPending": "Deter os pendentes",
-            "forceStop": "Detención forzada (interromper o ficheiro actual)"
+            "forceStop": "Detención forzada (interromper o ficheiro actual)",
+            "cancelledByUser": "Cancelado polo usuario"
         },
         "settings": {
             "title": "Axustes",
@@ -694,9 +695,9 @@
             "iconsTab": "Iconas",
             "protocolFourshared": "4shared",
             "protocolZohoworkdrive": "Zoho WorkDrive",
-            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
-            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
-            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
+            "chooseIcon": "Escoller icona",
+            "removeIcon": "Eliminar icona",
+            "serverIcon": "Icona do servidor"
         },
         "devtools": {
             "title": "AeroTools",
@@ -915,8 +916,10 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "disconnectedTabClosed": "Sesión pechada — desconectado de {server}",
             "disconnectedAllClosed": "Todas as sesións pechadas — desconectado de {server}",
-            "movedToTrash": "[NEEDS TRANSLATION] Moved {count} item(s) to trash",
-            "moveToTrashFailed": "[NEEDS TRANSLATION] Failed to move to trash"
+            "movedToTrash": "Movéronse {count} elemento(s) ao lixo",
+            "moveToTrashFailed": "Non se puido mover ao lixo",
+            "batchRenameResult": "{success} renomeados, {errors} fallidos",
+            "copyCompleted": "Copia completada"
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -2270,8 +2273,8 @@
             "fast": "Rápido",
             "normal": "Normal",
             "maximum": "Máximo",
-            "compressing": "[NEEDS TRANSLATION] Compressing...",
-            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
+            "compressing": "Comprimindo...",
+            "estimatedSize": "Estimado"
         },
         "batchRename": {
             "title": "Renomear por lotes",
@@ -2323,7 +2326,10 @@
             "patternWaves": "Ondas",
             "patternConstellation": "Estrelas",
             "patternIsometric": "Isometrico",
-            "patternBubbles": "Burbullas"
+            "patternBubbles": "Burbullas",
+            "enter2FACode": "Autenticación de dous factores",
+            "enter2FAHint": "Introduza o código de 6 díxitos da súa aplicación de autenticación",
+            "invalid2FACode": "Código 2FA non válido. Por favor, ténteo de novo."
         },
         "folderOverwrite": {
             "title": "Cartafol xa existe",

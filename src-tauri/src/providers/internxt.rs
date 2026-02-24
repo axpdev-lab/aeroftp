@@ -57,7 +57,9 @@ const API_URL: &str = "https://api.internxt.com";
 
 /// Well-known application-level crypto secret, identical across all Internxt clients
 /// (web, desktop, CLI, rclone adapter). Used for encrypting/decrypting the sKey (salt)
-/// and password hash during the login flow. Not a vulnerability — this is public knowledge.
+/// and password hash during the login flow. Not a vulnerability — this is public knowledge
+/// and is hardcoded in Internxt's open-source SDK: https://github.com/niclas19/sdk
+/// Changing this value would break compatibility with all Internxt clients.
 const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
 
 // TODO: OPAQUE login protocol (future Internxt auth method)
@@ -347,11 +349,15 @@ pub struct InternxtProvider {
     /// Base URL for API requests (gateway or api.internxt.com)
     api_base: String,
     /// Cache: path → DirInfo (uuid, name)
+    /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
     dir_cache: HashMap<String, DirInfo>,
     /// HTTP retry configuration for 429/5xx handling
     #[allow(dead_code)]
     retry_config: HttpRetryConfig,
 }
+
+/// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
+const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
 
 impl InternxtProvider {
     pub fn new(config: InternxtConfig) -> Self {
@@ -375,6 +381,15 @@ impl InternxtProvider {
             dir_cache: HashMap::new(),
             retry_config: HttpRetryConfig::default(),
         }
+    }
+
+    /// M3: Insert into dir_cache with eviction when cap is reached.
+    fn dir_cache_insert(&mut self, key: String, value: DirInfo) {
+        if self.dir_cache.len() >= DIR_CACHE_MAX_ENTRIES {
+            internxt_log("dir_cache reached cap, evicting all entries");
+            self.dir_cache.clear();
+        }
+        self.dir_cache.insert(key, value);
     }
 
     // ─── OpenSSL AES-256-CBC Crypto ────────────────────────────────────
@@ -659,7 +674,7 @@ impl InternxtProvider {
             let found = self.find_subfolder(&current_uuid, segment).await?;
             match found {
                 Some(uuid) => {
-                    self.dir_cache.insert(check_path.clone(), DirInfo {
+                    self.dir_cache_insert(check_path.clone(), DirInfo {
                         uuid: uuid.clone(),
                     });
                     current_uuid = uuid;
@@ -910,7 +925,7 @@ impl InternxtProvider {
         // Use api.internxt.com for all subsequent API calls since gateway blocked CLI
         self.api_base = API_URL.to_string();
 
-        self.dir_cache.insert("/".to_string(), DirInfo {
+        self.dir_cache_insert("/".to_string(), DirInfo {
             uuid: self.root_folder_id.clone(),
         });
 
@@ -1095,7 +1110,7 @@ impl StorageProvider for InternxtProvider {
         );
 
         // Cache root
-        self.dir_cache.insert("/".to_string(), DirInfo {
+        self.dir_cache_insert("/".to_string(), DirInfo {
             uuid: self.root_folder_id.clone(),
         });
 
@@ -1201,7 +1216,7 @@ impl StorageProvider for InternxtProvider {
                     format!("{}/{}", resolved, name)
                 };
                 let folder_path_clone = folder_path.clone();
-                self.dir_cache.insert(folder_path, DirInfo {
+                self.dir_cache_insert(folder_path, DirInfo {
                     uuid: folder.uuid.clone(),
                 });
 
@@ -1410,6 +1425,21 @@ impl StorageProvider for InternxtProvider {
         let tmp = std::env::temp_dir().join(format!("aeroftp_internxt_{}", uuid::Uuid::new_v4()));
         let tmp_str = tmp.to_string_lossy().to_string();
         self.download(remote_path, &tmp_str, None).await?;
+
+        // H2: Check file size before reading to prevent OOM
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
+        let metadata = tokio::fs::metadata(&tmp).await.map_err(|e| {
+            ProviderError::Other(format!("Failed to stat temp file: {}", e))
+        })?;
+        if metadata.len() > limit {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                metadata.len() as f64 / 1_048_576.0,
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+
         let data = tokio::fs::read(&tmp).await.map_err(|e| {
             ProviderError::Other(format!("Failed to read temp file: {}", e))
         })?;
@@ -1429,7 +1459,9 @@ impl StorageProvider for InternxtProvider {
         let filename = filename.to_string();
         let parent_uuid = self.resolve_folder_uuid(&parent_path).await?;
 
-        // Read file
+        // M9: Full file read into memory for client-side AES-256-CTR encryption before upload.
+        // Internxt requires encrypted content + HMAC, which needs buffering the entire plaintext.
+        // Practical limit: available RAM. For files >1GB, memory pressure may be significant.
         let data = tokio::fs::read(local_path).await.map_err(|e| {
             ProviderError::Other(format!("Failed to read file: {}", e))
         })?;
@@ -1659,7 +1691,7 @@ impl StorageProvider for InternxtProvider {
         })?;
 
         // Cache new folder
-        self.dir_cache.insert(resolved, DirInfo {
+        self.dir_cache_insert(resolved, DirInfo {
             uuid: folder_data.uuid,
         });
 
@@ -1844,7 +1876,7 @@ impl StorageProvider for InternxtProvider {
 
         // Invalidate old cache entry, re-cache at new path
         self.dir_cache.remove(&from_resolved);
-        self.dir_cache.insert(to_resolved, DirInfo { uuid: folder_uuid });
+        self.dir_cache_insert(to_resolved, DirInfo { uuid: folder_uuid });
 
         Ok(())
     }

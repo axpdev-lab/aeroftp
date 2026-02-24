@@ -404,6 +404,9 @@ mod gemini {
     pub async fn call(client: &Client, request: &AIRequest) -> Result<AIResponse, AIError> {
         let api_key = request.api_key.as_ref().ok_or(AIError::MissingApiKey)?;
         
+        // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter.
+        // Header-based auth (Bearer token) is not supported by this endpoint.
+        // Error messages are sanitized via `sanitize_error_message()` to strip `key=` params.
         let url = format!(
             "{}/models/{}:generateContent?key={}",
             request.base_url, request.model, api_key

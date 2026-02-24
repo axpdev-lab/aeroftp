@@ -453,10 +453,8 @@ impl StorageProvider for PCloudProvider {
         let resp = self.client.get(&download_url).send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(&mut self, local_path: &str, remote_path: &str, progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {

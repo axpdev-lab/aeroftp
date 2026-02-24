@@ -1068,15 +1068,14 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let key = remote_path.trim_start_matches('/');
         let response = self.s3_request(Method::GET, key, None, None).await?;
-        
+
         match response.status() {
             StatusCode::OK => {
-                let bytes = response.bytes().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                Ok(bytes.to_vec())
+                // H2: Size-limited download to prevent OOM on large files
+                super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
             }
             StatusCode::NOT_FOUND => {
                 Err(ProviderError::NotFound(remote_path.to_string()))
@@ -1540,6 +1539,11 @@ impl StorageProvider for S3Provider {
             format!("{}/", prefix)
         };
 
+        // M1: Cap search results to prevent unbounded memory growth on large buckets.
+        // S3 buckets can contain millions of objects; without a cap, a broad pattern
+        // could return all of them, causing OOM.
+        const MAX_SEARCH_RESULTS: usize = 10_000;
+
         // Use ListObjectsV2 with prefix (no delimiter to get all recursive objects)
         let mut all_entries = Vec::new();
         let mut continuation_token: Option<String> = None;
@@ -1658,7 +1662,12 @@ impl StorageProvider for S3Provider {
                 find_buf.clear();
             }
 
-            // FIND-01: Full pagination — no arbitrary result cap
+            // M1: Stop paginating once we've collected enough results
+            if all_entries.len() >= MAX_SEARCH_RESULTS {
+                info!("S3 find: reached {} result cap, stopping pagination", MAX_SEARCH_RESULTS);
+                break;
+            }
+
             match next_tok_val {
                 Some(token) => continuation_token = Some(token),
                 None => break,

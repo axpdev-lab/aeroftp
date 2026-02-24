@@ -508,11 +508,30 @@ impl StorageProvider for SftpProvider {
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
         tracing::debug!("SFTP: Reading file to bytes: {}", full_path);
 
+        // H2: Check file size before reading to prevent OOM
+        if let Ok(metadata) = sftp.metadata(&full_path).await {
+            if metadata.size.unwrap_or(0) > limit {
+                return Err(ProviderError::TransferFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                    metadata.size.unwrap_or(0) as f64 / 1_048_576.0,
+                    limit as f64 / 1_048_576.0,
+                )));
+            }
+        }
+
         let data = sftp.read(&full_path).await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to read file: {}", e)))?;
+
+        if data.len() as u64 > limit {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
+                limit as f64 / 1_048_576.0,
+            )));
+        }
 
         Ok(data)
     }

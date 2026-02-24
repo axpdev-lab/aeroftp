@@ -5,6 +5,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// Mutex to prevent concurrent journal writes from corrupting the file (M38)
+static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
@@ -529,19 +533,20 @@ fn sync_index_dir() -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
-/// Stable DJB2 hash — deterministic across Rust versions (unlike DefaultHasher)
-fn stable_path_hash(s: &str) -> u64 {
-    let mut hash: u64 = 5381;
-    for byte in s.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
-    }
-    hash
+/// Stable SHA-256 hash — collision-resistant filename generation (replaces DJB2)
+/// Returns first 16 hex characters (64 bits) of SHA-256 digest.
+fn stable_path_hash(s: &str) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(s.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(&result[..8]) // 16 hex chars = 64 bits, collision-resistant
 }
 
 /// Generate a stable filename from a local+remote path pair
 fn index_filename(local_path: &str, remote_path: &str) -> String {
     let combined = format!("{}|{}", local_path, remote_path);
-    format!("{:016x}.json", stable_path_hash(&combined))
+    format!("{}.json", stable_path_hash(&combined))
 }
 
 /// Load a sync index for a given path pair (returns None if not found)
@@ -791,12 +796,36 @@ pub struct VerifyResult {
     pub message: Option<String>,
 }
 
-/// Verify a local file after download
+/// Compute SHA-256 hash of a local file synchronously (64KB streaming chunks).
+/// Returns lowercase hex-encoded hash string, or None on I/O error.
+fn compute_sha256_sync(path: &std::path::Path) -> Option<String> {
+    use sha2::{Sha256, Digest};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 65_536];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// Verify a local file after download.
+///
+/// When `policy` is `Full`, performs SHA-256 hash verification in addition
+/// to size and mtime checks. The `expected_hash` parameter should contain
+/// the expected SHA-256 hex digest (e.g. from `FileInfo.checksum`).
+/// If `expected_hash` is None under Full policy, hash verification is skipped
+/// with an informational note.
 pub fn verify_local_file(
     local_path: &str,
     expected_size: u64,
     expected_mtime: Option<DateTime<Utc>>,
     policy: &VerifyPolicy,
+    expected_hash: Option<&str>,
 ) -> VerifyResult {
     let path = std::path::Path::new(local_path);
     let metadata = path.metadata().ok();
@@ -817,11 +846,33 @@ pub fn verify_local_file(
         None
     };
 
+    // H8 fix: Full policy now performs SHA-256 hash verification
+    let hash_match = if *policy == VerifyPolicy::Full && size_match {
+        match expected_hash {
+            Some(expected_hex) if !expected_hex.is_empty() => {
+                // Compute actual hash and compare
+                compute_sha256_sync(path).map(|actual_hex| {
+                    actual_hex.eq_ignore_ascii_case(expected_hex)
+                })
+            }
+            _ => {
+                // No expected hash available — cannot verify, treat as None (unknown)
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let passed = match policy {
         VerifyPolicy::None => true,
         VerifyPolicy::SizeOnly => size_match,
         VerifyPolicy::SizeAndMtime => size_match && mtime_match.unwrap_or(true),
-        VerifyPolicy::Full => size_match && mtime_match.unwrap_or(true),
+        VerifyPolicy::Full => {
+            size_match
+                && mtime_match.unwrap_or(true)
+                && hash_match.unwrap_or(true) // If no hash available, pass on size+mtime
+        }
     };
 
     let message = if !passed {
@@ -831,11 +882,15 @@ pub fn verify_local_file(
                 expected_size,
                 actual_size.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string())
             ))
+        } else if hash_match == Some(false) {
+            Some("SHA-256 hash mismatch after transfer".to_string())
         } else if mtime_match == Some(false) {
             Some("Modification time mismatch after transfer".to_string())
         } else {
             Some("File not found after transfer".to_string())
         }
+    } else if *policy == VerifyPolicy::Full && expected_hash.is_none() {
+        Some("Full verification: hash check skipped (no expected hash available)".to_string())
     } else {
         None
     };
@@ -848,7 +903,7 @@ pub fn verify_local_file(
         actual_size,
         size_match,
         mtime_match,
-        hash_match: None, // Hash verification is done on-demand via separate command
+        hash_match, // H8 fix: Now populated when VerifyPolicy::Full and expected_hash is provided
         message,
     }
 }
@@ -965,7 +1020,7 @@ fn sync_journal_dir() -> Result<PathBuf, String> {
 /// Generate a journal filename from path pair
 fn journal_filename(local_path: &str, remote_path: &str) -> String {
     let combined = format!("{}|{}", local_path, remote_path);
-    format!("journal_{:016x}.json", stable_path_hash(&combined))
+    format!("journal_{}.json", stable_path_hash(&combined))
 }
 
 /// Load an existing journal for a path pair
@@ -982,8 +1037,10 @@ pub fn load_sync_journal(local_path: &str, remote_path: &str) -> Result<Option<S
     Ok(Some(journal))
 }
 
-/// Save a journal (creates or overwrites)
+/// Save a journal (creates or overwrites). Uses a mutex to prevent concurrent write corruption (M38).
 pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
+    let _lock = JOURNAL_WRITE_LOCK.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(&journal.local_path, &journal.remote_path));
     let mut journal_to_save = journal.clone();
@@ -1241,7 +1298,7 @@ fn validate_filesystem_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Save a custom profile
+/// Save a custom profile using atomic write (temp + rename) to prevent corruption (M41)
 pub fn save_sync_profile(profile: &SyncProfile) -> Result<(), String> {
     if profile.builtin {
         return Err("Cannot save built-in profiles".to_string());
@@ -1251,8 +1308,7 @@ pub fn save_sync_profile(profile: &SyncProfile) -> Result<(), String> {
     let path = dir.join(format!("{}.json", profile.id));
     let data = serde_json::to_string(profile)
         .map_err(|e| format!("Failed to serialize sync profile: {}", e))?;
-    std::fs::write(&path, data)
-        .map_err(|e| format!("Failed to write sync profile: {}", e))?;
+    atomic_write(&path, data.as_bytes())?;
     Ok(())
 }
 
@@ -1627,7 +1683,7 @@ pub fn sign_journal(journal: &SyncJournal, key: &[u8]) -> Result<String, String>
 /// Generate the .sig filename for a journal path pair
 pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
     let combined = format!("{}|{}", local_path, remote_path);
-    format!("journal_{:016x}.sig", stable_path_hash(&combined))
+    format!("journal_{}.sig", stable_path_hash(&combined))
 }
 
 #[cfg(test)]
@@ -1718,7 +1774,7 @@ mod tests {
 
     #[test]
     fn test_verify_local_file_missing() {
-        let result = verify_local_file("/nonexistent/path/file.txt", 100, None, &VerifyPolicy::SizeOnly);
+        let result = verify_local_file("/nonexistent/path/file.txt", 100, None, &VerifyPolicy::SizeOnly, None);
         assert!(!result.passed);
         assert!(!result.size_match);
     }

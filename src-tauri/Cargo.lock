@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "2.6.4"
+version = "2.6.5"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -79,6 +79,7 @@ dependencies = [
  "sha1 0.10.6",
  "sha2 0.10.9",
  "similar",
+ "subtle",
  "suppaftp",
  "tar",
  "tauri",

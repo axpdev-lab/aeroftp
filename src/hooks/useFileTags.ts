@@ -37,6 +37,16 @@ export function useFileTags(): UseFileTagsReturn {
   const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clear debounce timer on unmount to prevent state updates on unmounted component (M29)
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, []);
+
   // Load all labels on mount
   const loadLabels = useCallback(async () => {
     try {

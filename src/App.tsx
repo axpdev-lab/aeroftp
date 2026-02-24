@@ -695,15 +695,15 @@ const App: React.FC = () => {
   } = preview;
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
 
-  // Filtered files (search filter applied)
-  const filteredLocalFiles = localFiles.filter(f => {
+  // Filtered files (search filter applied) — memoized to avoid recomputation on unrelated renders (M25)
+  const filteredLocalFiles = useMemo(() => localFiles.filter(f => {
     if (!f.name.toLowerCase().includes(localSearchFilter.toLowerCase())) return false;
     if (fileTags.activeTagFilter) {
       const tags = fileTags.getTagsForFile(f.path);
       if (!tags.some(t => t.label_id === fileTags.activeTagFilter)) return false;
     }
     return true;
-  });
+  }), [localFiles, localSearchFilter, fileTags.activeTagFilter, fileTags.getTagsForFile]);
 
   // Keyboard Shortcuts
   useKeyboardShortcuts({
@@ -1098,8 +1098,8 @@ const App: React.FC = () => {
     return lastDot > 0 ? name.substring(0, lastDot) : name;
   };
 
-  // Sorting
-  const sortFiles = <T extends { name: string; size: number | null; modified: string | null; is_dir: boolean }>(files: T[], field: SortField, order: SortOrder): T[] => {
+  // Sorting — memoized to avoid recreation on every render (M26)
+  const sortFiles = useCallback(<T extends { name: string; size: number | null; modified: string | null; is_dir: boolean }>(files: T[], field: SortField, order: SortOrder): T[] => {
     return [...files].sort((a, b) => {
       if (sortFoldersFirst) {
         if (a.is_dir && !b.is_dir) return -1;
@@ -1118,13 +1118,13 @@ const App: React.FC = () => {
       else cmp = (a.modified || '').localeCompare(b.modified || '');
       return order === 'asc' ? cmp : -cmp;
     });
-  };
+  }, [sortFoldersFirst]);
 
   const sortedRemoteFiles = useMemo(() => {
     const source = remoteSearchResults !== null ? remoteSearchResults : remoteFiles;
     return sortFiles(source, remoteSortField, remoteSortOrder);
-  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder, sortFoldersFirst]);
-  const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFoldersFirst]);
+  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder, sortFiles]);
+  const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFiles]);
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
@@ -1324,14 +1324,21 @@ const App: React.FC = () => {
     }
   }, [loadTrashItems, notify, t]);
 
-  const handleEmptyTrash = useCallback(async () => {
-    try {
-      const count = await invoke<number>('empty_trash');
-      notify.success(t('trash.empty'), `${count} items deleted`);
-      setTrashItems([]);
-    } catch (err) {
-      notify.error(t('toast.emptyTrashFailed'), String(err));
-    }
+  const handleEmptyTrash = useCallback(() => {
+    // Confirmation to prevent accidental permanent deletion (M36)
+    setConfirmDialog({
+      message: t('trash.emptyConfirm'),
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const count = await invoke<number>('empty_trash');
+          notify.success(t('trash.empty'), t('toast.itemsDeleted', { count }));
+          setTrashItems([]);
+        } catch (err) {
+          notify.error(t('toast.emptyTrashFailed'), String(err));
+        }
+      }
+    });
   }, [notify, t]);
 
   // Folder size calculation
@@ -1417,7 +1424,8 @@ const App: React.FC = () => {
           setDevToolsOpen(prev => !prev);
           break;
         case 'toggle_debug_mode':
-          setDebugMode(!debugMode);
+          // L53: In production, debug mode is only auto-enabled by Cyber theme
+          if (import.meta.env.DEV) setDebugMode(!debugMode);
           break;
         case 'show_dependencies':
           setShowDependenciesPanel(true);
@@ -1745,21 +1753,22 @@ const App: React.FC = () => {
   // FTP operations
   const connectToFtp = async () => {
     // Parse host:port from server field if user entered it inline
+    // Use a local copy to avoid direct React state mutation (C3 audit fix)
+    let effectiveParams = connectionParams;
     if (connectionParams.server && connectionParams.server.includes(':')) {
       const lastColon = connectionParams.server.lastIndexOf(':');
       const possiblePort = connectionParams.server.substring(lastColon + 1);
       const parsedPort = parseInt(possiblePort, 10);
       if (parsedPort > 0 && parsedPort <= 65535 && String(parsedPort) === possiblePort) {
         const cleanHost = connectionParams.server.substring(0, lastColon);
+        effectiveParams = { ...connectionParams, server: cleanHost, port: parsedPort };
         setConnectionParams(prev => ({ ...prev, server: cleanHost, port: parsedPort }));
-        connectionParams.server = cleanHost;
-        connectionParams.port = parsedPort;
       }
     }
 
     // OAuth providers don't need server/username validation - they're already connected
-    const protocol = connectionParams.protocol;
-    logger.debug('[connectToFtp] connectionParams:', connectionParams);
+    const protocol = effectiveParams.protocol;
+    logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
     const isProvider = !!protocol && !isOAuth && isNonFtpProvider(protocol);
@@ -1783,7 +1792,7 @@ const App: React.FC = () => {
       // Create session with provider name — pass fresh files to avoid stale closure
       createSession(
         providerName,
-        connectionParams,
+        effectiveParams,
         oauthResponse?.current_path || '/',
         quickConnectDirs.localDir || currentLocalPath,
         oauthResponse?.files
@@ -1794,11 +1803,11 @@ const App: React.FC = () => {
 
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if ((!connectionParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure') || !connectionParams.username) {
+      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure') || !effectiveParams.username) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
-      if (protocol === 's3' && !connectionParams.options?.bucket) {
+      if (protocol === 's3' && !effectiveParams.options?.bucket) {
         notify.error(t('toast.missingFields'), t('toast.fillBucket'));
         return;
       }
@@ -1808,17 +1817,17 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
       // Use displayName if available, otherwise use server/bucket/username
       // No protocol prefix in tab name - icon distinguishes the protocol
-      const providerName = connectionParams.displayName || (protocol === 's3'
-        ? connectionParams.options?.bucket || 'S3'
+      const providerName = effectiveParams.displayName || (protocol === 's3'
+        ? effectiveParams.options?.bucket || 'S3'
         : protocol === 'azure'
-          ? connectionParams.options?.bucket || 'Azure'
+          ? effectiveParams.options?.bucket || 'Azure'
           : protocol === 'kdrive'
-            ? `kDrive ${connectionParams.options?.bucket || ''}`
+            ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
-              ? `Jottacloud ${connectionParams.username}`
+              ? `Jottacloud ${effectiveParams.username}`
             : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
-              ? connectionParams.username
-              : connectionParams.server.split(':')[0]);
+              ? effectiveParams.username
+              : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -1838,43 +1847,43 @@ const App: React.FC = () => {
         // Build provider connection params
         const providerParams = {
           protocol: protocol,
-          server: connectionParams.server,
-          port: connectionParams.port,
-          username: connectionParams.username,
-          password: connectionParams.password,
+          server: effectiveParams.server,
+          port: effectiveParams.port,
+          username: effectiveParams.username,
+          password: effectiveParams.password,
           initial_path: quickConnectDirs.remoteDir || null,
-          bucket: connectionParams.options?.bucket,
-          region: connectionParams.options?.region || 'us-east-1',
-          endpoint: connectionParams.options?.endpoint || null,
-          path_style: connectionParams.options?.pathStyle || false,
-          save_session: connectionParams.options?.save_session,
-          session_expires_at: connectionParams.options?.session_expires_at,
+          bucket: effectiveParams.options?.bucket,
+          region: effectiveParams.options?.region || 'us-east-1',
+          endpoint: effectiveParams.options?.endpoint || null,
+          path_style: effectiveParams.options?.pathStyle || false,
+          save_session: effectiveParams.options?.save_session,
+          session_expires_at: effectiveParams.options?.session_expires_at,
           // SFTP-specific options
-          private_key_path: connectionParams.options?.private_key_path || null,
-          key_passphrase: connectionParams.options?.key_passphrase || null,
-          timeout: connectionParams.options?.timeout || 30,
+          private_key_path: effectiveParams.options?.private_key_path || null,
+          key_passphrase: effectiveParams.options?.key_passphrase || null,
+          timeout: effectiveParams.options?.timeout || 30,
           // FTP/FTPS-specific options
-          tls_mode: connectionParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
-          verify_cert: connectionParams.options?.verifyCert !== undefined ? connectionParams.options.verifyCert : true,
+          tls_mode: effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+          verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
           // Filen-specific options
-          two_factor_code: connectionParams.options?.two_factor_code || null,
+          two_factor_code: effectiveParams.options?.two_factor_code || null,
         };
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         // SEC-P1-06: TOFU host key check for SFTP
         if (protocol === 'sftp') {
-          const accepted = await checkSftpHostKey(connectionParams.server, connectionParams.port || 22);
+          const accepted = await checkSftpHostKey(effectiveParams.server, effectiveParams.port || 22);
           if (!accepted) { setLoading(false); return; }
         }
-        const connHost = connectionParams.server || (protocol === 'azure' ? `${connectionParams.username}.blob.core.windows.net` : protocol === 'internxt' ? 'gateway.internxt.com' : protocol === 'kdrive' ? 'api.infomaniak.com' : protocol === 'jottacloud' ? 'jfs.jottacloud.com' : protocol === 'mega' ? 'mega.nz' : protocol === 'filen' ? 'filen.io' : 'localhost');
-        const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, connectionParams.port || 443, protocol);
+        const connHost = effectiveParams.server || (protocol === 'azure' ? `${effectiveParams.username}.blob.core.windows.net` : protocol === 'internxt' ? 'gateway.internxt.com' : protocol === 'kdrive' ? 'api.infomaniak.com' : protocol === 'jottacloud' ? 'jfs.jottacloud.com' : protocol === 'mega' ? 'mega.nz' : protocol === 'filen' ? 'filen.io' : 'localhost');
+        const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
         await invoke('provider_connect', { params: providerParams });
-        if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(connectionParams.port || 443) }) });
+        if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
 
-        logConnectionSuccess(protocol, connectionParams.username, {
-          tlsMode: connectionParams.options?.tlsMode,
-          private_key_path: connectionParams.options?.private_key_path || undefined,
+        logConnectionSuccess(protocol, effectiveParams.username, {
+          tlsMode: effectiveParams.options?.tlsMode,
+          private_key_path: effectiveParams.options?.private_key_path || undefined,
         });
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
         humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
@@ -1913,15 +1922,15 @@ const App: React.FC = () => {
         // Create session with explicit S3 options preserved
         const sessionParams: ConnectionParams = {
           protocol: protocol,
-          server: connectionParams.server,
-          port: connectionParams.port,
-          username: connectionParams.username,
-          password: connectionParams.password,
+          server: effectiveParams.server,
+          port: effectiveParams.port,
+          username: effectiveParams.username,
+          password: effectiveParams.password,
           options: {
-            bucket: connectionParams.options?.bucket,
-            region: connectionParams.options?.region || 'us-east-1',
-            endpoint: connectionParams.options?.endpoint,
-            pathStyle: connectionParams.options?.pathStyle,
+            bucket: effectiveParams.options?.bucket,
+            region: effectiveParams.options?.region || 'us-east-1',
+            endpoint: effectiveParams.options?.endpoint,
+            pathStyle: effectiveParams.options?.pathStyle,
           },
         };
         createSession(
@@ -1941,13 +1950,13 @@ const App: React.FC = () => {
     }
 
     // FTP/FTPS/SFTP - use legacy commands
-    if (!connectionParams.server || !connectionParams.username) { notify.error(t('toast.missingFields'), t('toast.fillServerUser')); return; }
+    if (!effectiveParams.server || !effectiveParams.username) { notify.error(t('toast.missingFields'), t('toast.fillServerUser')); return; }
     setLoading(true);
     // Reset navigation sync for new connection
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
-    const protocolLabel = (connectionParams.protocol || 'FTP').toUpperCase();
-    const logId = humanLog.logStart('CONNECT', { server: connectionParams.server, protocol: protocolLabel });
+    const protocolLabel = (effectiveParams.protocol || 'FTP').toUpperCase();
+    const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
       // First disconnect any active OAuth provider to avoid conflicts
       try {
@@ -1955,23 +1964,23 @@ const App: React.FC = () => {
       } catch {
         // Ignore if not connected to OAuth
       }
-      const ftpProto = connectionParams.protocol || 'ftp';
-      const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(connectionParams.server, connectionParams.port || 21, ftpProto);
-      await invoke('connect_ftp', { params: connectionParams });
-      if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || connectionParams.server, port: String(connectionParams.port || 21) }) });
-      logConnectionSuccess(ftpProto, connectionParams.username, {
-        tlsMode: connectionParams.options?.tlsMode,
-        private_key_path: connectionParams.options?.private_key_path || undefined,
+      const ftpProto = effectiveParams.protocol || 'ftp';
+      const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
+      await invoke('connect_ftp', { params: effectiveParams });
+      if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
+      logConnectionSuccess(ftpProto, effectiveParams.username, {
+        tlsMode: effectiveParams.options?.tlsMode,
+        private_key_path: effectiveParams.options?.private_key_path || undefined,
       });
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-      const protocol = (connectionParams.protocol || 'FTP').toUpperCase();
-      humanLog.logSuccess('CONNECT', { server: connectionParams.server, protocol }, logId);
-      notify.success(t('toast.connected'), t('toast.connectedTo', { server: connectionParams.server }));
+      const protocol = (effectiveParams.protocol || 'FTP').toUpperCase();
+      humanLog.logSuccess('CONNECT', { server: effectiveParams.server, protocol }, logId);
+      notify.success(t('toast.connected'), t('toast.connectedTo', { server: effectiveParams.server }));
       // Navigate to initial remote directory if specified
       let ftpResponse: FileListResponse | null = null;
       if (quickConnectDirs.remoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
-        await changeRemoteDirectory(quickConnectDirs.remoteDir, connectionParams.protocol || 'ftp');
+        await changeRemoteDirectory(quickConnectDirs.remoteDir, effectiveParams.protocol || 'ftp');
       } else {
         ftpResponse = await loadRemoteFiles();
       }
@@ -1984,14 +1993,14 @@ const App: React.FC = () => {
       }
       // Create session tab for FTP/FTPS/SFTP connections — pass fresh files to avoid stale closure
       createSession(
-        connectionParams.displayName || connectionParams.server,
-        connectionParams,
+        effectiveParams.displayName || effectiveParams.server,
+        effectiveParams,
         ftpResponse?.current_path || quickConnectDirs.remoteDir || currentRemotePath,
         quickConnectDirs.localDir || currentLocalPath,
         ftpResponse?.files
       );
     } catch (error) {
-      humanLog.logError('CONNECT', { server: connectionParams.server }, logId);
+      humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
       notify.error(t('connection.connectionFailed'), String(error));
     }
     finally { setLoading(false); }
@@ -3207,7 +3216,7 @@ const App: React.FC = () => {
             }
           }
           if (!anyFailed && files.length > 0) {
-            notify.info(t('toast.copyCompleted') || 'Copy completed', files.length === 1 ? files[0].name : `${files.length} files`);
+            notify.info(t('toast.copyCompleted'), files.length === 1 ? files[0].name : `${files.length} ${t('browser.files')}`);
           }
           loadRemoteFiles(undefined, true);
         }
@@ -3276,9 +3285,9 @@ const App: React.FC = () => {
             // Folder: show FolderOverwriteDialog in 'ask' mode
             const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue);
             if (folderResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, 'Cancelled by user');
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -3298,9 +3307,9 @@ const App: React.FC = () => {
             );
 
             if (overwriteResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, 'Cancelled by user');
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -3320,7 +3329,7 @@ const App: React.FC = () => {
 
           // Skip if batch was cancelled
           if (batchCancelledRef.current) {
-            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
             continue;
           }
 
@@ -3351,7 +3360,7 @@ const App: React.FC = () => {
     const selected = await open({
       multiple: true,
       directory: false,
-      title: 'Select Files to Upload',
+      title: t('dialog.selectFilesToUpload'),
     });
 
     if (!selected) return;
@@ -3443,9 +3452,9 @@ const App: React.FC = () => {
           // Folder: show FolderOverwriteDialog in 'ask' mode
           const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue);
           if (folderResult.action === 'cancel') {
-            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
             for (let j = i + 1; j < queueItems.length; j++) {
-              transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+              transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
             }
             break;
           }
@@ -3465,9 +3474,9 @@ const App: React.FC = () => {
           );
 
           if (overwriteResult.action === 'cancel') {
-            transferQueue.failTransfer(item.id, 'Cancelled by user');
+            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
             for (let j = i + 1; j < queueItems.length; j++) {
-              transferQueue.failTransfer(queueItems[j].id, 'Cancelled by user');
+              transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
             }
             break;
           }
@@ -3487,7 +3496,7 @@ const App: React.FC = () => {
 
         // Skip if batch was cancelled
         if (batchCancelledRef.current) {
-          transferQueue.failTransfer(item.id, 'Cancelled by user');
+          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
           continue;
         }
 
@@ -3591,16 +3600,14 @@ const App: React.FC = () => {
           });
         }
       }
-      const parts = [];
-      if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
-      if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-      notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+      const totalDeleted = deletedFolders.length + deletedFiles.length;
+      notify.success(t('toast.deleted'), t('toast.deleteSuccess', { count: totalDeleted }));
     };
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
       setConfirmDialog({
-        message: `Delete ${names.length} selected items?`,
+        message: t('dialog.deleteSelectedItems', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -3660,16 +3667,14 @@ const App: React.FC = () => {
           details: allDeleted.join('\n')
         });
       }
-      const parts = [];
-      if (deletedFolders.length > 0) parts.push(`${deletedFolders.length} folder${deletedFolders.length > 1 ? 's' : ''}`);
-      if (deletedFiles.length > 0) parts.push(`${deletedFiles.length} file${deletedFiles.length > 1 ? 's' : ''}`);
-      notify.success(parts.join(', '), `${parts.join(' and ')} deleted`);
+      const totalDeleted = deletedFolders.length + deletedFiles.length;
+      notify.success(t('toast.deleted'), t('toast.deleteSuccess', { count: totalDeleted }));
     };
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
       setConfirmDialog({
-        message: `Delete ${names.length} selected items?`,
+        message: t('dialog.deleteSelectedItems', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -3714,7 +3719,7 @@ const App: React.FC = () => {
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
       setConfirmDialog({
-        message: `Delete "${fileName}"?`,
+        message: t('dialog.deleteFile', { name: fileName }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -3745,7 +3750,7 @@ const App: React.FC = () => {
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
       setConfirmDialog({
-        message: `Delete "${fileName}"?`,
+        message: t('dialog.deleteFile', { name: fileName }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -3753,21 +3758,6 @@ const App: React.FC = () => {
       });
     } else {
       performDelete();
-    }
-  };
-
-  // Legacy wrapper to maintain compatibility - removed duplicate error handling
-  const deleteLocalFileInternal = async (path: string) => {
-    const fileName = path.split(/[\\/]/).pop() || path;
-    const logId = humanLog.logStart('DELETE', { filename: path });
-    try {
-      await invoke('delete_to_trash', { path });
-      humanLog.logSuccess('DELETE', { filename: path }, logId);
-      notify.success(t('toast.deleted'), fileName);
-      await loadLocalFiles(currentLocalPath);
-    } catch (error) {
-      humanLog.logError('DELETE', { filename: path }, logId);
-      notify.error(t('toast.deleteFail'), String(error));
     }
   };
 
@@ -3781,7 +3771,7 @@ const App: React.FC = () => {
 
         // Reject path separators and traversal in filename
         if (newName.includes('/') || newName.includes('\\') || newName.includes('..') || newName.includes('\0')) {
-          notify.error(t('common.error'), t('rename.invalidCharacters') || 'Filename cannot contain / \\ .. or null characters');
+          notify.error(t('common.error'), t('rename.invalidCharacters'));
           return;
         }
 
@@ -3851,7 +3841,7 @@ const App: React.FC = () => {
 
     // Reject path separators and traversal in filename
     if (newName.includes('/') || newName.includes('\\') || newName.includes('..') || newName.includes('\0')) {
-      notify.error(t('common.error'), t('rename.invalidCharacters') || 'Filename cannot contain / \\ .. or null characters');
+      notify.error(t('common.error'), t('rename.invalidCharacters'));
       setInlineRename(null);
       return;
     }
@@ -3949,14 +3939,14 @@ const App: React.FC = () => {
     if (errorCount === 0) {
       humanLog.logSuccess('RENAME', { count: successCount, isRemote }, logId);
       notify.success(
-        t('toast.batchRenameSuccess') || 'Batch rename complete',
-        `${successCount} ${t('browser.files') || 'files'}`
+        t('toast.batchRenameSuccess'),
+        `${successCount} ${t('browser.files')}`
       );
     } else {
       humanLog.logError('RENAME', { count: successCount, isRemote, message: `${errorCount} failed` }, logId);
       notify.warning(
-        t('toast.batchRenamePartial') || 'Batch rename completed with errors',
-        `${successCount} renamed, ${errorCount} failed`
+        t('toast.batchRenamePartial'),
+        t('toast.batchRenameResult', { success: successCount, errors: errorCount })
       );
     }
 
@@ -3965,7 +3955,7 @@ const App: React.FC = () => {
 
   const createFolder = (isRemote: boolean) => {
     setInputDialog({
-      title: 'New Folder',
+      title: t('dialog.newFolder'),
       defaultValue: '',
       onConfirm: async (name: string) => {
         setInputDialog(null);
@@ -4785,7 +4775,7 @@ const App: React.FC = () => {
         disabled: !hasClipboard,
       },
       {
-        label: t('contextMenu.newFolder') || 'New Folder', icon: <FolderPlus size={14} />,
+        label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(true),
         divider: true,
       },
@@ -4815,7 +4805,7 @@ const App: React.FC = () => {
         disabled: !hasClipboard,
       },
       {
-        label: t('contextMenu.newFolder') || 'New Folder', icon: <FolderPlus size={14} />,
+        label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(false),
         divider: true,
       },
@@ -5700,18 +5690,19 @@ const App: React.FC = () => {
                     onClick={() => !isDisabled && (activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/'))}
                     className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${isDisabled ? 'bg-gray-200 dark:bg-gray-600 opacity-50 cursor-not-allowed' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
                     disabled={isDisabled}
+                    aria-label={t('common.up')}
                   >
                     <FolderUp size={16} /> {t('common.up')}
                   </button>;
                 })()}
-                <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
+                <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
                   <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                 </button>
-                <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md">
+                <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.new')}>
                   <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> {t('common.new')}
                 </button>
                 {activePanel === 'local' && (
-                  <button onClick={() => openInFileManager(currentLocalPath)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5">
+                  <button onClick={() => openInFileManager(currentLocalPath)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5" aria-label={t('common.open')}>
                     <FolderOpen size={16} /> {t('common.open')}
                   </button>
                 )}
@@ -5773,6 +5764,7 @@ const App: React.FC = () => {
                       : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                   }`}
                   title={t('contextMenu.delete')}
+                  aria-label={t('contextMenu.delete')}
                 >
                   <Trash2 size={16} />
                   {(() => {

@@ -166,8 +166,25 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
             Ok(img.crop_imm(*x, *y, *width, *height))
         }
         ImageOperation::Resize { width, height } => {
+            const MAX_DIMENSION: u32 = 16384;
+            const MAX_PIXELS: u64 = 256_000_000; // 256 megapixels
+
             if *width == 0 || *height == 0 {
                 return Err("Resize dimensions must be non-zero".to_string());
+            }
+            if *width > MAX_DIMENSION || *height > MAX_DIMENSION {
+                return Err(format!(
+                    "Resize dimension {}x{} exceeds maximum allowed ({}x{})",
+                    width, height, MAX_DIMENSION, MAX_DIMENSION
+                ));
+            }
+            let total_pixels = *width as u64 * *height as u64;
+            if total_pixels > MAX_PIXELS {
+                return Err(format!(
+                    "Resize would produce {} megapixels, exceeding the {} MP limit",
+                    total_pixels / 1_000_000,
+                    MAX_PIXELS / 1_000_000
+                ));
             }
             Ok(img.resize_exact(*width, *height, FilterType::Lanczos3))
         }

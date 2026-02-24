@@ -197,12 +197,17 @@ pub struct FilenProvider {
     current_folder_uuid: String,
     root_uuid: String,
     /// Cache: path -> DirInfo
+    /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
     dir_cache: HashMap<String, DirInfo>,
     /// Backend-only cache: file UUID -> encryption key (never sent to frontend)
     file_key_cache: HashMap<String, String>,
     /// F-ERR-01: Retry configuration for HTTP requests
     retry_config: HttpRetryConfig,
 }
+
+/// M3: Maximum number of cached directory/file-key entries to prevent unbounded memory growth.
+const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+const FILE_KEY_CACHE_MAX_ENTRIES: usize = 10_000;
 
 impl FilenProvider {
     pub fn new(config: FilenConfig) -> Self {
@@ -223,6 +228,24 @@ impl FilenProvider {
             file_key_cache: HashMap::new(),
             retry_config: HttpRetryConfig::default(),
         }
+    }
+
+    /// M3: Insert into dir_cache with eviction when cap is reached.
+    fn dir_cache_insert(&mut self, key: String, value: DirInfo) {
+        if self.dir_cache.len() >= DIR_CACHE_MAX_ENTRIES {
+            debug!(target: "filen", "dir_cache reached {} entries, evicting all", self.dir_cache.len());
+            self.dir_cache.clear();
+        }
+        self.dir_cache.insert(key, value);
+    }
+
+    /// M3: Insert into file_key_cache with eviction when cap is reached.
+    fn file_key_cache_insert(&mut self, key: String, value: String) {
+        if self.file_key_cache.len() >= FILE_KEY_CACHE_MAX_ENTRIES {
+            debug!(target: "filen", "file_key_cache reached {} entries, evicting all", self.file_key_cache.len());
+            self.file_key_cache.clear();
+        }
+        self.file_key_cache.insert(key, value);
     }
 
     /// Send a request with automatic retry on 429/5xx errors.
@@ -525,7 +548,7 @@ impl FilenProvider {
                 if let Some(name) = self.decrypt_folder_name(&folder.name) {
                     if name == part {
                         current_uuid = folder.uuid.clone();
-                        self.dir_cache.insert(built_path.clone(), DirInfo {
+                        self.dir_cache_insert(built_path.clone(), DirInfo {
                             uuid: folder.uuid.clone(),
                             name: name.clone(),
                         });
@@ -647,7 +670,7 @@ impl StorageProvider for FilenProvider {
 
         self.current_folder_uuid = self.root_uuid.clone();
         self.current_path = "/".to_string();
-        self.dir_cache.insert("/".to_string(), DirInfo {
+        self.dir_cache_insert("/".to_string(), DirInfo {
             uuid: self.root_uuid.clone(),
             name: "/".to_string(),
         });
@@ -724,7 +747,7 @@ impl StorageProvider for FilenProvider {
                     format!("{}/{}", base_path, name)
                 };
 
-                self.dir_cache.insert(entry_path.clone(), DirInfo {
+                self.dir_cache_insert(entry_path.clone(), DirInfo {
                     uuid: folder.uuid.clone(),
                     name: name.clone(),
                 });
@@ -780,7 +803,7 @@ impl StorageProvider for FilenProvider {
                         metadata: {
                             let file_uuid = file.uuid.clone();
                             // Store encryption key in backend-only cache (never sent to frontend via IPC)
-                            self.file_key_cache.insert(file_uuid.clone(), meta.key);
+                            self.file_key_cache_insert(file_uuid.clone(), meta.key);
                             let mut m = HashMap::new();
                             m.insert("uuid".to_string(), file_uuid);
                             m.insert("bucket".to_string(), file.bucket);
@@ -931,7 +954,8 @@ impl StorageProvider for FilenProvider {
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
 
-        // Download and decrypt each chunk (with retry)
+        // H2: Download and decrypt each chunk (with retry) — with size cap
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
         let mut all_data = Vec::new();
         for chunk_idx in 0..chunks {
             let download_url = format!("https://egest.filen.io/{}/{}/{}/{}", region, bucket, uuid, chunk_idx);
@@ -955,6 +979,13 @@ impl StorageProvider for FilenProvider {
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             all_data.extend_from_slice(&decrypted);
+
+            if all_data.len() as u64 > limit {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
+                    limit as f64 / 1_048_576.0,
+                )));
+            }
         }
 
         Ok(all_data)
@@ -977,8 +1008,21 @@ impl StorageProvider for FilenProvider {
             .map_err(ProviderError::IoError)?;
         let file_size = file_metadata.len() as usize;
 
-        // For files under 64MB, read entire file; for larger files, still must buffer
-        // due to AES-GCM auth tag requirement (whole-message authentication)
+        // H4: AES-GCM requires full plaintext in memory for auth tag computation,
+        // so streaming encryption is not possible. Cap at 2 GB to prevent OOM.
+        const MAX_UPLOAD_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2 GB
+        if file_metadata.len() > MAX_UPLOAD_SIZE {
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for Filen encrypted upload ({:.1} GB). AES-GCM requires full file in memory; max {:.0} GB.",
+                file_metadata.len() as f64 / (1024.0 * 1024.0 * 1024.0),
+                MAX_UPLOAD_SIZE as f64 / (1024.0 * 1024.0 * 1024.0),
+            )));
+        }
+
+        // M9: Full file read into memory for encryption — Filen requires client-side AES-256-GCM
+        // encryption before upload, which currently buffers the entire file. For very large files
+        // (>1GB), this may cause high memory usage. Chunked encryption would require significant
+        // refactoring of the Filen encryption pipeline.
         let data = tokio::fs::read(local_path).await
             .map_err(ProviderError::IoError)?;
         let mime_type = mime_guess::from_path(file_name).first_or_octet_stream().to_string();
@@ -1301,7 +1345,17 @@ impl StorageProvider for FilenProvider {
         } else {
             // File rename: need encrypted name + metadata JSON with updated name
             let encrypted_name = self.encrypt_metadata(&new_name)?;
-            let file_key = self.file_key_cache.get(uuid).cloned().unwrap_or_default();
+            // H4: Reject empty key — using an empty key would produce a ciphertext
+            // that any attacker could decrypt. Require re-listing the directory.
+            let file_key = self.file_key_cache.get(uuid).cloned()
+                .ok_or_else(|| ProviderError::Other(
+                    "No encryption key in cache for file rename (re-list directory first)".to_string()
+                ))?;
+            if file_key.is_empty() {
+                return Err(ProviderError::Other(
+                    "Empty encryption key for file — cannot rename safely".to_string()
+                ));
+            }
             let mime = entry.mime_type.clone().unwrap_or_else(|| "application/octet-stream".to_string());
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
@@ -1449,6 +1503,12 @@ impl StorageProvider for FilenProvider {
 
         // F-SHARE-01: Append #<linkKey> fragment so recipients can decrypt shared content.
         // Filen's web app requires the encryption key in the URL fragment (never sent to server).
+        //
+        // M8 SECURITY WARNING: The link key IS the user's first master key. Anyone with this URL
+        // can decrypt the shared file metadata. This is by Filen's design (zero-knowledge sharing),
+        // but users should be aware that sharing this link is equivalent to sharing their master key
+        // for the purpose of decrypting the linked content. The fragment is not sent to the server
+        // in HTTP requests, but it IS visible in the URL bar and in browser history.
         if link_key.is_empty() {
             Ok(format!("https://filen.io/d/{}", link_uuid))
         } else {

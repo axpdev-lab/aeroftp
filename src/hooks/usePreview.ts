@@ -18,6 +18,34 @@ import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
 import { logger } from '../utils/logger';
 
+/** Max file size (in bytes) for base64 media preview — 25 MB */
+const MAX_PREVIEW_SIZE_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Sanitize SVG content by removing dangerous elements and attributes.
+ * Even though <img> tags block script execution, defense-in-depth
+ * removes <script>, <foreignObject>, and inline event handlers.
+ */
+function sanitizeSvg(svgContent: string): string {
+  // Remove <script> tags and their content
+  let clean = svgContent.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Remove self-closing <script /> tags
+  clean = clean.replace(/<script[^>]*\/>/gi, '');
+  // Remove <foreignObject> tags and their content
+  clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
+  // Remove self-closing <foreignObject /> tags
+  clean = clean.replace(/<foreignObject[^>]*\/>/gi, '');
+  // Remove event handler attributes (on*)
+  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Remove event handler attributes with unquoted values
+  clean = clean.replace(/\s+on\w+\s*=\s*\S+/gi, '');
+  // Remove href="javascript:..." attributes
+  clean = clean.replace(/\s+href\s*=\s*["']javascript:[^"']*["']/gi, '');
+  // Remove xlink:href="javascript:..." attributes
+  clean = clean.replace(/\s+xlink:href\s*=\s*["']javascript:[^"']*["']/gi, '');
+  return clean;
+}
+
 interface UsePreviewProps {
   notify: {
     error: (title: string, message?: string) => void;
@@ -76,7 +104,15 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
             gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp', bmp: 'image/bmp'
           };
           const mime = mimeTypes[ext] || 'image/png';
-          const dataUrl = `data:${mime};base64,${base64}`;
+          let dataUrl: string;
+          if (ext === 'svg') {
+            // H27: Sanitize SVG to remove XSS vectors before preview
+            const rawSvg = atob(base64);
+            const cleanSvg = sanitizeSvg(rawSvg);
+            dataUrl = `data:${mime};base64,${btoa(cleanSvg)}`;
+          } else {
+            dataUrl = `data:${mime};base64,${base64}`;
+          }
           setPreviewImageBase64(dataUrl);
           // Extract image dimensions
           const img = new window.Image();
@@ -134,6 +170,14 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
 
       const fileSize = file.size || 0;
       const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+
+      // H29: Reject binary preview for files exceeding 25 MB to prevent memory amplification
+      const needsBinaryPreview = category !== 'text' && category !== 'markdown' && category !== 'code';
+      if (needsBinaryPreview && fileSize > MAX_PREVIEW_SIZE_BYTES) {
+        notify.error('Preview Failed', `File too large for preview (${sizeMB} MB). Maximum is 25 MB.`);
+        return;
+      }
+
       const loadingToastId = fileSize > 1024 * 1024
         ? notify.info(`Loading ${file.name}`, `${sizeMB} MB - Please wait...`)
         : null;
@@ -148,6 +192,16 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         avi: 'video/x-msvideo', mov: 'video/quicktime', ogv: 'video/ogg',
       };
 
+      /** Helper: decode base64 to ArrayBuffer for Blob construction */
+      const base64ToArrayBuffer = (b64: string): ArrayBuffer => {
+        const byteCharacters = atob(b64);
+        const byteArray = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteArray[i] = byteCharacters.charCodeAt(i);
+        }
+        return byteArray.buffer as ArrayBuffer;
+      };
+
       if (!isRemote) {
         if (category === 'text' || category === 'markdown' || category === 'code') {
           content = await invoke<string>('read_local_file', { path: filePath });
@@ -155,33 +209,38 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
           logger.debug(`[Preview] Loading ${category} file as blob...`);
           const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
           const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
+          const byteArray = base64ToArrayBuffer(base64);
           const blob = new Blob([byteArray], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
           logger.debug(`[Preview] Created blob URL for ${category}`);
         } else {
           const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
           const mimeType = mimeMap[ext] || 'application/octet-stream';
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          // H27: Sanitize SVG content before creating blob
+          if (ext === 'svg') {
+            const rawSvg = atob(base64);
+            const cleanSvg = sanitizeSvg(rawSvg);
+            const blob = new Blob([cleanSvg], { type: mimeType });
+            blobUrl = URL.createObjectURL(blob);
+          } else {
+            const byteArray = base64ToArrayBuffer(base64);
+            const blob = new Blob([byteArray], { type: mimeType });
+            blobUrl = URL.createObjectURL(blob);
           }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mimeType });
-          blobUrl = URL.createObjectURL(blob);
         }
       } else {
         if (category === 'text' || category === 'markdown' || category === 'code') {
           content = await invoke<string>('preview_remote_file', { path: filePath });
         } else if (category === 'image') {
           const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath });
-          blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
+          // H27: Sanitize SVG content from remote sources
+          if (ext === 'svg') {
+            const rawSvg = atob(base64);
+            const cleanSvg = sanitizeSvg(rawSvg);
+            blobUrl = `data:${mimeMap[ext] || 'image/svg+xml'};base64,${btoa(cleanSvg)}`;
+          } else {
+            blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
+          }
         }
       }
 

@@ -90,6 +90,15 @@ const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
 // Constants imported from ./Sync/syncConstants
 
 // Generate a signing key from a stored random secret + sync path pair (tamper detection)
+//
+// M18 SECURITY TRADE-OFF: The journal signing secret is stored in localStorage, which means:
+// 1. It is accessible to any JS running in the WebView context (XSS risk if CSP is bypassed)
+// 2. It persists across sessions but is NOT encrypted at rest
+// 3. It provides tamper-detection (not tamper-proof) for sync journals
+// The alternative would be storing it in the vault (credential_store), but that would require
+// the vault to be unlocked before any sync journal integrity check, which would break the UX
+// for auto-mode users who never set a master password. This is an acceptable trade-off because
+// the signing key only protects journal integrity, not confidentiality of user data.
 async function getJournalSigningKey(localPath: string, remotePath: string): Promise<string> {
     // Use a stored random secret + paths to derive the signing key
     const STORAGE_KEY = 'aeroftp_journal_signing_secret';

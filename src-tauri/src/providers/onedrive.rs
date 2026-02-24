@@ -526,7 +526,7 @@ impl StorageProvider for OneDriveProvider {
         };
 
         let url = format!("{}:/content", self.api_path(&path));
-        
+
         let response = self.client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -534,11 +534,8 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
-        // OneDrive returns redirect, follow it
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(

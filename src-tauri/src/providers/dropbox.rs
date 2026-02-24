@@ -474,13 +474,13 @@ impl StorageProvider for DropboxProvider {
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let path = self.normalize_path(remote_path);
-        
+
         let arg = serde_json::json!({
             "path": path
         });
 
         let url = format!("{}/files/download", CONTENT_BASE);
-        
+
         let response = self.client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -494,10 +494,8 @@ impl StorageProvider for DropboxProvider {
             return Err(ProviderError::Other(format!("Download failed: {}", sanitize_api_error(&text))));
         }
 
-        let bytes = response.bytes().await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn upload(

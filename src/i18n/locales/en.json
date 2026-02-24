@@ -1455,7 +1455,10 @@
       "stepLoading": "Loading credentials...",
       "stepVerifying": "Verifying integrity...",
       "unlock": "Unlock",
-      "unlocking": "Unlocking..."
+      "unlocking": "Unlocking...",
+      "enter2FACode": "Two-Factor Authentication",
+      "enter2FAHint": "Enter the 6-digit code from your authenticator app",
+      "invalid2FACode": "Invalid 2FA code. Please try again."
     },
     "masterPassword": {
       "autoLockTimeout": "Auto-lock timeout",
@@ -2651,6 +2654,7 @@
     },
     "toast": {
       "batchRenamePartial": "Batch rename completed with errors",
+      "batchRenameResult": "{success} renamed, {errors} failed",
       "batchRenameSuccess": "Batch rename complete",
       "changeDirFailed": "Failed to change directory: {error}",
       "checksumFailed": "Checksum failed",
@@ -2668,6 +2672,7 @@
       "connectionLostManual": "Could not reconnect. Please reconnect manually.",
       "connectionLostTitle": "Connection Lost",
       "connectionSuccess": "Connected to {server}",
+      "copyCompleted": "Copy completed",
       "copyFailed": "Copy failed",
       "copyNotSupported": "Server-side copy not supported",
       "deleted": "Deleted",
@@ -2748,6 +2753,7 @@
       "activityLog": "Activity Log",
       "cancelAll": "Cancel All",
       "cancelled": "Cancelled",
+      "cancelledByUser": "Cancelled by user",
       "clearAll": "Clear all",
       "clearCompleted": "Clear Completed",
       "clearLog": "Clear Log",

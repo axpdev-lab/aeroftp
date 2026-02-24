@@ -3239,6 +3239,33 @@ async fn compress_7z(
     Ok(output_path)
 }
 
+/// Validate that an archive entry name is safe for extraction.
+/// Rejects absolute paths, Windows drive letters, path traversal (`..`),
+/// and entries that would escape the destination directory.
+fn is_safe_archive_entry(entry_name: &str) -> bool {
+    // Reject empty names
+    if entry_name.is_empty() {
+        return false;
+    }
+    // Reject absolute paths (Unix and Windows)
+    if entry_name.starts_with('/') || entry_name.starts_with('\\') {
+        return false;
+    }
+    // Reject Windows drive letters (e.g. "C:")
+    if entry_name.len() >= 2 && entry_name.as_bytes()[1] == b':' {
+        return false;
+    }
+    // Reject path traversal via ".." in any component (handles both / and \ separators)
+    if entry_name.split('/').chain(entry_name.split('\\')).any(|c| c == "..") {
+        return false;
+    }
+    // Reject null bytes
+    if entry_name.contains('\0') {
+        return false;
+    }
+    true
+}
+
 /// Extract a 7z archive with optional password (AES-256 decryption)
 #[tauri::command]
 async fn extract_7z(
@@ -3248,7 +3275,8 @@ async fn extract_7z(
     create_subfolder: bool,
 ) -> Result<String, String> {
     use sevenz_rust::*;
-    use std::fs;
+    use std::fs::{self, File};
+    use std::io::BufReader;
     use std::path::Path;
 
     // Determine output directory
@@ -3269,17 +3297,48 @@ async fn extract_7z(
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    // Extract archive
-    if let Some(ref pwd) = secret_password {
-        decompress_file_with_password(
-            &archive_path,
-            &final_output_dir,
-            Password::from(pwd.expose_secret()),
-        ).map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
-    } else {
-        decompress_file(&archive_path, &final_output_dir)
-            .map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
-    }
+    let file = File::open(&archive_path)
+        .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+    let len = file.metadata()
+        .map_err(|e| format!("Failed to get archive metadata: {}", e))?
+        .len();
+    let reader = BufReader::new(file);
+
+    let pwd = secret_password
+        .as_ref()
+        .map(|p| Password::from(p.expose_secret()))
+        .unwrap_or_else(Password::empty);
+
+    let mut archive = SevenZReader::new(reader, len, pwd)
+        .map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+
+    let dest = Path::new(&final_output_dir);
+
+    // C5: Extract entries with per-entry path traversal validation
+    // instead of using decompress_file() which extracts blindly
+    archive.for_each_entries(|entry, reader| {
+        let name = entry.name();
+
+        // Skip entries with unsafe paths (traversal, absolute, drive letters)
+        if !is_safe_archive_entry(name) {
+            return Ok(true); // skip this entry, continue to next
+        }
+
+        let out_path = dest.join(name);
+
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        if entry.is_directory() {
+            fs::create_dir_all(&out_path)?;
+        } else {
+            let mut outfile = File::create(&out_path)?;
+            std::io::copy(reader, &mut outfile)?;
+        }
+
+        Ok(true) // continue
+    }).map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
 
     Ok(final_output_dir)
 }
@@ -3480,23 +3539,52 @@ async fn extract_tar(
     let file = File::open(archive).map_err(|e| format!("Failed to open archive: {}", e))?;
     let ext = archive.to_string_lossy().to_lowercase();
 
-    if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-        let gz = flate2::read::GzDecoder::new(file);
-        let mut ar = tar::Archive::new(gz);
-        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.gz: {}", e))?;
+    let reader: Box<dyn std::io::Read> = if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+        Box::new(flate2::read::GzDecoder::new(file))
     } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
-        let xz = xz2::read::XzDecoder::new(file);
-        let mut ar = tar::Archive::new(xz);
-        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.xz: {}", e))?;
+        Box::new(xz2::read::XzDecoder::new(file))
     } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
-        let bz = bzip2::read::BzDecoder::new(file);
-        let mut ar = tar::Archive::new(bz);
-        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar.bz2: {}", e))?;
+        Box::new(bzip2::read::BzDecoder::new(file))
     } else if ext.ends_with(".tar") {
-        let mut ar = tar::Archive::new(file);
-        ar.unpack(&final_output).map_err(|e| format!("Failed to extract tar: {}", e))?;
+        Box::new(file)
     } else {
         return Err(format!("Unrecognized archive format: {}", ext));
+    };
+
+    let mut ar = tar::Archive::new(reader);
+
+    // C5: Iterate entries manually with path traversal validation
+    // instead of using unpack() which extracts blindly
+    for entry_result in ar.entries().map_err(|e| format!("Failed to read tar entries: {}", e))? {
+        let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {}", e))?;
+
+        let entry_path = entry.path()
+            .map_err(|e| format!("Failed to get entry path: {}", e))?
+            .to_string_lossy()
+            .to_string();
+
+        // Skip entries with unsafe paths (traversal, absolute, drive letters)
+        if !is_safe_archive_entry(&entry_path) {
+            continue;
+        }
+
+        let out_path = final_output.join(&entry_path);
+
+        if entry.header().entry_type().is_dir() {
+            std::fs::create_dir_all(&out_path)
+                .map_err(|e| format!("Failed to create directory '{}': {}", entry_path, e))?;
+        } else {
+            // Ensure parent directory exists
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent dir for '{}': {}", entry_path, e))?;
+            }
+
+            let mut outfile = File::create(&out_path)
+                .map_err(|e| format!("Failed to create file '{}': {}", entry_path, e))?;
+            std::io::copy(&mut entry, &mut outfile)
+                .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
+        }
     }
 
     Ok(final_output.to_string_lossy().to_string())
@@ -3540,6 +3628,15 @@ async fn extract_rar(
     while let Some(header) = archive.read_header()
         .map_err(|e| format!("Failed to read RAR header: {}", e))?
     {
+        let entry_name = header.entry().filename.to_string_lossy().to_string();
+
+        // C5: Skip entries with unsafe paths (traversal, absolute, drive letters)
+        if !is_safe_archive_entry(&entry_name) {
+            archive = header.skip()
+                .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+            continue;
+        }
+
         archive = if header.entry().is_file() {
             header.extract_with_base(&final_output)
                 .map_err(|e| format!("Failed to extract RAR entry: {}", e))?
@@ -3915,11 +4012,47 @@ async fn detect_provider_favicon(
 #[tauri::command]
 async fn save_local_file(path: String, content: String) -> Result<(), String> {
     validate_path(&path)?;
-    // Write content to local file
-    tokio::fs::write(&path, content)
+
+    // Additional hardened validation (M63: match ai_tools validate_path level)
+    let normalized = path.replace('\\', "/");
+    for component in normalized.split('/') {
+        if component == ".." {
+            return Err("Path traversal ('..') not allowed".to_string());
+        }
+    }
+    let resolved = std::fs::canonicalize(&path).or_else(|_| {
+        std::path::Path::new(&path)
+            .parent()
+            .map(std::fs::canonicalize)
+            .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+    });
+    if let Ok(canonical) = resolved {
+        let s = canonical.to_string_lossy();
+        let denied = ["/proc", "/sys", "/dev", "/boot", "/root",
+                      "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers"];
+        if denied.iter().any(|d| s.starts_with(d)) {
+            return Err(format!("Access to system path denied: {}", s));
+        }
+    }
+
+    // Atomic write: temp file + rename prevents corruption on crash/power-loss (M35)
+    let target = std::path::Path::new(&path);
+    let parent = target.parent()
+        .ok_or_else(|| "Cannot determine parent directory".to_string())?;
+    let tmp_path = parent.join(format!(".aeroftp_save_{}.tmp", chrono::Utc::now().timestamp_millis()));
+    tokio::fs::write(&tmp_path, &content)
         .await
-        .map_err(|e| format!("Failed to save file: {}", e))?;
-    
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            format!("Failed to write temp file: {}", e)
+        })?;
+    tokio::fs::rename(&tmp_path, &path)
+        .await
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            format!("Failed to finalize file save: {}", e)
+        })?;
+
     Ok(())
 }
 
@@ -4304,7 +4437,15 @@ pub async fn get_local_files_recursive(
                 continue;
             }
 
-            let metadata = entry.metadata().await.ok();
+            // H22: Use symlink_metadata to avoid following symlinks outside sync root.
+            // This returns metadata about the symlink itself, not its target.
+            let metadata = tokio::fs::symlink_metadata(&path).await.ok();
+
+            // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
+            if metadata.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+                continue;
+            }
+
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
 
             let modified = metadata.as_ref().and_then(|m| {
@@ -4397,7 +4538,14 @@ pub async fn get_local_files_recursive_parallel(
                 continue;
             }
 
-            let metadata = entry.metadata().await.ok();
+            // H22: Use symlink_metadata to avoid following symlinks outside sync root.
+            let metadata = tokio::fs::symlink_metadata(&path).await.ok();
+
+            // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
+            if metadata.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+                continue;
+            }
+
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let modified = metadata.as_ref().and_then(|m| {
                 m.modified().ok().map(|t| {
@@ -5463,12 +5611,13 @@ fn verify_local_transfer(
     local_path: String,
     expected_size: u64,
     expected_mtime: Option<String>,
+    expected_hash: Option<String>,
     policy: VerifyPolicy,
 ) -> VerifyResult {
     let mtime = expected_mtime.and_then(|s| {
         chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
     });
-    verify_local_file(&local_path, expected_size, mtime, &policy)
+    verify_local_file(&local_path, expected_size, mtime, &policy, expected_hash.as_deref())
 }
 
 #[tauri::command]
@@ -6460,10 +6609,65 @@ async fn delete_credential(account: String) -> Result<(), String> {
 #[tauri::command]
 async fn unlock_credential_store(
     password: String,
+    totp_code: Option<String>,
     state: State<'_, master_password::MasterPasswordState>,
+    totp_state: State<'_, totp::TotpState>,
 ) -> Result<(), String> {
-    credential_store::CredentialStore::unlock_with_master(&password)
-        .map_err(|e| e.to_string())?;
+    // Step 0: Check throttle (M69 — brute-force protection)
+    if let Err(wait_secs) = state.check_throttle() {
+        return Err(format!("THROTTLED:{}", wait_secs));
+    }
+
+    // Step 1: Verify master password and unlock vault
+    match credential_store::CredentialStore::unlock_with_master(&password) {
+        Ok(()) => {
+            state.reset_throttle();
+        }
+        Err(e) => {
+            state.record_failed_attempt();
+            return Err(e.to_string());
+        }
+    }
+
+    // Step 2: Check if TOTP is enabled by looking for stored secret
+    let totp_secret = credential_store::CredentialStore::from_cache()
+        .and_then(|store| store.get("totp_secret").ok());
+
+    if let Some(secret) = totp_secret {
+        if !secret.is_empty() {
+            // TOTP is enabled — load secret into state and verify code
+            totp::load_secret_internal(&totp_state, &secret)
+                .map_err(|e| {
+                    // Re-lock vault on failure (fail-closed)
+                    credential_store::CredentialStore::lock();
+                    state.set_locked(true);
+                    format!("Failed to load TOTP secret: {}", e)
+                })?;
+
+            match totp_code {
+                Some(ref code) if !code.is_empty() => {
+                    let valid = totp::verify_internal(&totp_state, code)
+                        .map_err(|e| {
+                            credential_store::CredentialStore::lock();
+                            state.set_locked(true);
+                            e
+                        })?;
+                    if !valid {
+                        credential_store::CredentialStore::lock();
+                        state.set_locked(true);
+                        return Err("2FA_INVALID".to_string());
+                    }
+                }
+                _ => {
+                    // No TOTP code provided but 2FA is enabled
+                    credential_store::CredentialStore::lock();
+                    state.set_locked(true);
+                    return Err("2FA_REQUIRED".to_string());
+                }
+            }
+        }
+    }
+
     state.set_locked(false);
     state.update_activity();
     Ok(())
@@ -6610,9 +6814,28 @@ async fn import_server_profiles(
         }
     }
 
-    // Return servers without credentials + metadata
+    // H16 fix: Redact credentials before returning to renderer.
+    // Only return non-sensitive fields + a boolean flag indicating stored credentials.
+    let redacted_servers: Vec<serde_json::Value> = servers.iter().map(|s| {
+        serde_json::json!({
+            "id": s.id,
+            "name": s.name,
+            "host": s.host,
+            "port": s.port,
+            "username": s.username,
+            "protocol": s.protocol,
+            "initialPath": s.initial_path,
+            "localInitialPath": s.local_initial_path,
+            "color": s.color,
+            "lastConnected": s.last_connected,
+            "options": s.options,
+            "providerId": s.provider_id,
+            "hasStoredCredential": s.credential.is_some(),
+        })
+    }).collect();
+
     let result = serde_json::json!({
-        "servers": servers,
+        "servers": redacted_servers,
         "metadata": metadata,
     });
     Ok(result)
@@ -6696,6 +6919,17 @@ pub fn run() {
     // - xterm.js canvas renderer (no colors/cursor)
     // - iframe CSS rendering (no styles in HTML preview)
     // By serving via http://localhost, production behaves identically to dev mode.
+    //
+    // SECURITY NOTE (H26): This serves the frontend over unencrypted HTTP on localhost:14321.
+    // This is a known design trade-off required by WebKitGTK on Linux — the tauri:// custom
+    // protocol does not support web workers, canvas rendering, or iframe CSS in WebKitGTK.
+    // Risk assessment:
+    //   - Traffic is loopback-only (127.0.0.1), not exposed on network interfaces
+    //   - Exploitation requires same-machine access (local privilege escalation prerequisite)
+    //   - All sensitive data (credentials, tokens) flows through Tauri IPC commands, NOT HTTP
+    //   - tauri-plugin-localhost binds exclusively to 127.0.0.1
+    // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
+    // would add complexity with minimal security benefit for localhost-only traffic.
     let port: u16 = 14321;
 
     let builder = tauri::Builder::default()

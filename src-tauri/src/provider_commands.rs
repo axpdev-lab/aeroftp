@@ -489,6 +489,68 @@ struct DownloadEntry {
     modified: Option<String>,
 }
 
+/// Sanitize a remote filename to prevent path traversal attacks.
+/// Strips path separators, `..` components, null bytes, and drive letters.
+/// Returns the sanitized filename, or an error if the name is empty or entirely unsafe.
+fn sanitize_remote_filename(name: &str) -> Result<String, String> {
+    // Split on both Unix and Windows path separators, filter out dangerous components
+    let sanitized: Vec<&str> = name
+        .split(&['/', '\\'][..])
+        .filter(|component| {
+            !component.is_empty()
+                && *component != "."
+                && *component != ".."
+                && !component.contains('\0')
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        return Err(format!("Unsafe remote filename rejected: {:?}", name));
+    }
+
+    // Take only the last component (the actual filename)
+    let filename = sanitized.last().unwrap().to_string();
+
+    // Reject Windows drive letters (e.g. "C:")
+    if filename.len() >= 2 && filename.as_bytes()[1] == b':' && filename.as_bytes()[0].is_ascii_alphabetic() {
+        return Err(format!("Unsafe remote filename with drive letter rejected: {:?}", name));
+    }
+
+    Ok(filename)
+}
+
+/// Verify that a resolved path is safely contained within the expected base directory.
+fn verify_path_containment(base: &std::path::Path, target: &std::path::Path) -> Result<(), String> {
+    // Use canonicalize on the base (which must already exist)
+    let canonical_base = base.canonicalize()
+        .map_err(|e| format!("Failed to canonicalize base path: {}", e))?;
+
+    // For target, canonicalize the parent (which should exist after create_dir_all)
+    // and then append the filename
+    let canonical_target = if target.exists() {
+        target.canonicalize()
+            .map_err(|e| format!("Failed to canonicalize target path: {}", e))?
+    } else if let Some(parent) = target.parent() {
+        if parent.exists() {
+            let canonical_parent = parent.canonicalize()
+                .map_err(|e| format!("Failed to canonicalize parent path: {}", e))?;
+            canonical_parent.join(target.file_name().unwrap_or_default())
+        } else {
+            target.to_path_buf()
+        }
+    } else {
+        target.to_path_buf()
+    };
+
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(format!(
+            "Path traversal detected: {:?} escapes base directory {:?}",
+            canonical_target, canonical_base
+        ));
+    }
+    Ok(())
+}
+
 /// Inner implementation: 2-phase approach with per-file lock release and retry
 async fn provider_download_folder_inner(
     app: &AppHandle,
@@ -545,23 +607,42 @@ async fn provider_download_folder_inner(
             let files = provider.list(".").await
                 .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
 
+            let base_local = std::path::Path::new(local_path);
             for file in files {
+                // H7 fix: Sanitize remote filename to prevent path traversal
+                let safe_name = match sanitize_remote_filename(&file.name) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        warn!("Skipping unsafe remote entry: {}", e);
+                        continue;
+                    }
+                };
+
                 let remote_file_path = if remote_folder.ends_with('/') {
                     format!("{}{}", remote_folder, file.name)
                 } else {
                     format!("{}/{}", remote_folder, file.name)
                 };
-                let local_file_path = format!("{}/{}", local_folder, file.name);
+                let local_file_path_buf = std::path::Path::new(&local_folder).join(&safe_name);
+                let local_file_path = local_file_path_buf.to_string_lossy().to_string();
 
                 if file.is_dir {
                     tokio::fs::create_dir_all(&local_file_path).await
                         .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
+                    // Verify directory is still within base after creation
+                    verify_path_containment(base_local, &local_file_path_buf)?;
                     folders_to_scan.push((remote_file_path, local_file_path));
                 } else {
+                    // Verify target file path is within base directory
+                    if let Some(parent) = local_file_path_buf.parent() {
+                        if parent.exists() {
+                            verify_path_containment(base_local, &local_file_path_buf)?;
+                        }
+                    }
                     all_files.push(DownloadEntry {
                         remote_path: remote_file_path,
                         local_path: local_file_path,
-                        name: file.name.clone(),
+                        name: safe_name,
                         size: file.size,
                         modified: file.modified.clone(),
                     });

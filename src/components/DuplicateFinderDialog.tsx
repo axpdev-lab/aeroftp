@@ -143,16 +143,20 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setSelectedPaths(new Set());
   }, []);
 
-  // Delete selected files
-  const handleDelete = useCallback(async () => {
+  // Inline confirmation dialog state (replaces window.confirm for styled UX)
+  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
+
+  // Delete selected files — shows styled confirmation first
+  const handleDelete = useCallback(() => {
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
+    setPendingDeleteConfirm(true);
+  }, [selectedPaths]);
 
-    const confirmed = window.confirm(
-      t('duplicates.confirmDelete', { count: paths.length }) ||
-      `Are you sure you want to delete ${paths.length} files?`
-    );
-    if (!confirmed) return;
+  const confirmDelete = useCallback(async () => {
+    setPendingDeleteConfirm(false);
+    const paths = Array.from(selectedPaths);
+    if (paths.length === 0) return;
 
     setIsDeleting(true);
     try {
@@ -406,6 +410,31 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
           </div>
         )}
       </div>
+
+      {/* Styled confirmation dialog (replaces window.confirm) */}
+      {pendingDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in">
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
+              {t('duplicates.confirmDelete', { count: selectedPaths.size })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingDeleteConfirm(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
+              >
+                {t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

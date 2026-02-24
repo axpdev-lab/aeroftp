@@ -82,7 +82,7 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
 }
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::ProviderError;
 
@@ -549,13 +549,57 @@ impl OAuth2Manager {
             }
         }
 
-        // Legacy: try plaintext file (migrate to vault on next store)
+        // Legacy: try plaintext file — migrate to vault immediately, then delete the file
         let legacy_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         let json = std::fs::read_to_string(&legacy_path)
             .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
 
-        serde_json::from_str(&json)
-            .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))
+        warn!(
+            "Found legacy plaintext OAuth token file for {:?} — migrating to vault",
+            provider
+        );
+
+        let tokens: StoredTokens = serde_json::from_str(&json)
+            .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))?;
+
+        // Migrate to vault
+        let mut migrated = false;
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            if store.store(&account, &json).is_ok() {
+                migrated = true;
+                info!("Legacy tokens for {:?} migrated to credential vault", provider);
+            }
+        }
+        if !migrated {
+            // Try auto-init vault
+            if crate::credential_store::CredentialStore::init().is_ok() {
+                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                    if store.store(&account, &json).is_ok() {
+                        migrated = true;
+                        info!("Legacy tokens for {:?} migrated to auto-initialized vault", provider);
+                    }
+                }
+            }
+        }
+
+        // Delete legacy plaintext file after successful migration
+        if migrated {
+            if let Err(e) = crate::credential_store::secure_delete(&legacy_path) {
+                warn!("Failed to secure-delete legacy token file for {:?}: {}", provider, e);
+                // Fallback: try normal delete
+                let _ = std::fs::remove_file(&legacy_path);
+            } else {
+                info!("Legacy plaintext token file deleted for {:?}", provider);
+            }
+        } else {
+            warn!(
+                "Could not migrate legacy tokens to vault for {:?} — vault unavailable. \
+                 Plaintext file remains until vault is unlocked.",
+                provider
+            );
+        }
+
+        Ok(tokens)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files

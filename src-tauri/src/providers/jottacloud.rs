@@ -13,7 +13,7 @@
 use async_trait::async_trait;
 use base64::Engine;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -71,8 +71,10 @@ pub struct JottacloudProvider {
     client: reqwest::Client,
     connected: bool,
     username: String,
-    access_token: String,
-    refresh_token: String,
+    /// OAuth2 access token (SecretString for memory zeroization)
+    access_token: SecretString,
+    /// OAuth2 refresh token (SecretString for memory zeroization)
+    refresh_token: SecretString,
     token_endpoint: String,
     token_expiry: Instant,
     current_path: String,
@@ -90,8 +92,8 @@ impl JottacloudProvider {
             client,
             connected: false,
             username: String::new(),
-            access_token: String::new(),
-            refresh_token: String::new(),
+            access_token: SecretString::from(String::new()),
+            refresh_token: SecretString::from(String::new()),
             token_endpoint: String::new(),
             token_expiry: Instant::now(),
             current_path: "/".to_string(),
@@ -191,7 +193,7 @@ impl JottacloudProvider {
         if Instant::now() < self.token_expiry - std::time::Duration::from_secs(60) {
             return Ok(());
         }
-        if self.refresh_token.is_empty() || self.token_endpoint.is_empty() {
+        if self.refresh_token.expose_secret().is_empty() || self.token_endpoint.is_empty() {
             return Err(ProviderError::AuthenticationFailed(
                 "Cannot refresh: no refresh token available".to_string()
             ));
@@ -200,7 +202,7 @@ impl JottacloudProvider {
         // Jottacloud quirk: uppercase REFRESH_TOKEN
         let form_body = format!(
             "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
-            urlencoding::encode(&self.refresh_token),
+            urlencoding::encode(self.refresh_token.expose_secret()),
         );
         let resp = self.client.post(&self.token_endpoint)
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -220,10 +222,10 @@ impl JottacloudProvider {
             ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
         })?;
         if let Some(ref at) = token_resp.access_token {
-            self.access_token = at.clone();
+            self.access_token = SecretString::from(at.clone());
         }
         if let Some(ref rt) = token_resp.refresh_token {
-            self.refresh_token = rt.clone();
+            self.refresh_token = SecretString::from(rt.clone());
         }
         let expires_in = token_resp.expires_in.unwrap_or(3600);
         self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
@@ -232,7 +234,7 @@ impl JottacloudProvider {
     }
 
     fn auth_header(&self) -> HeaderValue {
-        HeaderValue::from_str(&format!("Bearer {}", self.access_token))
+        HeaderValue::from_str(&format!("Bearer {}", self.access_token.expose_secret()))
             .unwrap_or_else(|_| HeaderValue::from_static(""))
     }
 
@@ -733,8 +735,8 @@ impl StorageProvider for JottacloudProvider {
         let token_resp = self.exchange_token(&token_endpoint, &username, &auth_token).await?;
 
         self.username = username;
-        self.access_token = token_resp.access_token.unwrap_or_default();
-        self.refresh_token = token_resp.refresh_token.unwrap_or_default();
+        self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+        self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or_default());
         self.token_endpoint = token_endpoint;
         let expires_in = token_resp.expires_in.unwrap_or(3600);
         self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
@@ -789,8 +791,8 @@ impl StorageProvider for JottacloudProvider {
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
         self.current_path = "/".to_string();
-        self.access_token.clear();
-        self.refresh_token.clear();
+        self.access_token = SecretString::from(String::new());
+        self.refresh_token = SecretString::from(String::new());
         Ok(())
     }
 
@@ -922,6 +924,8 @@ impl StorageProvider for JottacloudProvider {
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
+        // M9: Full file read into memory — Jottacloud's upload API requires the complete body
+        // with an MD5 hash for deduplication. This limits practical upload size to available RAM.
         let data = tokio::fs::read(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Read local file failed: {}", e))
         })?;
@@ -1195,11 +1199,8 @@ impl StorageProvider for JottacloudProvider {
             )));
         }
 
-        let bytes = resp.bytes().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to read response bytes: {}", e))
-        })?;
-
-        Ok(bytes.to_vec())
+        // H2: Size-limited download to prevent OOM on large files
+        super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
