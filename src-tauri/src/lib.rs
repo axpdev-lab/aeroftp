@@ -494,6 +494,31 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
     Ok(path_str)
 }
 
+/// Spawn a fully detached relaunch process using setsid.
+/// The child runs in its own session so it survives when the parent exits.
+#[cfg(unix)]
+fn spawn_detached_relaunch(exe_path: &str) {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
+        .arg(format!("sleep 2 && exec '{}'", exe_path))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    // SAFETY: setsid() creates a new session, detaching from parent's process group.
+    // This is safe because we haven't spawned threads in the child yet.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    match cmd.spawn() {
+        Ok(_) => info!("Detached relaunch spawned: {}", exe_path),
+        Err(e) => tracing::warn!("Failed to spawn relaunch: {}", e),
+    }
+}
+
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
 async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
@@ -537,20 +562,9 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 
     info!("AppImage updated successfully, restarting...");
 
-    // Restart via detached shell process — delay ensures old process exits
-    // fully before new one starts (avoids port/lock/DBus conflicts)
+    // Restart via setsid-detached process — survives parent exit
     let exe_path = current_exe.display().to_string();
-    info!("Spawning delayed relaunch: {}", exe_path);
-    if let Err(e) = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("sleep 1 && exec '{}'", exe_path))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        tracing::warn!("Failed to spawn relaunch process: {}", e);
-    }
+    spawn_detached_relaunch(&exe_path);
     app.exit(0);
 
     Ok(())
@@ -588,22 +602,11 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
     info!(".deb installed successfully, restarting...");
     let _ = std::fs::remove_file(downloaded);
 
-    // Restart via detached shell process — delay ensures old process exits
-    // fully before new one starts (avoids port/lock/DBus conflicts)
+    // Restart via setsid-detached process — survives parent exit
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Cannot find current exe: {}", e))?;
     let exe_path = current_exe.display().to_string();
-    info!("Spawning delayed relaunch: {}", exe_path);
-    if let Err(e) = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("sleep 1 && exec '{}'", exe_path))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        tracing::warn!("Failed to spawn relaunch process: {}", e);
-    }
+    spawn_detached_relaunch(&exe_path);
     app.exit(0);
 
     Ok(())
@@ -640,21 +643,11 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
     info!(".rpm installed successfully, restarting...");
     let _ = std::fs::remove_file(downloaded);
 
-    // Restart via detached shell process (same pattern as deb)
+    // Restart via setsid-detached process — survives parent exit
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Cannot find current exe: {}", e))?;
     let exe_path = current_exe.display().to_string();
-    info!("Spawning delayed relaunch: {}", exe_path);
-    if let Err(e) = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("sleep 1 && exec '{}'", exe_path))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        tracing::warn!("Failed to spawn relaunch process: {}", e);
-    }
+    spawn_detached_relaunch(&exe_path);
     app.exit(0);
 
     Ok(())

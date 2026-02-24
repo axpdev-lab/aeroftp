@@ -887,11 +887,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         {onAeroFile && (
                             <button
                                 onClick={onAeroFile}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors text-sm font-medium"
-                                title={t('statusBar.aerofileTitle')}
+                                className="flex items-center p-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
+                                title="AeroFile"
                             >
-                                <FolderOpen size={16} />
-                                <span>AeroFile</span>
+                                <FolderOpen size={18} />
                             </button>
                         )}
                     </div>
@@ -902,6 +901,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             onChange={handleProtocolChange}
                             disabled={loading}
                             onOpenChange={handleProtocolSelectorOpenChange}
+                            ftpTlsMode={connectionParams.options?.tlsMode}
                         />
 
                         {/* Show form only when protocol is selected AND selector is closed */}
@@ -1130,6 +1130,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <span className="font-medium text-sm">{selectedProvider.name}</span>
                                                 {selectedProvider.isGeneric && (
                                                     <span className="text-xs text-gray-500 ml-2">({t('connection.custom')})</span>
+                                                )}
+                                                {selectedProvider.description && (
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{selectedProvider.description}</div>
                                                 )}
                                             </div>
                                         </div>

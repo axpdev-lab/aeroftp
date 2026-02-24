@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB ingyenes, biztonságos felhőtárhely REST API-val",
       "jottacloudDesc": "Norvég felhő (5GB ingyenes)",
       "jottacloudTooltip": "Jottacloud - GDPR-kompatibilis norvég felhőtárhely 5GB ingyenes tárhellyel",
-      "minioDesc": "Önkiszolgáló S3-kompatibilis objektumtároló"
+      "minioDesc": "Önkiszolgáló S3-kompatibilis objektumtároló",
+      "s3InfoLine1": "Access Key ID és Secret Key szükséges. A régió és endpoint az szolgáltató függvénye.",
+      "s3InfoLine2": "Ideális felhő objektumtároláshoz, biztonsági mentésekhez és nagyméretű fájlok hosztálásához.",
+      "webdavInfoLine1": "Kiszolgáló URL, felhasználónév és jelszó szükséges. Az 443-as port (HTTPS) az alapértelmezett.",
+      "webdavInfoLine2": "Ideális önhoszolt felhőkhöz, NAS eszközökhöz és fájlmegosztáshoz.",
+      "selectProviderPrompt": "Válasszon egy szolgáltatót fent vagy válassza a \"Custom\" opciót"
     },
     "shortcuts": {
       "title": "Billentyűparancsok",

@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB bezpečného cloudového úložiska s REST API",
       "jottacloudDesc": "Nórsky cloud (5GB zadarmo)",
       "jottacloudTooltip": "Jottacloud - nórske cloudové úložisko v súlade s GDPR s 5GB zadarmo",
-      "minioDesc": "Vlastné hostované S3-kompatibilné úložisko objektov"
+      "minioDesc": "Vlastné hostované S3-kompatibilné úložisko objektov",
+      "s3InfoLine1": "Vyžaduje ID prístupového kľúča a tajný kľúč. Oblasť a koncový bod sa líšia podľa poskytovateľa.",
+      "s3InfoLine2": "Ideálne pre cloudové úložisko objektov, zálohy a hostovanie súborov vo veľkom meradle.",
+      "webdavInfoLine1": "Vyžaduje URL servera, používateľské meno a heslo. Štandardne port 443 (HTTPS).",
+      "webdavInfoLine2": "Ideálne pre vlastné cloudové systémy, zariadenia NAS a zdieľanie súborov.",
+      "selectProviderPrompt": "Vyberte poskytovateľa vyššie alebo vyberte \"Custom\""
     },
     "shortcuts": {
       "title": "Klávesové skratky",

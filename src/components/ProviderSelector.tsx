@@ -8,7 +8,7 @@
 import React from 'react';
 import {
     Cloud, Database, Globe, HardDrive, Flame, Server,
-    ChevronRight, Sparkles, CheckCircle
+    ChevronRight, Sparkles, CheckCircle, Info
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { providerRegistry, ProviderConfig } from '../providers';
@@ -84,7 +84,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
     const genericProviders = filteredProviders.filter(p => p.isGeneric);
     const specificProviders = filteredProviders.filter(p => !p.isGeneric);
 
-    // Render a single provider card
+    // Render a single provider row (horizontal style matching ProtocolSelector)
     const renderProviderCard = (provider: ProviderConfig) => {
         const isSelected = selectedProvider === provider.id;
 
@@ -92,70 +92,50 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             <button
                 key={provider.id}
                 onClick={() => onSelect(provider)}
+                title={provider.description}
                 className={`
-                    relative group flex flex-col items-center justify-center
-                    ${compact ? 'p-3 gap-1.5' : 'p-4 gap-2'}
-                    rounded-xl border-2 transition-all duration-200
+                    relative flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left
                     ${isSelected
-                        ? 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800/50'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                        : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }
                     ${!provider.stable ? 'opacity-70' : ''}
                 `}
             >
-                {/* Selected indicator */}
-                {isSelected && (
-                    <div className="absolute top-1.5 right-1.5">
-                        <CheckCircle size={14} className="text-blue-400" />
-                    </div>
-                )}
-
                 {/* Beta badge */}
                 {!provider.stable && (
-                    <div className="absolute top-1 left-1">
-                        <span className="px-1.5 py-0.5 text-[9px] font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded">
+                    <div className="absolute top-0.5 left-1">
+                        <span className="px-1 py-px text-[8px] font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded">
                             BETA
                         </span>
                     </div>
                 )}
 
                 {/* Icon */}
-                <div className={`
-                    flex items-center justify-center
-                    ${compact ? 'w-8 h-8' : 'w-12 h-12'}
-                    rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors
-                `}>
+                <div className="flex-shrink-0">
                     {getProviderIcon(provider.icon, provider.color, provider.id)}
                 </div>
 
-                {/* Name */}
-                <span className={`
-                    font-medium text-center
-                    ${compact ? 'text-xs' : 'text-sm'}
-                    ${isSelected ? 'text-blue-600 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}
-                `}>
-                    {provider.name}
-                </span>
+                {/* Name + Description */}
+                <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm whitespace-nowrap">{provider.name}</div>
+                    <div className="text-xs text-gray-500 truncate">{provider.description}</div>
+                </div>
 
-                {/* Description (only in non-compact mode) */}
-                {!compact && provider.description && (
-                    <span className="text-[10px] text-gray-500 dark:text-gray-500 text-center line-clamp-2">
-                        {provider.description}
-                    </span>
-                )}
-
-                {/* Custom/generic indicator */}
-                {provider.isGeneric && (
-                    <span className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                        {t('protocol.custom')}
-                    </span>
-                )}
             </button>
         );
     };
 
     return (
         <div className="space-y-4">
+            {/* Info card for S3/WebDAV */}
+            {category && (
+                <div className="flex items-center gap-2 p-2.5 bg-blue-50/50 dark:bg-blue-900/15 border border-blue-200/50 dark:border-blue-800/40 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+                    <Info size={14} className="flex-shrink-0" />
+                    <p>{t(`protocol.${category}InfoLine1`)} {t(`protocol.${category}InfoLine2`)}</p>
+                </div>
+            )}
+
             {/* Specific Providers */}
             {specificProviders.length > 0 && (
                 <div>
@@ -163,7 +143,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                         <Sparkles size={12} />
                         {t('protocol.preconfiguredProviders')}
                     </h4>
-                    <div className={`grid gap-2 ${compact ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                    <div className="grid grid-cols-2 gap-2">
                         {specificProviders.map(renderProviderCard)}
                     </div>
                 </div>
@@ -176,7 +156,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                         <Server size={12} />
                         {t('protocol.customConnection')}
                     </h4>
-                    <div className={`grid gap-2 ${compact ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                    <div className="grid grid-cols-2 gap-2">
                         {genericProviders.map(renderProviderCard)}
                     </div>
                 </div>

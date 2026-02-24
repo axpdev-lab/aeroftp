@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB nemokama saugi debesų saugykla su REST API",
       "jottacloudDesc": "Norvegijos debesis (5GB nemokamai)",
       "jottacloudTooltip": "Jottacloud - GDPR atitinkanti norvegiška debesų saugykla su 5GB nemokamai",
-      "minioDesc": "Savarankiškai talpinama S3 suderinama objektų saugykla"
+      "minioDesc": "Savarankiškai talpinama S3 suderinama objektų saugykla",
+      "s3InfoLine1": "Reikalingi Access Key ID ir Secret Key. Regionas ir galinis taškas skiriasi priklausomai nuo paslaugų teikėjo.",
+      "s3InfoLine2": "Idealu debesies objekto saugyklai, atsargoms ir didelės apimties failų hostingui.",
+      "webdavInfoLine1": "Reikalingas serverio URL, naudotojo vardas ir slaptažodis. Numatytasis prievadas yra 443 (HTTPS).",
+      "webdavInfoLine2": "Idealu savitarnos debesims, NAS įrenginiams ir failų bendrinimui.",
+      "selectProviderPrompt": "Pasirinkite teikėją aukščiau arba pasirinkite \"Custom\""
     },
     "shortcuts": {
       "title": "Klaviatūros trumpiniai",

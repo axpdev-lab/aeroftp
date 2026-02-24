@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB besplatne sigurne pohrane u oblaku s REST API",
       "jottacloudDesc": "Norveški oblak (5GB besplatno)",
       "jottacloudTooltip": "Jottacloud - GDPR-sukladna norveška pohrana u oblaku s 5GB besplatno",
-      "minioDesc": "Samohostirana S3-kompatibilna pohrana objekata"
+      "minioDesc": "Samohostirana S3-kompatibilna pohrana objekata",
+      "s3InfoLine1": "Zahtijeva Access Key ID i Secret Key. Regija i endpoint se razlikuju ovisno o pružaču.",
+      "s3InfoLine2": "Idealno za cloud pohranu objekata, sigurnosne kopije i hostiranje velikih datoteka.",
+      "webdavInfoLine1": "Zahtijeva URL poslužitelja, korisničko ime i lozinku. Port 443 (HTTPS) je standardno.",
+      "webdavInfoLine2": "Idealno za samohostirane oblake, NAS uređaje i dijeljenje datoteka.",
+      "selectProviderPrompt": "Odaberite pružatelja gore ili odaberite \"Custom\""
     },
     "shortcuts": {
       "title": "Tipkovnički prečaci",

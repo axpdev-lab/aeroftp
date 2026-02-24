@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB doako hodei-biltegi segurua REST API-rekin",
       "jottacloudDesc": "Norvegiar hodeia (5GB doan)",
       "jottacloudTooltip": "Jottacloud - GDPRrekin bateragarria den Norvegiar hodeiko biltegia 5GB doan",
-      "minioDesc": "Norberak ostatutako S3-bateragarri objektu biltegia"
+      "minioDesc": "Norberak ostatutako S3-bateragarri objektu biltegia",
+      "s3InfoLine1": "Access Key ID eta Secret Key behar ditu. Eskualdea eta amaierako puntua aldatzen dira hornitzailearen arabera.",
+      "s3InfoLine2": "Eguzkia objektuen biltegiratze, babes-kopiak eta fitxategien ostalaria eskalan egokia.",
+      "webdavInfoLine1": "Zerbitzariaren URL-a, erabiltzaile-izena eta pasahitza behar ditu. 443 ataka (HTTPS) berez.",
+      "webdavInfoLine2": "Autojabea diren hodeiak, NAS gailuak eta fitxategiak partekatzeko egokia.",
+      "selectProviderPrompt": "Hautatu hornitzailea goian edo hautatu \"Custom\""
     },
     "shortcuts": {
       "title": "Teklatu lasterbideak",

@@ -70,6 +70,7 @@ interface ProtocolSelectorProps {
     className?: string;
     showLabel?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
+    ftpTlsMode?: string;
 }
 
 interface ProtocolInfo {
@@ -343,10 +344,16 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     className = '',
     showLabel = true,
     onOpenChange,
+    ftpTlsMode,
 }) => {
     const t = useTranslation();
     const PROTOCOLS = React.useMemo(() => getProtocols(t), [t]);
     const selectedProtocol = value ? PROTOCOLS.find(p => p.type === value) : null;
+
+    // Dynamic badge: FTP with tlsMode=none should not show TLS badge
+    const effectiveBadge = selectedProtocol
+        ? (value === 'ftp' && ftpTlsMode === 'none' ? undefined : selectedProtocol.badge)
+        : undefined;
     const [isOpen, setIsOpen] = React.useState(false);
 
     // Close dropdown when value is set externally (e.g., Edit button)
@@ -493,20 +500,20 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                 </div>
             )}
 
-            {/* Badge for selected protocol */}
-            {value && selectedProtocol?.badge && !isOpen && (
+            {/* Badge for selected protocol (hidden when FTP encryption is none) */}
+            {value && effectiveBadge && !isOpen && (
                 <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${
-                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(selectedProtocol.badge)
+                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge)
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                        : selectedProtocol.badge === 'OAuth'
+                        : effectiveBadge === 'OAuth'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                            : selectedProtocol.badge === 'Sync'
+                            : effectiveBadge === 'Sync'
                                 ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                                 : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                     }`}>
-                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(selectedProtocol.badge) && <ShieldCheck size={12} />}
-                    {selectedProtocol.badge === 'OAuth' && <Lock size={12} />}
-                    {selectedProtocol.badge}
+                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge) && <ShieldCheck size={12} />}
+                    {effectiveBadge === 'OAuth' && <Lock size={12} />}
+                    {effectiveBadge}
                 </span>
             )}
         </div>

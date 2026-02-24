@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - REST API ile 20GB ücretsiz güvenli bulut depolama",
       "jottacloudDesc": "Norveç Bulutu (5GB ücretsiz)",
       "jottacloudTooltip": "Jottacloud - 5GB ücretsiz ile GDPR uyumlu Norveç bulut depolama",
-      "minioDesc": "Kendi sunucunuzda S3-uyumlu nesne depolama"
+      "minioDesc": "Kendi sunucunuzda S3-uyumlu nesne depolama",
+      "s3InfoLine1": "Erişim Anahtarı Kimliği ve Gizli Anahtar gerektirir. Bölge ve uç nokta sağlayıcıya göre değişir.",
+      "s3InfoLine2": "Bulut nesne depolaması, yedeklemeler ve büyük ölçekli dosya barındırma için ideal.",
+      "webdavInfoLine1": "Sunucu URL'si, kullanıcı adı ve şifre gerektirir. Varsayılan olarak 443 bağlantı noktası (HTTPS).",
+      "webdavInfoLine2": "Kendi kendine barındırılan bulutlar, NAS cihazları ve dosya paylaşımı için ideal.",
+      "selectProviderPrompt": "Yukarıdaki bir sağlayıcı seçin veya \"Custom\" seçeneğini seçin"
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",

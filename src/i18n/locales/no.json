@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB gratis sikker skylagring med REST API",
       "jottacloudDesc": "Norsk sky (5GB gratis)",
       "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk skylagring med 5GB gratis",
-      "minioDesc": "Selvhostet S3-kompatibel objektlagring"
+      "minioDesc": "Selvhostet S3-kompatibel objektlagring",
+      "s3InfoLine1": "Krever Access Key ID og Secret Key. Region og endepunkt varierer etter leverandør.",
+      "s3InfoLine2": "Ideell for skykjørt objektlagring, sikkerhetskopier og storskala filhosting.",
+      "webdavInfoLine1": "Krever server-URL, brukernavn og passord. Port 443 (HTTPS) er standard.",
+      "webdavInfoLine2": "Ideell for selvhosted sky, NAS-enheter og fildeling.",
+      "selectProviderPrompt": "Velg en leverandør ovenfor eller velg \"Custom\""
     },
     "shortcuts": {
       "title": "Tastatursnarveier",

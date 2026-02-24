@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB storan awan selamat percuma dengan REST API",
       "jottacloudDesc": "Awan Norway (5GB percuma)",
       "jottacloudTooltip": "Jottacloud - Storan awan Norway yang mematuhi GDPR dengan 5GB percuma",
-      "minioDesc": "Storan objek S3 yang dihoskan sendiri"
+      "minioDesc": "Storan objek S3 yang dihoskan sendiri",
+      "s3InfoLine1": "Memerlukan Access Key ID dan Secret Key. Rantau dan titik akhir berbeza-beza bergantung pada penyedia.",
+      "s3InfoLine2": "Sesuai untuk storan objek awan, sandaran dan pengehosan fail berskala besar.",
+      "webdavInfoLine1": "Memerlukan URL pelayan, nama pengguna dan kata laluan. Port 443 (HTTPS) adalah lalai.",
+      "webdavInfoLine2": "Sesuai untuk awan yang dihos sendiri, peranti NAS dan perkongsian fail.",
+      "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\""
     },
     "shortcuts": {
       "title": "Pintasan Papan Kekunci",

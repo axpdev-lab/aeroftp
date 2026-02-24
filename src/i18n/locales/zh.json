@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB 免费安全云存储，支持 REST API",
       "jottacloudDesc": "挪威云存储 (5GB 免费)",
       "jottacloudTooltip": "Jottacloud - 符合 GDPR 的挪威云存储，提供 5GB 免费空间",
-      "minioDesc": "自托管 S3 兼容对象存储"
+      "minioDesc": "自托管 S3 兼容对象存储",
+      "s3InfoLine1": "需要访问密钥 ID 和密钥。区域和端点因提供商而异。",
+      "s3InfoLine2": "非常适合云对象存储、备份和大规模文件托管。",
+      "webdavInfoLine1": "需要服务器 URL、用户名和密码。默认端口 443（HTTPS）。",
+      "webdavInfoLine2": "非常适合自托管云、NAS 设备和文件共享。",
+      "selectProviderPrompt": "选择上方的提供商或选择 \"Custom\""
     },
     "shortcuts": {
       "title": "键盘快捷键",

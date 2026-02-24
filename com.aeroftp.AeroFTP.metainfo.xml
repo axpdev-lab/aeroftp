@@ -127,9 +127,9 @@
   </languages>
 
   <releases>
-    <release version="2.6.6" date="2026-02-25">
+    <release version="2.6.7" date="2026-02-25">
       <description>
-        <p>AeroCloud Multi-Protocol and Critical Bug Fixes: AeroCloud background sync now supports all 18 protocols (was FTP-only). New cloud provider factory dispatches to direct-auth, OAuth2, and OAuth1 providers. 4-step setup wizard with protocol selection grid. Critical fix: connection save persistence — race condition between vault write and SavedServers refresh caused edits to revert. SFTP symlink detection fix — NAS devices (WD MyCloud, Synology) now correctly show symlinked directories. AppImage update restart fix — detached shell relaunch pattern. 10 new i18n keys in 47 languages.</p>
+        <p>Update Restart, UX Polish and AeroCloud Multi-Protocol: Fixed long-standing restart failure on .deb, .rpm, and AppImage using setsid() detached relaunch. AeroCloud background sync now supports all 18 protocols via cloud provider factory. Dark theme modal consistency fix. Dynamic FTP TLS badge. Unified S3/WebDAV provider selector with info cards. Connection save race condition fix. SFTP symlink directory detection for NAS devices. 14 new i18n keys in 47 languages.</p>
       </description>
     </release>
     <release version="2.6.5" date="2026-02-24">

@@ -573,7 +573,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="AeroVault" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-3xl max-h-[85vh] flex flex-col animate-scale-in">
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">

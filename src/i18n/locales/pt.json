@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB de armazenamento seguro na nuvem com REST API",
       "jottacloudDesc": "Nuvem norueguesa (5GB grátis)",
       "jottacloudTooltip": "Jottacloud - armazenamento em nuvem norueguês compatível com GDPR com 5GB grátis",
-      "minioDesc": "Armazenamento de objetos S3 auto-hospedado"
+      "minioDesc": "Armazenamento de objetos S3 auto-hospedado",
+      "s3InfoLine1": "Requer ID da Chave de Acesso e Chave Secreta. A região e o endpoint variam conforme o provedor.",
+      "s3InfoLine2": "Ideal para armazenamento de objetos em nuvem, backups e hospedagem de arquivos em larga escala.",
+      "webdavInfoLine1": "Requer URL do servidor, nome de usuário e senha. Porta 443 (HTTPS) por padrão.",
+      "webdavInfoLine2": "Ideal para nuvens auto-hospedadas, dispositivos NAS e compartilhamento de arquivos.",
+      "selectProviderPrompt": "Selecione um provedor acima ou escolha \"Custom\""
     },
     "shortcuts": {
       "title": "Atalhos de Teclado",

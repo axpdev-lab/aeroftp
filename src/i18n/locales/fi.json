@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla",
       "jottacloudDesc": "Norjalainen pilvi (5GB ilmaiseksi)",
       "jottacloudTooltip": "Jottacloud - GDPR-yhteensopiva norjalainen pilvitallennus 5GB ilmaiseksi",
-      "minioDesc": "Itse ylläpidetty S3-yhteensopiva objektitallennus"
+      "minioDesc": "Itse ylläpidetty S3-yhteensopiva objektitallennus",
+      "s3InfoLine1": "Vaatii Access Key ID:n ja Secret Key:n. Alue ja päätepistem vaihtelevat palveluntarjoajan mukaan.",
+      "s3InfoLine2": "Ihanteellinen pilvipohjaiselle objektitallennukselle, varmuuskopioinneille ja suurimittaiselle tiedostojen palvelulle.",
+      "webdavInfoLine1": "Vaatii palvelimen URL:n, käyttäjänimen ja salasanan. Portti 443 (HTTPS) oletuksena.",
+      "webdavInfoLine2": "Ihanteellinen itsepalvelun pilville, NAS-laitteille ja tiedostojen jakamiselle.",
+      "selectProviderPrompt": "Valitse palveluntarjoaja yllä tai valitse \"Custom\""
     },
     "shortcuts": {
       "title": "Pikanäppäimet",

@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB stocare securizată în cloud cu REST API",
       "jottacloudDesc": "Cloud norvegian (5GB gratuit)",
       "jottacloudTooltip": "Jottacloud - stocare cloud norvegiană conformă cu GDPR cu 5GB gratuit",
-      "minioDesc": "Stocare de obiecte S3 auto-găzduită"
+      "minioDesc": "Stocare de obiecte S3 auto-găzduită",
+      "s3InfoLine1": "Necesită ID-ul cheii de acces și cheia secretă. Regiunea și endpoint-ul variază în funcție de furnizor.",
+      "s3InfoLine2": "Ideal pentru stocare de obiecte în cloud, backup-uri și găzduire de fișiere la scară largă.",
+      "webdavInfoLine1": "Necesită adresa URL a serverului, nume de utilizator și parolă. Portul 443 (HTTPS) implicit.",
+      "webdavInfoLine2": "Ideal pentru cloud-uri self-hosted, dispozitive NAS și partajare de fișiere.",
+      "selectProviderPrompt": "Selectați un furnizor mai sus sau alegeți \"Custom\""
     },
     "shortcuts": {
       "title": "Scurtături tastatură",

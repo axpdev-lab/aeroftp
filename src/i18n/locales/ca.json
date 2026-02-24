@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API",
       "jottacloudDesc": "Núvol noruec (5GB gratuït)",
       "jottacloudTooltip": "Jottacloud - Emmagatzematge al núvol noruec compatible amb GDPR amb 5GB gratuïts",
-      "minioDesc": "Emmagatzematge d'objectes S3 autoallotjat"
+      "minioDesc": "Emmagatzematge d'objectes S3 autoallotjat",
+      "s3InfoLine1": "Requereix Access Key ID i Secret Key. La regió i l'endpoint varien segons el proveïdor.",
+      "s3InfoLine2": "Ideal per a emmagatzematge d'objectes al núvol, còpies de seguretat i allotjament a gran escala.",
+      "webdavInfoLine1": "Requereix URL del servidor, nom d'usuari i contrasenya. Port 443 (HTTPS) per defecte.",
+      "webdavInfoLine2": "Ideal per a núvols autogestionats, dispositius NAS i compartició de fitxers.",
+      "selectProviderPrompt": "Selecciona un proveïdor anterior o escull \"Custom\""
     },
     "shortcuts": {
       "title": "Dreceres de Teclat",

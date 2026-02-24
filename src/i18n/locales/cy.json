@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API",
       "jottacloudDesc": "Cwmwl Norwyaidd (5GB am ddim)",
       "jottacloudTooltip": "Jottacloud - Storfa cwmwl Norwyaidd sy'n cydymffurfio â GDPR gyda 5GB am ddim",
-      "minioDesc": "Storfa gwrthrychau S3 hunan-letyol"
+      "minioDesc": "Storfa gwrthrychau S3 hunan-letyol",
+      "s3InfoLine1": "Yn gofyn Access Key ID a Secret Key. Mae'r rhanbarth a'r endpoint yn amrywio yn ôl y darparwr.",
+      "s3InfoLine2": "Delfrydol ar gyfer storio gwrthrychau'r cwmwl, copïau wrth gefn a lletygarwch ffeiliau ar raddfa fawr.",
+      "webdavInfoLine1": "Yn gofyn URL y gweinydd, enw defnyddiwr a chyfrinair. Porthladd 443 (HTTPS) yn ddiofyn.",
+      "webdavInfoLine2": "Delfrydol ar gyfer cymylau hunod, dyfeisiau NAS a rhannu ffeiliau.",
+      "selectProviderPrompt": "Dewiswch darparwr uchod neu dewiswch \"Custom\""
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",

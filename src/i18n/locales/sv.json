@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB säker molnlagring med REST API",
       "jottacloudDesc": "Norskt moln (5GB gratis)",
       "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk molnlagring med 5GB gratis",
-      "minioDesc": "Självhostrad S3-kompatibel objektlagring"
+      "minioDesc": "Självhostrad S3-kompatibel objektlagring",
+      "s3InfoLine1": "Kräver åtkomstnyckel-ID och hemlig nyckel. Region och slutpunkt varierar beroende på leverantör.",
+      "s3InfoLine2": "Perfekt för molnobjektlagring, säkerhetskopior och storskalig filhosting.",
+      "webdavInfoLine1": "Kräver server-URL, användarnamn och lösenord. Port 443 (HTTPS) som standard.",
+      "webdavInfoLine2": "Perfekt för själv-hostade moln, NAS-enheter och fildelning.",
+      "selectProviderPrompt": "Välj en leverantör ovan eller välj \"Custom\""
     },
     "shortcuts": {
       "title": "Kortkommandon",

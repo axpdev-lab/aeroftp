@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB lưu trữ đám mây an toàn miễn phí với REST API",
       "jottacloudDesc": "Đám mây Na Uy (5GB miễn phí)",
       "jottacloudTooltip": "Jottacloud - lưu trữ đám mây Na Uy tuân thủ GDPR với 5GB miễn phí",
-      "minioDesc": "Lưu trữ đối tượng S3 tự quản lý"
+      "minioDesc": "Lưu trữ đối tượng S3 tự quản lý",
+      "s3InfoLine1": "Yêu cầu ID Khóa truy cập và Khóa bí mật. Khu vực và điểm cuối khác nhau tùy theo nhà cung cấp.",
+      "s3InfoLine2": "Lý tưởng cho lưu trữ đối tượng đám mây, sao lưu và lưu trữ tệp quy mô lớn.",
+      "webdavInfoLine1": "Yêu cầu URL máy chủ, tên người dùng và mật khẩu. Cổng 443 (HTTPS) theo mặc định.",
+      "webdavInfoLine2": "Lý tưởng cho đám mây tự lưu trữ, thiết bị NAS và chia sẻ tệp.",
+      "selectProviderPrompt": "Chọn một nhà cung cấp ở trên hoặc chọn \"Custom\""
     },
     "shortcuts": {
       "title": "Phím tắt",

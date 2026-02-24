@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - hifadhi salama ya wingu ya 20GB na REST API",
       "jottacloudDesc": "Wingu la Norway (5GB bure)",
       "jottacloudTooltip": "Jottacloud - hifadhi ya wingu ya Norway inayozingatia GDPR na 5GB bure",
-      "minioDesc": "Hifadhi ya vitu S3 inayoendeshwa na mwenyewe"
+      "minioDesc": "Hifadhi ya vitu S3 inayoendeshwa na mwenyewe",
+      "s3InfoLine1": "Inahitaji ID ya Ufunguo wa Ushindani na Ufunguo wa Siri. Kikoa na ncha zinatailor kwa mtoa huduma.",
+      "s3InfoLine2": "Bora kwa hifadhi ya kitu cha mabingu, nakala za kunusa, na ukaaji wa faili kwa kiwango kikubwa.",
+      "webdavInfoLine1": "Inahitaji URL ya seva, jina la mtumiaji, na nenosiri. Bandari 443 (HTTPS) kwa chaguo-msingi.",
+      "webdavInfoLine2": "Bora kwa miabingu yenye owneroperations wenyewe, vifaa vya NAS, na kushiriki faili.",
+      "selectProviderPrompt": "Chagua mtoa huduma hapo juu au chagua \"Custom\""
     },
     "shortcuts": {
       "title": "Njia za Mkato",

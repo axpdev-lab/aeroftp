@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ",
       "jottacloudDesc": "ノルウェークラウド (5GB無料)",
       "jottacloudTooltip": "Jottacloud - GDPR準拠のノルウェークラウドストレージ、5GB無料",
-      "minioDesc": "セルフホスト型S3互換オブジェクトストレージ"
+      "minioDesc": "セルフホスト型S3互換オブジェクトストレージ",
+      "s3InfoLine1": "Access Key IDおよびSecret Keyが必要です。リージョンとエンドポイントはプロバイダーによって異なります。",
+      "s3InfoLine2": "クラウドオブジェクトストレージ、バックアップ、大規模ファイルホスティングに最適です。",
+      "webdavInfoLine1": "サーバーURL、ユーザー名、パスワードが必要です。ポート443（HTTPS）がデフォルトです。",
+      "webdavInfoLine2": "自己ホスト型クラウド、NASデバイス、ファイル共有に最適です。",
+      "selectProviderPrompt": "上記のプロバイダーを選択するか、\"Custom\"を選択してください"
     },
     "shortcuts": {
       "title": "キーボードショートカット",

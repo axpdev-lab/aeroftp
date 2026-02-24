@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB varnega shranjevanja v oblaku z REST API",
       "jottacloudDesc": "Norveški oblak (5GB brezplačno)",
       "jottacloudTooltip": "Jottacloud - norveška oblačna shramba v skladu z GDPR s 5GB brezplačno",
-      "minioDesc": "Samogostovano S3-združljivo shranjevanje predmetov"
+      "minioDesc": "Samogostovano S3-združljivo shranjevanje predmetov",
+      "s3InfoLine1": "Zahteva ID dostopnega ključa in tajni ključ. Regija in končna točka se razlikujeta glede na ponudnika.",
+      "s3InfoLine2": "Idealno za shranjevanje objektov v oblaku, varnostne kopije in wholesale gostovanje datotek.",
+      "webdavInfoLine1": "Zahteva URL strežnika, uporabniško ime in geslo. Privzeto vrata 443 (HTTPS).",
+      "webdavInfoLine2": "Idealno za samogostovane oblake, naprave NAS in deljenje datotek.",
+      "selectProviderPrompt": "Izberite ponudnika zgoraj ali izberite \"Custom\""
     },
     "shortcuts": {
       "title": "Bližnjice na tipkovnici",

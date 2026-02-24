@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB penyimpanan awan aman gratis dengan REST API",
       "jottacloudDesc": "Cloud Norwegia (5GB gratis)",
       "jottacloudTooltip": "Jottacloud - Penyimpanan cloud Norwegia yang sesuai GDPR dengan 5GB gratis",
-      "minioDesc": "Penyimpanan objek S3 yang dihosting sendiri"
+      "minioDesc": "Penyimpanan objek S3 yang dihosting sendiri",
+      "s3InfoLine1": "Memerlukan Access Key ID dan Secret Key. Region dan endpoint bervariasi tergantung penyedia.",
+      "s3InfoLine2": "Ideal untuk penyimpanan objek cloud, cadangan, dan hosting file skala besar.",
+      "webdavInfoLine1": "Memerlukan URL server, nama pengguna, dan kata sandi. Port 443 (HTTPS) secara default.",
+      "webdavInfoLine2": "Ideal untuk cloud yang di-host sendiri, perangkat NAS, dan berbagi file.",
+      "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\""
     },
     "shortcuts": {
       "title": "Pintasan Keyboard",

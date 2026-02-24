@@ -1146,7 +1146,12 @@
       "drimeTooltip": "Drime Cloud - 20GB անվճար ամպային պահոց REST API-ով",
       "jottacloudDesc": "Նորվեգական ամպ (5GB անվճար)",
       "jottacloudTooltip": "Jottacloud - GDPR-համապատասխան նորվեգական ամպային պահեստավորում 5GB անվճար",
-      "minioDesc": "Սեփական հոսթինգով S3-համատեղ օբյեկտային պահոց"
+      "minioDesc": "Սեփական հոսթինգով S3-համատեղ օբյեկտային պահոց",
+      "s3InfoLine1": "Մեղավում Է Access Key ID և Secret Key. Այն Թե endpoint-ներին կարգի համենամեին:",
+      "s3InfoLine2": "Կոր համար ե օբեկտ նոր Մոսկվաց, բեզոր անկաց, եւ մեծ օղ ծառ հաստի:",
+      "webdavInfoLine1": "Մեղավում Թե պաղմ URL, կարգա անոն եւ սկրանկ նոր թե 443 (HTTPS) մըստ մկրատ ե:",
+      "webdavInfoLine2": "Կոր համար ե հովսում ընթեր նոր կոսկ, NAS օղ նեծե եւ ֆայլի քրաց տոբ:",
+      "selectProviderPrompt": "Կոր բաց բաց եւ բեր իս \"Custom\"-ի օղ"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",

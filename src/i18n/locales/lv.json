@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB bezmaksas droša mākoņkrātuve ar REST API",
       "jottacloudDesc": "Norvēģu mākonis (5GB bezmaksas)",
       "jottacloudTooltip": "Jottacloud - GDPR saderīga norvēģu mākoņkrātuve ar 5GB bezmaksas",
-      "minioDesc": "Pašmitināta S3-saderīga objektu krātuve"
+      "minioDesc": "Pašmitināta S3-saderīga objektu krātuve",
+      "s3InfoLine1": "Nepieciešams Access Key ID un Secret Key. Reģions un galapunkts atšķiras atkarībā no pakalpojuma sniedzēja.",
+      "s3InfoLine2": "Ideāls mākoņa objektu glabāšanai, dublējumiem un liela mēroga failu mitināšanai.",
+      "webdavInfoLine1": "Nepieciešams servera URL, lietotājvārds un parole. Ports 443 (HTTPS) ir noklusējums.",
+      "webdavInfoLine2": "Ideāls pašapkalpojuma mākoņiem, NAS ierīcēm un failu koplietošanai.",
+      "selectProviderPrompt": "Atlasiet pakalpojuma sniedzēju iepriekš vai atlasiet \"Custom\""
     },
     "shortcuts": {
       "title": "Tastatūras saīsnes",

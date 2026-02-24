@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - REST API를 지원하는 20GB 무료 안전한 클라우드 스토리지",
       "jottacloudDesc": "노르웨이 클라우드 (5GB 무료)",
       "jottacloudTooltip": "Jottacloud - GDPR 준수 노르웨이 클라우드 저장소, 5GB 무료",
-      "minioDesc": "셀프 호스팅 S3 호환 오브젝트 스토리지"
+      "minioDesc": "셀프 호스팅 S3 호환 오브젝트 스토리지",
+      "s3InfoLine1": "Access Key ID 및 Secret Key가 필요합니다. 리전 및 엔드포인트는 제공자에 따라 다릅니다.",
+      "s3InfoLine2": "클라우드 객체 저장소, 백업 및 대규모 파일 호스팅에 이상적입니다.",
+      "webdavInfoLine1": "서버 URL, 사용자 이름 및 암호가 필요합니다. 포트 443(HTTPS)이 기본값입니다.",
+      "webdavInfoLine2": "자체 호스팅 클라우드, NAS 장치 및 파일 공유에 이상적입니다.",
+      "selectProviderPrompt": "위의 제공자를 선택하거나 \"Custom\"을 선택하세요"
     },
     "shortcuts": {
       "title": "단축키",

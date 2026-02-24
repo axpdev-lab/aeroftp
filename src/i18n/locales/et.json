@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga",
       "jottacloudDesc": "Norra pilv (5GB tasuta)",
       "jottacloudTooltip": "Jottacloud - GDPR-ühildne Norra pilvesalvestus 5GB tasuta",
-      "minioDesc": "Isehostitav S3-ühilduv objektihoidla"
+      "minioDesc": "Isehostitav S3-ühilduv objektihoidla",
+      "s3InfoLine1": "Nõuab Access Key ID ja Secret Key. Piirkond ja lõpp-punkt erinevad pakkuja järgi.",
+      "s3InfoLine2": "Ideaalne pilveobjektide salvestamiseks, varukoopiateks ja suuremahulisteks failide majutamiseks.",
+      "webdavInfoLine1": "Nõuab serveri URL-i, kasutajanime ja parooli. Vaikimisi port 443 (HTTPS).",
+      "webdavInfoLine2": "Ideaalne isehooldatavate pilvede, NAS-seadmete ja failide jagamise jaoks.",
+      "selectProviderPrompt": "Valige ülalpool pakkuja või valige \"Custom\""
     },
     "shortcuts": {
       "title": "Kiirklahvid",

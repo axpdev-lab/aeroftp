@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB gratis veilige cloudopslag met REST API",
       "jottacloudDesc": "Noorse cloud (5GB gratis)",
       "jottacloudTooltip": "Jottacloud - AVG-conforme Noorse cloudopslag met 5GB gratis",
-      "minioDesc": "Zelf gehoste S3-compatibele objectopslag"
+      "minioDesc": "Zelf gehoste S3-compatibele objectopslag",
+      "s3InfoLine1": "Vereist Access Key ID en Secret Key. Regio en eindpunt variëren per provider.",
+      "s3InfoLine2": "Ideaal voor cloudopslag, back-ups en hosting van grote bestanden.",
+      "webdavInfoLine1": "Vereist server-URL, gebruikersnaam en wachtwoord. Poort 443 (HTTPS) is standaard.",
+      "webdavInfoLine2": "Ideaal voor zelf-gehoste clouds, NAS-apparaten en bestandsdeling.",
+      "selectProviderPrompt": "Selecteer een provider hierboven of kies \"Custom\""
     },
     "shortcuts": {
       "title": "Sneltoetsen",

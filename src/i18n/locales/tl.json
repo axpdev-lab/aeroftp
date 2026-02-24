@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB libreng ligtas na cloud storage na may REST API",
       "jottacloudDesc": "Norwegian Cloud (5GB libre)",
       "jottacloudTooltip": "Jottacloud - GDPR-compliant na Norwegian cloud storage na may 5GB libre",
-      "minioDesc": "Self-hosted na S3-compatible na object storage"
+      "minioDesc": "Self-hosted na S3-compatible na object storage",
+      "s3InfoLine1": "Nangangailangan ng Access Key ID at Secret Key. Ang rehiyon at endpoint ay nag-iiba depende sa provider.",
+      "s3InfoLine2": "Perpekto para sa cloud object storage, backup, at large-scale file hosting.",
+      "webdavInfoLine1": "Nangangailangan ng server URL, username, at password. Port 443 (HTTPS) bilang default.",
+      "webdavInfoLine2": "Perpekto para sa self-hosted clouds, NAS devices, at file sharing.",
+      "selectProviderPrompt": "Pumili ng provider sa itaas o piliin ang \"Custom\""
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",

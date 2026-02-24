@@ -1093,7 +1093,7 @@
       "securityTitle": "Encrypted credential storage",
       "securityTLS": "TLS 1.3 / SSH encryption for all connections",
       "selectProtocolPrompt": "Select a protocol above to configure your connection",
-      "selectProviderPrompt": "Select a provider above or choose \"Custom\" for manual configuration",
+      "selectProviderPrompt": "Select a provider above or choose \"Custom\"",
       "selectSshKey": "Select SSH Private Key",
       "server": "Server",
       "serverName": "Server Name",
@@ -1907,7 +1907,11 @@
       "hostKeyPort": "Port",
       "preconfiguredProviders": "Pre-configured Providers",
       "customConnection": "Custom Connection",
-      "custom": "Custom"
+      "custom": "Custom",
+      "s3InfoLine1": "Requires Access Key ID and Secret Key. Region and endpoint vary by provider.",
+      "s3InfoLine2": "Ideal for cloud object storage, backups, and large-scale file hosting.",
+      "webdavInfoLine1": "Requires server URL, username, and password. Port 443 (HTTPS) by default.",
+      "webdavInfoLine2": "Ideal for self-hosted clouds, NAS devices, and file sharing."
     },
     "quickLook": {
       "noPreview": "No preview available",

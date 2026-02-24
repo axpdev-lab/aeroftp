@@ -1153,7 +1153,12 @@
       "drimeTooltip": "Drime Cloud - 20GB bezpiecznej pamięci w chmurze z REST API",
       "jottacloudDesc": "Norweska chmura (5GB za darmo)",
       "jottacloudTooltip": "Jottacloud - zgodna z GDPR norweska chmura z 5GB za darmo",
-      "minioDesc": "Samoobsługowy S3-kompatybilny magazyn obiektów"
+      "minioDesc": "Samoobsługowy S3-kompatybilny magazyn obiektów",
+      "s3InfoLine1": "Wymaga Access Key ID i Secret Key. Region i endpoint różnią się w zależności od dostawcy.",
+      "s3InfoLine2": "Idealne do przechowywania obiektów w chmurze, kopii zapasowych i hostowania plików na dużą skalę.",
+      "webdavInfoLine1": "Wymaga adresu URL serwera, nazwy użytkownika i hasła. Domyślnie port 443 (HTTPS).",
+      "webdavInfoLine2": "Idealne do chmur hostowanych samodzielnie, urządzeń NAS i udostępniania plików.",
+      "selectProviderPrompt": "Wybierz dostawcę powyżej lub wybierz \"Custom\""
     },
     "shortcuts": {
       "title": "Skróty klawiszowe",
