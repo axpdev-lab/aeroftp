@@ -5907,6 +5907,7 @@ fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn setup_aerocloud(
     cloud_name: String,
     local_folder: String,

@@ -223,10 +223,10 @@ const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 /// Validate cloud configuration
 pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     // Server-based protocols require a server_profile for credential lookup
-    if SERVER_PROTOCOLS.contains(&config.protocol_type.as_str()) {
-        if config.server_profile.is_empty() {
-            return Err("No server profile selected".to_string());
-        }
+    if SERVER_PROTOCOLS.contains(&config.protocol_type.as_str())
+        && config.server_profile.is_empty()
+    {
+        return Err("No server profile selected".to_string());
     }
 
     // OAuth2/cloud providers require connection_params with credentials
@@ -297,19 +297,30 @@ mod tests {
     #[test]
     fn test_validate_config_cloud_providers() {
         // S3 does not require server_profile or absolute path
-        let mut config = CloudConfig::default();
-        config.protocol_type = "s3".to_string();
-        config.remote_folder = "my-prefix/".to_string();
-        config.connection_params = serde_json::json!({"bucket": "my-bucket", "region": "us-east-1"});
+        let config = CloudConfig {
+            protocol_type: "s3".to_string(),
+            remote_folder: "my-prefix/".to_string(),
+            connection_params: serde_json::json!({"bucket": "my-bucket", "region": "us-east-1"}),
+            ..Default::default()
+        };
         assert!(validate_config(&config).is_ok());
 
         // OAuth2 requires client_id
-        config.protocol_type = "googledrive".to_string();
-        config.connection_params = serde_json::json!({});
-        assert!(validate_config(&config).is_err());
+        let config_oauth_empty = CloudConfig {
+            protocol_type: "googledrive".to_string(),
+            remote_folder: "my-prefix/".to_string(),
+            connection_params: serde_json::json!({}),
+            ..Default::default()
+        };
+        assert!(validate_config(&config_oauth_empty).is_err());
 
-        config.connection_params = serde_json::json!({"client_id": "abc123", "client_secret": "secret"});
-        assert!(validate_config(&config).is_ok());
+        let config_oauth_valid = CloudConfig {
+            protocol_type: "googledrive".to_string(),
+            remote_folder: "my-prefix/".to_string(),
+            connection_params: serde_json::json!({"client_id": "abc123", "client_secret": "secret"}),
+            ..Default::default()
+        };
+        assert!(validate_config(&config_oauth_valid).is_ok());
     }
 
     #[test]
