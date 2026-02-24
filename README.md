@@ -167,7 +167,7 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 **Additional encryption features**:
 - **Directory support**: Create nested folders inside vaults with encrypted directory entries, hierarchical navigation, and recursive delete
-- **Cryptomator**: Open and browse Cryptomator format 8 vaults (scrypt + AES-SIV + AES-GCM) via context menu
+- **Cryptomator**: Create and browse Cryptomator format 8 vaults (scrypt + AES-SIV + AES-GCM) via context menu
 - **Archive Browser**: Browse ZIP, 7z, TAR, RAR contents in-app without extracting. Selective single-file extraction
 - **Archive Encryption**: ZIP and 7z with AES-256 password protection. Compression levels (Store/Fast/Normal/Maximum)
 
