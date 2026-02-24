@@ -36,6 +36,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');
   const [cloudRemoteFolder, setCloudRemoteFolder] = useState<string>('');
   const [cloudPublicUrlBase, setCloudPublicUrlBase] = useState<string>('');
+  const [cloudProtocolType, setCloudProtocolType] = useState<string>('ftp');
 
   // Refs for callbacks to avoid stale closures without re-subscribing
   const callbacksRef = useRef({ activityLog, humanLog, t, checkForUpdate, cloudServerName });
@@ -61,6 +62,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           local_folder?: string;
           remote_folder?: string;
           public_url_base?: string | null;
+          protocol_type?: string;
         }>('get_cloud_config');
         setIsCloudActive(config.enabled);
         if (config.cloud_name) {
@@ -72,6 +74,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         if (config.local_folder) setCloudLocalFolder(config.local_folder);
         if (config.remote_folder) setCloudRemoteFolder(config.remote_folder);
         if (config.public_url_base) setCloudPublicUrlBase(config.public_url_base);
+        if (config.protocol_type) setCloudProtocolType(config.protocol_type);
       } catch (e) {
         console.error('Failed to check cloud config:', e);
       }
@@ -255,5 +258,6 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     setCloudRemoteFolder,
     cloudPublicUrlBase,
     setCloudPublicUrlBase,
+    cloudProtocolType,
   };
 }

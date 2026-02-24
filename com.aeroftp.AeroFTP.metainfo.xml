@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.6" date="2026-02-25">
+      <description>
+        <p>AeroCloud Multi-Protocol and Critical Bug Fixes: AeroCloud background sync now supports all 18 protocols (was FTP-only). New cloud provider factory dispatches to direct-auth, OAuth2, and OAuth1 providers. 4-step setup wizard with protocol selection grid. Critical fix: connection save persistence — race condition between vault write and SavedServers refresh caused edits to revert. SFTP symlink detection fix — NAS devices (WD MyCloud, Synology) now correctly show symlinked directories. AppImage update restart fix — detached shell relaunch pattern. 10 new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.6.5" date="2026-02-24">
       <description>
         <p>Dual-Engine Security Audit Remediation: Comprehensive security hardening based on dual-engine audit (8 Claude Opus 4.6 agents + GPT-5.3-Codex). 94 findings fixed across all severity levels — 7 Critical, 27 High, 54 Medium, 6 Low. Key fixes: constant-time HMAC comparison in AeroVault (subtle crate), bounded manifest reads (64MB cap), archive extraction path traversal guard for TAR/7z/RAR, 2FA enforcement in vault unlock, shell meta-character blocking, atomic writes for vault mutations and file saves, download size caps (500MB) across 13 providers, PTY session isolation, image resize bounds, SVG sanitization, credential redaction on profile import, unlock throttling with exponential backoff. Post-remediation grade: A-. 178 new i18n keys translated across all 47 languages.</p>

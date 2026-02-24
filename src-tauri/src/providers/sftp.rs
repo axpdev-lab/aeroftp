@@ -395,6 +395,17 @@ impl StorageProvider for SftpProvider {
                         if let Ok(target) = sftp.read_link(&entry_path).await {
                             remote_entry.link_target = Some(target);
                         }
+                        // Follow the symlink to determine the real type (file vs directory)
+                        // metadata() follows symlinks, unlike symlink_metadata()
+                        if let Ok(target_meta) = sftp.metadata(&entry_path).await {
+                            if let Some(target_perms) = target_meta.permissions {
+                                remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                            }
+                            // Update size from target if available
+                            if let Some(target_size) = target_meta.size {
+                                remote_entry.size = target_size;
+                            }
+                        }
                     }
                 }
             }

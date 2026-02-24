@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.6] - 2026-02-25
+
+### AeroCloud Multi-Protocol & Critical Bug Fixes
+
+AeroCloud now supports all 18 protocols — FTP, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, Box, pCloud, Azure, MEGA, Filen, Internxt, kDrive, Jottacloud, Zoho WorkDrive, and 4shared. Previously hardcoded to FTP-only, AeroCloud background sync now works with any provider via the new cloud provider factory. Plus critical fixes for connection save persistence, SFTP symlink handling, and AppImage update restart.
+
+#### Added
+
+- **AeroCloud multi-protocol support**: Background sync now works with all 18 providers, not just FTP. New `cloud_provider_factory.rs` dispatches to direct-auth, OAuth2, and OAuth1 providers
+- **CloudConfig protocol fields**: `protocol_type` and `connection_params` fields with `serde(default)` backward compatibility — existing FTP configs continue to work unchanged
+- **CloudPanel 4-step wizard**: Protocol selection step with categorized grid (Servers, Cloud Storage, OAuth Cloud), dynamic connection fields per protocol, OAuth authorize flow
+- **10 new i18n keys**: `cloud.selectProtocol`, `cloud.serverCategory`, `cloud.cloudCategory`, `cloud.oauthCategory`, `cloud.connectionSettings`, `cloud.authorize`, `cloud.authorized`, `cloud.reauthorize`, `cloud.protocolType`, `cloud.selectProtocolDesc` — translated in all 47 languages
+
+#### Fixed
+
+- **Connection save persistence**: Race condition between vault write and SavedServers refresh — `secureStoreAndClean` was fire-and-forget, causing vault to return stale data before write completed. All 6 call sites now properly awaited
+- **SFTP symlink directory detection**: Symlinks on NAS devices (WD MyCloud, Synology) now correctly show as directories. `list()` follows symlinks via `sftp.metadata()` to determine real entry type and size
+- **AppImage update restart**: Changed from direct `spawn()` (child dies with parent) to detached shell pattern (`sh -c "sleep 1 && exec"`) matching .deb/.rpm behavior
+- **CloudConfig validation**: Protocol-aware validation — only server protocols require `server_profile`, only FTP/SFTP/WebDAV require absolute remote paths, OAuth providers require `client_id`
+
+#### Changed
+
+- **`perform_background_sync` rewrite**: From 65-line FTP-only function to 25-line generic implementation using `cloud_provider_factory::create_cloud_provider()` + `CloudService::perform_full_sync_with_provider()`
+- **`setup_aerocloud` command**: Extended with optional `protocol_type` and `connection_params` parameters
+- **`useCloudSync` hook**: Added `cloudProtocolType` state from loaded config
+
+---
+
 ## [2.6.5] - 2026-02-24
 
 ### Dual-Engine Security Audit Remediation

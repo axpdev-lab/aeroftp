@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 22 February 2026
-> Version: v2.6.0 (AeroAgent Ecosystem, Cloud Expansion, Provider Tier 3)
+> Last Updated: 25 February 2026
+> Version: v2.6.6 (AeroCloud Multi-Protocol, SFTP Symlink Fix, Connection Save Fix)
 
 ---
 

@@ -33,8 +33,54 @@ interface CloudConfig {
     exclude_patterns: string[];
     last_sync: string | null;
     conflict_strategy: 'ask_user' | 'keep_both' | 'prefer_local' | 'prefer_remote' | 'prefer_newer';
-    public_url_base?: string | null;  // For share links
+    public_url_base?: string | null;
+    protocol_type: string;
+    connection_params: Record<string, unknown>;
 }
+
+// Protocol categories for the selector grid
+const PROTOCOL_CATEGORIES = [
+    {
+        label: 'cloud.serverCategory',
+        protocols: [
+            { id: 'ftp', label: 'FTP' },
+            { id: 'ftps', label: 'FTPS' },
+            { id: 'sftp', label: 'SFTP' },
+            { id: 'webdav', label: 'WebDAV' },
+        ],
+    },
+    {
+        label: 'cloud.cloudCategory',
+        protocols: [
+            { id: 's3', label: 'S3' },
+            { id: 'azure', label: 'Azure Blob' },
+            { id: 'mega', label: 'MEGA' },
+            { id: 'filen', label: 'Filen' },
+            { id: 'internxt', label: 'Internxt' },
+            { id: 'kdrive', label: 'kDrive' },
+            { id: 'jottacloud', label: 'Jottacloud' },
+        ],
+    },
+    {
+        label: 'cloud.oauthCategory',
+        protocols: [
+            { id: 'googledrive', label: 'Google Drive' },
+            { id: 'dropbox', label: 'Dropbox' },
+            { id: 'onedrive', label: 'OneDrive' },
+            { id: 'box', label: 'Box' },
+            { id: 'pcloud', label: 'pCloud' },
+            { id: 'zohoworkdrive', label: 'Zoho WorkDrive' },
+            { id: 'fourshared', label: '4shared' },
+        ],
+    },
+] as const;
+
+const OAUTH2_PROTOCOLS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive'];
+const OAUTH1_PROTOCOLS = ['fourshared'];
+const SERVER_PROTOCOLS = ['ftp', 'ftps', 'sftp', 'webdav'];
+
+/** Protocols requiring email + password (no saved profiles) */
+const EMAIL_AUTH_PROTOCOLS = ['mega', 'filen', 'internxt'];
 
 interface CloudSyncStatus {
     type: 'not_configured' | 'idle' | 'syncing' | 'paused' | 'has_conflicts' | 'error';
@@ -64,7 +110,7 @@ interface CloudPanelProps {
     onClose: () => void;
 }
 
-// Setup Wizard Component
+// Setup Wizard Component (4 steps: Name → Protocol → Connection → Settings)
 const SetupWizard: React.FC<{
     savedServers: { id: string; name: string; host: string; port?: number; username?: string; password?: string; initialPath?: string }[];
     onComplete: (config: CloudConfig) => void;
@@ -77,74 +123,189 @@ const SetupWizard: React.FC<{
     const [remoteFolder, setRemoteFolder] = useState('/cloud/');
     const [serverProfile, setServerProfile] = useState('');
     const [syncOnChange, setSyncOnChange] = useState(true);
-    const [syncInterval, setSyncInterval] = useState(24); // 24h default
+    const [syncInterval, setSyncInterval] = useState(24);
     const [syncUnit, setSyncUnit] = useState<'hours' | 'minutes'>('hours');
     const [isLoading, setIsLoading] = useState(false);
 
-    // Load default folder on mount
+    // Multi-protocol state
+    const [selectedProtocol, setSelectedProtocol] = useState('ftp');
+    const [connHost, setConnHost] = useState('');
+    const [connPort, setConnPort] = useState('');
+    const [connUsername, setConnUsername] = useState('');
+    const [connPassword, setConnPassword] = useState('');
+    const [connExtra, setConnExtra] = useState<Record<string, string>>({});
+    const [oauthAuthorized, setOauthAuthorized] = useState(false);
+    const [oauthEmail, setOauthEmail] = useState('');
+    const [oauthAuthorizing, setOauthAuthorizing] = useState(false);
+
     useEffect(() => {
         invoke<string>('get_default_cloud_folder').then(setLocalFolder);
     }, []);
 
+    // Reset connection fields when protocol changes
+    useEffect(() => {
+        setConnHost('');
+        setConnPort('');
+        setConnUsername('');
+        setConnPassword('');
+        setConnExtra({});
+        setServerProfile('');
+        setOauthAuthorized(false);
+        setOauthEmail('');
+        // Set sensible remote folder defaults
+        if (SERVER_PROTOCOLS.includes(selectedProtocol)) {
+            setRemoteFolder('/cloud/');
+        } else {
+            setRemoteFolder('/');
+        }
+    }, [selectedProtocol]);
+
     const selectLocalFolder = async () => {
-        const selected = await open({
-            directory: true,
-            multiple: false,
-            title: 'Select AeroCloud Folder',
-        });
-        if (selected) {
-            setLocalFolder(selected as string);
+        const selected = await open({ directory: true, multiple: false, title: 'Select AeroCloud Folder' });
+        if (selected) setLocalFolder(selected as string);
+    };
+
+    const isOAuth = OAUTH2_PROTOCOLS.includes(selectedProtocol) || OAUTH1_PROTOCOLS.includes(selectedProtocol);
+    const isServerProtocol = SERVER_PROTOCOLS.includes(selectedProtocol);
+    const isEmailAuth = EMAIL_AUTH_PROTOCOLS.includes(selectedProtocol);
+
+    // Build connection_params for the selected protocol
+    const buildConnectionParams = (): Record<string, string> => {
+        const params: Record<string, string> = { ...connExtra };
+        if (connPort) params.port = connPort;
+        // OAuth protocols store client_id/client_secret
+        if (OAUTH2_PROTOCOLS.includes(selectedProtocol)) {
+            if (connExtra.client_id) params.client_id = connExtra.client_id;
+            if (connExtra.client_secret) params.client_secret = connExtra.client_secret;
+            if (connExtra.region) params.region = connExtra.region;
+        }
+        if (OAUTH1_PROTOCOLS.includes(selectedProtocol)) {
+            if (connExtra.consumer_key) params.consumer_key = connExtra.consumer_key;
+            if (connExtra.consumer_secret) params.consumer_secret = connExtra.consumer_secret;
+        }
+        return params;
+    };
+
+    // Determine the effective server profile name for credential storage
+    const effectiveProfile = (): string => {
+        if (isServerProtocol && serverProfile) return serverProfile;
+        return cloudName || selectedProtocol;
+    };
+
+    // Check if step can advance
+    const canAdvance = (): boolean => {
+        switch (step) {
+            case 1: return !!localFolder;
+            case 2: return !!selectedProtocol;
+            case 3:
+                if (isOAuth) return oauthAuthorized;
+                if (isServerProtocol) return !!serverProfile || (!!connHost && !!connUsername);
+                if (isEmailAuth) return !!connUsername && !!connPassword;
+                // S3, Azure, kDrive, Jottacloud — need at least some params
+                return true;
+            default: return true;
+        }
+    };
+
+    // Handle OAuth authorization
+    const handleOAuthAuthorize = async () => {
+        setOauthAuthorizing(true);
+        try {
+            const provider = selectedProtocol === 'fourshared' ? 'fourshared' : selectedProtocol;
+            if (OAUTH2_PROTOCOLS.includes(selectedProtocol)) {
+                const clientId = connExtra.client_id || '';
+                const clientSecret = connExtra.client_secret || '';
+                const region = connExtra.region || 'us';
+                if (!clientId || !clientSecret) {
+                    logger.error('client_id and client_secret are required');
+                    return;
+                }
+                // Full OAuth2 flow (opens browser, waits for callback)
+                await invoke('oauth2_full_auth', {
+                    params: { provider, client_id: clientId, client_secret: clientSecret, region }
+                });
+                // Connect to verify and get account info
+                const result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', {
+                    params: { provider, client_id: clientId, client_secret: clientSecret, region }
+                });
+                setOauthAuthorized(true);
+                setOauthEmail(result.account_email || result.display_name);
+            } else if (OAUTH1_PROTOCOLS.includes(selectedProtocol)) {
+                const consumerKey = connExtra.consumer_key || '';
+                const consumerSecret = connExtra.consumer_secret || '';
+                if (!consumerKey || !consumerSecret) {
+                    logger.error('consumer_key and consumer_secret are required');
+                    return;
+                }
+                await invoke('fourshared_full_auth', {
+                    consumerKey, consumerSecret
+                });
+                setOauthAuthorized(true);
+                setOauthEmail('4shared');
+            }
+        } catch (error) {
+            logger.error('OAuth failed:', error);
+        } finally {
+            setOauthAuthorizing(false);
         }
     };
 
     const handleComplete = async () => {
         setIsLoading(true);
         try {
-            // Save server credentials for background sync (via secure credential store)
-            const selectedServer = savedServers.find(s => s.name === serverProfile);
-            if (selectedServer && selectedServer.username) {
-                const serverString = selectedServer.port && selectedServer.port !== 21
-                    ? `${selectedServer.host}:${selectedServer.port}`
-                    : selectedServer.host;
+            const profile = effectiveProfile();
+            const connectionParams = buildConnectionParams();
 
-                // Load password from secure store using server ID
-                let password = '';
-                try {
-                    password = await invoke<string>('get_credential', { account: `server_${selectedServer.id}` });
-                } catch {
-                    // Fallback: legacy password field (pre-v1.3.2)
-                    password = selectedServer.password || '';
-                }
-
-                if (password) {
+            // Save credentials for non-OAuth providers
+            if (!isOAuth) {
+                if (isServerProtocol && serverProfile) {
+                    // Server protocol with saved profile: load & re-save credentials
+                    const selectedServer = savedServers.find(s => s.name === serverProfile);
+                    if (selectedServer?.username) {
+                        const serverString = selectedServer.port && selectedServer.port !== 21
+                            ? `${selectedServer.host}:${selectedServer.port}`
+                            : selectedServer.host;
+                        let password = '';
+                        try {
+                            password = await invoke<string>('get_credential', { account: `server_${selectedServer.id}` });
+                        } catch {
+                            password = selectedServer.password || '';
+                        }
+                        if (password) {
+                            await invoke('save_server_credentials', {
+                                profileName: profile, server: serverString,
+                                username: selectedServer.username, password,
+                            });
+                        }
+                    }
+                } else if (connHost || connUsername) {
+                    // Manual entry or email/password provider
+                    const serverString = connPort ? `${connHost}:${connPort}` : connHost;
                     await invoke('save_server_credentials', {
-                        profileName: serverProfile,
-                        server: serverString,
-                        username: selectedServer.username,
-                        password,
+                        profileName: profile,
+                        server: serverString || selectedProtocol,
+                        username: connUsername,
+                        password: connPassword,
                     });
-                    logger.debug('Server credentials saved for background sync');
                 }
             }
 
-            // Then setup AeroCloud
             const intervalSecs = syncUnit === 'hours' ? syncInterval * 3600 : syncInterval * 60;
             const config = await invoke<CloudConfig>('setup_aerocloud', {
                 cloudName,
                 localFolder,
                 remoteFolder,
-                serverProfile,
+                serverProfile: profile,
                 syncOnChange,
                 syncIntervalSecs: intervalSecs,
+                protocolType: selectedProtocol,
+                connectionParams,
             });
 
             // Auto-install badge shell extension on Linux
             try {
                 await invoke<string>('install_shell_extension_cmd');
-                logger.debug('Badge shell extension installed automatically');
-            } catch {
-                // Non-critical: badge install may fail on non-Linux or missing Nautilus
-            }
+            } catch { /* non-critical */ }
 
             onComplete(config);
         } catch (error) {
@@ -152,6 +313,286 @@ const SetupWizard: React.FC<{
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Render connection fields based on selected protocol
+    const renderConnectionFields = () => {
+        // Server protocols: saved profile dropdown OR manual entry
+        if (isServerProtocol) {
+            return (
+                <div className="wizard-step">
+                    <h3><Server size={20} /> {t('cloud.connectionSettings')}</h3>
+                    <div className="server-select">
+                        <label>{t('cloud.serverProfile')}:</label>
+                        <select
+                            value={serverProfile}
+                            onChange={(e) => {
+                                const name = e.target.value;
+                                setServerProfile(name);
+                                const server = savedServers.find(s => s.name === name);
+                                if (server?.initialPath) {
+                                    const basePath = server.initialPath.endsWith('/') ? server.initialPath.slice(0, -1) : server.initialPath;
+                                    setRemoteFolder(`${basePath}/cloud/`);
+                                }
+                            }}
+                        >
+                            <option value="">{t('cloud.selectServer')}</option>
+                            {savedServers.map((server) => (
+                                <option key={server.name} value={server.name}>
+                                    {server.name} ({server.host})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="folder-input mt-3">
+                        <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                        <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                            placeholder="/cloud/" className="wizard-input-editable" />
+                    </div>
+                </div>
+            );
+        }
+
+        // Email + password providers (MEGA, Filen, Internxt)
+        if (isEmailAuth) {
+            return (
+                <div className="wizard-step">
+                    <h3><Shield size={20} /> {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Email</label>
+                            <input type="email" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                placeholder="user@example.com" className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Password</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // S3
+        if (selectedProtocol === 's3') {
+            return (
+                <div className="wizard-step">
+                    <h3><HardDrive size={20} /> S3 {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Endpoint</label>
+                            <input type="text" value={connHost} onChange={(e) => setConnHost(e.target.value)}
+                                placeholder="s3.amazonaws.com" className="wizard-input-editable" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="folder-input">
+                                <label className="block text-sm font-medium mb-1">Bucket</label>
+                                <input type="text" value={connExtra.bucket || ''} onChange={(e) => setConnExtra(p => ({ ...p, bucket: e.target.value }))}
+                                    className="wizard-input-editable" />
+                            </div>
+                            <div className="folder-input">
+                                <label className="block text-sm font-medium mb-1">Region</label>
+                                <input type="text" value={connExtra.region || ''} onChange={(e) => setConnExtra(p => ({ ...p, region: e.target.value }))}
+                                    placeholder="us-east-1" className="wizard-input-editable" />
+                            </div>
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Access Key</label>
+                            <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Secret Key</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Prefix</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Azure
+        if (selectedProtocol === 'azure') {
+            return (
+                <div className="wizard-step">
+                    <h3><HardDrive size={20} /> Azure Blob {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Account Name</label>
+                            <input type="text" value={connHost} onChange={(e) => setConnHost(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Access Key</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Container</label>
+                            <input type="text" value={connExtra.container || ''} onChange={(e) => setConnExtra(p => ({ ...p, container: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // kDrive
+        if (selectedProtocol === 'kdrive') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> kDrive {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">API Token</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Drive ID</label>
+                            <input type="text" value={connExtra.drive_id || ''} onChange={(e) => setConnExtra(p => ({ ...p, drive_id: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Jottacloud
+        if (selectedProtocol === 'jottacloud') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Jottacloud {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Personal Login Token</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // OAuth2 providers
+        if (OAUTH2_PROTOCOLS.includes(selectedProtocol)) {
+            const needsRegion = selectedProtocol === 'pcloud' || selectedProtocol === 'zohoworkdrive';
+            return (
+                <div className="wizard-step">
+                    <h3><Shield size={20} /> {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Client ID</label>
+                            <input type="text" value={connExtra.client_id || ''} onChange={(e) => setConnExtra(p => ({ ...p, client_id: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Client Secret</label>
+                            <input type="password" value={connExtra.client_secret || ''} onChange={(e) => setConnExtra(p => ({ ...p, client_secret: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                        {needsRegion && (
+                            <div className="folder-input">
+                                <label className="block text-sm font-medium mb-1">Region</label>
+                                <select value={connExtra.region || 'us'} onChange={(e) => setConnExtra(p => ({ ...p, region: e.target.value }))}
+                                    className="wizard-input-editable">
+                                    <option value="us">US</option>
+                                    <option value="eu">EU</option>
+                                    {selectedProtocol === 'zohoworkdrive' && <>
+                                        <option value="in">IN</option>
+                                        <option value="au">AU</option>
+                                        <option value="jp">JP</option>
+                                        <option value="uk">UK</option>
+                                        <option value="ca">CA</option>
+                                        <option value="sa">SA</option>
+                                    </>}
+                                </select>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-3 pt-2">
+                            <button onClick={handleOAuthAuthorize}
+                                disabled={oauthAuthorizing || !connExtra.client_id || !connExtra.client_secret}
+                                className="btn-primary">
+                                {oauthAuthorizing ? <Loader2 className="spin" size={16} /> : <Shield size={16} />}
+                                {oauthAuthorized ? t('cloud.reauthorize') : t('cloud.authorize')}
+                            </button>
+                            {oauthAuthorized && (
+                                <span className="text-sm text-green-500 flex items-center gap-1">
+                                    <Check size={16} /> {t('cloud.authorized')} {oauthEmail && `(${oauthEmail})`}
+                                </span>
+                            )}
+                        </div>
+                        <div className="folder-input mt-2">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // OAuth1 (4shared)
+        if (OAUTH1_PROTOCOLS.includes(selectedProtocol)) {
+            return (
+                <div className="wizard-step">
+                    <h3><Shield size={20} /> 4shared {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Consumer Key</label>
+                            <input type="text" value={connExtra.consumer_key || ''} onChange={(e) => setConnExtra(p => ({ ...p, consumer_key: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Consumer Secret</label>
+                            <input type="password" value={connExtra.consumer_secret || ''} onChange={(e) => setConnExtra(p => ({ ...p, consumer_secret: e.target.value }))}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="flex items-center gap-3 pt-2">
+                            <button onClick={handleOAuthAuthorize}
+                                disabled={oauthAuthorizing || !connExtra.consumer_key || !connExtra.consumer_secret}
+                                className="btn-primary">
+                                {oauthAuthorizing ? <Loader2 className="spin" size={16} /> : <Shield size={16} />}
+                                {oauthAuthorized ? t('cloud.reauthorize') : t('cloud.authorize')}
+                            </button>
+                            {oauthAuthorized && (
+                                <span className="text-sm text-green-500 flex items-center gap-1">
+                                    <Check size={16} /> {t('cloud.authorized')}
+                                </span>
+                            )}
+                        </div>
+                        <div className="folder-input mt-2">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
     };
 
     return (
@@ -163,29 +604,22 @@ const SetupWizard: React.FC<{
             </div>
 
             <div className="wizard-progress">
-                {[1, 2, 3].map((s) => (
-                    <div
-                        key={s}
-                        className={`progress-step ${step >= s ? 'active' : ''} ${step > s ? 'complete' : ''}`}
-                    >
+                {[1, 2, 3, 4].map((s) => (
+                    <div key={s} className={`progress-step ${step >= s ? 'active' : ''} ${step > s ? 'complete' : ''}`}>
                         {step > s ? <Check size={16} /> : s}
                     </div>
                 ))}
             </div>
 
             <div className="wizard-content">
+                {/* Step 1: Name & Local Folder */}
                 {step === 1 && (
                     <div className="wizard-step">
                         <h3><Cloud size={20} /> {t('cloud.cloudName')}</h3>
                         <p>{t('cloud.cloudNameDesc')}</p>
                         <div className="folder-input">
-                            <input
-                                type="text"
-                                value={cloudName}
-                                onChange={(e) => setCloudName(e.target.value)}
-                                placeholder={t('cloud.cloudNamePlaceholder')}
-                                className="wizard-input-editable"
-                            />
+                            <input type="text" value={cloudName} onChange={(e) => setCloudName(e.target.value)}
+                                placeholder={t('cloud.cloudNamePlaceholder')} className="wizard-input-editable" />
                         </div>
 
                         <h3 className="mt-4"><FolderOpen size={20} /> {t('cloud.localFolder')}</h3>
@@ -205,58 +639,44 @@ const SetupWizard: React.FC<{
                     </div>
                 )}
 
+                {/* Step 2: Protocol Selection */}
                 {step === 2 && (
                     <div className="wizard-step">
-                        <h3><Server size={20} /> {t('cloud.remoteFolder')}</h3>
-                        <p>{t('cloud.stepServer')}</p>
-                        <div className="folder-input">
-                            <input
-                                type="text"
-                                value={remoteFolder}
-                                onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/cloud/"
-                                className="wizard-input-editable"
-                            />
-                        </div>
-                        <div className="server-select">
-                            <label>{t('cloud.serverProfile')}:</label>
-                            <select
-                                value={serverProfile}
-                                onChange={(e) => {
-                                    const selectedName = e.target.value;
-                                    setServerProfile(selectedName);
-                                    // Auto-fill remoteFolder from saved server's initialPath
-                                    const server = savedServers.find(s => s.name === selectedName);
-                                    if (server?.initialPath) {
-                                        // Use initialPath + /cloud/ or just the path with /cloud/ appended
-                                        const basePath = server.initialPath.endsWith('/')
-                                            ? server.initialPath.slice(0, -1)
-                                            : server.initialPath;
-                                        setRemoteFolder(`${basePath}/cloud/`);
-                                    }
-                                }}
-                            >
-                                <option value="">{t('cloud.selectServer')}</option>
-                                {savedServers.map((server) => (
-                                    <option key={server.name} value={server.name}>
-                                        {server.name} ({server.host})
-                                    </option>
-                                ))}
-                            </select>
+                        <h3><HardDrive size={20} /> {t('cloud.selectProtocol')}</h3>
+                        <p className="text-sm opacity-70 mb-3">{t('cloud.selectProtocolDesc')}</p>
+                        <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
+                            {PROTOCOL_CATEGORIES.map((cat) => (
+                                <div key={cat.label}>
+                                    <label className="block text-xs font-semibold uppercase opacity-50 mb-1.5">{t(cat.label)}</label>
+                                    <div className="grid grid-cols-4 gap-1.5">
+                                        {cat.protocols.map((proto) => (
+                                            <button key={proto.id}
+                                                onClick={() => setSelectedProtocol(proto.id)}
+                                                className={`px-2 py-2 rounded-lg text-xs font-medium text-center transition-colors border ${
+                                                    selectedProtocol === proto.id
+                                                        ? 'border-cyan-500 bg-cyan-500/20 text-cyan-400'
+                                                        : 'border-gray-600 hover:border-gray-400 hover:bg-white/5'
+                                                }`}>
+                                                {proto.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
 
-                {step === 3 && (
+                {/* Step 3: Connection Settings (dynamic per protocol) */}
+                {step === 3 && renderConnectionFields()}
+
+                {/* Step 4: Sync Settings + Summary */}
+                {step === 4 && (
                     <div className="wizard-step">
                         <h3><Settings size={20} /> {t('cloud.stepSettings')}</h3>
                         <div className="settings-options">
                             <label className="checkbox-option">
-                                <input
-                                    type="checkbox"
-                                    checked={syncOnChange}
-                                    onChange={(e) => setSyncOnChange(e.target.checked)}
-                                />
+                                <input type="checkbox" checked={syncOnChange} onChange={(e) => setSyncOnChange(e.target.checked)} />
                                 <Zap size={16} />
                                 <span>{t('cloud.syncOnChange')}</span>
                             </label>
@@ -264,27 +684,14 @@ const SetupWizard: React.FC<{
                             <div className="interval-option">
                                 <Clock size={16} />
                                 <span>{t('cloud.syncInterval')}</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max={syncUnit === 'hours' ? 168 : 1440}
-                                    value={syncInterval}
-                                    onChange={(e) => setSyncInterval(Math.max(1, parseInt(e.target.value) || 1))}
-                                />
-                                <select
-                                    value={syncUnit}
-                                    onChange={(e) => {
-                                        const newUnit = e.target.value as 'hours' | 'minutes';
-                                        // Convert value when switching units
-                                        if (newUnit === 'hours' && syncUnit === 'minutes') {
-                                            setSyncInterval(Math.max(1, Math.round(syncInterval / 60)));
-                                        } else if (newUnit === 'minutes' && syncUnit === 'hours') {
-                                            setSyncInterval(syncInterval * 60);
-                                        }
-                                        setSyncUnit(newUnit);
-                                    }}
-                                    className="interval-select"
-                                >
+                                <input type="number" min="1" max={syncUnit === 'hours' ? 168 : 1440}
+                                    value={syncInterval} onChange={(e) => setSyncInterval(Math.max(1, parseInt(e.target.value) || 1))} />
+                                <select value={syncUnit} onChange={(e) => {
+                                    const newUnit = e.target.value as 'hours' | 'minutes';
+                                    if (newUnit === 'hours' && syncUnit === 'minutes') setSyncInterval(Math.max(1, Math.round(syncInterval / 60)));
+                                    else if (newUnit === 'minutes' && syncUnit === 'hours') setSyncInterval(syncInterval * 60);
+                                    setSyncUnit(newUnit);
+                                }} className="interval-select">
                                     <option value="minutes">{t('settings.minutes')}</option>
                                     <option value="hours">{t('cloud.hours') || 'ore'}</option>
                                 </select>
@@ -294,37 +701,26 @@ const SetupWizard: React.FC<{
                         <div className="summary-box">
                             <h4>{t('cloud.summary')}</h4>
                             <p><Folder size={14} /> {t('cloud.localFolder')}: <code>{localFolder}</code></p>
+                            <p><HardDrive size={14} /> {t('cloud.protocolType')}: <code>{selectedProtocol.toUpperCase()}</code></p>
                             <p><Server size={14} /> {t('cloud.remoteFolder')}: <code>{remoteFolder}</code></p>
-                            <p><Shield size={14} /> {t('cloud.serverProfile')}: <code>{serverProfile || t('cloud.never')}</code></p>
                         </div>
                     </div>
                 )}
             </div>
 
             <div className="wizard-footer">
-                <button onClick={onCancel} className="btn-secondary">
-                    {t('common.cancel')}
-                </button>
+                <button onClick={onCancel} className="btn-secondary">{t('common.cancel')}</button>
                 <div className="wizard-nav">
                     {step > 1 && (
-                        <button onClick={() => setStep(step - 1)} className="btn-secondary">
-                            {t('common.back')}
-                        </button>
+                        <button onClick={() => setStep(step - 1)} className="btn-secondary">{t('common.back')}</button>
                     )}
-                    {step < 3 ? (
-                        <button
-                            onClick={() => setStep(step + 1)}
-                            className="btn-primary"
-                            disabled={step === 1 && !localFolder || step === 2 && !serverProfile}
-                        >
+                    {step < 4 ? (
+                        <button onClick={() => setStep(step + 1)} className="btn-primary" disabled={!canAdvance()}>
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button
-                            onClick={handleComplete}
-                            className="btn-primary btn-cloud"
-                            disabled={isLoading || !localFolder || !serverProfile}
-                        >
+                        <button onClick={handleComplete} className="btn-primary btn-cloud"
+                            disabled={isLoading || !localFolder}>
                             {isLoading ? <Loader2 className="spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>
@@ -461,8 +857,8 @@ const CloudDashboard: React.FC<{
                 <div className="info-card">
                     <Shield size={20} />
                     <div>
-                        <span className="label">{t('cloud.serverProfile')}</span>
-                        <span className="value">{config.server_profile}</span>
+                        <span className="label">{t('cloud.protocolType')}</span>
+                        <span className="value">{(config.protocol_type || 'ftp').toUpperCase()} {config.server_profile && `\u2014 ${config.server_profile}`}</span>
                     </div>
                 </div>
 

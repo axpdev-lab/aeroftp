@@ -561,7 +561,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             });
 
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
-            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => {});
+            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => {});
             setSavedServersUpdate(Date.now());
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -584,7 +584,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
             const newServers = [...existingServers, newServer];
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
-            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
             setSavedServersUpdate(Date.now());
         }
     };
@@ -1049,7 +1049,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 localInitialPath: quickConnectDirs.localDir,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
                                         }
                                     }
                                     onConnect();
@@ -1084,7 +1084,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
                                         } else {
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
@@ -1094,7 +1094,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
                                                 } : s
                                             );
-                                            secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                                         }
                                     }
                                     onConnect();
@@ -2121,11 +2121,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
-                    onImport={(newServers) => {
+                    onImport={async (newServers) => {
                         const updated = [...servers, ...newServers];
                         setServers(updated);
                         localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
-                        secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
+                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
                         setShowExportImport(false);
                         setSavedServersUpdate(Date.now());
                     }}

@@ -37,6 +37,20 @@ pub struct CloudConfig {
     /// If set, enables "Share Link" functionality
     #[serde(default)]
     pub public_url_base: Option<String>,
+    /// Protocol type for the cloud connection (e.g., "ftp", "sftp", "googledrive", "s3")
+    /// Default: "ftp" for backward compatibility with existing configs
+    #[serde(default = "default_protocol_type")]
+    pub protocol_type: String,
+    /// Protocol-specific connection parameters stored as JSON
+    /// FTP: {} (uses server_profile credentials from vault)
+    /// S3: {"bucket": "...", "region": "...", "endpoint": "..."}
+    /// OAuth2: {"client_id": "...", "client_secret": "...", "region": "..."}
+    #[serde(default)]
+    pub connection_params: serde_json::Value,
+}
+
+fn default_protocol_type() -> String {
+    "ftp".to_string()
 }
 
 /// How to handle file conflicts
@@ -88,6 +102,8 @@ impl Default for CloudConfig {
             last_sync: None,
             conflict_strategy: ConflictStrategy::default(),
             public_url_base: None,
+            protocol_type: default_protocol_type(),
+            connection_params: serde_json::Value::Null,
         }
     }
 }
@@ -198,20 +214,43 @@ pub fn ensure_cloud_folder(config: &CloudConfig) -> Result<PathBuf, String> {
     Ok(path.clone())
 }
 
+/// Protocol types that require a saved server profile with credentials
+const SERVER_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
+
+/// Protocol types that require absolute remote paths
+const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
+
 /// Validate cloud configuration
 pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
-    if config.server_profile.is_empty() {
-        return Err("No server profile selected".to_string());
+    // Server-based protocols require a server_profile for credential lookup
+    if SERVER_PROTOCOLS.contains(&config.protocol_type.as_str()) {
+        if config.server_profile.is_empty() {
+            return Err("No server profile selected".to_string());
+        }
     }
-    
+
+    // OAuth2/cloud providers require connection_params with credentials
+    let oauth_providers = ["googledrive", "dropbox", "onedrive", "box", "pcloud", "zohoworkdrive"];
+    if oauth_providers.contains(&config.protocol_type.as_str()) {
+        let params = config.connection_params.as_object();
+        if params.is_none() || params.is_some_and(|p| {
+            p.get("client_id").and_then(|v| v.as_str()).unwrap_or("").is_empty()
+        }) {
+            return Err("OAuth2 provider requires client_id in connection_params".to_string());
+        }
+    }
+
     if config.remote_folder.is_empty() {
         return Err("Remote folder cannot be empty".to_string());
     }
-    
-    if !config.remote_folder.starts_with('/') {
-        return Err("Remote folder must be an absolute path".to_string());
+
+    // Only server protocols require absolute paths; cloud providers accept "/" or relative
+    if ABSOLUTE_PATH_PROTOCOLS.contains(&config.protocol_type.as_str())
+        && !config.remote_folder.starts_with('/')
+    {
+        return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
-    
+
     Ok(())
 }
 
@@ -237,21 +276,48 @@ mod tests {
     #[test]
     fn test_validate_config() {
         let mut config = CloudConfig::default();
-        
-        // Should fail - no server profile
+
+        // Should fail - no server profile (FTP default)
         assert!(validate_config(&config).is_err());
-        
+
         config.server_profile = "MyServer".to_string();
-        
+
         // Should pass now
         assert!(validate_config(&config).is_ok());
-        
+
         // Should fail - empty remote folder
         config.remote_folder = String::new();
         assert!(validate_config(&config).is_err());
-        
-        // Should fail - relative path
+
+        // Should fail - relative path for FTP
         config.remote_folder = "cloud/".to_string();
         assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn test_validate_config_cloud_providers() {
+        // S3 does not require server_profile or absolute path
+        let mut config = CloudConfig::default();
+        config.protocol_type = "s3".to_string();
+        config.remote_folder = "my-prefix/".to_string();
+        config.connection_params = serde_json::json!({"bucket": "my-bucket", "region": "us-east-1"});
+        assert!(validate_config(&config).is_ok());
+
+        // OAuth2 requires client_id
+        config.protocol_type = "googledrive".to_string();
+        config.connection_params = serde_json::json!({});
+        assert!(validate_config(&config).is_err());
+
+        config.connection_params = serde_json::json!({"client_id": "abc123", "client_secret": "secret"});
+        assert!(validate_config(&config).is_ok());
+    }
+
+    #[test]
+    fn test_default_protocol_type_backward_compat() {
+        // Simulate loading an old config without protocol_type
+        let json = r#"{"enabled":true,"local_folder":"/tmp","remote_folder":"/cloud/","server_profile":"MyFTP","sync_interval_secs":3600,"sync_on_change":true,"sync_on_startup":false,"exclude_patterns":[],"conflict_strategy":"ask_user"}"#;
+        let config: CloudConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.protocol_type, "ftp");
+        assert!(config.connection_params.is_null());
     }
 }

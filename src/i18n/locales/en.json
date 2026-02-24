@@ -878,7 +878,17 @@
       "hours": "hours",
       "syncNow": "Sync Now",
       "syncOnChange": "Sync on file change (real-time)",
-      "title": "AeroCloud"
+      "title": "AeroCloud",
+      "selectProtocol": "Select Protocol",
+      "selectProtocolDesc": "Choose your cloud storage provider",
+      "serverCategory": "Servers",
+      "cloudCategory": "Cloud Storage",
+      "oauthCategory": "OAuth Cloud",
+      "connectionSettings": "Connection Settings",
+      "authorize": "Authorize",
+      "authorized": "Authorized",
+      "reauthorize": "Re-authorize",
+      "protocolType": "Protocol"
     },
     "common": {
       "about": "About",

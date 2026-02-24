@@ -22,6 +22,7 @@ mod sync_scheduler;
 mod transfer_pool;
 mod delta_sync;
 mod cloud_service;
+mod cloud_provider_factory;
 mod providers;
 mod provider_commands;
 mod session_manager;
@@ -536,8 +537,20 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 
     info!("AppImage updated successfully, restarting...");
 
-    // Restart: spawn new process then exit
-    let _ = std::process::Command::new(&current_exe).spawn();
+    // Restart via detached shell process — delay ensures old process exits
+    // fully before new one starts (avoids port/lock/DBus conflicts)
+    let exe_path = current_exe.display().to_string();
+    info!("Spawning delayed relaunch: {}", exe_path);
+    if let Err(e) = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("sleep 1 && exec '{}'", exe_path))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        tracing::warn!("Failed to spawn relaunch process: {}", e);
+    }
     app.exit(0);
 
     Ok(())
@@ -5901,6 +5914,8 @@ async fn setup_aerocloud(
     server_profile: String,
     sync_on_change: bool,
     sync_interval_secs: u64,
+    protocol_type: Option<String>,
+    connection_params: Option<serde_json::Value>,
 ) -> Result<CloudConfig, String> {
     let config = CloudConfig {
         enabled: true,
@@ -5910,20 +5925,23 @@ async fn setup_aerocloud(
         server_profile,
         sync_on_change,
         sync_interval_secs,
+        protocol_type: protocol_type.unwrap_or_else(|| "ftp".to_string()),
+        connection_params: connection_params.unwrap_or(serde_json::Value::Null),
         ..CloudConfig::default()
     };
-    
+
     // Validate configuration
     cloud_config::validate_config(&config)?;
-    
+
     // Ensure local cloud folder exists
     cloud_config::ensure_cloud_folder(&config)?;
-    
+
     // Save configuration
     cloud_config::save_cloud_config(&config)?;
-    
-    info!("AeroCloud setup complete: local={}, remote={}", local_folder, remote_folder);
-    
+
+    info!("AeroCloud setup complete: protocol={}, local={}, remote={}",
+        config.protocol_type, local_folder, remote_folder);
+
     Ok(config)
 }
 
@@ -6347,71 +6365,35 @@ async fn background_sync_worker(app: AppHandle) {
     info!("Background sync worker exited");
 }
 
-/// Perform a sync cycle with a dedicated FTP connection
-/// This avoids conflicts with the main UI FTP connection
+/// Perform a sync cycle with a dedicated provider connection.
+/// Creates the appropriate provider based on config.protocol_type (FTP, SFTP, S3, Google Drive, etc.)
+/// and uses the generic perform_full_sync_with_provider method.
 async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<cloud_service::SyncOperationResult, String> {
-    // Load saved server credentials
-    let server_profile = &config.server_profile;
-    
-    // Try to get server credentials from saved servers (localStorage sync)
-    // For now, we'll use a simple approach - the sync requires active main connection
-    // In the future, we could store encrypted credentials
-    
-    // Create dedicated FTP manager for background sync
-    let mut ftp_manager = ftp::FtpManager::new();
-    
-    // We need server credentials - check if we have them saved
-    // For MVP, background sync only works if the server is already connected in main UI
-    // and we use the same credentials from config file
-    
-    // Load credentials from secure store (keyring or vault)
-    info!("Background sync: loading credentials for profile '{}'", server_profile);
+    info!("Background sync: creating {} provider for profile '{}'",
+        config.protocol_type, config.server_profile);
 
-    let store = credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "Background sync: credential vault not open".to_string())?;
+    // Create and connect the provider via multi-protocol factory
+    let mut provider = cloud_provider_factory::create_cloud_provider(config).await?;
 
-    let creds_json = store.get(&format!("server_{}", server_profile))
-        .map_err(|e| format!("No saved credentials for profile '{}': {}", server_profile, e))?;
+    info!("Background sync: connected via {}", config.protocol_type);
 
-    #[derive(serde::Deserialize)]
-    struct SavedCredentials {
-        server: String,
-        username: String,
-        password: String,
-    }
-
-    let creds: SavedCredentials = serde_json::from_str(&creds_json)
-        .map_err(|e| format!("Failed to parse credentials for '{}': {}", server_profile, e))?;
-
-    // Connect to server
-    ftp_manager.connect(&creds.server)
-        .await
-        .map_err(|e| format!("Failed to connect for background sync: {}", e))?;
-
-    // Login with credentials
-    ftp_manager.login(&creds.username, &creds.password)
-        .await
-        .map_err(|e| format!("Failed to login for background sync: {}", e))?;
-
-    info!("Background sync: connected to {} as {}", creds.server, creds.username);
-    
     // Navigate to remote folder
-    if ftp_manager.change_dir(&config.remote_folder).await.is_err() {
+    if provider.cd(&config.remote_folder).await.is_err() {
         // Try to create it
-        let _ = ftp_manager.mkdir(&config.remote_folder).await;
-        ftp_manager.change_dir(&config.remote_folder).await
+        let _ = provider.mkdir(&config.remote_folder).await;
+        provider.cd(&config.remote_folder).await
             .map_err(|e| format!("Failed to navigate to remote folder: {}", e))?;
     }
-    
-    // Create cloud service and perform sync
+
+    // Create cloud service and perform sync using the generic provider method
     let cloud_service = cloud_service::CloudService::new();
     cloud_service.init(config.clone()).await;
-    
-    let result = cloud_service.perform_full_sync(&mut ftp_manager).await?;
-    
+
+    let result = cloud_service.perform_full_sync_with_provider(provider.as_mut()).await?;
+
     // Disconnect
-    let _ = ftp_manager.disconnect().await;
-    
+    let _ = provider.disconnect().await;
+
     Ok(result)
 }
 
