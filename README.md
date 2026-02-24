@@ -77,7 +77,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any FTP server** into a private personal cloud. Connect to 18 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Connect to all 18 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -97,8 +97,10 @@ Turn **any FTP server** into a private personal cloud. Connect to 18 protocols t
 | **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, PBKDF2 |
 | **Internxt Drive** | Client-side AES-256-CTR | 10GB free, E2E encrypted, BIP39 mnemonic, optional 2FA |
 | **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, REST API |
+| **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, team drive management |
+| **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, unlimited storage plans |
 
-**Cloud features**: Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
+**Cloud features**: Background sync works with all 18 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -283,7 +285,7 @@ Quality-audited translations with native script integrity. Automatic browser lan
 
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA
-- AppImage auto-install with "Install & Restart" button
+- "Install & Restart" for .deb, .rpm, and AppImage — detached relaunch survives parent exit
 - Non-intrusive update toast with auto-dismiss (StatusBar badge for persistent access)
 - Periodic background check every 24 hours
 

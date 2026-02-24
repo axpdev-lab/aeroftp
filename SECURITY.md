@@ -53,6 +53,7 @@ The previous dual-mode system (OS Keyring primary + encrypted vault fallback) su
 | Zoho WorkDrive | HTTPS + OAuth2 | PKCE flow with token refresh, 8 regional endpoints |
 | Internxt Drive | HTTPS + OAuth2 | E2E encrypted, zero-knowledge architecture |
 | kDrive | HTTPS + OAuth2 | Infomaniak API with Bearer token auth |
+| Jottacloud | HTTPS | Login Token Bearer authentication |
 
 ### FTPS Encryption Modes (v1.4.0)
 
