@@ -6647,10 +6647,9 @@ async fn unlock_credential_store(
             match totp_code {
                 Some(ref code) if !code.is_empty() => {
                     let valid = totp::verify_internal(&totp_state, code)
-                        .map_err(|e| {
+                        .inspect_err(|_e| {
                             credential_store::CredentialStore::lock();
                             state.set_locked(true);
-                            e
                         })?;
                     if !valid {
                         credential_store::CredentialStore::lock();

@@ -841,6 +841,7 @@ impl StorageProvider for FtpProvider {
         // H3: Stream directly to file instead of buffering entire file in memory
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(local_path)
             .await

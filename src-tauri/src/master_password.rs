@@ -52,7 +52,7 @@ impl MasterPasswordState {
         let now_ms = self.start_instant.elapsed().as_millis() as u64;
         let until_ms = self.throttle_until_ms.load(Ordering::SeqCst);
         if now_ms < until_ms {
-            let remaining_secs = (until_ms - now_ms + 999) / 1000; // ceil division
+            let remaining_secs = (until_ms - now_ms).div_ceil(1000);
             Err(remaining_secs)
         } else {
             Ok(())
@@ -63,7 +63,7 @@ impl MasterPasswordState {
     pub fn record_failed_attempt(&self) {
         let count = self.failed_attempts.fetch_add(1, Ordering::SeqCst) + 1;
         if count >= THROTTLE_THRESHOLD {
-            let excess = (count - THROTTLE_THRESHOLD) as u32;
+            let excess = count - THROTTLE_THRESHOLD;
             let delay_secs = THROTTLE_BASE_DELAY_SECS
                 .saturating_mul(1u64.checked_shl(excess.min(10)).unwrap_or(u64::MAX))
                 .min(THROTTLE_MAX_DELAY_SECS);
