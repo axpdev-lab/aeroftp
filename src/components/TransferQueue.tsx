@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 import { useTranslation } from '../i18n';
@@ -230,15 +230,24 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
         setContextMenu({ x: e.clientX, y: e.clientY, item });
     }, []);
 
-    const completedCount = items.filter(i => i.status === 'completed').length;
-    const errorCount = items.filter(i => i.status === 'error').length;
-    const transferringCount = items.filter(i => i.status === 'transferring').length;
-    const pendingCount = items.filter(i => i.status === 'pending').length;
-
-    // Determine icon based on majority transfer type
-    const uploadCount = items.filter(i => i.type === 'upload').length;
-    const downloadCount = items.filter(i => i.type === 'download').length;
-    const primaryType: TransferType = uploadCount >= downloadCount ? 'upload' : 'download';
+    // Single-pass counting instead of 6 separate .filter() calls — O(n) vs O(6n)
+    const { completedCount, errorCount, transferringCount, pendingCount, primaryType } = useMemo(() => {
+        let completed = 0, error = 0, transferring = 0, pending = 0, uploads = 0;
+        for (const item of items) {
+            if (item.status === 'completed') completed++;
+            else if (item.status === 'error') error++;
+            else if (item.status === 'transferring') transferring++;
+            else if (item.status === 'pending') pending++;
+            if (item.type === 'upload') uploads++;
+        }
+        return {
+            completedCount: completed,
+            errorCount: error,
+            transferringCount: transferring,
+            pendingCount: pending,
+            primaryType: (uploads >= items.length - uploads ? 'upload' : 'download') as TransferType
+        };
+    }, [items]);
 
     // Only render if visible AND has items
     if (!isVisible || items.length === 0) return null;
@@ -354,7 +363,15 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     onScroll={handleScroll}
                     className="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-[24rem] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent"
                 >
-                    {items.map((item, index) => (
+                    {/* Render only last 200 items for performance — older completed items are hidden */}
+                    {items.length > 200 && (
+                        <div className="text-center text-gray-400 dark:text-gray-600 text-[10px] py-1">
+                            {items.length - 200} earlier items hidden
+                        </div>
+                    )}
+                    {(items.length > 200 ? items.slice(-200) : items).map((item, index) => {
+                        const realIndex = items.length > 200 ? items.length - 200 + index : index;
+                        return (
                         <div
                             key={item.id}
                             className={`group flex items-center gap-2 px-2 py-1 rounded transition-all duration-300 ${item.status === 'transferring'
@@ -372,7 +389,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                         >
                             {/* Line Number */}
                             <span className="text-gray-400 dark:text-gray-600 w-6 text-right shrink-0">
-                                {String(index + 1).padStart(3, '0')}
+                                {String(realIndex + 1).padStart(3, '0')}
                             </span>
 
                             {/* Type Icon */}
@@ -463,7 +480,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 )}
                             </span>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* Footer — always visible, glows during transfers */}
@@ -501,9 +519,21 @@ export const useTransferQueue = () => {
     const autoHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userDismissedRef = useRef(false);
 
+    // Track active count for efficient allCompleted check (avoids .every() on 4000+ items)
+    const activeCountRef = useRef(0);
+
     // Auto-hide after all transfers complete (5 seconds)
     useEffect(() => {
-        const allCompleted = items.length > 0 && items.every(i => i.status === 'completed' || i.status === 'error');
+        // Fast check: count active items only when array changes
+        let active = 0;
+        for (const item of items) {
+            if (item.status === 'pending' || item.status === 'transferring') {
+                active++;
+                if (active > 0) break; // Early exit — we only need to know if any are active
+            }
+        }
+        activeCountRef.current = active;
+        const allCompleted = items.length > 0 && active === 0;
 
         // Clear any existing timeout
         if (autoHideTimeoutRef.current) {
@@ -538,9 +568,10 @@ export const useTransferQueue = () => {
             status: 'pending',
             startTime: Date.now()
         }]);
-        // Show queue when adding new items (reset user dismiss)
-        userDismissedRef.current = false;
-        setIsVisible(true);
+        // Only auto-show if user hasn't explicitly closed the panel
+        if (!userDismissedRef.current) {
+            setIsVisible(true);
+        }
         return id;
     };
 

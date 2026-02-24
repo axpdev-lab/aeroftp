@@ -174,7 +174,7 @@ const defaultSettings: AppSettings = {
     reconnectAttempts: 3,
     reconnectDelay: 5,
     ftpMode: 'passive',
-    maxConcurrentTransfers: 2,
+    maxConcurrentTransfers: 5,
     retryCount: 3,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
@@ -1523,7 +1523,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             onChange={e => updateSetting('maxConcurrentTransfers', parseInt(e.target.value))}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                                         >
-                                            {[1, 2, 3, 4, 5].map(n => (
+                                            {[1, 2, 3, 4, 5, 6, 8].map(n => (
                                                 <option key={n} value={n}>{n === 1 ? t('settings.oneFileAtATime') : t('settings.nFilesAtATime', { n })}</option>
                                             ))}
                                         </select>
