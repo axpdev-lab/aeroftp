@@ -3697,6 +3697,221 @@ async fn preview_remote_file(state: State<'_, AppState>, path: String) -> Result
     Ok(content)
 }
 
+// ============ Favicon Detection ============
+
+/// Parse manifest.json/site.webmanifest to find the best icon path
+fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(json_bytes).ok()?;
+    let icons = value.get("icons")?.as_array()?;
+
+    // Find best icon: prefer PNG ≥48px, fallback to first available
+    let mut best: Option<(String, u32)> = None;
+    for icon in icons {
+        let src = match icon.get("src").and_then(|s| s.as_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+        // Parse sizes like "48x48", "192x192"
+        let size = icon.get("sizes")
+            .and_then(|s| s.as_str())
+            .and_then(|s| s.split('x').next())
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+
+        let is_png = src.ends_with(".png") || icon.get("type").and_then(|t| t.as_str()).map_or(false, |t| t.contains("png"));
+
+        match &best {
+            None => best = Some((src.to_string(), size)),
+            Some((_, best_size)) => {
+                // Prefer sizes between 48-192, favor PNG
+                if (size >= 48 && size <= 192 && (*best_size < 48 || *best_size > 192 || (is_png && size >= *best_size)))
+                    || (*best_size == 0 && size > 0) {
+                    best = Some((src.to_string(), size));
+                }
+            }
+        }
+    }
+
+    best.map(|(src, _)| src)
+}
+
+/// Guess MIME type from file extension (SVG rejected for XSS safety)
+fn guess_mime_from_path(path: &str) -> Option<&'static str> {
+    let lower = path.to_lowercase();
+    if lower.ends_with(".svg") { return None; } // Reject SVG — can contain <script>
+    if lower.ends_with(".png") { Some("image/png") }
+    else if lower.ends_with(".ico") { Some("image/x-icon") }
+    else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") { Some("image/jpeg") }
+    else if lower.ends_with(".webp") { Some("image/webp") }
+    else if lower.ends_with(".gif") { Some("image/gif") }
+    else { Some("image/png") }
+}
+
+/// Validate image magic bytes (defense-in-depth against content spoofing)
+fn is_valid_image_magic(bytes: &[u8]) -> bool {
+    if bytes.len() < 4 { return false; }
+    // PNG
+    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { return true; }
+    // JPEG
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) { return true; }
+    // ICO / CUR
+    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || bytes.starts_with(&[0x00, 0x00, 0x02, 0x00]) { return true; }
+    // GIF
+    if bytes.starts_with(b"GIF8") { return true; }
+    // WebP
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" { return true; }
+    false
+}
+
+/// Convert bytes to base64 data URL
+fn bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    format!("data:{};base64,{}", mime, STANDARD.encode(bytes))
+}
+
+/// Resolve an icon path from manifest relative to the base directory.
+/// In FTP context, "/" in manifest means the web root (= base), not the FTP root.
+fn resolve_icon_path(base: &str, icon_src: &str) -> Option<String> {
+    if icon_src.starts_with("http://") || icon_src.starts_with("https://") {
+        return None; // Can't download absolute URLs via FTP
+    }
+    // Reject path traversal, null bytes, and SVG
+    if icon_src.contains("..") || icon_src.contains('\0') {
+        return None;
+    }
+    let lower = icon_src.to_lowercase();
+    if lower.ends_with(".svg") {
+        return None;
+    }
+    let prefix = base.trim_end_matches('/');
+    let clean_src = icon_src.trim_start_matches('/');
+    if clean_src.is_empty() {
+        return None;
+    }
+    if prefix.is_empty() {
+        Some(format!("/{}", clean_src))
+    } else {
+        Some(format!("{}/{}", prefix, clean_src))
+    }
+}
+
+/// Build path for a file in a base directory
+fn make_path(base: &str, filename: &str) -> String {
+    let prefix = base.trim_end_matches('/');
+    if prefix.is_empty() {
+        format!("/{}", filename)
+    } else {
+        format!("{}/{}", prefix, filename)
+    }
+}
+
+/// Detect favicon from FTP server using the project's remote root path.
+/// Uses SIZE command (control channel only) to check file existence before
+/// downloading, preventing FTP data connection corruption on 550 errors.
+/// Times out after 10 seconds to avoid holding the FTP mutex too long.
+#[tauri::command]
+async fn detect_server_favicon(
+    state: State<'_, AppState>,
+    search_paths: Vec<String>,
+) -> Result<Option<String>, String> {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let mut ftp_manager = state.ftp_manager.lock().await;
+
+    for base in &search_paths {
+        // 1) Try favicon.ico first (most common, single download)
+        let favicon_path = make_path(base, "favicon.ico");
+        let favicon_size = ftp_manager.get_file_size(&favicon_path).await.unwrap_or(0);
+        if favicon_size > 0 && favicon_size <= 500_000 {
+            if let Ok(bytes) = ftp_manager.download_to_bytes(&favicon_path).await {
+                if !bytes.is_empty() && is_valid_image_magic(&bytes) {
+                    return Ok(Some(bytes_to_data_url(&bytes, "image/x-icon")));
+                }
+            }
+        }
+
+        // 2) Fallback: manifest.json / site.webmanifest → parse icon
+        for name in &["manifest.json", "site.webmanifest"] {
+            let manifest_path = make_path(base, name);
+            let manifest_size = ftp_manager.get_file_size(&manifest_path).await.unwrap_or(0);
+            if manifest_size == 0 || manifest_size > 500_000 { continue; }
+
+            if let Ok(manifest_bytes) = ftp_manager.download_to_bytes(&manifest_path).await {
+                if manifest_bytes.is_empty() { continue; }
+                if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
+                    if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
+                        let icon_size = ftp_manager.get_file_size(&icon_full).await.unwrap_or(0);
+                        if icon_size > 0 && icon_size <= 500_000 {
+                            if let Ok(icon_bytes) = ftp_manager.download_to_bytes(&icon_full).await {
+                                if !icon_bytes.is_empty() && is_valid_image_magic(&icon_bytes) {
+                                    if let Some(mime) = guess_mime_from_path(&icon_full) {
+                                        return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+    }).await;
+    match result {
+        Ok(inner) => inner,
+        Err(_) => Ok(None), // Timeout — no favicon found
+    }
+}
+
+/// Detect favicon from SFTP/provider server using the project's remote root path.
+/// Times out after 10 seconds to avoid holding the provider mutex too long.
+#[tauri::command]
+async fn detect_provider_favicon(
+    state: State<'_, provider_commands::ProviderState>,
+    search_paths: Vec<String>,
+) -> Result<Option<String>, String> {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let mut provider_lock = state.provider.lock().await;
+    let provider: &mut Box<dyn providers::StorageProvider> = provider_lock.as_mut()
+        .ok_or("Not connected to any provider")?;
+
+    for base in &search_paths {
+        // 1) Try favicon.ico first
+        let favicon_path = make_path(base, "favicon.ico");
+        if let Ok(favicon_bytes) = provider.download_to_bytes(&favicon_path).await {
+            if !favicon_bytes.is_empty() && favicon_bytes.len() <= 500_000 && is_valid_image_magic(&favicon_bytes) {
+                return Ok(Some(bytes_to_data_url(&favicon_bytes, "image/x-icon")));
+            }
+        }
+
+        // 2) Fallback: manifest.json / site.webmanifest → parse icon
+        for name in &["manifest.json", "site.webmanifest"] {
+            let manifest_path = make_path(base, name);
+            if let Ok(manifest_bytes) = provider.download_to_bytes(&manifest_path).await {
+                if manifest_bytes.is_empty() || manifest_bytes.len() > 500_000 { continue; }
+                if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
+                    if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
+                        if let Ok(icon_bytes) = provider.download_to_bytes(&icon_full).await {
+                            if !icon_bytes.is_empty() && icon_bytes.len() <= 500_000 && is_valid_image_magic(&icon_bytes) {
+                                if let Some(mime) = guess_mime_from_path(&icon_full) {
+                                    return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+    }).await;
+    match result {
+        Ok(inner) => inner,
+        Err(_) => Ok(None), // Timeout — no favicon found
+    }
+}
+
 #[tauri::command]
 async fn save_local_file(path: String, content: String) -> Result<(), String> {
     validate_path(&path)?;
@@ -5859,6 +6074,12 @@ async fn background_sync_worker(app: AppHandle) {
                 }
                 // Filesystem watcher event
                 Some(event) = watcher_rx.recv() => {
+                    // Suppress watcher during active folder download/upload
+                    if crate::provider_commands::TRANSFER_IN_PROGRESS.load(std::sync::atomic::Ordering::SeqCst) {
+                        info!("Watcher trigger suppressed: folder transfer in progress");
+                        while watcher_rx.try_recv().is_ok() {}
+                        continue;
+                    }
                     // Cooldown: skip watcher triggers too close to last sync
                     // (prevents loop: sync writes files → watcher detects → re-sync)
                     let elapsed = last_sync_completed.elapsed().as_secs();
@@ -6880,6 +7101,8 @@ pub fn run() {
             read_local_file,
             read_local_file_base64,
             preview_remote_file,
+            detect_server_favicon,
+            detect_provider_favicon,
             save_local_file,
             save_remote_file,
             toggle_menu_bar,

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.4] - 2026-02-24
+
+### Custom Server Icons & Favicon Detection
+
+Custom icon picker for servers without dedicated provider logos, plus automatic project favicon detection for FTP/FTPS/SFTP connections.
+
+#### Added
+
+- **Custom server icon picker**: Choose any image file as server icon — displayed in Saved Servers, session tabs, and connection forms. Available for FTP, SFTP, WebDAV, and S3 servers without a dedicated provider logo
+- **Favicon auto-detection**: Automatically detects project favicons from connected FTP/FTPS/SFTP servers — searches `favicon.ico` first, then `manifest.json`/`site.webmanifest` as fallback
+- **Icon rendering hierarchy**: Custom icon (highest priority) > auto-detected favicon > provider logo > initial letter gradient
+- **Icon picker in both forms**: Unified icon picker with 40x40 preview in Quick Connect and Settings server edit forms
+- **8 new i18n keys**: `settings.serverIcon`, `settings.chooseIcon`, `settings.removeIcon` plus 5 previously untranslated keys — all 47 languages
+
+#### Fixed
+
+- **FTP data channel corruption**: Favicon detection now uses FTP SIZE command (control channel only) before download, preventing "Data connection is already open" errors after 550 responses
+- **Vault storage race condition**: `handleFaviconDetected` and `createSession` now read from vault instead of localStorage, which is cleared after vault migration by `secureStoreAndClean`
+- **Monaco source map warnings**: Dev server returns 204 for `/min-maps/*` requests instead of HTML fallback, silencing 7 JSON parse errors
+
+---
+
 ## [2.6.3] - 2026-02-23
 
 ### AeroCloud Tab Switch & Menu Restoration

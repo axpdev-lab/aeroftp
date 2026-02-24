@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, X, Check, FolderOpen, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, X, Check, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -50,7 +50,6 @@ interface SavedServersProps {
     onEdit: (profile: ServerProfile) => void;
     lastUpdate?: number;
     onOpenExportImport?: () => void;
-    onAeroFile?: () => void;
 }
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -123,7 +122,6 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     onEdit,
     lastUpdate,
     onOpenExportImport,
-    onAeroFile
 }) => {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -448,15 +446,6 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                    {onAeroFile && (
-                        <button
-                            onClick={onAeroFile}
-                            className="p-2 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
-                            title={t('statusBar.aerofileTitle')}
-                        >
-                            <FolderOpen size={18} />
-                        </button>
-                    )}
                     {onOpenExportImport && (
                         <button
                             onClick={onOpenExportImport}
@@ -541,14 +530,21 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                             const logoKey = server.providerId || server.protocol || '';
                             const LogoComponent = PROVIDER_LOGOS[logoKey];
                             const hasLogo = !!LogoComponent;
+                            const hasCustomIcon = !!server.customIconUrl;
+                            const hasFavicon = !!server.faviconUrl;
+                            const hasIcon = hasCustomIcon || hasFavicon;
                             return (
                                 <button
                                     onClick={() => handleConnect(server)}
                                     disabled={oauthConnecting !== null}
-                                    className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:ring-2 hover:ring-blue-400 hover:shadow-lg disabled:cursor-wait ${oauthConnecting === server.id ? 'animate-pulse' : ''} ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} text-white`}`}
+                                    className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:ring-2 hover:ring-blue-400 hover:shadow-lg disabled:cursor-wait ${oauthConnecting === server.id ? 'animate-pulse' : ''} ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} text-white`}`}
                                     title={t('common.connect')}
                                 >
-                                    {hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
+                                    {hasCustomIcon ? (
+                                        <img src={server.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    ) : hasFavicon ? (
+                                        <img src={server.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    ) : hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
                                 </button>
                             );
                         })()}

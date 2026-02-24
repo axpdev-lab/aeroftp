@@ -937,6 +937,8 @@
     "compress": {
       "archiveName": "Archive Name",
       "compress": "Compress",
+      "compressing": "Compressing...",
+      "estimatedSize": "Estimated",
       "fast": "Fast",
       "files": "files",
       "folders": "folders",
@@ -1497,7 +1499,8 @@
       "toggleTerminal": "Terminal",
       "selectAll": "Select All",
       "toggleTheme": "Toggle Theme",
-      "view": "View"
+      "view": "View",
+      "checkForUpdates": "Check for Updates"
     },
     "migration": {
       "checking": "Checking security status...",
@@ -1966,6 +1969,7 @@
       "changePassword": "Change Password",
       "checkForUpdates": "Check for Updates",
       "checking": "Checking...",
+      "chooseIcon": "Choose Icon",
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "cloudProviderDesc": "Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials.",
@@ -2163,6 +2167,7 @@
       "rememberLastFolderDesc": "Open the last visited local folder on startup",
       "remotePath": "Remote Path (optional)",
       "remotePathPlaceholder": "/home/user or /my-folder",
+      "removeIcon": "Remove Icon",
       "removePassword": "Remove Protection",
       "restartFileManager": "Restart File Manager",
       "restartRequired": "Restart may be required for full effect",
@@ -2194,6 +2199,7 @@
       "selectLocalFolder": "Select Local Folder",
       "sendAnalytics": "Send anonymous usage statistics",
       "serverCredentials": "server credentials",
+      "serverIcon": "Server Icon",
       "serverNamePlaceholder": "My Server",
       "serverProfilesLabel": "server profiles",
       "servers": "Servers",

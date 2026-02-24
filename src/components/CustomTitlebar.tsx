@@ -57,6 +57,7 @@ interface TitlebarProps {
     onToggleTerminal: () => void;
     onToggleAgent: () => void;
     onQuit: () => void;
+    onCheckForUpdates: () => void;
     hasActivity: boolean;
 }
 
@@ -156,7 +157,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onQuit,
-        hasActivity,
+        onCheckForUpdates, hasActivity,
     } = props;
 
     const t = useTranslation();
@@ -226,6 +227,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
     const helpMenu: MenuEntry[] = [
         { label: t('menu.shortcuts'), shortcut: 'F1', onClick: onShowShortcuts },
+        { separator: true },
+        { label: t('menu.checkForUpdates'), onClick: onCheckForUpdates },
         { separator: true },
         { label: t('menu.support'), onClick: onShowSupport },
         { label: t('menu.about'), onClick: onShowAbout },

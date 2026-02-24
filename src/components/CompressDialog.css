@@ -1,0 +1,125 @@
+/* CompressDialog — 4-theme scoped CSS variables */
+
+/* ── Dark (default) ────────────────────────────── */
+.compress-dialog {
+    --compress-bg: #1f2937;
+    --compress-bg-deep: #111827;
+    --compress-bg-hover: #374151;
+    --compress-border: #374151;
+    --compress-text: #f9fafb;
+    --compress-text-secondary: #9ca3af;
+    --compress-text-muted: #6b7280;
+    --compress-accent: #3b82f6;
+    --compress-accent-hover: #2563eb;
+    --compress-card-bg: #111827;
+    --compress-card-border: #374151;
+    --compress-card-active-bg: #1e3a5f;
+    --compress-card-active-border: #3b82f6;
+    --compress-input-bg: #111827;
+    --compress-input-border: #4b5563;
+}
+
+/* ── Light ─────────────────────────────────────── */
+:root:not(.dark) .compress-dialog {
+    --compress-bg: #ffffff;
+    --compress-bg-deep: #f9fafb;
+    --compress-bg-hover: #f3f4f6;
+    --compress-border: #e5e7eb;
+    --compress-text: #111827;
+    --compress-text-secondary: #6b7280;
+    --compress-text-muted: #9ca3af;
+    --compress-accent: #2563eb;
+    --compress-accent-hover: #1d4ed8;
+    --compress-card-bg: #f9fafb;
+    --compress-card-border: #e5e7eb;
+    --compress-card-active-bg: #eff6ff;
+    --compress-card-active-border: #3b82f6;
+    --compress-input-bg: #ffffff;
+    --compress-input-border: #d1d5db;
+}
+
+/* ── Tokyo Night ───────────────────────────────── */
+html.tokyo .compress-dialog {
+    --compress-bg: var(--tokyo-bg-dark, #16161e);
+    --compress-bg-deep: var(--tokyo-bg, #1a1b26);
+    --compress-bg-hover: var(--tokyo-bg-highlight, #292e42);
+    --compress-border: var(--tokyo-fg-gutter, #3b4261);
+    --compress-text: var(--tokyo-fg, #c0caf5);
+    --compress-text-secondary: var(--tokyo-fg-dark, #a9b1d6);
+    --compress-text-muted: var(--tokyo-comment, #565f89);
+    --compress-accent: var(--tokyo-purple, #9d7cd8);
+    --compress-accent-hover: var(--tokyo-magenta, #bb9af7);
+    --compress-card-bg: var(--tokyo-bg, #1a1b26);
+    --compress-card-border: var(--tokyo-fg-gutter, #3b4261);
+    --compress-card-active-bg: #2d2b55;
+    --compress-card-active-border: var(--tokyo-purple, #9d7cd8);
+    --compress-input-bg: var(--tokyo-bg, #1a1b26);
+    --compress-input-border: var(--tokyo-fg-gutter, #3b4261);
+}
+
+/* ── Cyber ─────────────────────────────────────── */
+html.cyber .compress-dialog {
+    --compress-bg: var(--cyber-bg, #0a0e17);
+    --compress-bg-deep: var(--cyber-bg-dark, #060a12);
+    --compress-bg-hover: var(--cyber-bg-highlight, #111b27);
+    --compress-border: var(--cyber-border, #1e3a4a);
+    --compress-text: var(--cyber-fg, #e0ffe0);
+    --compress-text-secondary: var(--cyber-fg-secondary, #94a3b8);
+    --compress-text-muted: var(--cyber-fg-muted, #475569);
+    --compress-accent: var(--cyber-cyan, #00d4ff);
+    --compress-accent-hover: var(--cyber-green, #00ff9f);
+    --compress-card-bg: var(--cyber-bg-dark, #060a12);
+    --compress-card-border: var(--cyber-border, #1e3a4a);
+    --compress-card-active-bg: #0a1e2e;
+    --compress-card-active-border: var(--cyber-cyan, #00d4ff);
+    --compress-input-bg: var(--cyber-bg-dark, #060a12);
+    --compress-input-border: var(--cyber-border, #1e3a4a);
+}
+
+/* ── Format card styles ────────────────────────── */
+.compress-format-card {
+    background: var(--compress-card-bg);
+    border: 1px solid var(--compress-card-border);
+    color: var(--compress-text);
+    transition: all 0.15s ease;
+}
+
+.compress-format-card:hover {
+    border-color: var(--compress-accent);
+    background: var(--compress-bg-hover);
+}
+
+.compress-format-card.active {
+    background: var(--compress-card-active-bg);
+    border-color: var(--compress-card-active-border);
+    box-shadow: 0 0 0 1px var(--compress-card-active-border);
+}
+
+/* ── Indeterminate progress bar ────────────────── */
+.compress-progress-bar {
+    height: 3px;
+    background: var(--compress-border);
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.compress-progress-bar .bar {
+    height: 100%;
+    width: 40%;
+    background: var(--compress-accent);
+    border-radius: 2px;
+    animation: compress-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes compress-slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .compress-progress-bar .bar {
+        animation: none;
+        width: 100%;
+        opacity: 0.5;
+    }
+}

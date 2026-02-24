@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.4" date="2026-02-24">
+      <description>
+        <p>Custom Server Icons and Favicon Detection: Custom icon picker for servers without dedicated provider logos — choose any image file, resized to 128x128 PNG. Automatic favicon detection for FTP/FTPS/SFTP servers using SIZE pre-check to avoid data channel corruption. Icon priority: custom icon, auto-detected favicon, provider logo, initial letter. Vault storage race condition fix ensuring icons persist across reconnections. Monaco source map dev warning silenced.</p>
+      </description>
+    </release>
     <release version="2.6.3" date="2026-02-23">
       <description>
         <p>AeroCloud Tab Switch and Menu Restoration: Critical fix for AeroCloud tab switching — switching from provider tabs (kDrive, Drime, etc.) back to AeroCloud now correctly disconnects the active provider before reconnecting. Session protocol routing expanded from hardcoded list to isNonFtpProvider() covering all 17 non-FTP protocols. Restored missing "Check for Updates" menu item in Help menu lost during VS Code-style titlebar migration.</p>

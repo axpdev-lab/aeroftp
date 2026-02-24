@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
+import { readFile } from '@tauri-apps/plugin-fs';
 import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
@@ -899,6 +900,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime;
                                     const needsPassword = !isOAuth;
                                     const isNewServer = !servers.some(s => s.id === editingServer.id);
+                                    const logoKey = editingServer.providerId || protocol;
+                                    const hasProviderLogo = !!PROVIDER_LOGOS[logoKey];
 
                                     // Protocol options for new server
                                     const protocolOptions = [
@@ -988,6 +991,78 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                         />
                                                     </div>
+
+                                                    {/* Custom Icon picker — only for servers without a dedicated provider logo */}
+                                                    {!hasProviderLogo && (
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${editingServer.customIconUrl || editingServer.faviconUrl ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || PROTOCOL_COLORS.ftp} text-white`}`}>
+                                                                    {editingServer.customIconUrl ? (
+                                                                        <img src={editingServer.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" />
+                                                                    ) : editingServer.faviconUrl ? (
+                                                                        <img src={editingServer.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" />
+                                                                    ) : (
+                                                                        <span className="font-bold text-sm">{(editingServer.name || editingServer.host || '?').charAt(0).toUpperCase()}</span>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            const selected = await open({
+                                                                                multiple: false,
+                                                                                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'] }],
+                                                                            });
+                                                                            if (!selected) return;
+                                                                            const filePath = Array.isArray(selected) ? selected[0] : selected;
+                                                                            const bytes = await readFile(filePath);
+                                                                            const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+                                                                            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
+                                                                            const mime = mimeMap[ext] || 'image/png';
+                                                                            // Resize to 128x128 via canvas
+                                                                            const blob = new Blob([bytes], { type: mime });
+                                                                            const url = URL.createObjectURL(blob);
+                                                                            const img = new window.Image();
+                                                                            const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
+                                                                            img.onload = () => {
+                                                                                clearTimeout(timeout);
+                                                                                const canvas = document.createElement('canvas');
+                                                                                const size = 128;
+                                                                                canvas.width = size;
+                                                                                canvas.height = size;
+                                                                                const ctx = canvas.getContext('2d');
+                                                                                if (!ctx) { URL.revokeObjectURL(url); return; }
+                                                                                const scale = Math.min(size / img.width, size / img.height);
+                                                                                const w = img.width * scale;
+                                                                                const h = img.height * scale;
+                                                                                ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                                                                                const dataUrl = canvas.toDataURL('image/png');
+                                                                                URL.revokeObjectURL(url);
+                                                                                setEditingServer(prev => prev ? { ...prev, customIconUrl: dataUrl } : prev);
+                                                                            };
+                                                                            img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); };
+                                                                            img.src = url;
+                                                                        } catch { /* user cancelled or read error */ }
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
+                                                                >
+                                                                    <Image size={12} />
+                                                                    {t('settings.chooseIcon')}
+                                                                </button>
+                                                                {editingServer.customIconUrl && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setEditingServer(prev => prev ? { ...prev, customIconUrl: undefined } : prev)}
+                                                                        className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                                                                        title={t('settings.removeIcon')}
+                                                                    >
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {/* OAuth providers - read-only info */}
                                                     {isOAuth && (

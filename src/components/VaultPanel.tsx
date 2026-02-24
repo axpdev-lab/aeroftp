@@ -10,12 +10,22 @@ import { ArchiveEntry, AeroVaultMeta } from '../types';
 import { useTranslation } from '../i18n';
 import { formatDate, formatSize } from '../utils/formatters';
 
+interface IconResult {
+    icon: React.ReactNode;
+}
+
+interface IconProvider {
+    getFileIcon: (name: string, size?: number) => IconResult;
+    getFolderIcon: (size?: number) => IconResult;
+}
+
 interface VaultPanelProps {
     onClose: () => void;
     isConnected?: boolean;
     initialPath?: string;
     initialFiles?: string[];
     initialMode?: VaultMode;
+    iconProvider?: IconProvider;
 }
 
 type VaultMode = 'home' | 'create' | 'open' | 'browse';
@@ -78,7 +88,7 @@ const securityLevels = {
     }
 };
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, iconProvider }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<VaultMode>(initialMode || (initialPath ? 'open' : initialFiles?.length ? 'create' : 'home'));
     const [vaultPath, setVaultPath] = useState(initialPath || '');
@@ -154,6 +164,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
             return { version: 1, cascadeMode: false, level: 'standard' };
         }
     };
+
+    // Auto-detect vault version when opened via context menu (initialPath)
+    useEffect(() => {
+        if (initialPath && !vaultSecurity) {
+            detectVaultVersion(initialPath).then(setVaultSecurity).catch(() => {});
+        }
+    }, [initialPath]);
 
     const handleCreate = async () => {
         if (password.length < 8) { setError(t('vault.passwordTooShort')); return; }
@@ -556,7 +573,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="AeroVault" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-lg max-h-[85vh] flex flex-col animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-3xl max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
@@ -965,41 +982,51 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                     <p className="text-sm">{currentDir ? t('vault.dirEmpty') : t('vault.empty')}</p>
                                 </div>
                             ) : (
-                                <table className="w-full">
-                                    <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+                                <table className="w-full table-fixed">
+                                    <thead className="text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
                                         <tr>
-                                            <th className="py-2 px-3 text-left">{t('vault.fileName')}</th>
-                                            <th className="py-2 px-3 text-right w-24">{t('vault.fileSize')}</th>
-                                            <th className="py-2 px-3 text-right w-28">{t('vault.fileActions')}</th>
+                                            <th className="py-2 px-4 text-left font-medium">{t('vault.fileName')}</th>
+                                            <th className="py-2 px-3 text-right font-medium w-28">{t('vault.fileSize')}</th>
+                                            <th className="py-2 px-3 text-right font-medium w-20 hidden sm:table-cell">{t('browser.folderType') || 'Type'}</th>
+                                            <th className="py-2 px-3 text-right font-medium w-32">{t('vault.fileActions')}</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
-                                        {sortedEntries.map(entry => (
-                                            <tr key={entry.name} className="hover:bg-gray-100/50 dark:hover:bg-gray-700/30 text-sm">
-                                                <td className="py-1.5 px-3">
-                                                    <div
-                                                        className={`flex items-center gap-2 ${entry.isDir ? 'cursor-pointer' : ''}`}
-                                                        onDoubleClick={() => { if (entry.isDir) setCurrentDir(entry.name); }}
-                                                    >
-                                                        {entry.isDir ? <Folder size={14} className="text-yellow-400 shrink-0" /> : <File size={14} className="text-gray-500 dark:text-gray-400 shrink-0" />}
-                                                        <span className="truncate">{displayName(entry.name)}</span>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                                        {sortedEntries.map(entry => {
+                                            const fname = displayName(entry.name);
+                                            const ext = !entry.isDir && fname.includes('.') ? fname.split('.').pop()?.toUpperCase() : '—';
+                                            const fileIcon = iconProvider
+                                                ? (entry.isDir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(fname, 16).icon)
+                                                : (entry.isDir ? <Folder size={16} className="text-yellow-400 shrink-0" /> : <File size={16} className="text-gray-500 dark:text-gray-400 shrink-0" />);
+                                            return (
+                                            <tr
+                                                key={entry.name}
+                                                className="cursor-pointer transition-colors hover:bg-blue-50 dark:hover:bg-gray-700 text-sm group"
+                                                onDoubleClick={() => { if (entry.isDir) setCurrentDir(entry.name); }}
+                                            >
+                                                <td className="px-4 py-2">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="shrink-0 flex items-center">{fileIcon}</span>
+                                                        <span className="truncate">{fname}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">{entry.isDir ? '' : formatSize(entry.size)}</td>
-                                                <td className="py-1.5 px-3 text-right">
-                                                    <div className="flex gap-1 justify-end">
+                                                <td className="px-3 py-2 text-right text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{entry.isDir ? '—' : formatSize(entry.size)}</td>
+                                                <td className="px-3 py-2 text-right text-xs text-gray-500 dark:text-gray-400 uppercase hidden sm:table-cell">{entry.isDir ? t('browser.folderType') || 'Folder' : ext}</td>
+                                                <td className="px-3 py-2 text-right">
+                                                    <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {!entry.isDir && (
-                                                            <button onClick={() => handleExtract(entry.name)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title={t('vault.extract')}>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleExtract(entry.name); }} className="p-1.5 hover:bg-blue-100 dark:hover:bg-gray-600 rounded-md transition-colors" title={t('vault.extract')}>
                                                                 <Download size={14} />
                                                             </button>
                                                         )}
-                                                        <button onClick={() => handleRemove(entry.name, entry.isDir)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-red-400" title={t('vault.remove')}>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleRemove(entry.name, entry.isDir); }} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors text-red-400" title={t('vault.remove')}>
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             )}

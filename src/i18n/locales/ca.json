@@ -693,7 +693,10 @@
             "iconThemeOutlineDesc": "Icones de traç net amb tipus de fitxer codificats per color",
             "iconsTab": "Icones",
             "protocolFourshared": "4shared",
-            "protocolZohoworkdrive": "Zoho WorkDrive"
+            "protocolZohoworkdrive": "Zoho WorkDrive",
+            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
+            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
+            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2266,7 +2269,9 @@
             "store": "Emmagatzemar (sense compressió)",
             "fast": "Ràpid",
             "normal": "Normal",
-            "maximum": "Màxim"
+            "maximum": "Màxim",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
         },
         "batchRename": {
             "title": "Reanomenament massiu",
@@ -2589,7 +2594,8 @@
             "selectAll": "Seleccionar tot",
             "cut": "Retalla",
             "copy": "Copia",
-            "paste": "Enganxa"
+            "paste": "Enganxa",
+            "checkForUpdates": "Comprovar actualitzacions"
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",

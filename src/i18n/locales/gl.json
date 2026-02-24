@@ -693,7 +693,10 @@
             "iconThemeOutlineDesc": "Iconas de trazo limpo con tipos de ficheiro codificados por cor",
             "iconsTab": "Iconas",
             "protocolFourshared": "4shared",
-            "protocolZohoworkdrive": "Zoho WorkDrive"
+            "protocolZohoworkdrive": "Zoho WorkDrive",
+            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
+            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
+            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2266,7 +2269,9 @@
             "store": "Almacenar (sen compresión)",
             "fast": "Rápido",
             "normal": "Normal",
-            "maximum": "Máximo"
+            "maximum": "Máximo",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
         },
         "batchRename": {
             "title": "Renomear por lotes",
@@ -2589,7 +2594,8 @@
             "selectAll": "Seleccionar todo",
             "cut": "Cortar",
             "copy": "Copiar",
-            "paste": "Pegar"
+            "paste": "Pegar",
+            "checkForUpdates": "Buscar actualizacións"
         },
         "activityPanel": {
             "awaitingCommands": "Agardando comandos...",

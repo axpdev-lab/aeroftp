@@ -177,6 +177,8 @@ export interface ServerProfile {
   lastConnected?: string;
   options?: ProviderOptions;  // Provider-specific options (S3 bucket, etc.)
   providerId?: string;        // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
+  faviconUrl?: string;        // Base64 data URL of detected project favicon
+  customIconUrl?: string;     // User-chosen custom icon (base64 data URL, highest priority)
 }
 
 // Session status for multi-tab management
@@ -195,6 +197,8 @@ export interface FtpSession {
   lastActivity: Date;
   connectionParams: ConnectionParams;
   providerId?: string;        // Registry provider ID for logo display
+  faviconUrl?: string;        // Inherited from ServerProfile on connection
+  customIconUrl?: string;     // Inherited from ServerProfile on connection
   // Per-session navigation sync state
   isSyncNavigation?: boolean;
   syncBasePaths?: { remote: string; local: string } | null;

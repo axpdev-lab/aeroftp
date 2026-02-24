@@ -6,7 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
-  LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession,
+  LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
   ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink
 } from './types';
 
@@ -112,6 +112,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTransferEvents } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
+import { useFaviconDetection } from './hooks/useFaviconDetection';
 
 // ============================================================================
 // Main App Component
@@ -1743,6 +1744,19 @@ const App: React.FC = () => {
 
   // FTP operations
   const connectToFtp = async () => {
+    // Parse host:port from server field if user entered it inline
+    if (connectionParams.server && connectionParams.server.includes(':')) {
+      const lastColon = connectionParams.server.lastIndexOf(':');
+      const possiblePort = connectionParams.server.substring(lastColon + 1);
+      const parsedPort = parseInt(possiblePort, 10);
+      if (parsedPort > 0 && parsedPort <= 65535 && String(parsedPort) === possiblePort) {
+        const cleanHost = connectionParams.server.substring(0, lastColon);
+        setConnectionParams(prev => ({ ...prev, server: cleanHost, port: parsedPort }));
+        connectionParams.server = cleanHost;
+        connectionParams.port = parsedPort;
+      }
+    }
+
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = connectionParams.protocol;
     logger.debug('[connectToFtp] connectionParams:', connectionParams);
@@ -2016,9 +2030,21 @@ const App: React.FC = () => {
   // Session Management for Multi-Tab
   // Accept optional file lists to avoid stale closure captures — callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
-  const createSession = (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
+  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
+
+    // Look up cached icons from saved server profile (vault-first, localStorage may be empty)
+    let cachedFavicon: string | undefined;
+    let cachedCustomIcon: string | undefined;
+    try {
+      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      if (servers) {
+        const match = servers.find(s => s.id === serverName || s.name === serverName || s.host === serverName);
+        if (match?.faviconUrl) cachedFavicon = match.faviconUrl;
+        if (match?.customIconUrl) cachedCustomIcon = match.customIconUrl;
+      }
+    } catch { /* ignore */ }
 
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
@@ -2032,6 +2058,8 @@ const App: React.FC = () => {
       lastActivity: new Date(),
       connectionParams: paramsCopy,
       providerId: paramsCopy.providerId,
+      faviconUrl: cachedFavicon,
+      customIconUrl: cachedCustomIcon,
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
@@ -2042,6 +2070,29 @@ const App: React.FC = () => {
     setSessions(prev => [...prev, newSession]);
     setActiveSessionId(newSession.id);
   };
+
+  // Favicon detection: auto-detect project favicon from FTP/SFTP web projects
+  const handleFaviconDetected = React.useCallback(async (serverId: string, faviconUrl: string) => {
+    // Update active session immediately (tab icon shows right away)
+    setSessions(prev => prev.map(s =>
+      s.serverId === serverId ? { ...s, faviconUrl } : s
+    ));
+    // Update saved servers in vault (localStorage may be empty after vault migration)
+    try {
+      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      if (servers) {
+        const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
+        if (idx !== -1) {
+          servers[idx].faviconUrl = faviconUrl;
+          try { await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', servers); } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+    // Refresh SavedServers UI (vault is now up-to-date)
+    setServersRefreshKey(k => k + 1);
+  }, []);
+
+  useFaviconDetection(sessions, activeSessionId, handleFaviconDetected);
 
   const switchSession = async (sessionId: string) => {
     // Find the target session from current sessions state
@@ -4254,10 +4305,20 @@ const App: React.FC = () => {
       label: t('contextMenu.askAeroAgent'),
       icon: <Bot size={14} />,
       action: () => {
-        window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
-        window.dispatchEvent(new CustomEvent('aeroagent-ask', {
-          detail: { code: '', fileName: file.name, filePath: file.path, context: 'file' }
-        }));
+        if (!devToolsOpen) {
+          setDevToolsOpen(true);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+            window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+              detail: { code: '', fileName: file.name, filePath: file.path, context: 'file' }
+            }));
+          }, 50);
+        } else {
+          window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+          window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+            detail: { code: '', fileName: file.name, filePath: file.path, context: 'file' }
+          }));
+        }
       },
       divider: true,
     });
@@ -4279,6 +4340,9 @@ const App: React.FC = () => {
     const uploadLabel = count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload');
     const filesToUpload = Array.from(selection);
 
+    // Detect .aerovault early for context menu ordering
+    const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
+
     const items: ContextMenuItem[] = [
       {
         label: uploadLabel,
@@ -4286,6 +4350,67 @@ const App: React.FC = () => {
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
+      // .aerovault — Open with AeroVault (right after Upload)
+      ...(isAeroVaultFile ? [{
+        label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
+        icon: <Shield size={14} className="text-emerald-500" />,
+        action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
+      }] : []),
+      // .aerovault — Extract Here / Extract to Folder
+      ...(isAeroVaultFile ? [{
+        label: t('contextMenu.extractSubmenu'),
+        icon: <FolderOpen size={14} />,
+        action: () => {},
+        children: [
+          {
+            label: t('contextMenu.extractHere'),
+            icon: <FolderOpen size={14} />,
+            action: () => {
+              setInputDialog({
+                title: t('contextMenu.passwordRequired'),
+                defaultValue: '',
+                isPassword: true,
+                onConfirm: async (password: string) => {
+                  setInputDialog(null);
+                  if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
+                  try {
+                    notify.info(t('contextMenu.extracting'), file.name);
+                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath });
+                    notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: currentLocalPath }));
+                    await loadLocalFiles(currentLocalPath);
+                  } catch (err) {
+                    notify.error(t('contextMenu.extractionFailed'), String(err));
+                  }
+                }
+              });
+            },
+          },
+          {
+            label: t('contextMenu.extractToFolder'),
+            icon: <FolderOpen size={14} />,
+            action: () => {
+              const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerovault$/i, '')}`;
+              setInputDialog({
+                title: t('contextMenu.passwordRequired'),
+                defaultValue: '',
+                isPassword: true,
+                onConfirm: async (password: string) => {
+                  setInputDialog(null);
+                  if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
+                  try {
+                    notify.info(t('contextMenu.extracting'), file.name);
+                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder });
+                    notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: subFolder }));
+                    await loadLocalFiles(currentLocalPath);
+                  } catch (err) {
+                    notify.error(t('contextMenu.extractionFailed'), String(err));
+                  }
+                }
+              });
+            },
+          },
+        ],
+      }] : []),
       // Media files (images, audio, video, pdf) use Universal Preview modal
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
@@ -4526,20 +4651,8 @@ const App: React.FC = () => {
     }
 
     // ─── Encrypted container detection ───────────────────────────────
-    const isAeroVault = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
     const isCryptomatorMarker = count === 1 && !file.is_dir &&
       /^(vault\.cryptomator|masterkey\.cryptomator)$/i.test(file.name);
-
-    // .aerovault file → Open with AeroVault
-    if (isAeroVault) {
-      items.push({
-        label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
-        icon: <Shield size={14} className="text-emerald-500" />,
-        action: () => {
-          setShowVaultPanel({ mode: 'open', path: file.path });
-        },
-      });
-    }
 
     // vault.cryptomator / masterkey.cryptomator → Open as Cryptomator Vault
     if (isCryptomatorMarker) {
@@ -4551,7 +4664,7 @@ const App: React.FC = () => {
     }
 
     // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
-    if (!isAeroVault && !isCryptomatorMarker) {
+    if (!isAeroVaultFile && !isCryptomatorMarker) {
       items.push({
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <Shield size={14} className="text-emerald-500" />,
@@ -4638,10 +4751,20 @@ const App: React.FC = () => {
       icon: <Bot size={14} />,
       action: () => {
         const fullPath = currentLocalPath.endsWith('/') ? currentLocalPath + file.name : currentLocalPath + '/' + file.name;
-        window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
-        window.dispatchEvent(new CustomEvent('aeroagent-ask', {
-          detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
-        }));
+        if (!devToolsOpen) {
+          setDevToolsOpen(true);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+            window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+              detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
+            }));
+          }, 50);
+        } else {
+          window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
+          window.dispatchEvent(new CustomEvent('aeroagent-ask', {
+            detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
+          }));
+        }
       },
       divider: true,
     });
@@ -4854,6 +4977,7 @@ const App: React.FC = () => {
         onToggleTerminal={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'terminal' }))}
         onToggleAgent={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }))}
         onQuit={async () => { try { const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().close(); } catch { /* noop */ } }}
+        onCheckForUpdates={() => checkForUpdate(true)}
         hasActivity={hasActivity || hasQueueActivity}
       />
 
@@ -5220,7 +5344,7 @@ const App: React.FC = () => {
         isOpen={showCloudPanel}
         onClose={() => setShowCloudPanel(false)}
       />
-      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} />}
+      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} iconProvider={iconProvider} />}
       {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
       {archiveBrowserState && (
         <ArchiveBrowser
@@ -6011,6 +6135,59 @@ const App: React.FC = () => {
                         ))}
                       </tbody>
                     </table>
+                  ) : viewMode === 'large' ? (
+                    /* Large Icons View */
+                    <LargeIconsGrid
+                      files={sortedRemoteFiles as any}
+                      selectedFiles={selectedRemoteFiles}
+                      currentPath={currentRemotePath}
+                      onFileClick={(file, e) => {
+                        setActivePanel('remote');
+                        const idx = sortedRemoteFiles.findIndex(f => f.name === file.name);
+                        if (e.shiftKey && lastSelectedRemoteIndex !== null) {
+                          const start = Math.min(lastSelectedRemoteIndex, idx);
+                          const end = Math.max(lastSelectedRemoteIndex, idx);
+                          const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
+                          setSelectedRemoteFiles(new Set(rangeNames));
+                        } else if (e.ctrlKey || e.metaKey) {
+                          setSelectedRemoteFiles(prev => {
+                            const next = new Set(prev);
+                            if (next.has(file.name)) next.delete(file.name);
+                            else next.add(file.name);
+                            return next;
+                          });
+                          setLastSelectedRemoteIndex(idx);
+                        } else {
+                          if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
+                            setSelectedRemoteFiles(new Set());
+                          } else {
+                            setSelectedRemoteFiles(new Set([file.name]));
+                          }
+                          setLastSelectedRemoteIndex(idx);
+                        }
+                      }}
+                      onFileDoubleClick={(file) => handleRemoteFileAction(file as any)}
+                      onNavigateUp={() => changeRemoteDirectory('..')}
+                      isAtRoot={currentRemotePath === '/'}
+                      getFileIcon={(name, isDir) => {
+                        if (isDir) return iconProvider.getFolderIcon(64);
+                        return iconProvider.getFileIcon(name, 48);
+                      }}
+                      getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
+                      onContextMenu={(e, file) => file ? showRemoteContextMenu(e, file as any) : undefined}
+                      onDragStart={(e, file) => handleDragStart(e, file as any, true, selectedRemoteFiles, sortedRemoteFiles)}
+                      onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, true)}
+                      onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, true)}
+                      onDragLeave={handleDragLeave}
+                      onDragEnd={handleDragEnd}
+                      dragOverTarget={dropTargetPath}
+                      inlineRename={inlineRename}
+                      onInlineRenameChange={setInlineRenameValue}
+                      onInlineRenameCommit={commitInlineRename}
+                      onInlineRenameCancel={() => setInlineRename(null)}
+                      formatBytes={formatBytes}
+                      showFileExtensions={true}
+                    />
                   ) : (
                     /* Grid View */
                     <div className="file-grid">

@@ -833,7 +833,10 @@
       "iconThemeMinimalDesc": "Icone monocromatiche che si adattano al tema attivo",
       "iconThemeOutline": "Contorno",
       "iconThemeOutlineDesc": "Icone a tratto con colori per tipo file",
-      "iconsTab": "Icone"
+      "iconsTab": "Icone",
+      "chooseIcon": "Scegli icona",
+      "removeIcon": "Rimuovi icona",
+      "serverIcon": "Icona server"
     },
     "appearance": {
       "patternCross": "Croce",
@@ -1077,8 +1080,8 @@
       "batchRenameSuccess": "Rinomina multipla completata",
       "batchRenamePartial": "Rinomina multipla completata con errori",
       "loadTrashFailed": "Caricamento cestino fallito",
-      "movedToTrash": "{count} elemento/i spostato/i nel cestino",
-      "moveToTrashFailed": "Spostamento nel cestino fallito",
+      "movedToTrash": "Spostato nel Cestino",
+      "moveToTrashFailed": "Impossibile spostare nel Cestino",
       "restoreFailed": "Ripristino fallito",
       "emptyTrashFailed": "Svuotamento cestino fallito",
       "sizeFailed": "Calcolo dimensione fallito",
@@ -2407,13 +2410,15 @@
     "compress": {
       "title": "Comprimi File",
       "archiveName": "Nome Archivio",
+      "compress": "Comprimi",
+      "compressing": "Compressione in corso...",
+      "estimatedSize": "Dimensione stimata",
       "format": "Formato",
       "level": "Livello Compressione",
       "password": "Password (opzionale, AES-256)",
       "passwordHint": "Lascia vuoto per nessuna crittografia",
       "files": "file",
       "folders": "cartelle",
-      "compress": "Comprimi",
       "store": "Archivia (senza compressione)",
       "fast": "Veloce",
       "normal": "Normale",
@@ -2666,7 +2671,8 @@
       "selectAll": "Seleziona tutto",
       "cut": "Taglia",
       "copy": "Copia",
-      "paste": "Incolla"
+      "paste": "Incolla",
+      "checkForUpdates": "Controlla aggiornamenti"
     },
     "activityPanel": {
       "title": "Registro attività",

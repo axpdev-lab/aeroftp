@@ -4,6 +4,7 @@
 //! the StorageProvider abstraction, enabling support for FTP, WebDAV, S3, etc.
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
@@ -13,6 +14,10 @@ use crate::providers::{
     ProviderConfig, RemoteEntry, StorageInfo,
     FileVersion, LockInfo, SharePermission,
 };
+
+/// Global flag: when true, filesystem watcher should suppress sync triggers.
+/// Set during folder download/upload to prevent AeroCloud interference.
+pub static TRANSFER_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 /// State for managing the active storage provider
 pub struct ProviderState {
@@ -468,6 +473,30 @@ pub async fn provider_download_folder(
     #[allow(unused_variables)]
     file_exists_action: Option<String>,
 ) -> Result<String, String> {
+    // Set transfer-in-progress flag to suppress filesystem watcher/AeroCloud
+    TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
+    let result = provider_download_folder_inner(&app, &state, &remote_path, &local_path, file_exists_action).await;
+    TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
+    result
+}
+
+/// Collected file entry for 2-phase download
+struct DownloadEntry {
+    remote_path: String,
+    local_path: String,
+    name: String,
+    size: u64,
+    modified: Option<String>,
+}
+
+/// Inner implementation: 2-phase approach with per-file lock release and retry
+async fn provider_download_folder_inner(
+    app: &AppHandle,
+    state: &State<'_, ProviderState>,
+    remote_path: &str,
+    local_path: &str,
+    file_exists_action: Option<String>,
+) -> Result<String, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
 
     // Reset cancel flag
@@ -476,12 +505,7 @@ pub async fn provider_download_folder(
         *cancel = false;
     }
 
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock.as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    let folder_name = std::path::Path::new(&remote_path)
+    let folder_name = std::path::Path::new(remote_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "folder".to_string());
@@ -498,142 +522,191 @@ pub async fn provider_download_folder(
         direction: "download".to_string(),
         message: Some(format!("Starting folder download: {}", folder_name)),
         progress: None,
-        path: Some(remote_path.clone()),
+        path: Some(remote_path.to_string()),
     });
 
     // Create local folder
-    tokio::fs::create_dir_all(&local_path).await
+    tokio::fs::create_dir_all(local_path).await
         .map_err(|e| format!("Failed to create local folder: {}", e))?;
 
-    // Use a stack-based approach to download recursively
-    let mut folders_to_scan: Vec<(String, String)> = vec![(remote_path.clone(), local_path.clone())];
+    // ── Phase 1: Scan all folders/files (single lock acquisition) ──
+    let mut all_files: Vec<DownloadEntry> = Vec::new();
+    {
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock.as_mut()
+            .ok_or("Not connected to any provider")?;
+
+        let mut folders_to_scan: Vec<(String, String)> = vec![(remote_path.to_string(), local_path.to_string())];
+
+        while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
+            provider.cd(&remote_folder).await
+                .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
+
+            let files = provider.list(".").await
+                .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
+
+            for file in files {
+                let remote_file_path = if remote_folder.ends_with('/') {
+                    format!("{}{}", remote_folder, file.name)
+                } else {
+                    format!("{}/{}", remote_folder, file.name)
+                };
+                let local_file_path = format!("{}/{}", local_folder, file.name);
+
+                if file.is_dir {
+                    tokio::fs::create_dir_all(&local_file_path).await
+                        .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
+                    folders_to_scan.push((remote_file_path, local_file_path));
+                } else {
+                    all_files.push(DownloadEntry {
+                        remote_path: remote_file_path,
+                        local_path: local_file_path,
+                        name: file.name.clone(),
+                        size: file.size,
+                        modified: file.modified.clone(),
+                    });
+                }
+            }
+        }
+    } // ← provider lock released here
+
+    let total_files = all_files.len() as u32;
+    info!("Phase 1 complete: {} files to download in {}", total_files, folder_name);
+
+    // ── Phase 2: Download each file with per-file lock acquire/release ──
     let mut files_downloaded = 0u32;
     let mut files_skipped = 0u32;
     let mut files_errored = 0u32;
-    let mut file_index = 0u32;
+    let max_retries: u32 = 3;
+    let base_delay_ms: u64 = 500;
 
-    while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
-        // Change to the remote folder first
-        provider.cd(&remote_folder).await
-            .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
-
-        // List files in the current folder
-        let files = provider.list(".").await
-            .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
-
-        for file in files {
-            // Check cancel flag before each file
-            {
-                let cancel = state.cancel_flag.lock().await;
-                if *cancel {
-                    info!("Provider folder download cancelled by user after {} files", files_downloaded);
-                    let _ = app.emit("transfer_event", crate::TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Download cancelled after {} files", files_downloaded)),
-                        progress: None,
-                        path: None,
-                    });
-                    return Ok(format!("Download cancelled after {} files", files_downloaded));
-                }
+    for (file_index, entry) in all_files.iter().enumerate() {
+        // Check cancel flag before each file
+        {
+            let cancel = state.cancel_flag.lock().await;
+            if *cancel {
+                info!("Provider folder download cancelled by user after {} files", files_downloaded);
+                let _ = app.emit("transfer_event", crate::TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download cancelled after {} files", files_downloaded)),
+                    progress: None,
+                    path: None,
+                });
+                return Ok(format!("Download cancelled after {} files", files_downloaded));
             }
+        }
 
-            let remote_file_path = if remote_folder.ends_with('/') {
-                format!("{}{}", remote_folder, file.name)
-            } else {
-                format!("{}/{}", remote_folder, file.name)
-            };
-            let local_file_path = format!("{}/{}", local_folder, file.name);
-
-            if file.is_dir {
-                // Create local subfolder and add to scan queue
-                tokio::fs::create_dir_all(&local_file_path).await
-                    .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
-                folders_to_scan.push((remote_file_path, local_file_path));
-            } else {
-                // Check if local file exists and should be skipped
-                if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-                    let local_p = std::path::Path::new(&local_file_path);
-                    if let Ok(local_meta) = std::fs::metadata(local_p) {
-                        if local_meta.is_file() {
-                            let remote_modified = file.modified.as_ref().and_then(|s| {
-                                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
-                                    .ok()
-                                    .map(|ndt| ndt.and_utc())
-                            });
-                            if crate::should_skip_file_download(&file_exists_action, remote_modified, file.size, &local_meta) {
-                                files_skipped += 1;
-                                let _ = app.emit("transfer_event", crate::TransferEvent {
-                                    event_type: "file_skip".to_string(),
-                                    transfer_id: format!("{}-{}", transfer_id, file_index),
-                                    filename: file.name.clone(),
-                                    direction: "download".to_string(),
-                                    message: Some(format!("Skipped (identical): {}", file.name)),
-                                    progress: None,
-                                    path: Some(remote_file_path.clone()),
-                                });
-                                file_index += 1;
-                                continue;
-                            }
-                        }
+        // Check if local file exists and should be skipped
+        if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+            let local_p = std::path::Path::new(&entry.local_path);
+            if let Ok(local_meta) = std::fs::metadata(local_p) {
+                if local_meta.is_file() {
+                    let remote_modified = entry.modified.as_ref().and_then(|s| {
+                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                            .ok()
+                            .map(|ndt| ndt.and_utc())
+                    });
+                    if crate::should_skip_file_download(&file_exists_action, remote_modified, entry.size, &local_meta) {
+                        files_skipped += 1;
+                        let _ = app.emit("transfer_event", crate::TransferEvent {
+                            event_type: "file_skip".to_string(),
+                            transfer_id: format!("{}-{}", transfer_id, file_index),
+                            filename: entry.name.clone(),
+                            direction: "download".to_string(),
+                            message: Some(format!("Skipped (identical): {}", entry.name)),
+                            progress: None,
+                            path: Some(entry.remote_path.clone()),
+                        });
+                        continue;
                     }
                 }
-
-                let file_transfer_id = format!("{}-{}", transfer_id, file_index);
-
-                // Emit file_start event
-                let _ = app.emit("transfer_event", crate::TransferEvent {
-                    event_type: "file_start".to_string(),
-                    transfer_id: file_transfer_id.clone(),
-                    filename: file.name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Downloading: {}", remote_file_path)),
-                    progress: Some(crate::TransferProgress {
-                        transfer_id: file_transfer_id.clone(),
-                        filename: file.name.clone(),
-                        transferred: 0,
-                        total: file.size,
-                        percentage: 0,
-                        speed_bps: 0,
-                        eta_seconds: 0,
-                        direction: "download".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
-                    path: Some(remote_file_path.clone()),
-                });
-
-                // Download file
-                if let Err(e) = provider.download(&remote_file_path, &local_file_path, None).await {
-                    warn!("Failed to download {}: {}", remote_file_path, e);
-                    files_errored += 1;
-                    let _ = app.emit("transfer_event", crate::TransferEvent {
-                        event_type: "file_error".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: file.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Failed: {}", e)),
-                        progress: None,
-                        path: Some(remote_file_path.clone()),
-                    });
-                } else {
-                    files_downloaded += 1;
-                    let _ = app.emit("transfer_event", crate::TransferEvent {
-                        event_type: "file_complete".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: file.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Downloaded: {} ({}/{})", file.name, files_downloaded, files_downloaded + files_skipped)),
-                        progress: None,
-                        path: Some(remote_file_path.clone()),
-                    });
-                }
-
-                file_index += 1;
             }
+        }
+
+        let file_transfer_id = format!("{}-{}", transfer_id, file_index);
+
+        // Emit file_start event
+        let _ = app.emit("transfer_event", crate::TransferEvent {
+            event_type: "file_start".to_string(),
+            transfer_id: file_transfer_id.clone(),
+            filename: entry.name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Downloading ({}/{}): {}", file_index + 1, total_files, entry.remote_path)),
+            progress: Some(crate::TransferProgress {
+                transfer_id: file_transfer_id.clone(),
+                filename: entry.name.clone(),
+                transferred: 0,
+                total: entry.size,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
+                direction: "download".to_string(),
+                total_files: Some(total_files as u64),
+                path: None,
+            }),
+            path: Some(entry.remote_path.clone()),
+        });
+
+        // Download with retry and per-file lock acquire/release
+        let mut downloaded = false;
+        let mut last_error = String::new();
+
+        for attempt in 0..=max_retries {
+            if attempt > 0 {
+                let delay = base_delay_ms * 2u64.pow(attempt - 1);
+                info!("Retry {}/{} for {} after {}ms", attempt, max_retries, entry.name, delay);
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+
+            // Acquire lock for this single file download
+            // Acquire lock for this single file download
+            let download_result: Result<(), String> = {
+                let mut provider_lock = state.provider.lock().await;
+                match provider_lock.as_mut() {
+                    Some(provider) => provider.download(&entry.remote_path, &entry.local_path, None).await
+                        .map_err(|e| e.to_string()),
+                    None => Err("Provider disconnected".to_string()),
+                }
+            }; // ← lock released immediately after each file
+
+            match download_result {
+                Ok(()) => {
+                    downloaded = true;
+                    break;
+                }
+                Err(e) => {
+                    last_error = e;
+                    warn!("Download attempt {} failed for {}: {}", attempt + 1, entry.remote_path, last_error);
+                }
+            }
+        }
+
+        if downloaded {
+            files_downloaded += 1;
+            let _ = app.emit("transfer_event", crate::TransferEvent {
+                event_type: "file_complete".to_string(),
+                transfer_id: file_transfer_id,
+                filename: entry.name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!("Downloaded: {} ({}/{})", entry.name, files_downloaded, total_files)),
+                progress: None,
+                path: Some(entry.remote_path.clone()),
+            });
+        } else {
+            files_errored += 1;
+            let _ = app.emit("transfer_event", crate::TransferEvent {
+                event_type: "file_error".to_string(),
+                transfer_id: file_transfer_id,
+                filename: entry.name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!("Failed after {} retries: {}", max_retries, last_error)),
+                progress: None,
+                path: Some(entry.remote_path.clone()),
+            });
         }
     }
 
@@ -648,7 +721,7 @@ pub async fn provider_download_folder(
         path: None,
     });
 
-    info!("Folder download completed: {} ({} files)", folder_name, files_downloaded);
+    info!("Folder download completed: {} ({} downloaded, {} skipped, {} errors)", folder_name, files_downloaded, files_skipped, files_errored);
     Ok(format!("Downloaded folder: {} ({} files)", folder_name, files_downloaded))
 }
 

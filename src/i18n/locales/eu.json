@@ -693,7 +693,10 @@
             "iconThemeOutlineDesc": "Trazu garbiko ikonoak kolore-kodedun fitxategi-motekin",
             "iconsTab": "Ikonoak",
             "protocolFourshared": "4shared",
-            "protocolZohoworkdrive": "Zoho WorkDrive"
+            "protocolZohoworkdrive": "Zoho WorkDrive",
+            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
+            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
+            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2266,7 +2269,9 @@
             "store": "Gorde (konpresiorik gabe)",
             "fast": "Azkarra",
             "normal": "Normala",
-            "maximum": "Maximoa"
+            "maximum": "Maximoa",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",
@@ -2589,7 +2594,8 @@
             "selectAll": "Denak hautatu",
             "cut": "Ebaki",
             "copy": "Kopiatu",
-            "paste": "Itsatsi"
+            "paste": "Itsatsi",
+            "checkForUpdates": "Eguneraketak bilatu"
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",

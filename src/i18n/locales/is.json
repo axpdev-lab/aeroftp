@@ -693,7 +693,10 @@
             "iconThemeOutlineDesc": "Hreinar utlinur med litakodudum skrategundum",
             "iconsTab": "Taknir",
             "protocolFourshared": "4shared",
-            "protocolZohoworkdrive": "Zoho WorkDrive"
+            "protocolZohoworkdrive": "Zoho WorkDrive",
+            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
+            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
+            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2266,7 +2269,9 @@
             "store": "Geyma (engin þjöppun)",
             "fast": "Hratt",
             "normal": "Venjulegt",
-            "maximum": "Hámark"
+            "maximum": "Hámark",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
         },
         "batchRename": {
             "title": "Hópendurnefning",
@@ -2589,7 +2594,8 @@
             "selectAll": "Velja allt",
             "cut": "Klippa",
             "copy": "Afrita",
-            "paste": "Líma"
+            "paste": "Líma",
+            "checkForUpdates": "Leita að uppfærslum"
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",

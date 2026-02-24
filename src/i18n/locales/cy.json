@@ -693,7 +693,10 @@
             "iconThemeOutlineDesc": "Eiconau strôc glân gyda mathau ffeil wedi'u codio â lliw",
             "iconsTab": "Eiconau",
             "protocolFourshared": "4shared",
-            "protocolZohoworkdrive": "Zoho WorkDrive"
+            "protocolZohoworkdrive": "Zoho WorkDrive",
+            "chooseIcon": "[NEEDS TRANSLATION] Choose Icon",
+            "removeIcon": "[NEEDS TRANSLATION] Remove Icon",
+            "serverIcon": "[NEEDS TRANSLATION] Server Icon"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2266,7 +2269,9 @@
             "store": "Storio (dim cywasgu)",
             "fast": "Cyflym",
             "normal": "Normal",
-            "maximum": "Uchafswm"
+            "maximum": "Uchafswm",
+            "compressing": "[NEEDS TRANSLATION] Compressing...",
+            "estimatedSize": "[NEEDS TRANSLATION] Estimated"
         },
         "batchRename": {
             "title": "Ailenwi Swp",
@@ -2589,7 +2594,8 @@
             "selectAll": "Dewis Popeth",
             "cut": "Torri",
             "copy": "Copïo",
-            "paste": "Gludo"
+            "paste": "Gludo",
+            "checkForUpdates": "Gwirio am Ddiweddariadau"
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",

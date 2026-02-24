@@ -29,6 +29,12 @@ function copyMonacoAssets(): Plugin {
           next();
         }
       });
+      // Return 204 for /min-maps/* requests — Monaco references source maps that don't exist
+      // in the npm package. Without this, Vite returns HTML (index fallback) causing JSON parse errors.
+      server.middlewares.use('/min-maps', (_req, res) => {
+        res.statusCode = 204;
+        res.end();
+      });
     },
     writeBundle() {
       const src = resolve(monacoPath, 'vs');

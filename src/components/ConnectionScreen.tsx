@@ -3,10 +3,11 @@
  * Initial connection form with Quick Connect and Saved Servers
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2 } from 'lucide-react';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -20,6 +21,23 @@ import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStora
 
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
+
+const PROTOCOL_COLORS: Record<string, string> = {
+    ftp: 'from-blue-500 to-cyan-400',
+    ftps: 'from-green-500 to-emerald-400',
+    sftp: 'from-purple-500 to-violet-400',
+    webdav: 'from-orange-500 to-amber-400',
+    s3: 'from-amber-500 to-yellow-400',
+    aerocloud: 'from-sky-400 to-blue-500',
+    googledrive: 'from-red-500 to-red-400',
+    dropbox: 'from-blue-600 to-blue-400',
+    onedrive: 'from-sky-500 to-sky-400',
+    mega: 'from-red-600 to-red-500',
+    box: 'from-blue-500 to-blue-600',
+    pcloud: 'from-green-500 to-teal-400',
+    azure: 'from-blue-600 to-indigo-500',
+    filen: 'from-emerald-500 to-green-400',
+};
 
 // AeroCloud config interface (matching Rust struct)
 interface AeroCloudConfig {
@@ -416,6 +434,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Save connection state
     const [saveConnection, setSaveConnection] = useState(false);
     const [connectionName, setConnectionName] = useState('');
+    const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
+    const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
 
     // AeroCloud state
     const [aeroCloudConfig, setAeroCloudConfig] = useState<AeroCloudConfig | null>(null);
@@ -423,6 +443,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Edit state
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+    const editingProfileIdRef = useRef<string | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
 
@@ -444,7 +465,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setSelectedProviderId(null);
             if (editingProfileId) {
                 setEditingProfileId(null);
+                editingProfileIdRef.current = null;
                 setConnectionName('');
+                setCustomIconForSave(undefined);
+                setFaviconForSave(undefined);
                 setSaveConnection(false);
             }
         }
@@ -530,6 +554,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
                         providerId: selectedProviderId || s.providerId,
+                        customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
                     };
                 }
                 return s;
@@ -554,6 +579,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 localInitialPath: quickConnectDirs.localDir,
                 options: optionsToSave,
                 providerId: selectedProviderId || undefined,
+                customIconUrl: customIconForSave,
             };
 
             const newServers = [...existingServers, newServer];
@@ -563,12 +589,91 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // Icon picker for saved connections (no provider logo)
+    const pickCustomIcon = async () => {
+        try {
+            const selected = await open({
+                multiple: false,
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'] }],
+            });
+            if (!selected) return;
+            const filePath = Array.isArray(selected) ? selected[0] : selected;
+            const bytes = await readFile(filePath);
+            const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
+            const mime = mimeMap[ext] || 'image/png';
+            const blob = new Blob([bytes], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const img = new window.Image();
+            const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
+            img.onload = () => {
+                clearTimeout(timeout);
+                const canvas = document.createElement('canvas');
+                const size = 128;
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { URL.revokeObjectURL(url); return; }
+                const scale = Math.min(size / img.width, size / img.height);
+                const w = img.width * scale, h = img.height * scale;
+                ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                setCustomIconForSave(canvas.toDataURL('image/png'));
+                URL.revokeObjectURL(url);
+            };
+            img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); };
+            img.src = url;
+        } catch { /* cancelled */ }
+    };
+
+    const hasProviderLogoForSave = !!PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+
+    const renderIconPicker = () => {
+        if (hasProviderLogoForSave) return null;
+        const proto = connectionParams.protocol || 'ftp';
+        const hasIcon = !!customIconForSave || !!faviconForSave;
+        const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
+        return (
+            <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
+                <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[proto] || PROTOCOL_COLORS.ftp} text-white`}`}>
+                        {customIconForSave ? (
+                            <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                        ) : faviconForSave ? (
+                            <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                        ) : (
+                            <span className="font-bold text-sm">{letter}</span>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={pickCustomIcon}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
+                    >
+                        <Image size={12} />
+                        {t('settings.chooseIcon')}
+                    </button>
+                    {customIconForSave && (
+                        <button
+                            type="button"
+                            onClick={() => setCustomIconForSave(undefined)}
+                            className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                            title={t('settings.removeIcon')}
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     // Handle the main action button
     const handleConnectAndSave = async () => {
         if (editingProfileId) {
             // Edit mode: save changes and reset form
             await saveToServers();
             setEditingProfileId(null);
+            editingProfileIdRef.current = null;
             setConnectionName('');
             setSaveConnection(false);
             onConnectionParamsChange({ server: '', username: '', password: '' });
@@ -593,7 +698,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Reset form FIRST to clear previous server's data immediately
         // This prevents stale data from showing when switching between servers
         setEditingProfileId(profile.id);
+        editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
+        setCustomIconForSave(profile.customIconUrl);
+        setFaviconForSave(profile.faviconUrl);
         setSaveConnection(true); // Implied for editing
         setSelectedProviderId(profile.providerId || null);
 
@@ -613,11 +721,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         });
 
         // Then load password from OS keyring asynchronously (if stored)
+        const targetProfileId = profile.id;
         if (!profile.password && profile.hasStoredCredential) {
             try {
-                const storedPassword = await invoke<string>('get_credential', { account: `server_${profile.id}` });
-                // Only update if we're still editing the same profile (prevents race condition)
-                if (storedPassword) {
+                const storedPassword = await invoke<string>('get_credential', { account: `server_${targetProfileId}` });
+                // Only update if we're still editing the same profile (prevents race condition
+                // where user switches to editing a different server before credential fetch completes)
+                if (storedPassword && editingProfileIdRef.current === targetProfileId) {
                     onConnectionParamsChange({
                         server: profile.host,
                         port: profile.port,
@@ -635,7 +745,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const handleCancelEdit = () => {
         setEditingProfileId(null);
+        editingProfileIdRef.current = null;
         setConnectionName('');
+        setCustomIconForSave(undefined);
+        setFaviconForSave(undefined);
         setSaveConnection(false);
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
@@ -679,6 +792,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Exit edit mode when changing protocol (user wants to create new connection)
         if (editingProfileId) {
             setEditingProfileId(null);
+            editingProfileIdRef.current = null;
             setConnectionName('');
             setSaveConnection(false);
         }
@@ -756,16 +870,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Quick Connect */}
                 <div className="min-w-0 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
-                        {hasExistingSessions && (
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                            {hasExistingSessions && (
+                                <button
+                                    onClick={onSkipToFileManager}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-800/40 transition-colors"
+                                    title={t('connection.activeSessions')}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                    <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                                </button>
+                            )}
+                        </div>
+                        {onAeroFile && (
                             <button
-                                onClick={onSkipToFileManager}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-800/40 transition-colors"
-                                title={t('connection.activeSessions')}
+                                onClick={onAeroFile}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors text-sm font-medium"
+                                title={t('statusBar.aerofileTitle')}
                             >
-                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                                <FolderOpen size={16} />
+                                <span>AeroFile</span>
                             </button>
                         )}
                     </div>
@@ -1117,6 +1243,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1222,6 +1349,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1341,6 +1469,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1476,6 +1605,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1614,6 +1744,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1781,6 +1912,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.megaConnectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                                     />
+                                                    {renderIconPicker()}
                                                 </div>
                                             )}
                                         </div>
@@ -1811,17 +1943,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {(() => {
                                             const providerHasNoEndpoint = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.fields?.find(f => f.key === 'endpoint');
                                             return providerHasNoEndpoint ? null : (
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1.5">
-                                                        {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={connectionParams.server}
-                                                        onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                                        placeholder={getServerPlaceholder()}
-                                                    />
+                                                <div className="flex gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <label className="block text-sm font-medium mb-1.5">
+                                                            {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={connectionParams.server}
+                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                                            placeholder={getServerPlaceholder()}
+                                                        />
+                                                    </div>
+                                                    <div className="w-24">
+                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
+                                                        <input
+                                                            type="number"
+                                                            value={connectionParams.port || getDefaultPort(protocol)}
+                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || getDefaultPort(protocol) })}
+                                                            className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-center"
+                                                            min={1}
+                                                            max={65535}
+                                                        />
+                                                    </div>
                                                 </div>
                                             );
                                         })()}
@@ -1909,13 +2054,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </label>
 
                                             {saveConnection && (
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNameOptional')}
-                                                    className="w-full mt-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                />
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNameOptional')}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    />
+                                                    {renderIconPicker()}
+                                                </div>
                                             )}
                                         </div>
 
@@ -1963,7 +2111,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         onEdit={handleEdit}
                         lastUpdate={savedServersUpdate + serversRefreshKey}
                         onOpenExportImport={() => setShowExportImport(true)}
-                        onAeroFile={onAeroFile}
                     />
                 </div>
 

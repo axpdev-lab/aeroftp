@@ -324,6 +324,10 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         >
                             {session.status === 'connecting' ? (
                                 <Loader2 size={14} className="animate-spin" />
+                            ) : session.customIconUrl ? (
+                                <img src={session.customIconUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            ) : session.faviconUrl ? (
+                                <img src={session.faviconUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                             ) : isProvider ? (
                                 <ProviderIcon protocol={protocol} providerId={session.providerId} size={14} isConnected={isConnected} />
                             ) : (
