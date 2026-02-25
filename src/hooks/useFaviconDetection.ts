@@ -3,11 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import type { FtpSession, ServerProfile } from '../types';
 import { secureGetWithFallback } from '../utils/secureStorage';
 
-const FTP_PROTOCOLS = new Set(['ftp', 'ftps']);
-const SFTP_PROTOCOL = 'sftp';
+// FTP/FTPS use ftp_manager (suppaftp) → detect_server_favicon
+const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
+// SFTP/S3/WebDAV use StorageProvider (ProviderState) → detect_provider_favicon
+const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
 
 /**
- * Hook that detects project favicons from connected FTP/FTPS/SFTP servers.
+ * Hook that detects project favicons from connected FTP/FTPS/SFTP/S3/WebDAV servers.
  * Searches favicon.ico first, then manifest.json/site.webmanifest as fallback.
  * Uses initialPath (project web root) → current remote path → / as search paths.
  */
@@ -29,7 +31,9 @@ export function useFaviconDetection(
     if (!session || session.status !== 'connected') return;
 
     const protocol = session.connectionParams.protocol || 'ftp';
-    if (!FTP_PROTOCOLS.has(protocol) && protocol !== SFTP_PROTOCOL) return;
+    const isServerProtocol = SERVER_PROTOCOLS.has(protocol);
+    const isProviderProtocol = PROVIDER_PROTOCOLS.has(protocol);
+    if (!isServerProtocol && !isProviderProtocol) return;
 
     const serverKey = session.serverId;
     if (checkedRef.current.has(serverKey)) return;
@@ -65,9 +69,9 @@ export function useFaviconDetection(
           searchPaths.push('/');
         }
 
-        const command = protocol === SFTP_PROTOCOL
-          ? 'detect_provider_favicon'
-          : 'detect_server_favicon';
+        // FTP/FTPS → ftp_manager (suppaftp)
+        // SFTP/S3/WebDAV → StorageProvider (ProviderState)
+        const command = isProviderProtocol ? 'detect_provider_favicon' : 'detect_server_favicon';
 
         const result = await invoke<string | null>(command, { searchPaths });
 

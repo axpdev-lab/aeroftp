@@ -3850,13 +3850,18 @@ fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
 /// Guess MIME type from file extension (SVG rejected for XSS safety)
 fn guess_mime_from_path(path: &str) -> Option<&'static str> {
     let lower = path.to_lowercase();
-    if lower.ends_with(".svg") { return None; } // Reject SVG — can contain <script>
+    if lower.ends_with(".svg") { return Some("image/svg+xml"); }
     if lower.ends_with(".png") { Some("image/png") }
     else if lower.ends_with(".ico") { Some("image/x-icon") }
     else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") { Some("image/jpeg") }
     else if lower.ends_with(".webp") { Some("image/webp") }
     else if lower.ends_with(".gif") { Some("image/gif") }
     else { Some("image/png") }
+}
+
+/// Validate SVG content — must contain <svg tag (safe when rendered via <img> data URL)
+fn is_valid_svg(bytes: &[u8]) -> bool {
+    std::str::from_utf8(bytes).map(|s| s.contains("<svg")).unwrap_or(false)
 }
 
 /// Validate image magic bytes (defense-in-depth against content spoofing)
@@ -3887,12 +3892,8 @@ fn resolve_icon_path(base: &str, icon_src: &str) -> Option<String> {
     if icon_src.starts_with("http://") || icon_src.starts_with("https://") {
         return None; // Can't download absolute URLs via FTP
     }
-    // Reject path traversal, null bytes, and SVG
+    // Reject path traversal and null bytes
     if icon_src.contains("..") || icon_src.contains('\0') {
-        return None;
-    }
-    let lower = icon_src.to_lowercase();
-    if lower.ends_with(".svg") {
         return None;
     }
     let prefix = base.trim_end_matches('/');
@@ -3930,13 +3931,20 @@ async fn detect_server_favicon(
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     for base in &search_paths {
-        // 1) Try favicon.ico first (most common, single download)
-        let favicon_path = make_path(base, "favicon.ico");
-        let favicon_size = ftp_manager.get_file_size(&favicon_path).await.unwrap_or(0);
-        if favicon_size > 0 && favicon_size <= 500_000 {
-            if let Ok(bytes) = ftp_manager.download_to_bytes(&favicon_path).await {
-                if !bytes.is_empty() && is_valid_image_magic(&bytes) {
-                    return Ok(Some(bytes_to_data_url(&bytes, "image/x-icon")));
+        // 1) Try icon files in order of preference
+        for (filename, mime, use_magic) in &[
+            ("favicon.ico", "image/x-icon", true),
+            ("icon.png",    "image/png",    true),
+            ("icon.svg",    "image/svg+xml", false),
+        ] {
+            let path = make_path(base, filename);
+            let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
+            if file_size == 0 || file_size > 500_000 { continue; }
+            if let Ok(bytes) = ftp_manager.download_to_bytes(&path).await {
+                if bytes.is_empty() { continue; }
+                let valid = if *use_magic { is_valid_image_magic(&bytes) } else { is_valid_svg(&bytes) };
+                if valid {
+                    return Ok(Some(bytes_to_data_url(&bytes, mime)));
                 }
             }
         }
@@ -3988,11 +3996,18 @@ async fn detect_provider_favicon(
         .ok_or("Not connected to any provider")?;
 
     for base in &search_paths {
-        // 1) Try favicon.ico first
-        let favicon_path = make_path(base, "favicon.ico");
-        if let Ok(favicon_bytes) = provider.download_to_bytes(&favicon_path).await {
-            if !favicon_bytes.is_empty() && favicon_bytes.len() <= 500_000 && is_valid_image_magic(&favicon_bytes) {
-                return Ok(Some(bytes_to_data_url(&favicon_bytes, "image/x-icon")));
+        // 1) Try icon files in order of preference
+        for (filename, mime, use_magic) in &[
+            ("favicon.ico", "image/x-icon", true),
+            ("icon.png",    "image/png",    true),
+            ("icon.svg",    "image/svg+xml", false),
+        ] {
+            if let Ok(bytes) = provider.download_to_bytes(&make_path(base, filename)).await {
+                if bytes.is_empty() || bytes.len() > 500_000 { continue; }
+                let valid = if *use_magic { is_valid_image_magic(&bytes) } else { is_valid_svg(&bytes) };
+                if valid {
+                    return Ok(Some(bytes_to_data_url(&bytes, mime)));
+                }
             }
         }
 
