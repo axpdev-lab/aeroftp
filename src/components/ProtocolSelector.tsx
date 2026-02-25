@@ -646,7 +646,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
                     )}
                 </div>
-                {endpointField ? (\n                    <div className={regionField ? "grid grid-cols-2 gap-3" : ""}>
+                {endpointField ? (
+                    <div className={regionField ? "grid grid-cols-2 gap-3" : ""}>
                     {regionField && (
                         <div>
                             <label className="block text-sm font-medium mb-1.5">
