@@ -31,11 +31,8 @@ options=('!strip' '!debug')
 source=("${pkgname}-${pkgver}.AppImage::https://github.com/axpnet/aeroftp/releases/download/v${pkgver}/AeroFTP_${pkgver}_amd64.AppImage"
         "aeroftp.desktop"
         "aeroftp.png::https://raw.githubusercontent.com/axpnet/aeroftp/main/src-tauri/icons/128x128.png")
-# SHA-256 checksums: SKIP is used because binary artifacts change with each release.
-# The AppImage is built and signed by GitHub Actions CI/CD (see .github/workflows/build.yml).
-# Integrity is verified via GitHub's release signature chain.
-# For manual verification: sha256sum AeroFTP_${pkgver}_amd64.AppImage
-sha256sums=('SKIP'
+# SHA-256: AppImage verified from GitHub Actions CI/CD build
+sha256sums=('bc2ac0488677817bbfc78eaee547a8c60d8571a330f97f5b8b6f72d666a96cd7'
             'SKIP'
             'SKIP')
 noextract=("${pkgname}-${pkgver}.AppImage")
