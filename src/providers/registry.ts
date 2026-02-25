@@ -638,6 +638,30 @@ export const PROVIDERS: ProviderConfig[] = [
         helpUrl: 'https://www.cloudme.com/en/webdav',
     },
     {
+        id: 'seafile',
+        name: 'Seafile',
+        description: 'Open-source self-hosted cloud storage with WebDAV',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#E86C00',
+        stable: false,
+        fields: [
+            { ...COMMON_FIELDS.server, placeholder: 'https://your-server.com/seafdav/' },
+            { ...COMMON_FIELDS.username, placeholder: 'Your Seafile email' },
+            { ...COMMON_FIELDS.password },
+        ],
+        defaults: {
+            server: 'https://cloud.seafile.com/seafdav/',
+            port: 443,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://manual.seafile.com/extension/webdav/',
+    },
+    {
         id: 'drivehq',
         name: 'DriveHQ',
         description: 'Enterprise cloud storage and file sharing',

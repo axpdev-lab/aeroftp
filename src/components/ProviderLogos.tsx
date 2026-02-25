@@ -3,7 +3,7 @@
  * Each renders at the given `size` (default 24px) preserving aspect ratio.
  */
 
-import React from 'react';
+import React, { useId } from 'react';
 
 interface LogoProps {
     size?: number;
@@ -222,6 +222,21 @@ export const FourSharedLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// Seafile — orange cloud logo (open-source file sync)
+export const SeafileLogo: React.FC<LogoProps> = ({ size = 24 }) => {
+    const gradId = useId();
+    return (
+        <svg width={size} height={size} viewBox="0 0 55.239 55.239">
+            <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0,35.588,-35.588,0,27.616,9.831)">
+                    <stop offset="0" stopColor="#fad956"/><stop offset="1" stopColor="#ffa10f"/>
+                </linearGradient>
+            </defs>
+            <path d="m 0,25.371 c 0,-0.92 0.746,-1.658 1.667,-1.658 0.439,0 0.829,0.174 1.128,0.448 -0.008,-0.149 -0.017,-0.29 -0.017,-0.439 0,-3.076 2.487,-5.564 5.564,-5.564 0.796,0 1.55,0.166 2.239,0.473 -0.008,-0.158 -0.017,-0.315 -0.017,-0.464 0,-4.61 3.731,-8.341 8.341,-8.341 4.577,0 8.291,3.69 8.341,8.258 -1.509,1.327 -2.711,3.001 -3.482,4.892 -1.492,-0.929 -3.25,-1.484 -5.132,-1.484 -3.88,0 -7.23,2.206 -8.797,5.539 H 3.889 1.667 C 0.746,27.013 0,26.292 0,25.371 Z M 43.92,20.388 c -2.065,-2.065 -4.909,-3.341 -8.059,-3.341 -5.746,0 -10.505,4.254 -11.285,9.792 -1.418,-1.89 -3.681,-3.118 -6.227,-3.118 -4.303,0 -7.786,3.491 -7.786,7.786 0,1.252 0.298,2.429 0.821,3.482 -2.703,0.547 -4.71,2.645 -4.71,5.141 0,2.919 2.736,5.282 6.119,5.282 1.492,0 2.861,-0.464 3.922,-1.235 l 12.512,-12.305 c 1.385,-1.269 3.225,-2.04 5.248,-2.04 4.229,0 7.67,3.375 7.786,7.578 0,0 0,-0.008 -0.008,-0.008 0.066,1.244 -0.58,2.496 -1.774,3.184 -1.667,0.962 -3.756,0.448 -4.668,-1.136 -0.92,-1.592 -0.315,-3.657 1.352,-4.618 0.39,-0.224 0.796,-0.365 1.211,-0.439 -0.357,-0.075 -0.73,-0.108 -1.111,-0.108 -3.068,0 -5.564,2.487 -5.564,5.564 0,3.076 2.487,5.564 5.564,5.564 0.133,0 0.274,-0.008 0.406,-0.017 l -0.008,-0.017 0.158,-0.017 h 10.92 v 0.041 c 3.341,-0.149 6.5,-3.225 6.5,-6.973 0,-3.839 -3.283,-6.973 -7.122,-6.973 -0.008,0 -0.008,0 -0.017,0 -0.622,1.111 -1.376,1.758 -2.23,2.454 0.895,-1.633 1.41,-3.491 1.41,-5.481 -0.019,-3.141 -1.296,-5.977 -3.36,-8.042 z" fill={`url(#${gradId})`}/>
+        </svg>
+    );
+};
+
 // CloudMe — cloud icon (Swedish cloud storage)
 export const CloudMeLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 105.834 105.833">
@@ -308,6 +323,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'drivehq': DriveHQLogo,
     '4shared': FourSharedLogo,
     'fourshared': FourSharedLogo,
+    'seafile': SeafileLogo,
     'cloudme': CloudMeLogo,
     'zohoworkdrive': ZohoWorkDriveLogo,
     'zoho-workdrive': ZohoWorkDriveLogo,
