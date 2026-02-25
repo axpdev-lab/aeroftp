@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.10] - 2026-02-25
+
+### CI Recovery & Release Realignment
+
+Follow-up release to restore downloadable artifacts after the 2.6.9 pipeline interruption.
+
+#### Fixed
+
+- **TypeScript parser error in ProtocolSelector**: Removed invalid JSX character sequence causing CI build failure (`TS1127`, `TS1381`) during `npm run build` in Tauri release jobs
+
+#### Changed
+
+- **Release alignment**: Re-tagged clean release flow on top of the CI fix so GitHub Actions can publish platform artifacts correctly
+
+---
+
 ## [2.6.9] - 2026-02-25
 
 ### Seafile Preset & Transfer Circuit Breaker
