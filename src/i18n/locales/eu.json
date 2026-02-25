@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Aukeratu ikonoa",
       "removeIcon": "Kendu ikonoa",
-      "serverIcon": "Zerbitzariaren ikonoa"
+      "serverIcon": "Zerbitzariaren ikonoa",
+      "selectServersToExport": "[NEEDS TRANSLATION] Select servers to export",
+      "selectAll": "[NEEDS TRANSLATION] Select All",
+      "deselectAll": "[NEEDS TRANSLATION] Deselect All",
+      "selected": "[NEEDS TRANSLATION] selected"
     },
     "devtools": {
       "title": "AeroTools",

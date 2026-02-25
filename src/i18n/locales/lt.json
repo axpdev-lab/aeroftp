@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Pasirinkti piktogramą",
       "removeIcon": "Pašalinti piktogramą",
-      "serverIcon": "Serverio piktograma"
+      "serverIcon": "Serverio piktograma",
+      "selectServersToExport": "Pasirinkite serverius eksportavimui",
+      "selectAll": "Pasirinkti visus",
+      "deselectAll": "Atžymėti visus",
+      "selected": "pasirinkta"
     },
     "devtools": {
       "title": "AeroTools",

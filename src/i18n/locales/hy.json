@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Նշել իկոն",
       "removeIcon": "Հեռացնել իկոնը",
-      "serverIcon": "Սերվերի իկոն"
+      "serverIcon": "Սերվերի իկոն",
+      "selectServersToExport": "Ընտրել սերվերները արտահանելու համար",
+      "selectAll": "Ընտրել բոլորը",
+      "deselectAll": "Ապաընտրել բոլորը",
+      "selected": "ընտրված"
     },
     "devtools": {
       "title": "AeroTools",

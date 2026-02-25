@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Velja tákn",
       "removeIcon": "Fjarlægja tákn",
-      "serverIcon": "Þjónstákn"
+      "serverIcon": "Þjónstákn",
+      "selectServersToExport": "[NEEDS TRANSLATION] Select servers to export",
+      "selectAll": "[NEEDS TRANSLATION] Select All",
+      "deselectAll": "[NEEDS TRANSLATION] Deselect All",
+      "selected": "[NEEDS TRANSLATION] selected"
     },
     "devtools": {
       "title": "AeroTools",

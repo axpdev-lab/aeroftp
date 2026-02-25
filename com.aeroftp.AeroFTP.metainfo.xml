@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.6.8" date="2026-02-25">
+      <description>
+        <p>Selective Server Export: Export individual servers instead of all-or-nothing. The Export dialog now shows a checklist with Select All / Deselect All, color badges, protocol labels, and a live counter.</p>
+      </description>
+    </release>
     <release version="2.6.7" date="2026-02-25">
       <description>
         <p>Update Restart, UX Polish and AeroCloud Multi-Protocol: Fixed long-standing restart failure on .deb, .rpm, and AppImage using setsid() detached relaunch. AeroCloud background sync now supports all 18 protocols via cloud provider factory. Dark theme modal consistency fix. Dynamic FTP TLS badge. Unified S3/WebDAV provider selector with info cards. Connection save race condition fix. SFTP symlink directory detection for NAS devices. 14 new i18n keys in 47 languages.</p>

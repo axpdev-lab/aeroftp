@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Alege pictogramă",
       "removeIcon": "Elimină pictograma",
-      "serverIcon": "Pictogramă server"
+      "serverIcon": "Pictogramă server",
+      "selectServersToExport": "Selectați serverele pentru export",
+      "selectAll": "Selectați tot",
+      "deselectAll": "Deselectați tot",
+      "selected": "selectat"
     },
     "devtools": {
       "title": "AeroTools",

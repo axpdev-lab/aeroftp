@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Odaberi ikonu",
       "removeIcon": "Ukloni ikonu",
-      "serverIcon": "Ikona posluzitelja"
+      "serverIcon": "Ikona posluzitelja",
+      "selectServersToExport": "Odaberite poslužitelje za izvoz",
+      "selectAll": "Odaberi sve",
+      "deselectAll": "Poništi odabir svega",
+      "selected": "odabrano"
     },
     "devtools": {
       "title": "AeroTools",

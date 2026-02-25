@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Chagua Ikoni",
       "removeIcon": "Ondoa Ikoni",
-      "serverIcon": "Ikoni ya Seva"
+      "serverIcon": "Ikoni ya Seva",
+      "selectServersToExport": "Chagua seva za kuhamisha",
+      "selectAll": "Chagua Zote",
+      "deselectAll": "Ondoa Chaguo Zote",
+      "selected": "zilizochaguliwa"
     },
     "devtools": {
       "title": "AeroTools",

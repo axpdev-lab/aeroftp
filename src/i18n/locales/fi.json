@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Valitse kuvake",
       "removeIcon": "Poista kuvake",
-      "serverIcon": "Palvelimen kuvake"
+      "serverIcon": "Palvelimen kuvake",
+      "selectServersToExport": "Valitse vietävät palvelimet",
+      "selectAll": "Valitse kaikki",
+      "deselectAll": "Poista kaikkien valinta",
+      "selected": "valittu"
     },
     "devtools": {
       "title": "AeroTools",

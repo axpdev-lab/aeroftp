@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Simge Seç",
       "removeIcon": "Simgeyi Kaldır",
-      "serverIcon": "Sunucu Simgesi"
+      "serverIcon": "Sunucu Simgesi",
+      "selectServersToExport": "Dışa aktarılacak sunucuları seçin",
+      "selectAll": "Tümünü Seç",
+      "deselectAll": "Tümünün Seçimini Kaldır",
+      "selected": "seçili"
     },
     "devtools": {
       "title": "AeroTools",

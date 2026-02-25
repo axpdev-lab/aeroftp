@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Ikon valasztasa",
       "removeIcon": "Ikon eltavolitasa",
-      "serverIcon": "Szerver ikon"
+      "serverIcon": "Szerver ikon",
+      "selectServersToExport": "Válasszon exportálandó szervereket",
+      "selectAll": "Összes kijelölése",
+      "deselectAll": "Összes kijelölés megszüntetése",
+      "selected": "kijelölve"
     },
     "devtools": {
       "title": "AeroTools",

@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Wybierz ikonę",
       "removeIcon": "Usuń ikonę",
-      "serverIcon": "Ikona serwera"
+      "serverIcon": "Ikona serwera",
+      "selectServersToExport": "Wybierz serwery do eksportu",
+      "selectAll": "Zaznacz wszystkie",
+      "deselectAll": "Odznacz wszystkie",
+      "selected": "zaznaczono"
     },
     "devtools": {
       "title": "AeroTools",

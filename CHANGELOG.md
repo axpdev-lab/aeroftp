@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.8] - 2026-02-25
+
+### Selective Server Export
+
+Export individual servers instead of all-or-nothing. The Export dialog now shows a checklist of all saved servers with Select All / Deselect All, color badges, protocol labels, and a live counter.
+
+#### Added
+
+- **Selective server export**: Checklist in Export dialog with per-server checkboxes, Select All / Deselect All toggle, color dot badges, protocol labels, and "X / Y selected" counter. Export button shows count and disables when none selected
+
+---
+
 ## [2.6.7] - 2026-02-25
 
 ### Update Restart, UX Polish & AeroCloud Multi-Protocol

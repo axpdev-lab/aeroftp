@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Επιλογή εικονιδίου",
       "removeIcon": "Αφαίρεση εικονιδίου",
-      "serverIcon": "Εικονίδιο διακομιστή"
+      "serverIcon": "Εικονίδιο διακομιστή",
+      "selectServersToExport": "Επιλέξτε διακομιστές για εξαγωγή",
+      "selectAll": "Επιλογή όλων",
+      "deselectAll": "Αποεπιλογή όλων",
+      "selected": "επιλεγμένα"
     },
     "devtools": {
       "title": "AeroTools",

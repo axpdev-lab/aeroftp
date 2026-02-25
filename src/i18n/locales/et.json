@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Vali ikoon",
       "removeIcon": "Eemalda ikoon",
-      "serverIcon": "Serveri ikoon"
+      "serverIcon": "Serveri ikoon",
+      "selectServersToExport": "Vali eksportimiseks serverid",
+      "selectAll": "Vali kõik",
+      "deselectAll": "Tühista kõigi valik",
+      "selected": "valitud"
     },
     "devtools": {
       "title": "AeroTools",

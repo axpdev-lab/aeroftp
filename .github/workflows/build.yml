@@ -120,7 +120,7 @@ jobs:
           # Pin to continuous tag — verify SHA-256 to mitigate supply chain risk.
           # Update this checksum when intentionally upgrading appimagetool.
           APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-          APPIMAGETOOL_SHA256="1c22e11c4e3109eb84cf7c92d1dab4e18cbb4e0b1b64681b0c88e7af884ce80a"
+          APPIMAGETOOL_SHA256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
           wget -q "$APPIMAGETOOL_URL" -O appimagetool
           echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c - || {
             echo "::warning::appimagetool checksum mismatch — upstream may have updated the continuous build. Verify and update APPIMAGETOOL_SHA256 in build.yml."

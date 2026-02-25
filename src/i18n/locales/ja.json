@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "アイコンを選択",
       "removeIcon": "アイコンを削除",
-      "serverIcon": "サーバーアイコン"
+      "serverIcon": "サーバーアイコン",
+      "selectServersToExport": "エクスポートするサーバーを選択",
+      "selectAll": "すべて選択",
+      "deselectAll": "すべて選択解除",
+      "selected": "選択済み"
     },
     "devtools": {
       "title": "AeroTools",

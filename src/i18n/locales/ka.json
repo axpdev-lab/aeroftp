@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "აირჩიეთ ხატულა",
       "removeIcon": "ხატულის წაშლა",
-      "serverIcon": "სერვერის ხატულა"
+      "serverIcon": "სერვერის ხატულა",
+      "selectServersToExport": "აირჩიეთ სერვერები ექსპორტისთვის",
+      "selectAll": "ყველას არჩევა",
+      "deselectAll": "ყველას მოხსნა",
+      "selected": "არჩეული"
     },
     "devtools": {
       "title": "AeroTools",

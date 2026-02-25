@@ -697,7 +697,11 @@
       "protocolZohoworkdrive": "Zoho WorkDrive",
       "chooseIcon": "Izvēlēties ikonu",
       "removeIcon": "Noņemt ikonu",
-      "serverIcon": "Servera ikona"
+      "serverIcon": "Servera ikona",
+      "selectServersToExport": "Atlasiet serverus eksportēšanai",
+      "selectAll": "Atlasīt visus",
+      "deselectAll": "Noņemt atlasi visiem",
+      "selected": "atlasīts"
     },
     "devtools": {
       "title": "AeroTools",
