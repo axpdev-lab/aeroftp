@@ -369,7 +369,29 @@
             "stopAll": "Stop alt",
             "stopAllPending": "Stop alle afventende",
             "forceStop": "Tving stop (afbryd nuværende fil)",
-            "cancelledByUser": "Annulleret af brugeren"
+            "cancelledByUser": "Annulleret af brugeren",
+            "circuitBreaker": {
+                "paused": "Kø sat på pause — flere fejl i træk",
+                "batchStopped": "Overførsel stoppet",
+                "fatalError": "Fatal fejl: {reason}. Resterende overførsler er annulleret.",
+                "attemptingReconnect": "Forsøger at genoprette forbindelsen...",
+                "reconnectSuccess": "Forbindelse genoprettet. Genoptager overførsler.",
+                "reconnectFailed": "Kunne ikke genoprette forbindelsen. Kø sat på pause.",
+                "connectionLost": "Forbindelse mistet"
+            },
+            "errorKind": {
+                "network": "Netværksfejl",
+                "auth": "Godkendelse mislykkedes",
+                "path_not_found": "Sti ikke fundet",
+                "permission_denied": "Adgang nægtet",
+                "quota_exceeded": "Lagerkvote overskredet",
+                "rate_limit": "Anmodningsgrænse overskredet",
+                "timeout": "Forbindelsestimeout",
+                "file_locked": "Filen er låst",
+                "disk_error": "Disk fuld eller I/O-fejl",
+                "unknown": "Ukendt fejl"
+            },
+            "retryAllFailed": "Prøv alle fejlede igen"
         },
         "settings": {
             "title": "Indstillinger",
@@ -934,7 +956,8 @@
             "movedToTrash": "Flyttet til papirkurven",
             "moveToTrashFailed": "Kunne ikke flytte til papirkurven",
             "batchRenameResult": "{success} omdøbt, {errors} mislykkedes",
-            "copyCompleted": "Kopiering fuldført"
+            "copyCompleted": "Kopiering fuldført",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",

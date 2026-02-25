@@ -369,7 +369,29 @@
             "stopAll": "Opreste tot",
             "stopAllPending": "Opreste toate cele in asteptare",
             "forceStop": "Oprire fortata (intrerupe fisierul curent)",
-            "cancelledByUser": "Anulat de utilizator"
+            "cancelledByUser": "Anulat de utilizator",
+            "circuitBreaker": {
+                "paused": "Coada suspendată — erori consecutive multiple",
+                "batchStopped": "Transfer oprit",
+                "fatalError": "Eroare fatală: {reason}. Transferurile rămase au fost anulate.",
+                "attemptingReconnect": "Se încearcă restaurarea conexiunii...",
+                "reconnectSuccess": "Conexiune restaurată. Se reiau transferurile.",
+                "reconnectFailed": "Nu s-a putut reconecta. Coada suspendată.",
+                "connectionLost": "Conexiune pierdută"
+            },
+            "errorKind": {
+                "network": "Eroare de rețea",
+                "auth": "Autentificare eșuată",
+                "path_not_found": "Calea nu a fost găsită",
+                "permission_denied": "Permisiune refuzată",
+                "quota_exceeded": "Cota de stocare depășită",
+                "rate_limit": "Limita de solicitări depășită",
+                "timeout": "Conexiunea a expirat",
+                "file_locked": "Fișier blocat",
+                "disk_error": "Disc plin sau eroare de I/O",
+                "unknown": "Eroare necunoscută"
+            },
+            "retryAllFailed": "Reîncearcă toate eșuate"
         },
         "settings": {
             "title": "Setări",
@@ -934,7 +956,8 @@
             "movedToTrash": "Mutat în Coș de gunoi",
             "moveToTrashFailed": "Mutarea în Coș de gunoi a eșuat",
             "batchRenameResult": "{success} redenumite, {errors} eșuate",
-            "copyCompleted": "Copiere finalizată"
+            "copyCompleted": "Copiere finalizată",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",

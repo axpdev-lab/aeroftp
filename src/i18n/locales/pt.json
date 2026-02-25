@@ -369,7 +369,29 @@
             "stopAll": "Parar tudo",
             "stopAllPending": "Parar todos os pendentes",
             "forceStop": "Parar imediatamente (interromper ficheiro atual)",
-            "cancelledByUser": "Cancelado pelo utilizador"
+            "cancelledByUser": "Cancelado pelo utilizador",
+            "circuitBreaker": {
+                "paused": "Fila pausada — múltiplos erros consecutivos",
+                "batchStopped": "Transferência interrompida",
+                "fatalError": "Erro fatal: {reason}. Transferências restantes canceladas.",
+                "attemptingReconnect": "Tentando restaurar a conexão...",
+                "reconnectSuccess": "Conexão restaurada. Retomando transferências.",
+                "reconnectFailed": "Não foi possível reconectar. Fila pausada.",
+                "connectionLost": "Conexão perdida"
+            },
+            "errorKind": {
+                "network": "Erro de rede",
+                "auth": "Falha na autenticação",
+                "path_not_found": "Caminho não encontrado",
+                "permission_denied": "Permissão negada",
+                "quota_exceeded": "Cota de armazenamento excedida",
+                "rate_limit": "Limite de requisições excedido",
+                "timeout": "Tempo limite de conexão esgotado",
+                "file_locked": "Arquivo bloqueado",
+                "disk_error": "Disco cheio ou erro de E/S",
+                "unknown": "Erro desconhecido"
+            },
+            "retryAllFailed": "Repetir todas as falhas"
         },
         "settings": {
             "title": "Configurações",
@@ -934,7 +956,8 @@
             "movedToTrash": "Movido para o Lixo",
             "moveToTrashFailed": "Falha ao mover para o Lixo",
             "batchRenameResult": "{success} renomeados, {errors} falharam",
-            "copyCompleted": "Cópia concluída"
+            "copyCompleted": "Cópia concluída",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",

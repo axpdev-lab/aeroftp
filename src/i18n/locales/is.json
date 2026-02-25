@@ -369,7 +369,29 @@
             "stopAll": "Stöðva allt",
             "stopAllPending": "Stöðva allt í bið",
             "forceStop": "Thvinga stodvun (truflad a nuverandi skra)",
-            "cancelledByUser": "Hætt við af notanda"
+            "cancelledByUser": "Hætt við af notanda",
+            "circuitBreaker": {
+                "paused": "Biðröð í hlé — margar villur í röð",
+                "batchStopped": "Flutningur stöðvaður",
+                "fatalError": "Alvarleg villa: {reason}. Eftirstandandi flutningar hættir við.",
+                "attemptingReconnect": "Reyni að endurheimta tengingu...",
+                "reconnectSuccess": "Tenging endurheimt. Held áfram með flutning.",
+                "reconnectFailed": "Gat ekki endurtengst. Biðröð í hlé.",
+                "connectionLost": "Tenging rofin"
+            },
+            "errorKind": {
+                "network": "Netvilla",
+                "auth": "Auðkenning mistókst",
+                "path_not_found": "Slóð fannst ekki",
+                "permission_denied": "Heimild hafnað",
+                "quota_exceeded": "Geymslumörk náð",
+                "rate_limit": "Hraðamörk náð",
+                "timeout": "Tenging rann út á tíma",
+                "file_locked": "Skrá læst",
+                "disk_error": "Diskur fullur eða I/O villa",
+                "unknown": "Óþekkt villa"
+            },
+            "retryAllFailed": "Reyna allar misheppnaðar aftur"
         },
         "settings": {
             "title": "Stillingar",
@@ -934,7 +956,8 @@
             "movedToTrash": "Flutti {count} atriði í ruslið",
             "moveToTrashFailed": "Ekki tókst að færa í ruslið",
             "batchRenameResult": "{success} endurnefnt, {errors} mistókst",
-            "copyCompleted": "Afritun lokið"
+            "copyCompleted": "Afritun lokið",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",

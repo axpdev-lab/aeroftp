@@ -369,7 +369,29 @@
             "stopAll": "সব বন্ধ করুন",
             "stopAllPending": "সব অপেক্ষমাণ বন্ধ করুন",
             "forceStop": "জোর করে বন্ধ (বর্তমান ফাইল বাধাগ্রস্ত করুন)",
-            "cancelledByUser": "ব্যবহারকারী দ্বারা বাতিল করা হয়েছে"
+            "cancelledByUser": "ব্যবহারকারী দ্বারা বাতিল করা হয়েছে",
+            "circuitBreaker": {
+                "paused": "কিউ থামানো হয়েছে — একাধিক পরপর ত্রুটি",
+                "batchStopped": "স্থানান্তর বন্ধ হয়েছে",
+                "fatalError": "মারাত্মক ত্রুটি: {reason}। বাকি স্থানান্তরগুলি বাতিল করা হয়েছে।",
+                "attemptingReconnect": "সংযোগ পুনরুদ্ধারের চেষ্টা করা হচ্ছে...",
+                "reconnectSuccess": "সংযোগ পুনরুদ্ধার হয়েছে। স্থানান্তর পুনরায় শুরু হচ্ছে।",
+                "reconnectFailed": "পুনরায় সংযোগ করা যায়নি। কিউ থামানো হয়েছে।",
+                "connectionLost": "সংযোগ বিচ্ছিন্ন হয়েছে"
+            },
+            "errorKind": {
+                "network": "নেটওয়ার্ক ত্রুটি",
+                "auth": "প্রমাণীকরণ ব্যর্থ হয়েছে",
+                "path_not_found": "পাথ পাওয়া যায়নি",
+                "permission_denied": "অনুমতি প্রত্যাখ্যান",
+                "quota_exceeded": "স্টোরেজ কোটা ছাড়িয়ে গেছে",
+                "rate_limit": "অনুরোধের সীমা ছাড়িয়ে গেছে",
+                "timeout": "সংযোগের সময়সীমা শেষ",
+                "file_locked": "ফাইল লক করা আছে",
+                "disk_error": "ডিস্ক পূর্ণ বা I/O ত্রুটি",
+                "unknown": "অজানা ত্রুটি"
+            },
+            "retryAllFailed": "সব ব্যর্থ পুনরায় চেষ্টা করুন"
         },
         "settings": {
             "title": "সেটিংস",
@@ -934,7 +956,8 @@
             "movedToTrash": "ট্র্যাশে সরানো হয়েছে",
             "moveToTrashFailed": "ট্র্যাশে সরাতে ব্যর্থ হয়েছে",
             "batchRenameResult": "{success} পুনঃনামকরণ হয়েছে, {errors} ব্যর্থ হয়েছে",
-            "copyCompleted": "অনুলিপি সম্পন্ন"
+            "copyCompleted": "অনুলিপি সম্পন্ন",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",

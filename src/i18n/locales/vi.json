@@ -369,7 +369,29 @@
             "stopAll": "Dừng tất cả",
             "stopAllPending": "Dừng tất cả đang chờ",
             "forceStop": "Buoc dung (ngat file hien tai)",
-            "cancelledByUser": "Đã hủy bởi người dùng"
+            "cancelledByUser": "Đã hủy bởi người dùng",
+            "circuitBreaker": {
+                "paused": "Hàng đợi tạm dừng — nhiều lỗi liên tiếp",
+                "batchStopped": "Đã dừng truyền tải",
+                "fatalError": "Lỗi nghiêm trọng: {reason}. Các lượt truyền còn lại đã bị hủy.",
+                "attemptingReconnect": "Đang thử khôi phục kết nối...",
+                "reconnectSuccess": "Đã khôi phục kết nối. Tiếp tục truyền tải.",
+                "reconnectFailed": "Không thể kết nối lại. Hàng đợi tạm dừng.",
+                "connectionLost": "Mất kết nối"
+            },
+            "errorKind": {
+                "network": "Lỗi mạng",
+                "auth": "Xác thực thất bại",
+                "path_not_found": "Không tìm thấy đường dẫn",
+                "permission_denied": "Quyền truy cập bị từ chối",
+                "quota_exceeded": "Vượt quá hạn mức lưu trữ",
+                "rate_limit": "Vượt quá giới hạn yêu cầu",
+                "timeout": "Hết thời gian kết nối",
+                "file_locked": "Tệp bị khóa",
+                "disk_error": "Ổ đĩa đầy hoặc lỗi I/O",
+                "unknown": "Lỗi không xác định"
+            },
+            "retryAllFailed": "Thử lại tất cả thất bại"
         },
         "settings": {
             "title": "Cài đặt",
@@ -934,7 +956,8 @@
             "movedToTrash": "Đã chuyển vào Thùng rác",
             "moveToTrashFailed": "Không thể chuyển vào Thùng rác",
             "batchRenameResult": "{success} đã đổi tên, {errors} thất bại",
-            "copyCompleted": "Sao chép hoàn tất"
+            "copyCompleted": "Sao chép hoàn tất",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",

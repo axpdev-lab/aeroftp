@@ -369,7 +369,29 @@
             "stopAll": "Stopio'r cyfan",
             "stopAllPending": "Stopio'r rhai sy'n aros",
             "forceStop": "Gorfodi stopio (torri ar draws y ffeil gyfredol)",
-            "cancelledByUser": "Wedi'i ganslo gan y defnyddiwr"
+            "cancelledByUser": "Wedi'i ganslo gan y defnyddiwr",
+            "circuitBreaker": {
+                "paused": "Ciw wedi'i oedi — sawl gwall yn olynol",
+                "batchStopped": "Trosglwyddiad wedi'i atal",
+                "fatalError": "Gwall angheuol: {reason}. Mae'r trosglwyddiadau sy'n weddill wedi'u canslo.",
+                "attemptingReconnect": "Yn ceisio adfer y cysylltiad...",
+                "reconnectSuccess": "Cysylltiad wedi'i adfer. Ailddechrau trosglwyddiadau.",
+                "reconnectFailed": "Methu ailgysylltu. Ciw wedi'i oedi.",
+                "connectionLost": "Cysylltiad wedi'i golli"
+            },
+            "errorKind": {
+                "network": "Gwall rhwydwaith",
+                "auth": "Dilysu wedi methu",
+                "path_not_found": "Llwybr heb ei ganfod",
+                "permission_denied": "Caniatâd wedi'i wrthod",
+                "quota_exceeded": "Cwota storio wedi'i ragori",
+                "rate_limit": "Terfyn cyfraddau wedi'i ragori",
+                "timeout": "Amser cysylltu wedi dod i ben",
+                "file_locked": "Ffeil wedi'i chloi",
+                "disk_error": "Disg yn llawn neu wall M/A",
+                "unknown": "Gwall anhysbys"
+            },
+            "retryAllFailed": "Ailgeisio'r holl fethiannau"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -934,7 +956,8 @@
             "movedToTrash": "Symudwyd {count} eitem i'r sbwriel",
             "moveToTrashFailed": "Methwyd symud i'r sbwriel",
             "batchRenameResult": "{success} wedi'u hailenwi, {errors} wedi methu",
-            "copyCompleted": "Copïo wedi'i gwblhau"
+            "copyCompleted": "Copïo wedi'i gwblhau",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",

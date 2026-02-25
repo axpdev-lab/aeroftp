@@ -369,7 +369,29 @@
             "stopAll": "Alle stoppen",
             "stopAllPending": "Alle ausstehenden stoppen",
             "forceStop": "Erzwungener Stopp (aktuelle Datei unterbrechen)",
-            "cancelledByUser": "Vom Benutzer abgebrochen"
+            "cancelledByUser": "Vom Benutzer abgebrochen",
+            "circuitBreaker": {
+                "paused": "Warteschlange pausiert — mehrere aufeinanderfolgende Fehler",
+                "batchStopped": "Übertragung gestoppt",
+                "fatalError": "Schwerwiegender Fehler: {reason}. Verbleibende Übertragungen wurden abgebrochen.",
+                "attemptingReconnect": "Verbindung wird wiederhergestellt...",
+                "reconnectSuccess": "Verbindung wiederhergestellt. Übertragungen werden fortgesetzt.",
+                "reconnectFailed": "Wiederverbindung fehlgeschlagen. Warteschlange pausiert.",
+                "connectionLost": "Verbindung verloren"
+            },
+            "errorKind": {
+                "network": "Netzwerkfehler",
+                "auth": "Authentifizierung fehlgeschlagen",
+                "path_not_found": "Pfad nicht gefunden",
+                "permission_denied": "Zugriff verweigert",
+                "quota_exceeded": "Speicherkontingent überschritten",
+                "rate_limit": "Anfragelimit überschritten",
+                "timeout": "Verbindungszeitlimit überschritten",
+                "file_locked": "Datei ist gesperrt",
+                "disk_error": "Festplatte voll oder E/A-Fehler",
+                "unknown": "Unbekannter Fehler"
+            },
+            "retryAllFailed": "Alle fehlgeschlagenen wiederholen"
         },
         "settings": {
             "title": "Einstellungen",
@@ -934,7 +956,8 @@
             "movedToTrash": "In den Papierkorb verschoben",
             "moveToTrashFailed": "Verschieben in den Papierkorb fehlgeschlagen",
             "batchRenameResult": "{success} umbenannt, {errors} fehlgeschlagen",
-            "copyCompleted": "Kopieren abgeschlossen"
+            "copyCompleted": "Kopieren abgeschlossen",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",

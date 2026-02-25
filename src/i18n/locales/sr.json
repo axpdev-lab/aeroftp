@@ -369,7 +369,29 @@
             "stopAll": "Заустави све",
             "stopAllPending": "Заустави све на чекању",
             "forceStop": "Принудно заустављање (прекини тренутну датотеку)",
-            "cancelledByUser": "Отказано од стране корисника"
+            "cancelledByUser": "Отказано од стране корисника",
+            "circuitBreaker": {
+                "paused": "Ред је паузиран — више узастопних грешака",
+                "batchStopped": "Пренос заустављен",
+                "fatalError": "Фатална грешка: {reason}. Преостали преноси отказани.",
+                "attemptingReconnect": "Покушај поновног успостављања везе...",
+                "reconnectSuccess": "Веза успостављена. Настављање преноса.",
+                "reconnectFailed": "Није могуће поново успоставити везу. Ред је паузиран.",
+                "connectionLost": "Веза изгубљена"
+            },
+            "errorKind": {
+                "network": "Мрежна грешка",
+                "auth": "Аутентификација неуспешна",
+                "path_not_found": "Путања није пронађена",
+                "permission_denied": "Дозвола одбијена",
+                "quota_exceeded": "Квота складишта премашена",
+                "rate_limit": "Ограничење захтева премашено",
+                "timeout": "Истек времена повезивања",
+                "file_locked": "Датотека закључана",
+                "disk_error": "Диск пун или грешка улаза/излаза",
+                "unknown": "Непозната грешка"
+            },
+            "retryAllFailed": "Понови све неуспеле"
         },
         "settings": {
             "title": "Подешавања",
@@ -934,7 +956,8 @@
             "movedToTrash": "Премештено у корпу",
             "moveToTrashFailed": "Премештање у корпу није успело",
             "batchRenameResult": "{success} преименовано, {errors} неуспешно",
-            "copyCompleted": "Копирање завршено"
+            "copyCompleted": "Копирање завршено",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",

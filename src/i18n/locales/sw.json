@@ -369,7 +369,29 @@
             "stopAll": "Simamisha zote",
             "stopAllPending": "Simamisha zote zinazosubiri",
             "forceStop": "Simamisha kwa nguvu (katisha faili ya sasa)",
-            "cancelledByUser": "Imeghairiwa na mtumiaji"
+            "cancelledByUser": "Imeghairiwa na mtumiaji",
+            "circuitBreaker": {
+                "paused": "Foleni imesimamishwa — hitilafu nyingi mfululizo",
+                "batchStopped": "Uhamisho umesimamishwa",
+                "fatalError": "Hitilafu mbaya: {reason}. Uhamisho uliobaki umeghairiwa.",
+                "attemptingReconnect": "Inajaribu kurejesha muunganisho...",
+                "reconnectSuccess": "Muunganisho umerejeshwa. Kuendelea na uhamisho.",
+                "reconnectFailed": "Haikuweza kuunganisha tena. Foleni imesimamishwa.",
+                "connectionLost": "Muunganisho umepotea"
+            },
+            "errorKind": {
+                "network": "Hitilafu ya mtandao",
+                "auth": "Uthibitishaji umeshindwa",
+                "path_not_found": "Njia haijapatikana",
+                "permission_denied": "Ruhusa imekataliwa",
+                "quota_exceeded": "Kiwango cha hifadhi kimezidi",
+                "rate_limit": "Kiwango cha maombi kimezidi",
+                "timeout": "Muda wa muunganisho umekwisha",
+                "file_locked": "Faili imefungwa",
+                "disk_error": "Diski imejaa au hitilafu ya I/O",
+                "unknown": "Hitilafu isiyojulikana"
+            },
+            "retryAllFailed": "Jaribu tena zote zilizoshindwa"
         },
         "settings": {
             "title": "Mipangilio",
@@ -934,7 +956,8 @@
             "movedToTrash": "Imehamishiwa kwenye Takataka",
             "moveToTrashFailed": "Imeshindwa kuhamisha kwenye Takataka",
             "batchRenameResult": "{success} zimebadilishwa jina, {errors} zimeshindwa",
-            "copyCompleted": "Kunakili kumekamilika"
+            "copyCompleted": "Kunakili kumekamilika",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",

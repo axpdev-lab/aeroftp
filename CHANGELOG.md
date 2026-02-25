@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.9] - 2026-02-25
+
+### Seafile Preset & Transfer Circuit Breaker
+
+Patch release focused on cloud preset expansion and transfer reliability under repeated failures.
+
+#### Added
+
+- **Seafile WebDAV preset**: New pre-configured Seafile provider with dedicated logo and endpoint preset (`seafdav`), integrated in provider registry and connection UI
+- **Seafile i18n coverage**: New Seafile labels/tooltips and protocol name translated across all 47 locales
+- **Transfer circuit breaker**: New batch transfer guard with error classification, consecutive failure thresholds, exponential backoff, reconnect flow, and pause reason tracking
+- **Retry failed batch items**: Added dedicated "Retry All Failed" queue action with circuit-breaker-aware handling
+
+#### Changed
+
+- **Transfer error taxonomy in frontend**: Introduced fast client-side classifier aligned with sync backend categories (`auth`, `quota_exceeded`, `network`, `timeout`, `path_not_found`, etc.) for consistent retry/stop decisions
+
+---
+
 ## [2.6.8] - 2026-02-25
 
 ### Selective Server Export

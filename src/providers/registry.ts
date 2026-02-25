@@ -366,6 +366,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             pathStyle: false,
+            endpointTemplate: 'https://s3.{region}.wasabisys.com',
         },
         features: {
             shareLink: true,
@@ -387,8 +388,8 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'S3 Gateway access grant → Secret Key' },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-storj-bucket' },
             {
-                key: 'server',
-                label: 'Satellite',
+                key: 'endpoint',
+                label: 'Satellite Gateway',
                 type: 'select',
                 required: true,
                 options: [
@@ -440,6 +441,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             pathStyle: false,
+            endpointTemplate: 'https://{region}.digitaloceanspaces.com',
         },
         features: {
             shareLink: true,
@@ -512,6 +514,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             pathStyle: false,
+            endpointTemplate: 'https://oss-{region}.aliyuncs.com',
         },
         features: {
             shareLink: true,
@@ -555,6 +558,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             pathStyle: false,
+            endpointTemplate: 'https://cos.{region}.myqcloud.com',
         },
         features: {
             shareLink: true,
@@ -935,3 +939,15 @@ export const getProviderById = (id: string) => providerRegistry.getById(id);
 export const getProvidersByCategory = (cat: ProviderCategory) => providerRegistry.getByCategory(cat);
 export const getAllProviders = () => providerRegistry.getAll();
 export const getStableProviders = () => providerRegistry.getStable();
+
+/**
+ * Resolve the S3 endpoint for a provider based on its endpointTemplate and region.
+ * Returns null for providers without a template (e.g. Amazon S3 uses default AWS endpoint).
+ */
+export const resolveS3Endpoint = (providerId: string | undefined, region: string | undefined): string | null => {
+    if (!providerId || !region) return null;
+    const provider = providerRegistry.getById(providerId);
+    const template = provider?.defaults?.endpointTemplate;
+    if (!template) return null;
+    return template.replace('{region}', region);
+};

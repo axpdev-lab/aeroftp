@@ -369,7 +369,29 @@
             "stopAll": "Կանգնեցնել բոլորը",
             "stopAllPending": "Կանգնեցնել բոլոր սպասվողները",
             "forceStop": "Ստիպողական կանգնեցում (ընդհատել ընթացիկ ֆայլը)",
-            "cancelledByUser": "Չեղարկված է օգտագործի կողմից"
+            "cancelledByUser": "Չեղարկված է օգտագործի կողմից",
+            "circuitBreaker": {
+                "paused": "Հերթը դադարեցված է — մի քանի հաջորդական սխալներ",
+                "batchStopped": "Փոխանցումը դադարեցված է",
+                "fatalError": "Կրիտիկական սխալ՝ {reason}։ Մնացած փոխանցումները չեղարկված են։",
+                "attemptingReconnect": "Կապակցության վերականգնման փորձ...",
+                "reconnectSuccess": "Կապակցությունը վերականգնված է։ Փոխանցումները շարունակվում են։",
+                "reconnectFailed": "Հնարավոր չէ վերամիանալ։ Հերթը դադարեցված է։",
+                "connectionLost": "Կապակցությունը կորսված է"
+            },
+            "errorKind": {
+                "network": "Ցանցի սխալ",
+                "auth": "Նույնականացումը ձախողվեց",
+                "path_not_found": "Ուղին չի գտնվել",
+                "permission_denied": "Մուտքը մերժված է",
+                "quota_exceeded": "Պահեստավորման քվոտան գերազանցված է",
+                "rate_limit": "Հարցումների սահմանափակումը գերազանցված է",
+                "timeout": "Կապակցության ժամկետի սպառում",
+                "file_locked": "Ֆայլը կողպված է",
+                "disk_error": "Սկավառակը լիքն է կամ I/O սխալ",
+                "unknown": "Անհայտ սխալ"
+            },
+            "retryAllFailed": "Կրկնել բոլոր ձախողվածները"
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -927,7 +949,8 @@
             "movedToTrash": "Տեղափոխված աղբարկղ",
             "moveToTrashFailed": "Չհաջողվեց աղբարկղ տևալը",
             "batchRenameResult": "{success} վերանվանված, {errors} ձախողված",
-            "copyCompleted": "Պատճենը ավարտված է"
+            "copyCompleted": "Պատճենը ավարտված է",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",

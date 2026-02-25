@@ -369,7 +369,29 @@
             "stopAll": "すべて停止",
             "stopAllPending": "保留中をすべて停止",
             "forceStop": "強制停止（現在のファイルを中断）",
-            "cancelledByUser": "ユーザーによりキャンセルされました"
+            "cancelledByUser": "ユーザーによりキャンセルされました",
+            "circuitBreaker": {
+                "paused": "キューが一時停止中 — 連続エラーが複数発生",
+                "batchStopped": "転送が停止されました",
+                "fatalError": "致命的エラー: {reason}。残りの転送はキャンセルされました。",
+                "attemptingReconnect": "接続の復元を試みています...",
+                "reconnectSuccess": "接続が復元されました。転送を再開します。",
+                "reconnectFailed": "再接続できませんでした。キューが一時停止中です。",
+                "connectionLost": "接続が切断されました"
+            },
+            "errorKind": {
+                "network": "ネットワークエラー",
+                "auth": "認証に失敗しました",
+                "path_not_found": "パスが見つかりません",
+                "permission_denied": "アクセスが拒否されました",
+                "quota_exceeded": "ストレージ容量の上限を超えました",
+                "rate_limit": "レート制限を超えました",
+                "timeout": "接続がタイムアウトしました",
+                "file_locked": "ファイルがロックされています",
+                "disk_error": "ディスクが満杯またはI/Oエラー",
+                "unknown": "不明なエラー"
+            },
+            "retryAllFailed": "失敗をすべて再試行"
         },
         "settings": {
             "title": "設定",
@@ -934,7 +956,8 @@
             "movedToTrash": "ゴミ箱に移動しました",
             "moveToTrashFailed": "ゴミ箱への移動に失敗しました",
             "batchRenameResult": "{success} 件の名前変更成功、{errors} 件の失敗",
-            "copyCompleted": "コピーが完了しました"
+            "copyCompleted": "コピーが完了しました",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",

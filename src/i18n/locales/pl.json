@@ -369,7 +369,29 @@
             "stopAll": "Zatrzymaj wszystko",
             "stopAllPending": "Zatrzymaj wszystkie oczekujace",
             "forceStop": "Wymus zatrzymanie (przerwij biezacy plik)",
-            "cancelledByUser": "Anulowane przez użytkownika"
+            "cancelledByUser": "Anulowane przez użytkownika",
+            "circuitBreaker": {
+                "paused": "Kolejka wstrzymana — wiele kolejnych błędów",
+                "batchStopped": "Transfer zatrzymany",
+                "fatalError": "Błąd krytyczny: {reason}. Pozostałe transfery anulowane.",
+                "attemptingReconnect": "Próba przywrócenia połączenia...",
+                "reconnectSuccess": "Połączenie przywrócone. Wznawianie transferów.",
+                "reconnectFailed": "Nie udało się ponownie połączyć. Kolejka wstrzymana.",
+                "connectionLost": "Utracono połączenie"
+            },
+            "errorKind": {
+                "network": "Błąd sieci",
+                "auth": "Uwierzytelnianie nie powiodło się",
+                "path_not_found": "Ścieżka nie znaleziona",
+                "permission_denied": "Odmowa dostępu",
+                "quota_exceeded": "Przekroczono limit przestrzeni dyskowej",
+                "rate_limit": "Przekroczono limit żądań",
+                "timeout": "Przekroczono limit czasu połączenia",
+                "file_locked": "Plik zablokowany",
+                "disk_error": "Dysk pełny lub błąd wejścia/wyjścia",
+                "unknown": "Nieznany błąd"
+            },
+            "retryAllFailed": "Ponów wszystkie nieudane"
         },
         "settings": {
             "title": "Ustawienia",
@@ -934,7 +956,8 @@
             "movedToTrash": "Przeniesiono do Kosza",
             "moveToTrashFailed": "Nie udało się przenieść do Kosza",
             "batchRenameResult": "{success} zmieniono nazwę, {errors} nie powiodło się",
-            "copyCompleted": "Kopiowanie zakończone"
+            "copyCompleted": "Kopiowanie zakończone",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",

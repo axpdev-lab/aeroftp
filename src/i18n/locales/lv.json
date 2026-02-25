@@ -369,7 +369,29 @@
             "stopAll": "Apturēt visu",
             "stopAllPending": "Apturēt visus gaidošos",
             "forceStop": "Piespiedu apstasanas (partraukt pasreizejo failu)",
-            "cancelledByUser": "Atcelts no lietotāja"
+            "cancelledByUser": "Atcelts no lietotāja",
+            "circuitBreaker": {
+                "paused": "Rinda apturēta — vairākas secīgas kļūdas",
+                "batchStopped": "Pārsūtīšana apturēta",
+                "fatalError": "Kritiska kļūda: {reason}. Atlikušās pārsūtīšanas atceltas.",
+                "attemptingReconnect": "Mēģina atjaunot savienojumu...",
+                "reconnectSuccess": "Savienojums atjaunots. Pārsūtīšanas turpinās.",
+                "reconnectFailed": "Neizdevās atkārtoti savienoties. Rinda apturēta.",
+                "connectionLost": "Savienojums zaudēts"
+            },
+            "errorKind": {
+                "network": "Tīkla kļūda",
+                "auth": "Autentifikācija neizdevās",
+                "path_not_found": "Ceļš nav atrasts",
+                "permission_denied": "Piekļuve liegta",
+                "quota_exceeded": "Krātuves kvota pārsniegta",
+                "rate_limit": "Pieprasījumu limits pārsniegts",
+                "timeout": "Savienojuma noildze",
+                "file_locked": "Fails bloķēts",
+                "disk_error": "Disks pilns vai I/O kļūda",
+                "unknown": "Nezināma kļūda"
+            },
+            "retryAllFailed": "Atkārtot visas neveiksmīgās"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -934,7 +956,8 @@
             "movedToTrash": "Pārvietots uz atkritni",
             "moveToTrashFailed": "Neizdevās pārvietot uz atkritni",
             "batchRenameResult": "{success} pārdēvēti, {errors} neizdevās",
-            "copyCompleted": "Kopēšana pabeigta"
+            "copyCompleted": "Kopēšana pabeigta",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",

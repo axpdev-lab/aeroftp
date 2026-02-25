@@ -369,7 +369,29 @@
             "stopAll": "Peata kõik",
             "stopAllPending": "Peata kõik ootel olevad",
             "forceStop": "Sundpeatamine (katkesta praegune fail)",
-            "cancelledByUser": "Kasutaja poolt tühistatud"
+            "cancelledByUser": "Kasutaja poolt tühistatud",
+            "circuitBreaker": {
+                "paused": "Järjekord peatatud — mitu järjestikust viga",
+                "batchStopped": "Ülekanne peatatud",
+                "fatalError": "Kriitiline viga: {reason}. Üllejäänud ülekanded tühistati.",
+                "attemptingReconnect": "Ühenduse taastamine...",
+                "reconnectSuccess": "Ühendus taastatud. Ülekannete jätkamine.",
+                "reconnectFailed": "Uuesti ühendamine ebaõnnestus. Järjekord peatatud.",
+                "connectionLost": "Ühendus katkes"
+            },
+            "errorKind": {
+                "network": "Võrguviga",
+                "auth": "Autentimine ebaõnnestus",
+                "path_not_found": "Teed ei leitud",
+                "permission_denied": "Juurdepääs keelatud",
+                "quota_exceeded": "Salvestusmaht ületatud",
+                "rate_limit": "Päringute limiit ületatud",
+                "timeout": "Ühenduse ajalimit ületatud",
+                "file_locked": "Fail on lukustatud",
+                "disk_error": "Ketas täis või I/O viga",
+                "unknown": "Tundmatu viga"
+            },
+            "retryAllFailed": "Proovi kõiki ebaõnnestunuid uuesti"
         },
         "settings": {
             "title": "Seaded",
@@ -934,7 +956,8 @@
             "movedToTrash": "Teisaldatud prügikasti",
             "moveToTrashFailed": "Prügikasti teisaldamine ebaõnnestus",
             "batchRenameResult": "{success} ümber nimetatud, {errors} ebaõnnestus",
-            "copyCompleted": "Kopeerimine lõpetatud"
+            "copyCompleted": "Kopeerimine lõpetatud",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",

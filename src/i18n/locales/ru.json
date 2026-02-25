@@ -369,7 +369,29 @@
             "stopAll": "Остановить все",
             "stopAllPending": "Остановить все ожидающие",
             "forceStop": "Принудительная остановка (прервать текущий файл)",
-            "cancelledByUser": "Отменено пользователем"
+            "cancelledByUser": "Отменено пользователем",
+            "circuitBreaker": {
+                "paused": "Очередь приостановлена — несколько последовательных ошибок",
+                "batchStopped": "Передача остановлена",
+                "fatalError": "Критическая ошибка: {reason}. Оставшиеся передачи отменены.",
+                "attemptingReconnect": "Попытка восстановления соединения...",
+                "reconnectSuccess": "Соединение восстановлено. Возобновление передач.",
+                "reconnectFailed": "Не удалось переподключиться. Очередь приостановлена.",
+                "connectionLost": "Соединение потеряно"
+            },
+            "errorKind": {
+                "network": "Ошибка сети",
+                "auth": "Ошибка аутентификации",
+                "path_not_found": "Путь не найден",
+                "permission_denied": "Доступ запрещён",
+                "quota_exceeded": "Квота хранилища превышена",
+                "rate_limit": "Превышен лимит запросов",
+                "timeout": "Время ожидания подключения истекло",
+                "file_locked": "Файл заблокирован",
+                "disk_error": "Диск заполнен или ошибка ввода/вывода",
+                "unknown": "Неизвестная ошибка"
+            },
+            "retryAllFailed": "Повторить все неудачные"
         },
         "settings": {
             "title": "Настройки",
@@ -934,7 +956,8 @@
             "movedToTrash": "Перемещено в Корзину",
             "moveToTrashFailed": "Не удалось переместить в Корзину",
             "batchRenameResult": "{success} переименовано, {errors} не удалось",
-            "copyCompleted": "Копирование завершено"
+            "copyCompleted": "Копирование завершено",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Больше чем FTP. Полный инструментарий разработчика.",

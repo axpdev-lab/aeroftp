@@ -369,7 +369,29 @@
             "stopAll": "Sustabdyti viską",
             "stopAllPending": "Sustabdyti visus laukiančius",
             "forceStop": "Priverstinis sustabdymas (nutraukti esama faila)",
-            "cancelledByUser": "Atšaukta naudotojo"
+            "cancelledByUser": "Atšaukta naudotojo",
+            "circuitBreaker": {
+                "paused": "Eilė pristabdyta — kelios klaidos iš eilės",
+                "batchStopped": "Perkėlimas sustabdytas",
+                "fatalError": "Kritinė klaida: {reason}. Likę perkėlimai atšaukti.",
+                "attemptingReconnect": "Bandoma atkurti ryšį...",
+                "reconnectSuccess": "Ryšys atkurtas. Tęsiami perkėlimai.",
+                "reconnectFailed": "Nepavyko prisijungti iš naujo. Eilė pristabdyta.",
+                "connectionLost": "Ryšys prarastas"
+            },
+            "errorKind": {
+                "network": "Tinklo klaida",
+                "auth": "Autentifikacija nepavyko",
+                "path_not_found": "Kelias nerastas",
+                "permission_denied": "Prieiga uždrausta",
+                "quota_exceeded": "Saugyklos kvota viršyta",
+                "rate_limit": "Užklausų limitas viršytas",
+                "timeout": "Ryšio skirtasis laikas",
+                "file_locked": "Failas užrakintas",
+                "disk_error": "Diskas pilnas arba I/O klaida",
+                "unknown": "Nežinoma klaida"
+            },
+            "retryAllFailed": "Pakartoti visus nepavykusius"
         },
         "settings": {
             "title": "Nustatymai",
@@ -934,7 +956,8 @@
             "movedToTrash": "Perkelta į šiukšlinę",
             "moveToTrashFailed": "Nepavyko perkelti į šiukšlinę",
             "batchRenameResult": "{success} pervadinta, {errors} nepavyko",
-            "copyCompleted": "Kopijavimas baigtas"
+            "copyCompleted": "Kopijavimas baigtas",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",

@@ -138,13 +138,23 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
             const importedServers = result.servers;
 
-            // Merge: skip duplicates by host+port+username
+            // Read current servers directly from localStorage (ground truth)
+            // The `servers` prop may be stale or incomplete
+            let currentServers: ServerProfile[] = [];
+            try {
+                const stored = localStorage.getItem('aeroftp-saved-servers');
+                if (stored) currentServers = JSON.parse(stored);
+            } catch { /* fallback to prop */ }
+            if (currentServers.length === 0) currentServers = servers;
+
+            // Merge: skip duplicates by host+port+username OR by ID
             const existingKeys = new Set(
-                servers.map(s => `${s.host}:${s.port}:${s.username}`)
+                currentServers.map(s => `${s.host}:${s.port}:${s.username}`)
             );
+            const existingIds = new Set(currentServers.map(s => s.id));
 
             const newServers: ServerProfile[] = importedServers
-                .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`))
+                .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`) && !existingIds.has(s.id))
                 .map(s => ({
                     id: s.id,
                     name: s.name,

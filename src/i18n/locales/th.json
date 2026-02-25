@@ -369,7 +369,29 @@
             "stopAll": "หยุดทั้งหมด",
             "stopAllPending": "หยุดทั้งหมดที่รอดำเนินการ",
             "forceStop": "บังคับหยุด (ขัดจังหวะไฟล์ปัจจุบัน)",
-            "cancelledByUser": "ยกเลิกโดยผู้ใช้"
+            "cancelledByUser": "ยกเลิกโดยผู้ใช้",
+            "circuitBreaker": {
+                "paused": "คิวถูกหยุดชั่วคราว — เกิดข้อผิดพลาดติดต่อกันหลายครั้ง",
+                "batchStopped": "หยุดการถ่ายโอนแล้ว",
+                "fatalError": "ข้อผิดพลาดร้ายแรง: {reason} การถ่ายโอนที่เหลือถูกยกเลิก",
+                "attemptingReconnect": "กำลังพยายามกู้คืนการเชื่อมต่อ...",
+                "reconnectSuccess": "กู้คืนการเชื่อมต่อแล้ว กำลังดำเนินการถ่ายโอนต่อ",
+                "reconnectFailed": "ไม่สามารถเชื่อมต่อใหม่ได้ คิวถูกหยุดชั่วคราว",
+                "connectionLost": "การเชื่อมต่อขาดหาย"
+            },
+            "errorKind": {
+                "network": "ข้อผิดพลาดเครือข่าย",
+                "auth": "การยืนยันตัวตนล้มเหลว",
+                "path_not_found": "ไม่พบเส้นทาง",
+                "permission_denied": "ไม่ได้รับอนุญาต",
+                "quota_exceeded": "เกินโควต้าพื้นที่จัดเก็บ",
+                "rate_limit": "เกินขีดจำกัดคำขอ",
+                "timeout": "หมดเวลาการเชื่อมต่อ",
+                "file_locked": "ไฟล์ถูกล็อก",
+                "disk_error": "ดิสก์เต็มหรือข้อผิดพลาด I/O",
+                "unknown": "ข้อผิดพลาดที่ไม่ทราบสาเหตุ"
+            },
+            "retryAllFailed": "ลองใหม่ทั้งหมดที่ล้มเหลว"
         },
         "settings": {
             "title": "การตั้งค่า",
@@ -934,7 +956,8 @@
             "movedToTrash": "ย้ายไปยังถังขยะแล้ว",
             "moveToTrashFailed": "ไม่สามารถย้ายไปยังถังขยะได้",
             "batchRenameResult": "{success} เปลี่ยนชื่อสำเร็จ, {errors} ล้มเหลว",
-            "copyCompleted": "คัดลอกเสร็จสมบูรณ์"
+            "copyCompleted": "คัดลอกเสร็จสมบูรณ์",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",

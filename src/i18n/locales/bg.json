@@ -369,7 +369,29 @@
             "stopAll": "Спри всички",
             "stopAllPending": "Спри всички чакащи",
             "forceStop": "Принудително спиране (прекъсване на текущия файл)",
-            "cancelledByUser": "Отменено от потребителя"
+            "cancelledByUser": "Отменено от потребителя",
+            "circuitBreaker": {
+                "paused": "Опашката е паузирана — множество последователни грешки",
+                "batchStopped": "Прехвърлянето е спряно",
+                "fatalError": "Фатална грешка: {reason}. Останалите прехвърляния са отменени.",
+                "attemptingReconnect": "Опит за възстановяване на връзката...",
+                "reconnectSuccess": "Връзката е възстановена. Прехвърлянията продължават.",
+                "reconnectFailed": "Неуспешно повторно свързване. Опашката е паузирана.",
+                "connectionLost": "Връзката е загубена"
+            },
+            "errorKind": {
+                "network": "Мрежова грешка",
+                "auth": "Неуспешно удостоверяване",
+                "path_not_found": "Пътят не е намерен",
+                "permission_denied": "Достъпът е отказан",
+                "quota_exceeded": "Квотата за съхранение е надвишена",
+                "rate_limit": "Ограничението на заявките е надвишено",
+                "timeout": "Изтекло време на връзката",
+                "file_locked": "Файлът е заключен",
+                "disk_error": "Дискът е пълен или грешка при четене/запис",
+                "unknown": "Неизвестна грешка"
+            },
+            "retryAllFailed": "Повтори всички неуспешни"
         },
         "settings": {
             "title": "Настройки",
@@ -934,7 +956,8 @@
             "movedToTrash": "Преместено в кошчето",
             "moveToTrashFailed": "Неуспешно преместване в кошчето",
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
-            "copyCompleted": "Копирането завършено"
+            "copyCompleted": "Копирането завършено",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",

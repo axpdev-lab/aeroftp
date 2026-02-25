@@ -369,7 +369,29 @@
             "stopAll": "បញ្ឈប់ទាំងអស់",
             "stopAllPending": "បញ្ឈប់ទាំងអស់ដែលកំពុងរង់ចាំ",
             "forceStop": "បង្ខំឱ្យឈប់ (ផ្អាកឯកសារបច្ចុប្បន្ន)",
-            "cancelledByUser": "បោះបង់ដោយអ្នកប្រើ"
+            "cancelledByUser": "បោះបង់ដោយអ្នកប្រើ",
+            "circuitBreaker": {
+                "paused": "ជួរត្រូវបានផ្អាក — កំហុសជាប់ៗគ្នាច្រើន",
+                "batchStopped": "ការផ្ទេរត្រូវបានបញ្ឈប់",
+                "fatalError": "កំហុសធ្ងន់ធ្ងរ: {reason}។ ការផ្ទេរដែលនៅសល់ត្រូវបានលុបចោល។",
+                "attemptingReconnect": "កំពុងព្យាយាមស្ដារការតភ្ជាប់...",
+                "reconnectSuccess": "ការតភ្ជាប់ត្រូវបានស្ដារ។ កំពុងបន្តការផ្ទេរ។",
+                "reconnectFailed": "មិនអាចតភ្ជាប់ឡើងវិញបានទេ។ ជួរត្រូវបានផ្អាក។",
+                "connectionLost": "ការតភ្ជាប់បាត់បង់"
+            },
+            "errorKind": {
+                "network": "កំហុសបណ្ដាញ",
+                "auth": "ការផ្ទៀងផ្ទាត់បរាជ័យ",
+                "path_not_found": "រកមិនឃើញផ្លូវ",
+                "permission_denied": "ការអនុញ្ញាតត្រូវបានបដិសេធ",
+                "quota_exceeded": "ទំហំផ្ទុកលើសកំណត់",
+                "rate_limit": "លើសកម្រិតអត្រាស្នើសុំ",
+                "timeout": "អស់ពេលភ្ជាប់",
+                "file_locked": "ឯកសារត្រូវបានចាក់សោ",
+                "disk_error": "ថាសពេញ ឬកំហុស I/O",
+                "unknown": "កំហុសមិនស្គាល់"
+            },
+            "retryAllFailed": "សាកល្បងឡើងវិញទាំងអស់ដែលបរាជ័យ"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -934,7 +956,8 @@
             "movedToTrash": "បានផ្លាស់ទីទៅធុងសម្រាម",
             "moveToTrashFailed": "បរាជ័យក្នុងការផ្លាស់ទីទៅធុងសម្រាម",
             "batchRenameResult": "{success} ប្តូរឈ្មោះហើយ, {errors} បរាជ័យ",
-            "copyCompleted": "ការចម្លងបានបញ្ចប់"
+            "copyCompleted": "ការចម្លងបានបញ្ចប់",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",

@@ -369,7 +369,29 @@
             "stopAll": "Zastavit vsetko",
             "stopAllPending": "Zastavit vsetky cakajuce",
             "forceStop": "Vynutene zastavenie (prerusit aktualny subor)",
-            "cancelledByUser": "Zrušené používateľom"
+            "cancelledByUser": "Zrušené používateľom",
+            "circuitBreaker": {
+                "paused": "Fronta pozastavená — viacero po sebe idúcich chýb",
+                "batchStopped": "Prenos zastavený",
+                "fatalError": "Kritická chyba: {reason}. Zostávajúce prenosy boli zrušené.",
+                "attemptingReconnect": "Pokus o obnovenie pripojenia...",
+                "reconnectSuccess": "Pripojenie obnovené. Pokračovanie prenosov.",
+                "reconnectFailed": "Nepodarilo sa znovu pripojiť. Fronta pozastavená.",
+                "connectionLost": "Pripojenie stratené"
+            },
+            "errorKind": {
+                "network": "Chyba siete",
+                "auth": "Overenie zlyhalo",
+                "path_not_found": "Cesta nenájdená",
+                "permission_denied": "Prístup zamietnutý",
+                "quota_exceeded": "Kvóta úložiska prekročená",
+                "rate_limit": "Prekročený limit požiadaviek",
+                "timeout": "Časový limit pripojenia vypršal",
+                "file_locked": "Súbor uzamknutý",
+                "disk_error": "Disk plný alebo chyba vstupu/výstupu",
+                "unknown": "Neznáma chyba"
+            },
+            "retryAllFailed": "Opakovať všetky neúspešné"
         },
         "settings": {
             "title": "Nastavenia",
@@ -934,7 +956,8 @@
             "movedToTrash": "Presunuté do koša",
             "moveToTrashFailed": "Presun do koša sa nepodaril",
             "batchRenameResult": "{success} premenovaných, {errors} zlyhalo",
-            "copyCompleted": "Kopírovanie dokončené"
+            "copyCompleted": "Kopírovanie dokončené",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",

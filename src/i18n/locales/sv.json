@@ -369,7 +369,29 @@
             "stopAll": "Stoppa alla",
             "stopAllPending": "Stoppa alla vantande",
             "forceStop": "Tvangsstopp (avbryt aktuell fil)",
-            "cancelledByUser": "Avbrutet av användaren"
+            "cancelledByUser": "Avbrutet av användaren",
+            "circuitBreaker": {
+                "paused": "Kön pausad — flera på varandra följande fel",
+                "batchStopped": "Överföring stoppad",
+                "fatalError": "Kritiskt fel: {reason}. Återstående överföringar avbrutna.",
+                "attemptingReconnect": "Försöker återupprätta anslutningen...",
+                "reconnectSuccess": "Anslutning återupprättad. Återupptar överföringar.",
+                "reconnectFailed": "Kunde inte återansluta. Kön pausad.",
+                "connectionLost": "Anslutning förlorad"
+            },
+            "errorKind": {
+                "network": "Nätverksfel",
+                "auth": "Autentisering misslyckades",
+                "path_not_found": "Sökvägen hittades inte",
+                "permission_denied": "Åtkomst nekad",
+                "quota_exceeded": "Lagringskvoten överskriden",
+                "rate_limit": "Begränsning av förfrågningar överskriden",
+                "timeout": "Anslutningstidsgräns överskriden",
+                "file_locked": "Filen är låst",
+                "disk_error": "Disken full eller I/O-fel",
+                "unknown": "Okänt fel"
+            },
+            "retryAllFailed": "Försök igen alla misslyckade"
         },
         "settings": {
             "title": "Inställningar",
@@ -934,7 +956,8 @@
             "movedToTrash": "Flyttad till papperskorgen",
             "moveToTrashFailed": "Det gick inte att flytta till papperskorgen",
             "batchRenameResult": "{success} omdöpta, {errors} misslyckades",
-            "copyCompleted": "Kopiering slutförd"
+            "copyCompleted": "Kopiering slutförd",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",

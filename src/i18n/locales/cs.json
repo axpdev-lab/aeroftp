@@ -369,7 +369,29 @@
             "stopAll": "Zastavit vše",
             "stopAllPending": "Zastavit vše čekající",
             "forceStop": "Vynucené zastavení (přerušit aktuální soubor)",
-            "cancelledByUser": "Zrušeno uživatelem"
+            "cancelledByUser": "Zrušeno uživatelem",
+            "circuitBreaker": {
+                "paused": "Fronta pozastavena — více po sobě jdoucích chyb",
+                "batchStopped": "Přenos zastaven",
+                "fatalError": "Fatální chyba: {reason}. Zbývající přenosy byly zrušeny.",
+                "attemptingReconnect": "Pokus o obnovení připojení...",
+                "reconnectSuccess": "Připojení obnoveno. Pokračování v přenosech.",
+                "reconnectFailed": "Nepodařilo se znovu připojit. Fronta pozastavena.",
+                "connectionLost": "Připojení ztraceno"
+            },
+            "errorKind": {
+                "network": "Síťová chyba",
+                "auth": "Ověření se nezdařilo",
+                "path_not_found": "Cesta nenalezena",
+                "permission_denied": "Přístup odepřen",
+                "quota_exceeded": "Kvóta úložiště překročena",
+                "rate_limit": "Limit požadavků překročen",
+                "timeout": "Časový limit připojení vypršel",
+                "file_locked": "Soubor je uzamčen",
+                "disk_error": "Disk je plný nebo chyba I/O",
+                "unknown": "Neznámá chyba"
+            },
+            "retryAllFailed": "Opakovat všechny neúspěšné"
         },
         "settings": {
             "title": "Nastavení",
@@ -934,7 +956,8 @@
             "movedToTrash": "Přesunuto do koše",
             "moveToTrashFailed": "Přesun do koše se nezdařil",
             "batchRenameResult": "{success} přejmenováno, {errors} selhalo",
-            "copyCompleted": "Kopírování dokončeno"
+            "copyCompleted": "Kopírování dokončeno",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",

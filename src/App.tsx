@@ -33,6 +33,8 @@ import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
+import { useCircuitBreaker } from './hooks/useCircuitBreaker';
+import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
@@ -56,6 +58,7 @@ import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
+import { resolveS3Endpoint } from './providers/registry';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
@@ -169,7 +172,7 @@ const App: React.FC = () => {
     if (appReadySignaled.current) return;
     if (vaultInitDone.current && localFilesInitDone.current) {
       appReadySignaled.current = true;
-      invoke('app_ready').catch(() => {});
+      invoke('app_ready').catch(() => { });
     }
   }, []);
 
@@ -351,6 +354,12 @@ const App: React.FC = () => {
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
+
+  // Circuit breaker for batch transfers
+  const circuitBreaker = useCircuitBreaker();
+  const [isBatchPaused, setIsBatchPaused] = React.useState(false);
+  const [batchPauseReason, setBatchPauseReason] = React.useState<string | null>(null);
+  const batchResumeResolverRef = React.useRef<((action: 'resume' | 'cancel') => void) | null>(null);
 
   const localSearchRef = React.useRef<HTMLInputElement>(null);
 
@@ -568,7 +577,7 @@ const App: React.FC = () => {
     if (!masterPasswordSet || isAppLocked) return;
 
     const updateActivity = () => {
-      invoke('app_master_password_update_activity').catch(() => {});
+      invoke('app_master_password_update_activity').catch(() => { });
     };
 
     // Track various user interactions
@@ -1458,9 +1467,9 @@ const App: React.FC = () => {
     const unlistenSync = listen<{ action: string }>('ai-sync-control', (event) => {
       const action = event.payload.action;
       if (action === 'start') {
-        invoke('start_background_sync').catch(() => {});
+        invoke('start_background_sync').catch(() => { });
       } else if (action === 'stop') {
-        invoke('stop_background_sync').catch(() => {});
+        invoke('stop_background_sync').catch(() => { });
       }
     });
     return () => {
@@ -1825,9 +1834,9 @@ const App: React.FC = () => {
             ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
               ? `Jottacloud ${effectiveParams.username}`
-            : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
-              ? effectiveParams.username
-              : effectiveParams.server.split(':')[0]);
+              : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
+                ? effectiveParams.username
+                : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -1854,7 +1863,7 @@ const App: React.FC = () => {
           initial_path: quickConnectDirs.remoteDir || null,
           bucket: effectiveParams.options?.bucket,
           region: effectiveParams.options?.region || 'us-east-1',
-          endpoint: effectiveParams.options?.endpoint || null,
+          endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
           path_style: effectiveParams.options?.pathStyle || false,
           save_session: effectiveParams.options?.save_session,
           session_expires_at: effectiveParams.options?.session_expires_at,
@@ -2026,8 +2035,8 @@ const App: React.FC = () => {
       humanLog.logSuccess('DISCONNECT', {}, logId);
       if (showToastNotifications) {
         const msgKey = reason === 'tab-close' ? 'toast.disconnectedTabClosed'
-                     : reason === 'close-all' ? 'toast.disconnectedAllClosed'
-                     : 'toast.disconnectedFrom';
+          : reason === 'close-all' ? 'toast.disconnectedAllClosed'
+            : 'toast.disconnectedFrom';
         toast.info(t('toast.disconnectedTitle'), t(msgKey, { server: connectionParams.server }));
       }
     } catch (error) {
@@ -2285,7 +2294,7 @@ const App: React.FC = () => {
           initial_path: targetSession.remotePath || null,
           bucket: connectParams.options?.bucket,
           region: connectParams.options?.region || 'us-east-1',
-          endpoint: connectParams.options?.endpoint || null,
+          endpoint: connectParams.options?.endpoint || resolveS3Endpoint(connectParams.providerId, connectParams.options?.region as string) || (protocol === 's3' && connectParams.server && !connectParams.server.includes('amazonaws.com') ? connectParams.server : null),
           path_style: connectParams.options?.pathStyle || false,
           private_key_path: connectParams.options?.private_key_path || null,
           key_passphrase: connectParams.options?.key_passphrase || null,
@@ -2754,6 +2763,29 @@ const App: React.FC = () => {
     }
   };
 
+  // Safe local path navigation with fallback for invalid paths
+  // (e.g. imported backup from another PC with different directory structure)
+  const safeChangeLocalDirectory = async (path: string): Promise<string> => {
+    const success = await loadLocalFiles(path);
+    if (success) {
+      humanLog.logNavigate(path, false);
+      addRecentPath(path);
+      return path;
+    }
+    // Path doesn't exist — fallback to home directory
+    const fallback = await homeDir().catch(() => '/');
+    const fallbackSuccess = await loadLocalFiles(fallback);
+    if (fallbackSuccess) {
+      humanLog.logNavigate(fallback, false);
+      notify.warning?.(t('toast.localPathNotFound', { path })) ??
+        notify.error(t('common.error'), `Local path not found: ${path}. Navigated to ${fallback}`);
+      return fallback;
+    }
+    // Last resort: root
+    await loadLocalFiles('/');
+    return '/';
+  };
+
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
     if (!syncNavDialog) return;
@@ -3052,6 +3084,10 @@ const App: React.FC = () => {
 
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
+    // If batch is paused by circuit breaker, resolve the pause promise
+    if (batchResumeResolverRef.current) {
+      batchResumeResolverRef.current('cancel');
+    }
     if (cancelLevelRef.current === 0) {
       // Level 1 — Soft cancel: finish current file, stop queue
       cancelLevelRef.current = 1;
@@ -3065,6 +3101,98 @@ const App: React.FC = () => {
       dispatchTransferToast(null);
       transferQueue.stopAll(); // Stop everything including current
       try { await invoke('cancel_transfer'); } catch { }
+    }
+    setIsBatchPaused(false);
+    setBatchPauseReason(null);
+  };
+
+  // Circuit breaker: attempt reconnection during batch transfer
+  const attemptBatchReconnect = async (): Promise<boolean> => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const isProvider = !!protocol && isNonFtpProvider(protocol);
+
+    circuitBreaker.markReconnecting();
+    notify.info(t('toast.reconnecting'), t('transfer.circuitBreaker.attemptingReconnect'));
+
+    try {
+      if (isProvider) {
+        await invoke('provider_keep_alive');
+      } else {
+        await invoke('reconnect_ftp');
+      }
+      circuitBreaker.markReconnected();
+      notify.success(t('toast.reconnected'), t('transfer.circuitBreaker.reconnectSuccess'));
+      return true;
+    } catch {
+      circuitBreaker.markReconnectFailed();
+      return false;
+    }
+  };
+
+  // Circuit breaker: pause batch and wait for user decision
+  // Tracks consecutive resume attempts per file index to prevent infinite i-- loops
+  const batchResumeAttemptsRef = React.useRef({ fileIndex: -1, count: 0 });
+
+  const waitForBatchResume = (currentFileIndex: number): Promise<'resume' | 'cancel'> => {
+    // Track resume attempts for same file index
+    if (batchResumeAttemptsRef.current.fileIndex === currentFileIndex) {
+      batchResumeAttemptsRef.current.count++;
+    } else {
+      batchResumeAttemptsRef.current = { fileIndex: currentFileIndex, count: 1 };
+    }
+
+    // Auto-cancel after too many resume attempts on same file
+    if (batchResumeAttemptsRef.current.count > 3) {
+      notify.error(t('transfer.circuitBreaker.batchStopped'), t('transfer.circuitBreaker.reconnectFailed'));
+      setIsBatchPaused(false);
+      setBatchPauseReason(null);
+      return Promise.resolve('cancel');
+    }
+
+    setIsBatchPaused(true);
+    setBatchPauseReason(t('transfer.circuitBreaker.connectionLost'));
+    return new Promise<'resume' | 'cancel'>((resolve) => {
+      batchResumeResolverRef.current = (action) => {
+        setIsBatchPaused(false);
+        setBatchPauseReason(null);
+        batchResumeResolverRef.current = null;
+        resolve(action);
+      };
+    });
+  };
+
+  // Resume batch after pause — attempt connection verify first
+  const resumeBatch = async () => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const isProvider = !!protocol && isNonFtpProvider(protocol);
+
+    // Lightweight connection verify — warn on failure but still resume (CB will catch next error)
+    try {
+      if (isProvider) {
+        await invoke('provider_keep_alive');
+      } else {
+        await invoke('reconnect_ftp');
+      }
+    } catch {
+      notify.warning?.(t('transfer.circuitBreaker.reconnectFailed')) ??
+        notify.error(t('toast.connectionLostTitle'), t('transfer.circuitBreaker.reconnectFailed'));
+    }
+
+    circuitBreaker.reset();
+    if (batchResumeResolverRef.current) {
+      batchResumeResolverRef.current('resume');
+    }
+  };
+
+  // Retry all failed items in queue
+  const retryAllFailedItems = async () => {
+    const failedIds = transferQueue.retryAllFailed();
+    for (const id of failedIds) {
+      if (batchCancelledRef.current) break;
+      const cb = retryCallbacksRef.current.get(id);
+      if (cb) await cb();
     }
   };
 
@@ -3203,10 +3331,10 @@ const App: React.FC = () => {
             // Same directory: add " (copy)" suffix
             const finalDest = destPath === from
               ? (() => {
-                  const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
-                  const baseName = ext ? file.name.slice(0, -ext.length) : file.name;
-                  return `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${baseName} (copy)${ext}`;
-                })()
+                const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
+                const baseName = ext ? file.name.slice(0, -ext.length) : file.name;
+                return `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${baseName} (copy)${ext}`;
+              })()
               : destPath;
             try {
               await invoke('provider_server_copy', { from, to: finalDest });
@@ -3270,9 +3398,10 @@ const App: React.FC = () => {
           return { id, filePath, fileName, file };
         });
 
-        // Reset cancel flags before starting batch
+        // Reset cancel flags and circuit breaker before starting batch
         batchCancelledRef.current = false;
         cancelLevelRef.current = 0;
+        circuitBreaker.reset();
         try { await invoke('reset_cancel_flag'); } catch { }
 
         // Upload sequentially with queue tracking and overwrite checking
@@ -3333,18 +3462,74 @@ const App: React.FC = () => {
             continue;
           }
 
+          // Circuit breaker: check before attempting file
+          if (circuitBreaker.stateRef.current === 'open') {
+            const reason = circuitBreaker.pauseReasonRef.current;
+            const errorKind = circuitBreaker.tripErrorKindRef.current;
+
+            if (reason === 'fatal_error') {
+              const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+              for (let j = i; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, label);
+              }
+              notify.error(t('transfer.circuitBreaker.batchStopped'), t('transfer.circuitBreaker.fatalError', { reason: label }));
+              break;
+            }
+
+            if (errorKind && RECONNECT_ERROR_KINDS.has(errorKind)) {
+              const reconnected = await attemptBatchReconnect();
+              if (!reconnected) {
+                const decision = await waitForBatchResume(i);
+                if (decision === 'cancel') {
+                  for (let j = i; j < queueItems.length; j++) {
+                    transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                  }
+                  break;
+                }
+                i--;
+                continue;
+              }
+            } else {
+              // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+              const decision = await waitForBatchResume(i);
+              if (decision === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              circuitBreaker.reset();
+              i--;
+              continue;
+            }
+          }
+
+          // Per-file retry with exponential backoff
           transferQueue.startTransfer(item.id);
-          try {
-            await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true);
-            transferQueue.completeTransfer(item.id);
-          } catch (error) {
-            transferQueue.failTransfer(item.id, String(error));
+          for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
+            if (attempt > 0) {
+              await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+              transferQueue.startTransfer(item.id);
+            }
+            try {
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true);
+              transferQueue.completeTransfer(item.id);
+              circuitBreaker.recordSuccess();
+              break;
+            } catch (error) {
+              const result = circuitBreaker.recordFailure(String(error));
+              if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+                transferQueue.failTransfer(item.id, String(error));
+                break;
+              }
+            }
           }
         }
 
-        // Reset apply-to-all after batch completes
+        // Reset apply-to-all and cleanup after batch completes
         resetOverwriteSettings();
         folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+        retryCallbacksRef.current.clear();
 
         // Queue shows completion - no toast needed
         if (skippedCount > 0) {
@@ -3371,17 +3556,33 @@ const App: React.FC = () => {
       resetOverwriteSettings();
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
+      circuitBreaker.reset();
       try { await invoke('reset_cancel_flag'); } catch { }
       let skippedCount = 0;
 
-      for (let i = 0; i < files.length; i++) {
-        const filePath = files[i];
+      // Add to transfer queue for tracking
+      const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
-        const remainingInQueue = files.length - i - 1;
+        const id = transferQueue.addItem(fileName, filePath, 0, 'upload');
+        retryCallbacksRef.current.set(id, async () => {
+          transferQueue.startTransfer(id);
+          try {
+            await uploadFile(filePath, fileName, false, undefined, true);
+            transferQueue.completeTransfer(id);
+          } catch (error) {
+            transferQueue.failTransfer(id, String(error));
+          }
+        });
+        return { id, filePath, fileName };
+      });
+
+      for (let i = 0; i < queueItems.length; i++) {
+        const item = queueItems[i];
+        const remainingInQueue = queueItems.length - i - 1;
 
         // Check for overwrite
         const overwriteResult = await checkOverwrite(
-          fileName,
+          item.fileName,
           0, // Size unknown from dialog
           undefined, // Modified unknown from dialog
           false, // sourceIsRemote = false for upload
@@ -3389,20 +3590,95 @@ const App: React.FC = () => {
         );
 
         if (overwriteResult.action === 'cancel') {
+          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+          for (let j = i + 1; j < queueItems.length; j++) {
+            transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+          }
           break;
         }
 
         if (overwriteResult.action === 'skip') {
-          humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
+          transferQueue.completeTransfer(item.id);
+          humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
           skippedCount++;
           continue;
         }
 
-        if (batchCancelledRef.current) break;
-        await uploadFile(filePath, fileName, false);
+        if (overwriteResult.newName) {
+          item.fileName = overwriteResult.newName;
+        }
+
+        if (batchCancelledRef.current) {
+          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+          continue;
+        }
+
+        // Circuit breaker: check before attempting file
+        if (circuitBreaker.stateRef.current === 'open') {
+          const reason = circuitBreaker.pauseReasonRef.current;
+          const errorKind = circuitBreaker.tripErrorKindRef.current;
+
+          if (reason === 'fatal_error') {
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            for (let j = i; j < queueItems.length; j++) {
+              transferQueue.failTransfer(queueItems[j].id, label);
+            }
+            notify.error(t('transfer.circuitBreaker.batchStopped'), t('transfer.circuitBreaker.fatalError', { reason: label }));
+            break;
+          }
+
+          if (errorKind && RECONNECT_ERROR_KINDS.has(errorKind)) {
+            const reconnected = await attemptBatchReconnect();
+            if (!reconnected) {
+              const decision = await waitForBatchResume(i);
+              if (decision === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              i--;
+              continue;
+            }
+          } else {
+            // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+            const decision = await waitForBatchResume(i);
+            if (decision === 'cancel') {
+              for (let j = i; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+              }
+              break;
+            }
+            circuitBreaker.reset();
+            i--;
+            continue;
+          }
+        }
+
+        // Per-file retry with exponential backoff
+        transferQueue.startTransfer(item.id);
+        for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
+          if (attempt > 0) {
+            await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            transferQueue.startTransfer(item.id);
+          }
+          try {
+            await uploadFile(item.filePath, item.fileName, false, undefined, true);
+            transferQueue.completeTransfer(item.id);
+            circuitBreaker.recordSuccess();
+            break;
+          } catch (error) {
+            const result = circuitBreaker.recordFailure(String(error));
+            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+              transferQueue.failTransfer(item.id, String(error));
+              break;
+            }
+          }
+        }
       }
 
       resetOverwriteSettings();
+      retryCallbacksRef.current.clear();
       if (skippedCount > 0) {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
@@ -3437,9 +3713,10 @@ const App: React.FC = () => {
         return { id, file };
       });
 
-      // Reset cancel flags before starting batch
+      // Reset cancel flags and circuit breaker before starting batch
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
+      circuitBreaker.reset();
       try { await invoke('reset_cancel_flag'); } catch { }
 
       // Download sequentially with queue tracking and overwrite checking
@@ -3500,17 +3777,73 @@ const App: React.FC = () => {
           continue;
         }
 
+        // Circuit breaker: check before attempting file
+        if (circuitBreaker.stateRef.current === 'open') {
+          const reason = circuitBreaker.pauseReasonRef.current;
+          const errorKind = circuitBreaker.tripErrorKindRef.current;
+
+          if (reason === 'fatal_error') {
+            const label = errorKind ? t(getErrorKindI18nKey(errorKind)) : 'Fatal error';
+            for (let j = i; j < queueItems.length; j++) {
+              transferQueue.failTransfer(queueItems[j].id, label);
+            }
+            notify.error(t('transfer.circuitBreaker.batchStopped'), t('transfer.circuitBreaker.fatalError', { reason: label }));
+            break;
+          }
+
+          if (errorKind && RECONNECT_ERROR_KINDS.has(errorKind)) {
+            const reconnected = await attemptBatchReconnect();
+            if (!reconnected) {
+              const decision = await waitForBatchResume(i);
+              if (decision === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              i--;
+              continue;
+            }
+          } else {
+            // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+            const decision = await waitForBatchResume(i);
+            if (decision === 'cancel') {
+              for (let j = i; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+              }
+              break;
+            }
+            circuitBreaker.reset();
+            i--;
+            continue;
+          }
+        }
+
+        // Per-file retry with exponential backoff
         transferQueue.startTransfer(item.id);
-        try {
-          await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
-          transferQueue.completeTransfer(item.id);
-        } catch (error) {
-          transferQueue.failTransfer(item.id, String(error));
+        for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
+          if (attempt > 0) {
+            await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            transferQueue.startTransfer(item.id);
+          }
+          try {
+            await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
+            transferQueue.completeTransfer(item.id);
+            circuitBreaker.recordSuccess();
+            break;
+          } catch (error) {
+            const result = circuitBreaker.recordFailure(String(error));
+            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+              transferQueue.failTransfer(item.id, String(error));
+              break;
+            }
+          }
         }
       }
 
-      // Reset apply-to-all after batch completes
+      // Reset apply-to-all and cleanup after batch completes
       resetOverwriteSettings();
+      retryCallbacksRef.current.clear();
 
       // Queue shows completion - no toast needed
       if (skippedCount > 0) {
@@ -4350,7 +4683,7 @@ const App: React.FC = () => {
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.extractSubmenu'),
         icon: <FolderOpen size={14} />,
-        action: () => {},
+        action: () => { },
         children: [
           {
             label: t('contextMenu.extractHere'),
@@ -4586,7 +4919,7 @@ const App: React.FC = () => {
         label: t('contextMenu.extractSubmenu'),
         icon: <FolderOpen size={14} />,
         divider: true,
-        action: () => {},
+        action: () => { },
         children: [
           {
             label: t('contextMenu.extractHere'),
@@ -4671,7 +5004,7 @@ const App: React.FC = () => {
       items.push({
         label: t('contextMenu.more') || 'More',
         icon: <MoreHorizontal size={14} />,
-        action: () => {},
+        action: () => { },
         children: [
           {
             label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
@@ -4729,7 +5062,7 @@ const App: React.FC = () => {
       items.push({
         label: t('tags.tags') || 'Tags',
         icon: <Tag size={14} />,
-        action: () => {},
+        action: () => { },
         children: tagChildren,
         divider: true,
       });
@@ -4878,782 +5211,789 @@ const App: React.FC = () => {
       />
 
       <div className={`isolate relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
-      {/* App Background Pattern Overlay — behind content (-z-10) but above gradient bg */}
-      {appBackgroundPattern?.svg && (
-        <div className="absolute inset-0 pointer-events-none -z-10">
-          <div className="absolute inset-0 invert dark:invert-0 dark:opacity-50" style={{ backgroundImage: appBackgroundPattern.svg }} />
-        </div>
-      )}
-      {/* Custom Titlebar — data-tauri-drag-region for Wayland compatibility */}
-      <CustomTitlebar
-        appTheme={getEffectiveTheme(theme, isDark)}
-        theme={theme}
-        setTheme={setTheme}
-        isConnected={isConnected}
-        onDisconnect={() => disconnectFromFtp('button')}
-        onShowConnectionScreen={() => setShowConnectionScreen(true)}
-        showConnectionScreen={showConnectionScreen}
-        onOpenSettings={() => setShowSettingsPanel(true)}
-        onShowSupport={() => setShowSupportDialog(true)}
-        onShowCyberTools={() => setShowCyberTools(true)}
-        onShowVault={() => setShowVaultPanel({ mode: 'home' })}
-        onShowAbout={() => setShowAboutDialog(true)}
-        onShowShortcuts={() => setShowShortcutsDialog(true)}
-        onShowDependencies={() => setShowDependenciesPanel(true)}
-        masterPasswordSet={masterPasswordSet}
-        onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
-        onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
-        onRefresh={() => { if (isConnected) loadRemoteFiles(); loadLocalFiles(currentLocalPath); }}
-        onNewFolder={() => { if (isConnected) createFolder(true); }}
-        onToggleDevTools={() => setDevToolsOpen(prev => !prev)}
-        onToggleTheme={() => {
-          const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
-          setTheme(order[(order.indexOf(theme) + 1) % order.length]);
-        }}
-        onToggleDebugMode={() => setDebugMode(!debugMode)}
-        onRename={() => {
-          if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
-            const name = Array.from(selectedRemoteFiles)[0];
-            const file = remoteFiles.find(f => f.name === name);
-            if (file) startInlineRename(file.path, file.name, true);
-          } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
-            const name = Array.from(selectedLocalFiles)[0];
-            const file = localFiles.find(f => f.name === name);
-            if (file) startInlineRename(file.path, file.name, false);
-          }
-        }}
-        onDelete={() => {
-          if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
-            deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
-          } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-            deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
-          }
-        }}
-        onSelectAll={() => {
-          if (activePanel === 'remote') {
-            setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
-          } else {
-            setSelectedLocalFiles(new Set(localFiles.map(f => f.name)));
-          }
-        }}
-        onCut={() => {
-          if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
-            const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-            clipboardCut(files, true, currentRemotePath);
-          } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-            const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-            clipboardCut(files, false, currentLocalPath);
-          }
-        }}
-        onCopy={() => {
-          if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
-            const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-            clipboardCopy(files, true, currentRemotePath);
-          } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-            const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-            clipboardCopy(files, false, currentLocalPath);
-          }
-        }}
-        onPaste={() => {
-          if (activePanel === 'remote') {
-            clipboardPaste(true, currentRemotePath);
-          } else {
-            clipboardPaste(false, currentLocalPath);
-          }
-        }}
-        hasSelection={selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0}
-        hasClipboard={hasClipboard}
-        onToggleEditor={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'editor' }))}
-        onToggleTerminal={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'terminal' }))}
-        onToggleAgent={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }))}
-        onQuit={async () => { try { const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().close(); } catch { /* noop */ } }}
-        onCheckForUpdates={() => checkForUpdate(true)}
-        hasActivity={hasActivity || hasQueueActivity}
-      />
-
-      <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
-
-      {/* Update Available Toast with inline download */}
-      {updateAvailable?.has_update && !updateToastDismissed && (
-        <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[320px] max-w-[380px] ${!updateDownload ? 'animate-update-flash' : ''}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="font-semibold flex items-center gap-1.5">
-                <Download size={14} />
-                AeroFTP v{updateAvailable.latest_version} {t('statusbar.updateAvailable')}
-              </span>
-              <span className="text-xs opacity-80">
-                {t('ui.currentVersion', { version: updateAvailable.current_version, format: updateAvailable.install_format?.toUpperCase() })}
-              </span>
-            </div>
-            <button
-              onClick={() => { setUpdateToastDismissed(true); setUpdateDownload(null); }}
-              className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
-              title={t('update.skipForNow')}
-            >
-              <X size={16} />
-            </button>
+        {/* App Background Pattern Overlay — behind content (-z-10) but above gradient bg */}
+        {appBackgroundPattern?.svg && (
+          <div className="absolute inset-0 pointer-events-none -z-10">
+            <div className="absolute inset-0 invert dark:invert-0 dark:opacity-50" style={{ backgroundImage: appBackgroundPattern.svg }} />
           </div>
+        )}
+        {/* Custom Titlebar — data-tauri-drag-region for Wayland compatibility */}
+        <CustomTitlebar
+          appTheme={getEffectiveTheme(theme, isDark)}
+          theme={theme}
+          setTheme={setTheme}
+          isConnected={isConnected}
+          onDisconnect={() => disconnectFromFtp('button')}
+          onShowConnectionScreen={() => setShowConnectionScreen(true)}
+          showConnectionScreen={showConnectionScreen}
+          onOpenSettings={() => setShowSettingsPanel(true)}
+          onShowSupport={() => setShowSupportDialog(true)}
+          onShowCyberTools={() => setShowCyberTools(true)}
+          onShowVault={() => setShowVaultPanel({ mode: 'home' })}
+          onShowAbout={() => setShowAboutDialog(true)}
+          onShowShortcuts={() => setShowShortcutsDialog(true)}
+          onShowDependencies={() => setShowDependenciesPanel(true)}
+          masterPasswordSet={masterPasswordSet}
+          onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
+          onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
+          onRefresh={() => { if (isConnected) loadRemoteFiles(); loadLocalFiles(currentLocalPath); }}
+          onNewFolder={() => { if (isConnected) createFolder(true); }}
+          onToggleDevTools={() => setDevToolsOpen(prev => !prev)}
+          onToggleTheme={() => {
+            const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
+            setTheme(order[(order.indexOf(theme) + 1) % order.length]);
+          }}
+          onToggleDebugMode={() => setDebugMode(!debugMode)}
+          onRename={() => {
+            if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
+              const name = Array.from(selectedRemoteFiles)[0];
+              const file = remoteFiles.find(f => f.name === name);
+              if (file) startInlineRename(file.path, file.name, true);
+            } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
+              const name = Array.from(selectedLocalFiles)[0];
+              const file = localFiles.find(f => f.name === name);
+              if (file) startInlineRename(file.path, file.name, false);
+            }
+          }}
+          onDelete={() => {
+            if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+              deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
+            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+              deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
+            }
+          }}
+          onSelectAll={() => {
+            if (activePanel === 'remote') {
+              setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
+            } else {
+              setSelectedLocalFiles(new Set(localFiles.map(f => f.name)));
+            }
+          }}
+          onCut={() => {
+            if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+              const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+              clipboardCut(files, true, currentRemotePath);
+            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+              const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+              clipboardCut(files, false, currentLocalPath);
+            }
+          }}
+          onCopy={() => {
+            if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+              const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+              clipboardCopy(files, true, currentRemotePath);
+            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+              const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+              clipboardCopy(files, false, currentLocalPath);
+            }
+          }}
+          onPaste={() => {
+            if (activePanel === 'remote') {
+              clipboardPaste(true, currentRemotePath);
+            } else {
+              clipboardPaste(false, currentLocalPath);
+            }
+          }}
+          hasSelection={selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0}
+          hasClipboard={hasClipboard}
+          onToggleEditor={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'editor' }))}
+          onToggleTerminal={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'terminal' }))}
+          onToggleAgent={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }))}
+          onQuit={async () => { try { const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().close(); } catch { /* noop */ } }}
+          onCheckForUpdates={() => checkForUpdate(true)}
+          hasActivity={hasActivity || hasQueueActivity}
+        />
 
-          {/* State: Ready to download */}
-          {!updateDownload && (
-            <div className="flex flex-col gap-1.5">
+        <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
+
+        {/* Update Available Toast with inline download */}
+        {updateAvailable?.has_update && !updateToastDismissed && (
+          <div className={`fixed top-4 right-4 bg-blue-600 dark:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex flex-col gap-2 border border-blue-400/30 min-w-[320px] max-w-[380px] ${!updateDownload ? 'animate-update-flash' : ''}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <Download size={14} />
+                  AeroFTP v{updateAvailable.latest_version} {t('statusbar.updateAvailable')}
+                </span>
+                <span className="text-xs opacity-80">
+                  {t('ui.currentVersion', { version: updateAvailable.current_version, format: updateAvailable.install_format?.toUpperCase() })}
+                </span>
+              </div>
               <button
-                onClick={startUpdateDownload}
-                className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
+                onClick={() => { setUpdateToastDismissed(true); setUpdateDownload(null); }}
+                className="text-white/70 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
+                title={t('update.skipForNow')}
               >
-                {t('update.downloadNow')} (.{updateAvailable.install_format || 'deb'})
-              </button>
-              <button
-                onClick={() => { setUpdateToastDismissed(true); }}
-                className="text-white/60 hover:text-white text-xs py-1 transition-colors flex items-center justify-center gap-1"
-              >
-                <Clock size={10} /> {t('update.skipForNow')}
+                <X size={16} />
               </button>
             </div>
-          )}
 
-          {/* State: Downloading */}
-          {updateDownload?.downloading && (
-            <TransferProgressBar
-              percentage={updateDownload.percentage}
-              speedBps={updateDownload.speed_bps}
-              etaSeconds={updateDownload.eta_seconds}
-              size="lg"
-              variant="gradient"
-            />
-          )}
-
-          {/* State: Download complete — Install & Restart */}
-          {updateDownload?.completedPath && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-green-200 flex items-center gap-1">
-                <CheckCircle2 size={12} /> {t('update.downloadComplete')}
-              </span>
-              <span className="text-xs opacity-60 truncate" title={updateDownload.completedPath}>
-                {updateDownload.completedPath}
-              </span>
-
-              {/* Install & Restart — platform-aware */}
-              {(['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format)) ? (
-                <button
-                  onClick={async () => {
-                    const cmd = updateAvailable.install_format === 'appimage'
-                      ? 'install_appimage_update'
-                      : updateAvailable.install_format === 'rpm'
-                        ? 'install_rpm_update'
-                        : 'install_deb_update';
-                    try {
-                      await invoke(cmd, { downloadedPath: updateDownload.completedPath });
-                    } catch (e) {
-                      setUpdateDownload(prev => prev ? { ...prev, error: String(e) } : null);
-                    }
-                  }}
-                  className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw size={13} /> {t('update.installRestart')}
-                </button>
-              ) : (
-                <button
-                  onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
-                  className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
-                >
-                  <ExternalLink size={13} /> {t('update.openInstaller')}
-                </button>
-              )}
-
-              {/* Secondary: skip for now */}
-              <button
-                onClick={() => { setUpdateToastDismissed(true); }}
-                className="text-white/60 hover:text-white text-xs py-0.5 transition-colors flex items-center justify-center gap-1"
-              >
-                <Clock size={10} /> {t('update.skipForNow')}
-              </button>
-            </div>
-          )}
-
-          {/* State: Error */}
-          {updateDownload?.error && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-red-200 flex items-center gap-1">
-                <AlertTriangle size={12} /> {updateDownload.error}
-              </span>
-              <div className="flex gap-2">
+            {/* State: Ready to download */}
+            {!updateDownload && (
+              <div className="flex flex-col gap-1.5">
                 <button
                   onClick={startUpdateDownload}
-                  className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm flex-1"
+                  className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm w-full"
                 >
-                  {t('update.retry')}
+                  {t('update.downloadNow')} (.{updateAvailable.install_format || 'deb'})
                 </button>
                 <button
-                  onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath || updateDownload.filename })}
-                  className="bg-white/20 text-white px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-white/30 transition-colors shadow-sm"
-                  title={t('update.openFolder')}
+                  onClick={() => { setUpdateToastDismissed(true); }}
+                  className="text-white/60 hover:text-white text-xs py-1 transition-colors flex items-center justify-center gap-1"
                 >
-                  <ExternalLink size={13} />
+                  <Clock size={10} /> {t('update.skipForNow')}
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-      <TransferQueue
-        items={transferQueue.items}
-        isVisible={transferQueue.isVisible}
-        onToggle={transferQueue.toggle}
-        onClear={transferQueue.clear}
-        onClearCompleted={transferQueue.clearCompleted}
-        onStopAll={cancelTransfer}
-        forceStopMode={isForceStopMode}
-        onRemoveItem={transferQueue.removeItem}
-        onRetryItem={(id: string) => {
-          transferQueue.retryItem(id);
-          const cb = retryCallbacksRef.current.get(id);
-          if (cb) cb();
-        }}
-      />
-      {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-      <TransferToastContainer onCancel={cancelTransfer} />
-      <GlobalTooltip />
-      {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
-      {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
-      {batchRenameDialog && (
-        <BatchRenameDialog
-          isOpen={true}
-          files={batchRenameDialog.files}
-          isRemote={batchRenameDialog.isRemote}
-          onConfirm={handleBatchRename}
-          onClose={() => setBatchRenameDialog(null)}
-        />
-      )}
-      {propertiesDialog && (
-        <PropertiesDialog
-          file={propertiesDialog}
-          onClose={() => setPropertiesDialog(null)}
-          onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => {
-            if (!propertiesDialog || propertiesDialog.isRemote) return;
-            setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
-            try {
-              const hash = await invoke<string>('calculate_checksum', { path: propertiesDialog.path, algorithm });
-              setPropertiesDialog(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  checksum: {
-                    ...prev.checksum,
-                    calculating: false,
-                    [algorithm]: hash
-                  }
-                };
-              });
-            } catch (err) {
-              notify.error(t('toast.checksumFailed'), String(err));
-              setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
-            }
+            )}
+
+            {/* State: Downloading */}
+            {updateDownload?.downloading && (
+              <TransferProgressBar
+                percentage={updateDownload.percentage}
+                speedBps={updateDownload.speed_bps}
+                etaSeconds={updateDownload.eta_seconds}
+                size="lg"
+                variant="gradient"
+              />
+            )}
+
+            {/* State: Download complete — Install & Restart */}
+            {updateDownload?.completedPath && (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs text-green-200 flex items-center gap-1">
+                  <CheckCircle2 size={12} /> {t('update.downloadComplete')}
+                </span>
+                <span className="text-xs opacity-60 truncate" title={updateDownload.completedPath}>
+                  {updateDownload.completedPath}
+                </span>
+
+                {/* Install & Restart — platform-aware */}
+                {(['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format)) ? (
+                  <button
+                    onClick={async () => {
+                      const cmd = updateAvailable.install_format === 'appimage'
+                        ? 'install_appimage_update'
+                        : updateAvailable.install_format === 'rpm'
+                          ? 'install_rpm_update'
+                          : 'install_deb_update';
+                      try {
+                        await invoke(cmd, { downloadedPath: updateDownload.completedPath });
+                      } catch (e) {
+                        setUpdateDownload(prev => prev ? { ...prev, error: String(e) } : null);
+                      }
+                    }}
+                    className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw size={13} /> {t('update.installRestart')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
+                    className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                  >
+                    <ExternalLink size={13} /> {t('update.openInstaller')}
+                  </button>
+                )}
+
+                {/* Secondary: skip for now */}
+                <button
+                  onClick={() => { setUpdateToastDismissed(true); }}
+                  className="text-white/60 hover:text-white text-xs py-0.5 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Clock size={10} /> {t('update.skipForNow')}
+                </button>
+              </div>
+            )}
+
+            {/* State: Error */}
+            {updateDownload?.error && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-red-200 flex items-center gap-1">
+                  <AlertTriangle size={12} /> {updateDownload.error}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={startUpdateDownload}
+                    className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-blue-50 transition-colors shadow-sm flex-1"
+                  >
+                    {t('update.retry')}
+                  </button>
+                  <button
+                    onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath || updateDownload.filename })}
+                    className="bg-white/20 text-white px-3 py-1.5 rounded-lg font-medium text-sm hover:bg-white/30 transition-colors shadow-sm"
+                    title={t('update.openFolder')}
+                  >
+                    <ExternalLink size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <TransferQueue
+          items={transferQueue.items}
+          isVisible={transferQueue.isVisible}
+          onToggle={transferQueue.toggle}
+          onClear={transferQueue.clear}
+          onClearCompleted={transferQueue.clearCompleted}
+          onStopAll={cancelTransfer}
+          forceStopMode={isForceStopMode}
+          onRemoveItem={transferQueue.removeItem}
+          onRetryItem={(id: string) => {
+            transferQueue.retryItem(id);
+            const cb = retryCallbacksRef.current.get(id);
+            if (cb) cb();
           }}
+          isPaused={isBatchPaused}
+          pauseReason={batchPauseReason}
+          onResume={resumeBatch}
+          onRetryAllFailed={retryAllFailedItems}
         />
-      )}
-      {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
-        <QuickLookOverlay
-          file={sortedLocalFiles[quickLookIndex]}
-          allFiles={sortedLocalFiles}
-          currentIndex={quickLookIndex}
-          currentPath={currentLocalPath}
-          onClose={() => setQuickLookOpen(false)}
-          onNavigate={(idx) => {
-            setQuickLookIndex(idx);
-            setSelectedLocalFiles(new Set([sortedLocalFiles[idx].name]));
-          }}
-          t={t}
-        />
-      )}
-      {duplicateFinderPath && (
-        <DuplicateFinderDialog
-          isOpen={true}
-          scanPath={duplicateFinderPath}
-          onClose={() => setDuplicateFinderPath(null)}
-          onDeleteFiles={async (paths) => {
-            // Respect confirmBeforeDelete setting
-            if (confirmBeforeDelete) {
-              const confirmed = await new Promise<boolean>(resolve => {
-                setConfirmDialog({
-                  message: t('duplicates.deleteConfirm', { count: paths.length }),
-                  onConfirm: () => { setConfirmDialog(null); resolve(true); },
-                  onCancel: () => { setConfirmDialog(null); resolve(false); },
-                });
-              });
-              if (!confirmed) return;
-            }
-            for (const p of paths) {
+        {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
+        <TransferToastContainer onCancel={cancelTransfer} />
+        <GlobalTooltip />
+        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
+        {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
+        {batchRenameDialog && (
+          <BatchRenameDialog
+            isOpen={true}
+            files={batchRenameDialog.files}
+            isRemote={batchRenameDialog.isRemote}
+            onConfirm={handleBatchRename}
+            onClose={() => setBatchRenameDialog(null)}
+          />
+        )}
+        {propertiesDialog && (
+          <PropertiesDialog
+            file={propertiesDialog}
+            onClose={() => setPropertiesDialog(null)}
+            onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => {
+              if (!propertiesDialog || propertiesDialog.isRemote) return;
+              setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                await invoke('delete_to_trash', { path: p });
-              } catch {
-                try {
-                  await invoke('delete_local_file', { path: p });
-                } catch (err) {
-                  const fileName = p.split(/[\\/]/).pop() || p;
-                  notify.error(t('toast.deleteFail'), `${fileName}: ${String(err)}`);
-                }
-              }
-            }
-            loadLocalFiles(currentLocalPath);
-          }}
-        />
-      )}
-      {diskUsagePath && (
-        <DiskUsageTreemap
-          isOpen={true}
-          scanPath={diskUsagePath}
-          onClose={() => setDiskUsagePath(null)}
-        />
-      )}
-      {syncNavDialog && (
-        <SyncNavDialog
-          missingPath={syncNavDialog.missingPath}
-          isRemote={syncNavDialog.isRemote}
-          onCreateFolder={handleSyncNavCreateFolder}
-          onDisableSync={handleSyncNavDisable}
-          onCancel={() => setSyncNavDialog(null)}
-        />
-      )}
-      <PermissionsDialog
-        isOpen={permissionsDialog?.visible || false}
-        onClose={() => setPermissionsDialog(null)}
-        onSave={async (mode) => {
-          if (permissionsDialog?.file) {
-            try {
-              await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
-              notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
-              await loadRemoteFiles(undefined, true);
-              setPermissionsDialog(null);
-            } catch (e) { notify.error(t('common.failed'), String(e)); }
-          }
-        }}
-        fileName={permissionsDialog?.file.name || ''}
-        currentPermissions={permissionsDialog?.file.permissions || undefined}
-      />
-      {versionsDialog && (
-        <FileVersionsDialog
-          filePath={versionsDialog.path}
-          fileName={versionsDialog.name}
-          onClose={() => setVersionsDialog(null)}
-          onRestore={() => { setVersionsDialog(null); loadRemoteFiles(undefined, true); }}
-        />
-      )}
-      {sharePermissionsDialog && (
-        <SharePermissionsDialog
-          filePath={sharePermissionsDialog.path}
-          fileName={sharePermissionsDialog.name}
-          onClose={() => setSharePermissionsDialog(null)}
-        />
-      )}
-      {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
-      <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
-      <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
-      {showCommandPalette && (
-        <CommandPalette
-          commands={commandPaletteItems}
-          onClose={() => setShowCommandPalette(false)}
-        />
-      )}
-      <HostKeyDialog
-        visible={hostKeyDialog.visible}
-        info={hostKeyDialog.info}
-        host={hostKeyDialog.host}
-        port={hostKeyDialog.port}
-        onAccept={handleHostKeyAccept}
-        onReject={handleHostKeyReject}
-      />
-      <OverwriteDialog
-        isOpen={overwriteDialog.isOpen}
-        source={overwriteDialog.source!}
-        destination={overwriteDialog.destination!}
-        queueCount={overwriteDialog.queueCount}
-        onDecision={(action, applyToAll, newName) => {
-          if (overwriteDialog.resolve) {
-            overwriteDialog.resolve({ action, applyToAll, newName });
-          }
-          setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
-        }}
-        onCancel={() => {
-          if (overwriteDialog.resolve) {
-            overwriteDialog.resolve({ action: 'cancel', applyToAll: false });
-          }
-          setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
-        }}
-      />
-      <FolderOverwriteDialog
-        isOpen={folderOverwriteDialog.isOpen}
-        folderName={folderOverwriteDialog.folderName}
-        direction={folderOverwriteDialog.direction}
-        queueCount={folderOverwriteDialog.queueCount}
-        onDecision={(action, applyToAll) => {
-          if (folderOverwriteDialog.resolve) {
-            folderOverwriteDialog.resolve({ action, applyToAll });
-          }
-          setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
-        }}
-        onCancel={() => {
-          if (folderOverwriteDialog.resolve) {
-            folderOverwriteDialog.resolve({ action: 'cancel', applyToAll: false });
-          }
-          setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
-        }}
-      />
-      <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
-      <SettingsPanel
-        isOpen={showSettingsPanel}
-        onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); }}
-        onOpenCloudPanel={() => setShowCloudPanel(true)}
-        onActivityLog={{ logRaw: humanLog.logRaw }}
-        initialTab={settingsInitialTab}
-        onServersChanged={() => setServersRefreshKey(k => k + 1)}
-        theme={theme}
-        setTheme={setTheme}
-      />
-
-      {/* Universal Preview Modal for Media Files */}
-      <UniversalPreview
-        isOpen={universalPreviewOpen}
-        file={universalPreviewFile}
-        onClose={closeUniversalPreview}
-      />
-      <SyncPanel
-        isOpen={showSyncPanel}
-        onClose={() => setShowSyncPanel(false)}
-        localPath={currentLocalPath}
-        remotePath={currentRemotePath}
-        isConnected={isConnected}
-        protocol={connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol}
-        onSyncComplete={async () => {
-          await loadRemoteFiles();
-          await loadLocalFiles(currentLocalPath);
-        }}
-      />
-      <CloudPanel
-        isOpen={showCloudPanel}
-        onClose={() => setShowCloudPanel(false)}
-      />
-      {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} iconProvider={iconProvider} />}
-      {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
-      {archiveBrowserState && (
-        <ArchiveBrowser
-          archivePath={archiveBrowserState.path}
-          archiveType={archiveBrowserState.type}
-          isEncrypted={archiveBrowserState.encrypted}
-          onClose={() => setArchiveBrowserState(null)}
-        />
-      )}
-
-      {showZohoTrash && (
-        <ZohoTrashManager
-          onClose={() => setShowZohoTrash(false)}
-          onRefreshFiles={() => loadRemoteFiles(undefined, true)}
-        />
-      )}
-      {showJottaTrash && (
-        <JottacloudTrashManager
-          onClose={() => setShowJottaTrash(false)}
-          onRefreshFiles={() => loadRemoteFiles(undefined, true)}
-        />
-      )}
-      {showMegaTrash && (
-        <MegaTrashManager
-          onClose={() => setShowMegaTrash(false)}
-          onRefreshFiles={() => loadRemoteFiles(undefined, true)}
-        />
-      )}
-      {showGDriveTrash && (
-        <GoogleDriveTrashManager
-          onClose={() => setShowGDriveTrash(false)}
-          onRefreshFiles={() => loadRemoteFiles(undefined, true)}
-        />
-      )}
-
-      {compressDialogState && (
-        <CompressDialog
-          files={compressDialogState.files}
-          defaultName={compressDialogState.defaultName}
-          outputDir={compressDialogState.outputDir}
-          onClose={() => setCompressDialogState(null)}
-          onConfirm={async (opts: CompressOptions) => {
-            const ext = opts.format === 'tar.gz' ? '.tar.gz' : opts.format === 'tar.xz' ? '.tar.xz' : opts.format === 'tar.bz2' ? '.tar.bz2' : `.${opts.format}`;
-            const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
-            const paths = compressDialogState.files.map(f => f.path);
-            const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
-            try {
-              if (opts.format === 'zip') {
-                await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
-              } else if (opts.format === '7z') {
-                await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
-              } else {
-                await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
-              }
-              const suffix = opts.password ? ' (AES-256)' : '';
-              activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
-              notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
-              setCompressDialogState(null);
-              await loadLocalFiles(currentLocalPath);
-            } catch (err) {
-              activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
-              notify.error(t('contextMenu.compressionFailed'), String(err));
-            }
-          }}
-        />
-      )}
-
-      {cryptomatorCreateDialog && (
-        <CryptomatorCreateDialog
-          outputDir={cryptomatorCreateDialog.outputDir}
-          onClose={() => setCryptomatorCreateDialog(null)}
-          onCreated={() => loadLocalFiles(currentLocalPath)}
-        />
-      )}
-
-
-      <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
-        {!isConnected && showConnectionScreen ? (
-          <ConnectionScreen
-            connectionParams={connectionParams}
-            quickConnectDirs={quickConnectDirs}
-            loading={loading}
-            onConnectionParamsChange={setConnectionParams}
-            onQuickConnectDirsChange={setQuickConnectDirs}
-            onConnect={connectToFtp}
-            onOpenCloudPanel={() => setShowCloudPanel(true)}
-            hasExistingSessions={sessions.length > 0}
-            serversRefreshKey={serversRefreshKey}
-            onAeroFile={async () => {
-              setShowConnectionScreen(false);
-              setActivePanel('local');
-              setShowSidebar(true);
-              await loadLocalFiles(currentLocalPath || '/');
-            }}
-            onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-              // NOTE: Do NOT set connectionParams here - that would show the form
-              // The form should only appear when clicking Edit, not when connecting
-
-              // Check if this is an OAuth provider
-              const isOAuth = params.protocol && (isOAuthProvider(params.protocol) || isFourSharedProvider(params.protocol));
-              logger.debug('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
-              logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
-
-              if (isOAuth) {
-                // OAuth provider is already connected via SavedServers/FourSharedConnect component
-                // Just switch to file manager view
-                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-                setShowConnectionScreen(false);
-                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
-                const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
-                notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-                // Load remote files for OAuth provider - pass protocol explicitly
-                const savedOauthResp = await loadRemoteFiles(params.protocol);
-                // Navigate to initial local directory if specified
-                if (localInitialPath) {
-                  await changeLocalDirectory(localInitialPath);
-                }
-                // Create session with provider name — pass fresh files to avoid stale closure
-                createSession(
-                  providerName,
-                  params,
-                  savedOauthResp?.current_path || initialPath || '/',
-                  localInitialPath || currentLocalPath,
-                  savedOauthResp?.files
-                );
-                fetchStorageQuota(params.protocol);
-                // Reset form for next "Add New Server"
-                setConnectionParams({ server: '', username: '', password: '' });
-                setQuickConnectDirs({ remoteDir: '', localDir: '' });
-                return;
-              }
-
-              // Check if this is a non-FTP provider protocol (S3, WebDAV, MEGA, Filen use provider_connect)
-              const isProvider = params.protocol && isNonFtpProvider(params.protocol);
-
-              if (isProvider) {
-                // S3/WebDAV connection via provider_connect
-                setLoading(true);
-                setIsSyncNavigation(false);
-                setSyncBasePaths(null);
-                // Use displayName if available - no protocol prefix, icon shows protocol
-                const providerName = params.displayName || (params.protocol === 's3'
-                  ? params.options?.bucket || 'S3'
-                  : params.protocol === 'azure'
-                    ? params.options?.bucket || 'Azure'
-                    : params.protocol === 'mega' || params.protocol === 'internxt' || params.protocol === 'filen'
-                      ? params.username
-                      : params.server.split(':')[0]);
-                const protocolLabel = (params.protocol || 'FTP').toUpperCase();
-                const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
-
-                try {
-                  // Disconnect any existing connections
-                  try { await invoke('provider_disconnect'); } catch { }
-                  try { await invoke('disconnect_ftp'); } catch { }
-
-                  // Build provider connection params
-                  const providerParams = {
-                    protocol: params.protocol,
-                    server: params.server,
-                    port: params.port,
-                    username: params.username,
-                    password: params.password,
-                    initial_path: initialPath || null,
-                    bucket: params.options?.bucket,
-                    region: params.options?.region || 'us-east-1',
-                    endpoint: params.options?.endpoint || null,
-                    path_style: params.options?.pathStyle || false,
-                    save_session: params.options?.save_session,
-                    session_expires_at: params.options?.session_expires_at,
-                    // SFTP-specific options
-                    private_key_path: params.options?.private_key_path || null,
-                    key_passphrase: params.options?.key_passphrase || null,
-                    timeout: params.options?.timeout || 30,
-                    // FTP/FTPS-specific options
-                    tls_mode: params.options?.tlsMode || (params.protocol === 'ftps' ? 'implicit' : undefined),
-                    verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
-                    // Filen-specific options
-                    two_factor_code: params.options?.two_factor_code || null,
+                const hash = await invoke<string>('calculate_checksum', { path: propertiesDialog.path, algorithm });
+                setPropertiesDialog(prev => {
+                  if (!prev) return null;
+                  return {
+                    ...prev,
+                    checksum: {
+                      ...prev.checksum,
+                      calculating: false,
+                      [algorithm]: hash
+                    }
                   };
-
-                  logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
-                  // SEC-P1-06: TOFU host key check for SFTP
-                  if (params.protocol === 'sftp') {
-                    const accepted = await checkSftpHostKey(params.server, params.port || 22);
-                    if (!accepted) return;
-                  }
-                  const savedConnHost = params.server || (params.protocol === 'azure' ? `${params.username}.blob.core.windows.net` : params.protocol === 'internxt' ? 'gateway.internxt.com' : params.protocol === 'kdrive' ? 'api.infomaniak.com' : params.protocol === 'jottacloud' ? 'jfs.jottacloud.com' : params.protocol === 'mega' ? 'mega.nz' : params.protocol === 'filen' ? 'filen.io' : 'localhost');
-                  const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, params.port || 443, params.protocol || 'ftp');
-                  await invoke('provider_connect', { params: providerParams });
-                  if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(params.port || 443) }) });
-                  logConnectionSuccess(params.protocol || 'ftp', params.username, {
-                    tlsMode: params.options?.tlsMode,
-                    private_key_path: params.options?.private_key_path || undefined,
+                });
+              } catch (err) {
+                notify.error(t('toast.checksumFailed'), String(err));
+                setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
+              }
+            }}
+          />
+        )}
+        {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
+          <QuickLookOverlay
+            file={sortedLocalFiles[quickLookIndex]}
+            allFiles={sortedLocalFiles}
+            currentIndex={quickLookIndex}
+            currentPath={currentLocalPath}
+            onClose={() => setQuickLookOpen(false)}
+            onNavigate={(idx) => {
+              setQuickLookIndex(idx);
+              setSelectedLocalFiles(new Set([sortedLocalFiles[idx].name]));
+            }}
+            t={t}
+          />
+        )}
+        {duplicateFinderPath && (
+          <DuplicateFinderDialog
+            isOpen={true}
+            scanPath={duplicateFinderPath}
+            onClose={() => setDuplicateFinderPath(null)}
+            onDeleteFiles={async (paths) => {
+              // Respect confirmBeforeDelete setting
+              if (confirmBeforeDelete) {
+                const confirmed = await new Promise<boolean>(resolve => {
+                  setConfirmDialog({
+                    message: t('duplicates.deleteConfirm', { count: paths.length }),
+                    onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                    onCancel: () => { setConfirmDialog(null); resolve(false); },
                   });
+                });
+                if (!confirmed) return;
+              }
+              for (const p of paths) {
+                try {
+                  await invoke('delete_to_trash', { path: p });
+                } catch {
+                  try {
+                    await invoke('delete_local_file', { path: p });
+                  } catch (err) {
+                    const fileName = p.split(/[\\/]/).pop() || p;
+                    notify.error(t('toast.deleteFail'), `${fileName}: ${String(err)}`);
+                  }
+                }
+              }
+              loadLocalFiles(currentLocalPath);
+            }}
+          />
+        )}
+        {diskUsagePath && (
+          <DiskUsageTreemap
+            isOpen={true}
+            scanPath={diskUsagePath}
+            onClose={() => setDiskUsagePath(null)}
+          />
+        )}
+        {syncNavDialog && (
+          <SyncNavDialog
+            missingPath={syncNavDialog.missingPath}
+            isRemote={syncNavDialog.isRemote}
+            onCreateFolder={handleSyncNavCreateFolder}
+            onDisableSync={handleSyncNavDisable}
+            onCancel={() => setSyncNavDialog(null)}
+          />
+        )}
+        <PermissionsDialog
+          isOpen={permissionsDialog?.visible || false}
+          onClose={() => setPermissionsDialog(null)}
+          onSave={async (mode) => {
+            if (permissionsDialog?.file) {
+              try {
+                await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
+                notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
+                await loadRemoteFiles(undefined, true);
+                setPermissionsDialog(null);
+              } catch (e) { notify.error(t('common.failed'), String(e)); }
+            }
+          }}
+          fileName={permissionsDialog?.file.name || ''}
+          currentPermissions={permissionsDialog?.file.permissions || undefined}
+        />
+        {versionsDialog && (
+          <FileVersionsDialog
+            filePath={versionsDialog.path}
+            fileName={versionsDialog.name}
+            onClose={() => setVersionsDialog(null)}
+            onRestore={() => { setVersionsDialog(null); loadRemoteFiles(undefined, true); }}
+          />
+        )}
+        {sharePermissionsDialog && (
+          <SharePermissionsDialog
+            filePath={sharePermissionsDialog.path}
+            fileName={sharePermissionsDialog.name}
+            onClose={() => setSharePermissionsDialog(null)}
+          />
+        )}
+        {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
+        <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
+        <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
+        {showCommandPalette && (
+          <CommandPalette
+            commands={commandPaletteItems}
+            onClose={() => setShowCommandPalette(false)}
+          />
+        )}
+        <HostKeyDialog
+          visible={hostKeyDialog.visible}
+          info={hostKeyDialog.info}
+          host={hostKeyDialog.host}
+          port={hostKeyDialog.port}
+          onAccept={handleHostKeyAccept}
+          onReject={handleHostKeyReject}
+        />
+        <OverwriteDialog
+          isOpen={overwriteDialog.isOpen}
+          source={overwriteDialog.source!}
+          destination={overwriteDialog.destination!}
+          queueCount={overwriteDialog.queueCount}
+          onDecision={(action, applyToAll, newName) => {
+            if (overwriteDialog.resolve) {
+              overwriteDialog.resolve({ action, applyToAll, newName });
+            }
+            setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+          onCancel={() => {
+            if (overwriteDialog.resolve) {
+              overwriteDialog.resolve({ action: 'cancel', applyToAll: false });
+            }
+            setOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+        />
+        <FolderOverwriteDialog
+          isOpen={folderOverwriteDialog.isOpen}
+          folderName={folderOverwriteDialog.folderName}
+          direction={folderOverwriteDialog.direction}
+          queueCount={folderOverwriteDialog.queueCount}
+          onDecision={(action, applyToAll) => {
+            if (folderOverwriteDialog.resolve) {
+              folderOverwriteDialog.resolve({ action, applyToAll });
+            }
+            setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+          onCancel={() => {
+            if (folderOverwriteDialog.resolve) {
+              folderOverwriteDialog.resolve({ action: 'cancel', applyToAll: false });
+            }
+            setFolderOverwriteDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+        />
+        <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
+        <SettingsPanel
+          isOpen={showSettingsPanel}
+          onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); }}
+          onOpenCloudPanel={() => setShowCloudPanel(true)}
+          onActivityLog={{ logRaw: humanLog.logRaw }}
+          initialTab={settingsInitialTab}
+          onServersChanged={() => setServersRefreshKey(k => k + 1)}
+          theme={theme}
+          setTheme={setTheme}
+        />
 
+        {/* Universal Preview Modal for Media Files */}
+        <UniversalPreview
+          isOpen={universalPreviewOpen}
+          file={universalPreviewFile}
+          onClose={closeUniversalPreview}
+        />
+        <SyncPanel
+          isOpen={showSyncPanel}
+          onClose={() => setShowSyncPanel(false)}
+          localPath={currentLocalPath}
+          remotePath={currentRemotePath}
+          isConnected={isConnected}
+          protocol={connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol}
+          onSyncComplete={async () => {
+            await loadRemoteFiles();
+            await loadLocalFiles(currentLocalPath);
+          }}
+        />
+        <CloudPanel
+          isOpen={showCloudPanel}
+          onClose={() => setShowCloudPanel(false)}
+        />
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} iconProvider={iconProvider} />}
+        {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
+        {archiveBrowserState && (
+          <ArchiveBrowser
+            archivePath={archiveBrowserState.path}
+            archiveType={archiveBrowserState.type}
+            isEncrypted={archiveBrowserState.encrypted}
+            onClose={() => setArchiveBrowserState(null)}
+          />
+        )}
+
+        {showZohoTrash && (
+          <ZohoTrashManager
+            onClose={() => setShowZohoTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showJottaTrash && (
+          <JottacloudTrashManager
+            onClose={() => setShowJottaTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showMegaTrash && (
+          <MegaTrashManager
+            onClose={() => setShowMegaTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showGDriveTrash && (
+          <GoogleDriveTrashManager
+            onClose={() => setShowGDriveTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+
+        {compressDialogState && (
+          <CompressDialog
+            files={compressDialogState.files}
+            defaultName={compressDialogState.defaultName}
+            outputDir={compressDialogState.outputDir}
+            onClose={() => setCompressDialogState(null)}
+            onConfirm={async (opts: CompressOptions) => {
+              const ext = opts.format === 'tar.gz' ? '.tar.gz' : opts.format === 'tar.xz' ? '.tar.xz' : opts.format === 'tar.bz2' ? '.tar.bz2' : `.${opts.format}`;
+              const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
+              const paths = compressDialogState.files.map(f => f.path);
+              const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
+              try {
+                if (opts.format === 'zip') {
+                  await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
+                } else if (opts.format === '7z') {
+                  await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
+                } else {
+                  await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
+                }
+                const suffix = opts.password ? ' (AES-256)' : '';
+                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
+                notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
+                setCompressDialogState(null);
+                await loadLocalFiles(currentLocalPath);
+              } catch (err) {
+                activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
+                notify.error(t('contextMenu.compressionFailed'), String(err));
+              }
+            }}
+          />
+        )}
+
+        {cryptomatorCreateDialog && (
+          <CryptomatorCreateDialog
+            outputDir={cryptomatorCreateDialog.outputDir}
+            onClose={() => setCryptomatorCreateDialog(null)}
+            onCreated={() => loadLocalFiles(currentLocalPath)}
+          />
+        )}
+
+
+        <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+          {!isConnected && showConnectionScreen ? (
+            <ConnectionScreen
+              connectionParams={connectionParams}
+              quickConnectDirs={quickConnectDirs}
+              loading={loading}
+              onConnectionParamsChange={setConnectionParams}
+              onQuickConnectDirsChange={setQuickConnectDirs}
+              onConnect={connectToFtp}
+              onOpenCloudPanel={() => setShowCloudPanel(true)}
+              hasExistingSessions={sessions.length > 0}
+              serversRefreshKey={serversRefreshKey}
+              onAeroFile={async () => {
+                setShowConnectionScreen(false);
+                setActivePanel('local');
+                setShowSidebar(true);
+                await loadLocalFiles(currentLocalPath || '/');
+              }}
+              onSavedServerConnect={async (params, initialPath, localInitialPath) => {
+                // NOTE: Do NOT set connectionParams here - that would show the form
+                // The form should only appear when clicking Edit, not when connecting
+
+                // Check if this is an OAuth provider
+                const isOAuth = params.protocol && (isOAuthProvider(params.protocol) || isFourSharedProvider(params.protocol));
+                logger.debug('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
+                logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
+
+                if (isOAuth) {
+                  // OAuth provider is already connected via SavedServers/FourSharedConnect component
+                  // Just switch to file manager view
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-                  humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
+                  setShowConnectionScreen(false);
+                  const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
+                  const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-
-                  // Load files using provider API
-                  const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-                    path: initialPath || null
-                  });
-
-                  const files = response.files.map(f => ({
-                    name: f.name,
-                    path: f.path,
-                    size: f.size,
-                    is_dir: f.is_dir,
-                    modified: f.modified,
-                    permissions: f.permissions,
-                  }));
-                  setRemoteFiles(files);
-                  setCurrentRemotePath(response.current_path);
-                  logListingComplete(response.current_path, files.length);
-
+                  // Load remote files for OAuth provider - pass protocol explicitly
+                  const savedOauthResp = await loadRemoteFiles(params.protocol);
+                  // Navigate to initial local directory if specified (with fallback for invalid paths)
+                  let resolvedLocalPath = currentLocalPath;
                   if (localInitialPath) {
-                    await changeLocalDirectory(localInitialPath);
+                    resolvedLocalPath = await safeChangeLocalDirectory(localInitialPath);
                   }
-
+                  // Create session with provider name — pass fresh files to avoid stale closure
                   createSession(
                     providerName,
                     params,
-                    response.current_path,
-                    localInitialPath || currentLocalPath,
-                    files
+                    savedOauthResp?.current_path || initialPath || '/',
+                    resolvedLocalPath,
+                    savedOauthResp?.files
                   );
                   fetchStorageQuota(params.protocol);
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
+                  return;
+                }
+
+                // Check if this is a non-FTP provider protocol (S3, WebDAV, MEGA, Filen use provider_connect)
+                const isProvider = params.protocol && isNonFtpProvider(params.protocol);
+
+                if (isProvider) {
+                  // S3/WebDAV connection via provider_connect
+                  setLoading(true);
+                  setIsSyncNavigation(false);
+                  setSyncBasePaths(null);
+                  // Use displayName if available - no protocol prefix, icon shows protocol
+                  const providerName = params.displayName || (params.protocol === 's3'
+                    ? params.options?.bucket || 'S3'
+                    : params.protocol === 'azure'
+                      ? params.options?.bucket || 'Azure'
+                      : params.protocol === 'mega' || params.protocol === 'internxt' || params.protocol === 'filen'
+                        ? params.username
+                        : params.server.split(':')[0]);
+                  const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                  const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
+
+                  try {
+                    // Disconnect any existing connections
+                    try { await invoke('provider_disconnect'); } catch { }
+                    try { await invoke('disconnect_ftp'); } catch { }
+
+                    // Build provider connection params
+                    const providerParams = {
+                      protocol: params.protocol,
+                      server: params.server,
+                      port: params.port,
+                      username: params.username,
+                      password: params.password,
+                      initial_path: initialPath || null,
+                      bucket: params.options?.bucket,
+                      region: params.options?.region || 'us-east-1',
+                      endpoint: params.options?.endpoint || resolveS3Endpoint(params.providerId, params.options?.region as string) || (params.protocol === 's3' && params.server && !params.server.includes('amazonaws.com') ? params.server : null),
+                      path_style: params.options?.pathStyle || false,
+                      save_session: params.options?.save_session,
+                      session_expires_at: params.options?.session_expires_at,
+                      // SFTP-specific options
+                      private_key_path: params.options?.private_key_path || null,
+                      key_passphrase: params.options?.key_passphrase || null,
+                      timeout: params.options?.timeout || 30,
+                      // FTP/FTPS-specific options
+                      tls_mode: params.options?.tlsMode || (params.protocol === 'ftps' ? 'implicit' : undefined),
+                      verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
+                      // Filen-specific options
+                      two_factor_code: params.options?.two_factor_code || null,
+                    };
+
+                    logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
+                    // SEC-P1-06: TOFU host key check for SFTP
+                    if (params.protocol === 'sftp') {
+                      const accepted = await checkSftpHostKey(params.server, params.port || 22);
+                      if (!accepted) return;
+                    }
+                    const savedConnHost = params.server || (params.protocol === 'azure' ? `${params.username}.blob.core.windows.net` : params.protocol === 'internxt' ? 'gateway.internxt.com' : params.protocol === 'kdrive' ? 'api.infomaniak.com' : params.protocol === 'jottacloud' ? 'jfs.jottacloud.com' : params.protocol === 'mega' ? 'mega.nz' : params.protocol === 'filen' ? 'filen.io' : 'localhost');
+                    const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, params.port || 443, params.protocol || 'ftp');
+                    await invoke('provider_connect', { params: providerParams });
+                    if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(params.port || 443) }) });
+                    logConnectionSuccess(params.protocol || 'ftp', params.username, {
+                      tlsMode: params.options?.tlsMode,
+                      private_key_path: params.options?.private_key_path || undefined,
+                    });
+
+                    setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
+                    humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
+                    notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
+
+                    // Load files using provider API
+                    const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+                      path: initialPath || null
+                    });
+
+                    const files = response.files.map(f => ({
+                      name: f.name,
+                      path: f.path,
+                      size: f.size,
+                      is_dir: f.is_dir,
+                      modified: f.modified,
+                      permissions: f.permissions,
+                    }));
+                    setRemoteFiles(files);
+                    setCurrentRemotePath(response.current_path);
+                    logListingComplete(response.current_path, files.length);
+
+                    let resolvedLocalPath2 = currentLocalPath;
+                    if (localInitialPath) {
+                      resolvedLocalPath2 = await safeChangeLocalDirectory(localInitialPath);
+                    }
+
+                    createSession(
+                      providerName,
+                      params,
+                      response.current_path,
+                      resolvedLocalPath2,
+                      files
+                    );
+                    fetchStorageQuota(params.protocol);
+                    // Reset form for next "Add New Server"
+                    setConnectionParams({ server: '', username: '', password: '' });
+                    setQuickConnectDirs({ remoteDir: '', localDir: '' });
+                  } catch (error) {
+                    humanLog.logError('CONNECT', { server: providerName }, logId);
+                    notify.error(t('connection.connectionFailed'), String(error));
+                  } finally {
+                    setLoading(false);
+                  }
+                  return;
+                }
+
+                // Standard FTP/SFTP connection
+                setLoading(true);
+                // Reset navigation sync for new connection
+                setIsSyncNavigation(false);
+                setSyncBasePaths(null);
+                const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
+                try {
+                  // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
+                  try { await invoke('provider_disconnect'); } catch { }
+
+                  const savedFtpProto = params.protocol || 'ftp';
+                  const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
+                  await invoke('connect_ftp', { params });
+                  if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
+                  logConnectionSuccess(savedFtpProto, params.username, {
+                    tlsMode: params.options?.tlsMode,
+                    private_key_path: params.options?.private_key_path || undefined,
+                  });
+                  setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
+                  humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
+                  notify.success(t('toast.connected'), t('toast.connectedTo', { server: params.server }));
+
+                  // Get the actual remote path after connection
+                  let savedFtpResponse: FileListResponse | null = null;
+                  if (initialPath) {
+                    // Pass the protocol explicitly to avoid using stale state from previous session
+                    await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
+                  } else {
+                    savedFtpResponse = await loadRemoteFiles();
+                  }
+                  if (savedFtpResponse) {
+                    logListingComplete(savedFtpResponse.current_path || '/', savedFtpResponse.files?.length || 0);
+                  }
+
+                  let resolvedLocalPath3 = currentLocalPath;
+                  if (localInitialPath) {
+                    resolvedLocalPath3 = await safeChangeLocalDirectory(localInitialPath);
+                  }
+                  // Use displayName if provided, otherwise extract from server
+                  const sessionName = params.displayName || params.server.split(':')[0];
+                  createSession(
+                    sessionName,
+                    params,
+                    savedFtpResponse?.current_path || initialPath || '/',
+                    resolvedLocalPath3,
+                    savedFtpResponse?.files
+                  );
+                  // Reset form for next "Add New Server"
+                  setConnectionParams({ server: '', username: '', password: '' });
+                  setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 } catch (error) {
-                  humanLog.logError('CONNECT', { server: providerName }, logId);
+                  humanLog.logError('CONNECT', { server: params.server }, logId);
                   notify.error(t('connection.connectionFailed'), String(error));
                 } finally {
                   setLoading(false);
                 }
-                return;
-              }
-
-              // Standard FTP/SFTP connection
-              setLoading(true);
-              // Reset navigation sync for new connection
-              setIsSyncNavigation(false);
-              setSyncBasePaths(null);
-              const protocolLabel = (params.protocol || 'FTP').toUpperCase();
-              const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
-              try {
-                // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
-                try { await invoke('provider_disconnect'); } catch { }
-
-                const savedFtpProto = params.protocol || 'ftp';
-                const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
-                await invoke('connect_ftp', { params });
-                if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
-                logConnectionSuccess(savedFtpProto, params.username, {
-                  tlsMode: params.options?.tlsMode,
-                  private_key_path: params.options?.private_key_path || undefined,
-                });
-                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-                humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
-                notify.success(t('toast.connected'), t('toast.connectedTo', { server: params.server }));
-
-                // Get the actual remote path after connection
-                let savedFtpResponse: FileListResponse | null = null;
-                if (initialPath) {
-                  // Pass the protocol explicitly to avoid using stale state from previous session
-                  await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
+              }}
+              onSkipToFileManager={async () => {
+                // If there are existing sessions, switch back to the last active one
+                if (sessions.length > 0) {
+                  const lastSession = sessions[sessions.length - 1];
+                  // Hide connection screen FIRST to avoid flash
+                  setShowConnectionScreen(false);
+                  setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
+                  // Then switch session (async reconnect happens in background)
+                  await switchSession(lastSession.id);
                 } else {
-                  savedFtpResponse = await loadRemoteFiles();
+                  // No existing sessions - enter AeroFile mode with sidebar
+                  setShowConnectionScreen(false);
+                  setActivePanel('local');
+                  setShowSidebar(true);
+                  await loadLocalFiles(currentLocalPath || '/');
                 }
-                if (savedFtpResponse) {
-                  logListingComplete(savedFtpResponse.current_path || '/', savedFtpResponse.files?.length || 0);
-                }
-
-                if (localInitialPath) {
-                  await changeLocalDirectory(localInitialPath);
-                }
-                // Use displayName if provided, otherwise extract from server
-                const sessionName = params.displayName || params.server.split(':')[0];
-                createSession(
-                  sessionName,
-                  params,
-                  savedFtpResponse?.current_path || initialPath || '/',
-                  localInitialPath || currentLocalPath,
-                  savedFtpResponse?.files
-                );
-                // Reset form for next "Add New Server"
-                setConnectionParams({ server: '', username: '', password: '' });
-                setQuickConnectDirs({ remoteDir: '', localDir: '' });
-              } catch (error) {
-                humanLog.logError('CONNECT', { server: params.server }, logId);
-                notify.error(t('connection.connectionFailed'), String(error));
-              } finally {
-                setLoading(false);
-              }
-            }}
-            onSkipToFileManager={async () => {
-              // If there are existing sessions, switch back to the last active one
-              if (sessions.length > 0) {
-                const lastSession = sessions[sessions.length - 1];
-                // Hide connection screen FIRST to avoid flash
-                setShowConnectionScreen(false);
-                setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-                // Then switch session (async reconnect happens in background)
-                await switchSession(lastSession.id);
-              } else {
-                // No existing sessions - enter AeroFile mode with sidebar
-                setShowConnectionScreen(false);
-                setActivePanel('local');
-                setShowSidebar(true);
-                await loadLocalFiles(currentLocalPath || '/');
-              }
-            }}
-          />
-        ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
-            {/* Session Tabs + Local Path Tabs */}
+              }}
+            />
+          ) : (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
+              {/* Session Tabs + Local Path Tabs */}
               <SessionTabs
                 sessions={sessions}
                 activeSessionId={activeSessionId}
@@ -5676,196 +6016,193 @@ const App: React.FC = () => {
                 onLocalNewTab={(!isConnected || !showRemotePanel) ? createLocalTab : undefined}
                 onLocalReorder={(!isConnected || !showRemotePanel) ? setLocalTabs : undefined}
               />
-            {/* Toolbar */}
-            <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-              <div className="flex gap-2">
-                {(() => {
-                  const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
-                  const atSyncRemoteRoot = isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote);
-                  const atSyncLocalRoot = isSyncNavigation && syncBasePaths && normP(currentLocalPath) === normP(syncBasePaths.local);
-                  const isDisabled = activePanel === 'remote'
-                    ? (currentRemotePath === '/' || !!atSyncRemoteRoot)
-                    : (currentLocalPath === '/' || !!atSyncLocalRoot);
-                  return <button
-                    onClick={() => !isDisabled && (activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/'))}
-                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${isDisabled ? 'bg-gray-200 dark:bg-gray-600 opacity-50 cursor-not-allowed' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                    disabled={isDisabled}
-                    aria-label={t('common.up')}
-                  >
-                    <FolderUp size={16} /> {t('common.up')}
-                  </button>;
-                })()}
-                <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
-                  <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
-                </button>
-                <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.new')}>
-                  <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> {t('common.new')}
-                </button>
-                {activePanel === 'local' && (
-                  <button onClick={() => openInFileManager(currentLocalPath)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5" aria-label={t('common.open')}>
-                    <FolderOpen size={16} /> {t('common.open')}
+              {/* Toolbar */}
+              <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <div className="flex gap-2">
+                  {(() => {
+                    const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+                    const atSyncRemoteRoot = isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote);
+                    const atSyncLocalRoot = isSyncNavigation && syncBasePaths && normP(currentLocalPath) === normP(syncBasePaths.local);
+                    const isDisabled = activePanel === 'remote'
+                      ? (currentRemotePath === '/' || !!atSyncRemoteRoot)
+                      : (currentLocalPath === '/' || !!atSyncLocalRoot);
+                    return <button
+                      onClick={() => !isDisabled && (activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/'))}
+                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${isDisabled ? 'bg-gray-200 dark:bg-gray-600 opacity-50 cursor-not-allowed' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                      disabled={isDisabled}
+                      aria-label={t('common.up')}
+                    >
+                      <FolderUp size={16} /> {t('common.up')}
+                    </button>;
+                  })()}
+                  <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
+                    <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                   </button>
-                )}
-                {/* Sidebar Toggle (AeroFile mode only) */}
-                {(!isConnected || !showRemotePanel) && (
-                  <button
-                    onClick={toggleSidebar}
-                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showSidebar ? 'bg-blue-500/20 text-blue-400 dark:text-blue-400' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                    title={showSidebar ? t('sidebar.places') : t('sidebar.places')}
-                  >
-                    <PanelLeft size={16} />
+                  <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.new')}>
+                    <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> {t('common.new')}
                   </button>
-                )}
-                {/* View Mode Toggle (3-way: list → grid → large) */}
-                <button
-                  onClick={() => setViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list')}
-                  className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5"
-                  title={t(`viewMode.${viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list'}`)}
-                >
-                  {viewMode === 'list' ? <LayoutGrid size={16} /> : viewMode === 'grid' ? <Rows3 size={16} /> : <List size={16} />}
-                </button>
-                {/* Upload / Download dynamic button */}
-                {isConnected && showRemotePanel && (
+                  {activePanel === 'local' && (
+                    <button onClick={() => openInFileManager(currentLocalPath)} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5" aria-label={t('common.open')}>
+                      <FolderOpen size={16} /> {t('common.open')}
+                    </button>
+                  )}
+                  {/* Sidebar Toggle (AeroFile mode only) */}
+                  {(!isConnected || !showRemotePanel) && (
+                    <button
+                      onClick={toggleSidebar}
+                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showSidebar ? 'bg-blue-500/20 text-blue-400 dark:text-blue-400' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                      title={showSidebar ? t('sidebar.places') : t('sidebar.places')}
+                    >
+                      <PanelLeft size={16} />
+                    </button>
+                  )}
+                  {/* View Mode Toggle (3-way: list → grid → large) */}
                   <button
-                    onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
-                    disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0}
-                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
-                      (activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0
+                    onClick={() => setViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list')}
+                    className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5"
+                    title={t(`viewMode.${viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'large' : 'list'}`)}
+                  >
+                    {viewMode === 'list' ? <LayoutGrid size={16} /> : viewMode === 'grid' ? <Rows3 size={16} /> : <List size={16} />}
+                  </button>
+                  {/* Upload / Download dynamic button */}
+                  {isConnected && showRemotePanel && (
+                    <button
+                      onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
+                      disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0}
+                      className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0
                         ? 'bg-green-500 hover:bg-green-600 text-white shadow-sm hover:shadow-md'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    }`}
-                    title={activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                        }`}
+                      title={activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                    >
+                      {activePanel === 'local' ? <Upload size={16} /> : <Download size={16} />}
+                      {activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                      {(() => {
+                        const count = activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size;
+                        return count > 1 ? (
+                          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-green-600 text-[10px] font-bold shadow-sm border border-green-300">
+                            {count}
+                          </span>
+                        ) : null;
+                      })()}
+                    </button>
+                  )}
+                  {/* Delete button */}
+                  <button
+                    onClick={() => {
+                      if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
+                        deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
+                      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
+                        deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
+                      }
+                    }}
+                    disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0}
+                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0
+                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md'
+                      : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                      }`}
+                    title={t('contextMenu.delete')}
+                    aria-label={t('contextMenu.delete')}
                   >
-                    {activePanel === 'local' ? <Upload size={16} /> : <Download size={16} />}
-                    {activePanel === 'local' ? t('browser.uploadFiles') : t('browser.downloadFiles')}
+                    <Trash2 size={16} />
                     {(() => {
-                      const count = activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size;
+                      const count = activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size;
                       return count > 1 ? (
-                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-green-600 text-[10px] font-bold shadow-sm border border-green-300">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-red-600 text-[10px] font-bold shadow-sm border border-red-300">
                           {count}
                         </span>
                       ) : null;
                     })()}
                   </button>
-                )}
-                {/* Delete button */}
-                <button
-                  onClick={() => {
-                    if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
-                      deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
-                    } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-                      deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
-                    }
-                  }}
-                  disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0}
-                  className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
-                    (activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0
-                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md'
-                      : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                  }`}
-                  title={t('contextMenu.delete')}
-                  aria-label={t('contextMenu.delete')}
-                >
-                  <Trash2 size={16} />
-                  {(() => {
-                    const count = activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size;
-                    return count > 1 ? (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-red-600 text-[10px] font-bold shadow-sm border border-red-300">
-                        {count}
-                      </span>
-                    ) : null;
-                  })()}
-                </button>
-                {/* Separator */}
-                {isConnected && (
-                  <div className="w-px h-7 bg-gray-300 dark:bg-gray-600 mx-1" />
-                )}
-                {isConnected && showRemotePanel && (
-                  <>
-                    <button
-                      onClick={cancelTransfer}
-                      disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
-                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${
-                        isForceStopMode
+                  {/* Separator */}
+                  {isConnected && (
+                    <div className="w-px h-7 bg-gray-300 dark:bg-gray-600 mx-1" />
+                  )}
+                  {isConnected && showRemotePanel && (
+                    <>
+                      <button
+                        onClick={cancelTransfer}
+                        disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${isForceStopMode
                           ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
                           : (hasActiveTransfer || hasQueueActivity)
                             ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
                             : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                      }`}
-                      title={isForceStopMode ? t('transfer.forceStop') : t('transfer.cancelAll')}
-                    >
-                      {isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
-                    </button>
+                          }`}
+                        title={isForceStopMode ? t('transfer.forceStop') : t('transfer.cancelAll')}
+                      >
+                        {isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
+                      </button>
+                      <button
+                        onClick={toggleSyncNavigation}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${isSyncNavigation
+                          ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                          : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                          }`}
+                        title={isSyncNavigation ? t('common.syncNavigationActive') : t('common.syncNavigation')}
+                      >
+                        {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
+                        {isSyncNavigation ? t('common.synced') : t('common.sync')}
+                      </button>
+                      <button
+                        onClick={() => setShowSyncPanel(true)}
+                        className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
+                        title={t('statusBar.syncFiles')}
+                      >
+                        <FolderSync size={16} /> {t('statusBar.syncFiles')}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {isConnected && showRemotePanel && (
+                    <>
+                      <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                        <Globe size={16} /> {t('browser.remote')}
+                      </button>
+                      <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                        <HardDrive size={16} /> {t('browser.local')}
+                      </button>
+                      <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
+                    </>
+                  )}
+                  {isConnected && (
                     <button
-                      onClick={toggleSyncNavigation}
-                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${isSyncNavigation
-                        ? 'bg-purple-500 hover:bg-purple-600 text-white'
-                        : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
-                        }`}
-                      title={isSyncNavigation ? t('common.syncNavigationActive') : t('common.syncNavigation')}
+                      onClick={() => { setShowRemotePanel(p => { if (p) setActivePanel('local'); else setShowLocalPreview(false); return !p; }); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showRemotePanel ? 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500' : 'bg-blue-500 text-white'}`}
+                      title={showRemotePanel ? 'Local only' : 'Show remote'}
                     >
-                      {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
-                      {isSyncNavigation ? t('common.synced') : t('common.sync')}
+                      <HardDrive size={16} />
                     </button>
+                  )}
+                  {/* Preview Toggle - only in local-only (AeroFile) mode */}
+                  {(!isConnected || !showRemotePanel) && (
                     <button
-                      onClick={() => setShowSyncPanel(true)}
-                      className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-                      title={t('statusBar.syncFiles')}
+                      onClick={() => setShowLocalPreview(p => !p)}
+                      className={`px-3 py-1.5 rounded-lg text-sm items-center gap-1.5 hidden md:flex ${showLocalPreview ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                      title={t('common.preview')}
                     >
-                      <FolderSync size={16} /> {t('statusBar.syncFiles')}
+                      <Eye size={16} /><span className="hidden lg:inline">{t('common.preview')}</span>
                     </button>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2">
-                {isConnected && showRemotePanel && (
-                  <>
-                    <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                      <Globe size={16} /> {t('browser.remote')}
-                    </button>
-                    <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                      <HardDrive size={16} /> {t('browser.local')}
-                    </button>
-                    <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
-                  </>
-                )}
-                {isConnected && (
-                  <button
-                    onClick={() => { setShowRemotePanel(p => { if (p) setActivePanel('local'); else setShowLocalPreview(false); return !p; }); }}
-                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showRemotePanel ? 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500' : 'bg-blue-500 text-white'}`}
-                    title={showRemotePanel ? 'Local only' : 'Show remote'}
-                  >
-                    <HardDrive size={16} />
-                  </button>
-                )}
-                {/* Preview Toggle - only in local-only (AeroFile) mode */}
-                {(!isConnected || !showRemotePanel) && (
-                  <button
-                    onClick={() => setShowLocalPreview(p => !p)}
-                    className={`px-3 py-1.5 rounded-lg text-sm items-center gap-1.5 hidden md:flex ${showLocalPreview ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                    title={t('common.preview')}
-                  >
-                    <Eye size={16} /><span className="hidden lg:inline">{t('common.preview')}</span>
-                  </button>
-                )}
-              </div>
-            </div>
 
-            {/* Dual Panel (or single panel when not connected) */}
-            <div className="flex flex-1 min-h-0">
-              {/* Remote — hidden when not connected or local-only mode */}
-              {isConnected && showRemotePanel && <div
-                role="region"
-                aria-label="Remote files"
-                className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
-                onDragOver={(e) => handlePanelDragOver(e, true)}
-                onDrop={(e) => handlePanelDrop(e, true)}
-                onDragLeave={handlePanelDragLeave}
-              >
-                <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                  <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-                    {/* Protocol icon inside address bar (like Chrome favicon) */}
-                    <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
+              {/* Dual Panel (or single panel when not connected) */}
+              <div className="flex flex-1 min-h-0">
+                {/* Remote — hidden when not connected or local-only mode */}
+                {isConnected && showRemotePanel && <div
+                  role="region"
+                  aria-label="Remote files"
+                  className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  onDragOver={(e) => handlePanelDragOver(e, true)}
+                  onDrop={(e) => handlePanelDrop(e, true)}
+                  onDragLeave={handlePanelDragLeave}
+                >
+                  <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
+                      {/* Protocol icon inside address bar (like Chrome favicon) */}
+                      <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
                         const protocol = connectionParams.protocol || 'ftp';
                         switch (protocol) {
                           case 's3': return 'Amazon S3';
@@ -5883,186 +6220,338 @@ const App: React.FC = () => {
                           default: return 'FTP';
                         }
                       })()}>
-                      {(() => {
-                        const protocol = connectionParams.protocol || 'ftp';
-                        const iconClass = isSyncPathMismatch ? 'text-amber-500' : isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
-                        if (isSyncPathMismatch) return <AlertTriangle size={14} className={iconClass} />;
-                        switch (protocol) {
-                          case 's3': return <Cloud size={14} className={iconClass} />;
-                          case 'webdav': return <Server size={14} className={iconClass} />;
-                          case 'sftp': return <Lock size={14} className={iconClass} />;
-                          case 'ftps': return <Shield size={14} className={iconClass} />;
-                          case 'googledrive': return <Cloud size={14} className={iconClass} />;
-                          case 'dropbox': return <Archive size={14} className={iconClass} />;
-                          case 'onedrive': return <Cloud size={14} className={iconClass} />;
-                          case 'mega': return <Shield size={14} className={iconClass} />;
-                          default: return <Globe size={14} className={iconClass} />;
-                        }
-                      })()}
+                        {(() => {
+                          const protocol = connectionParams.protocol || 'ftp';
+                          const iconClass = isSyncPathMismatch ? 'text-amber-500' : isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
+                          if (isSyncPathMismatch) return <AlertTriangle size={14} className={iconClass} />;
+                          switch (protocol) {
+                            case 's3': return <Cloud size={14} className={iconClass} />;
+                            case 'webdav': return <Server size={14} className={iconClass} />;
+                            case 'sftp': return <Lock size={14} className={iconClass} />;
+                            case 'ftps': return <Shield size={14} className={iconClass} />;
+                            case 'googledrive': return <Cloud size={14} className={iconClass} />;
+                            case 'dropbox': return <Archive size={14} className={iconClass} />;
+                            case 'onedrive': return <Cloud size={14} className={iconClass} />;
+                            case 'mega': return <Shield size={14} className={iconClass} />;
+                            default: return <Globe size={14} className={iconClass} />;
+                          }
+                        })()}
+                      </div>
+                      <input
+                        type="text"
+                        value={isConnected ? currentRemotePath : t('browser.notConnected')}
+                        onChange={(e) => setCurrentRemotePath(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
+                        disabled={!isConnected}
+                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
+                        placeholder="/path/to/directory"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={isConnected ? currentRemotePath : t('browser.notConnected')}
-                      onChange={(e) => setCurrentRemotePath(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
-                      disabled={!isConnected}
-                      className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                      title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
-                      placeholder="/path/to/directory"
-                    />
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      const btn = e.currentTarget;
-                      btn.querySelector('svg')?.classList.add('animate-spin');
-                      setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
-                      loadRemoteFiles();
-                    }}
-                    className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                    title={t('common.refresh')}
-                  >
-                    <RefreshCw size={13} />
-                  </button>
-                  {isConnected && (
                     <button
-                      onClick={() => {
-                        if (remoteSearchResults !== null) {
-                          setRemoteSearchResults(null);
-                          setRemoteSearchQuery('');
-                        } else {
-                          setShowRemoteSearchBar(prev => !prev);
-                        }
+                      onClick={(e) => {
+                        const btn = e.currentTarget;
+                        btn.querySelector('svg')?.classList.add('animate-spin');
+                        setTimeout(() => btn.querySelector('svg')?.classList.remove('animate-spin'), 600);
+                        loadRemoteFiles();
                       }}
-                      className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                      title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                      className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                      title={t('common.refresh')}
                     >
-                      {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                      <RefreshCw size={13} />
                     </button>
-                  )}
-                  {debugMode && isConnected && (
-                    <button
-                      onClick={() => {
-                        const lines = sortedRemoteFiles.map(f =>
-                          `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
-                        );
-                        const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
-                        navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
-                        notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
-                      }}
-                      className="flex-shrink-0 p-1.5 rounded text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                      title={t('debug.copyFileListToClipboard')}
-                    >
-                      <ClipboardList size={13} />
-                    </button>
-                  )}
-                </div>
-                {/* Remote Search Bar */}
-                {showRemoteSearchBar && isConnected && (
-                  <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
-                    <Search size={14} className="text-blue-500 flex-shrink-0" />
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder={t('search.remote_placeholder') || 'Search remote files...'}
-                      value={remoteSearchQuery}
-                      onChange={e => setRemoteSearchQuery(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && remoteSearchQuery.trim()) {
-                          handleRemoteSearch(remoteSearchQuery);
-                        } else if (e.key === 'Escape') {
-                          setShowRemoteSearchBar(false);
-                          setRemoteSearchQuery('');
-                          setRemoteSearchResults(null);
-                        }
-                      }}
-                      className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
-                    />
-                    {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
-                    {remoteSearchResults !== null && (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: remoteSearchResults.length })}</span>
-                    )}
-                    <button
-                      onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-                <div className="flex-1 overflow-auto" onContextMenu={(e) => {
-                  // Only show empty-area menu if click target is the container itself or table background
-                  const target = e.target as HTMLElement;
-                  const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
-                  if (!isFileRow && isConnected) showRemoteEmptyContextMenu(e);
-                }}>
-                  {!isConnected ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                      <Cloud size={64} className="mb-4 opacity-30" />
-                      <p className="text-lg font-medium">{t('browser.notConnected')}</p>
-                      <p className="text-sm mt-1">{t('browser.clickConnectPrompt')}</p>
+                    {isConnected && (
                       <button
-                        onClick={() => setShowConnectionScreen(true)}
-                        className="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                        onClick={() => {
+                          if (remoteSearchResults !== null) {
+                            setRemoteSearchResults(null);
+                            setRemoteSearchQuery('');
+                          } else {
+                            setShowRemoteSearchBar(prev => !prev);
+                          }
+                        }}
+                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
                       >
-                        <Cloud size={16} /> {t('browser.connectToServer')}
+                        {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                      </button>
+                    )}
+                    {debugMode && isConnected && (
+                      <button
+                        onClick={() => {
+                          const lines = sortedRemoteFiles.map(f =>
+                            `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
+                          );
+                          const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
+                          navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
+                          notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
+                        }}
+                        className="flex-shrink-0 p-1.5 rounded text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        title={t('debug.copyFileListToClipboard')}
+                      >
+                        <ClipboardList size={13} />
+                      </button>
+                    )}
+                  </div>
+                  {/* Remote Search Bar */}
+                  {showRemoteSearchBar && isConnected && (
+                    <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
+                      <Search size={14} className="text-blue-500 flex-shrink-0" />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder={t('search.remote_placeholder') || 'Search remote files...'}
+                        value={remoteSearchQuery}
+                        onChange={e => setRemoteSearchQuery(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && remoteSearchQuery.trim()) {
+                            handleRemoteSearch(remoteSearchQuery);
+                          } else if (e.key === 'Escape') {
+                            setShowRemoteSearchBar(false);
+                            setRemoteSearchQuery('');
+                            setRemoteSearchResults(null);
+                          }
+                        }}
+                        className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
+                      />
+                      {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
+                      {remoteSearchResults !== null && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: remoteSearchResults.length })}</span>
+                      )}
+                      <button
+                        onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+                      >
+                        <X size={14} />
                       </button>
                     </div>
-                  ) : viewMode === 'list' ? (
-                    <table className="w-full" role="grid" aria-label="Remote files">
-                      <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
-                        <tr role="row">
-                          <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
-                          {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
-                          {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
-                          {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">{t('browser.permsHeader')}</th>}
-                          {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700" role="rowgroup">
-                        {/* Go Up Row - always visible, disabled at root or sync base */}
-                        {(() => {
-                          const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
-                          const canGoUp = currentRemotePath !== '/' && !(isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote));
-                          return (
+                  )}
+                  <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                    // Only show empty-area menu if click target is the container itself or table background
+                    const target = e.target as HTMLElement;
+                    const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
+                    if (!isFileRow && isConnected) showRemoteEmptyContextMenu(e);
+                  }}>
+                    {!isConnected ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <Cloud size={64} className="mb-4 opacity-30" />
+                        <p className="text-lg font-medium">{t('browser.notConnected')}</p>
+                        <p className="text-sm mt-1">{t('browser.clickConnectPrompt')}</p>
+                        <button
+                          onClick={() => setShowConnectionScreen(true)}
+                          className="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                        >
+                          <Cloud size={16} /> {t('browser.connectToServer')}
+                        </button>
+                      </div>
+                    ) : viewMode === 'list' ? (
+                      <table className="w-full" role="grid" aria-label="Remote files">
+                        <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
+                          <tr role="row">
+                            <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
+                            {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
+                            {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
+                            {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">{t('browser.permsHeader')}</th>}
+                            {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700" role="rowgroup">
+                          {/* Go Up Row - always visible, disabled at root or sync base */}
+                          {(() => {
+                            const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+                            const canGoUp = currentRemotePath !== '/' && !(isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote));
+                            return (
+                              <tr
+                                role="row"
+                                className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                                onClick={() => canGoUp && changeRemoteDirectory('..')}
+                              >
+                                <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
+                                  {iconProvider.getFolderUpIcon(16).icon}
+                                  <span className="italic">{t('browser.parentFolder')}</span>
+                                </td>
+                                {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                                {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
+                                {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
+                                {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                              </tr>
+                            );
+                          })()}
+                          {sortedRemoteFiles.map((file, i) => (
                             <tr
+                              key={`${file.name}-${i}`}
+                              data-file-row
                               role="row"
-                              className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                              onClick={() => canGoUp && changeRemoteDirectory('..')}
+                              aria-selected={selectedRemoteFiles.has(file.name)}
+                              draggable={file.name !== '..'}
+                              onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
+                              onDragEnd={handleDragEnd}
+                              onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
+                              onDragLeave={handleDragLeave}
+                              onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
+                              onClick={(e) => {
+                                if (file.name === '..') return;
+                                setActivePanel('remote');
+                                if (e.shiftKey && lastSelectedRemoteIndex !== null) {
+                                  // Shift+click: select range
+                                  const start = Math.min(lastSelectedRemoteIndex, i);
+                                  const end = Math.max(lastSelectedRemoteIndex, i);
+                                  const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
+                                  setSelectedRemoteFiles(new Set(rangeNames));
+                                } else if (e.ctrlKey || e.metaKey) {
+                                  // Ctrl/Cmd+click: toggle selection
+                                  setSelectedRemoteFiles(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(file.name)) next.delete(file.name);
+                                    else next.add(file.name);
+                                    return next;
+                                  });
+                                  setLastSelectedRemoteIndex(i);
+                                } else {
+                                  // Normal click: toggle if already sole selection, otherwise select
+                                  if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
+                                    setSelectedRemoteFiles(new Set());
+                                  } else {
+                                    setSelectedRemoteFiles(new Set([file.name]));
+                                  }
+                                  setLastSelectedRemoteIndex(i);
+                                }
+                              }}
+                              onDoubleClick={() => handleRemoteFileAction(file)}
+                              onContextMenu={(e: React.MouseEvent) => showRemoteContextMenu(e, file)}
+                              className={`cursor-pointer transition-colors ${dropTargetPath === file.path && file.is_dir
+                                ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
+                                : selectedRemoteFiles.has(file.name)
+                                  ? 'bg-blue-100 dark:bg-blue-900/40'
+                                  : 'hover:bg-blue-50 dark:hover:bg-gray-700'
+                                } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                             >
-                              <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
-                                {iconProvider.getFolderUpIcon(16).icon}
-                                <span className="italic">{t('browser.parentFolder')}</span>
+                              <td className="px-4 py-2 flex items-center gap-2">
+                                {file.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(file.name, 16).icon}
+                                {inlineRename?.path === file.path && inlineRename?.isRemote ? (
+                                  <input
+                                    ref={inlineRenameRef}
+                                    type="text"
+                                    value={inlineRenameValue}
+                                    onChange={(e) => setInlineRenameValue(e.target.value)}
+                                    onKeyDown={handleInlineRenameKeyDown}
+                                    onBlur={commitInlineRename}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="px-1 py-0.5 text-sm bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none min-w-[120px]"
+                                  />
+                                ) : (
+                                  <span
+                                    className="cursor-text"
+                                    onClick={(e) => {
+                                      if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
+                                        e.stopPropagation();
+                                        startInlineRename(file.path, file.name, true);
+                                      }
+                                    }}
+                                  >
+                                    {displayName(file.name, file.is_dir)}
+                                  </span>
+                                )}
+                                {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
+                                {getSyncBadge(file.path, file.modified || undefined, false)}
                               </td>
-                              {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
-                              {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
-                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
-                              {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                              {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
+                              {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
+                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>}
+                              {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                             </tr>
-                          );
-                        })()}
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : viewMode === 'large' ? (
+                      /* Large Icons View */
+                      <LargeIconsGrid
+                        files={sortedRemoteFiles as any}
+                        selectedFiles={selectedRemoteFiles}
+                        currentPath={currentRemotePath}
+                        onFileClick={(file, e) => {
+                          setActivePanel('remote');
+                          const idx = sortedRemoteFiles.findIndex(f => f.name === file.name);
+                          if (e.shiftKey && lastSelectedRemoteIndex !== null) {
+                            const start = Math.min(lastSelectedRemoteIndex, idx);
+                            const end = Math.max(lastSelectedRemoteIndex, idx);
+                            const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
+                            setSelectedRemoteFiles(new Set(rangeNames));
+                          } else if (e.ctrlKey || e.metaKey) {
+                            setSelectedRemoteFiles(prev => {
+                              const next = new Set(prev);
+                              if (next.has(file.name)) next.delete(file.name);
+                              else next.add(file.name);
+                              return next;
+                            });
+                            setLastSelectedRemoteIndex(idx);
+                          } else {
+                            if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
+                              setSelectedRemoteFiles(new Set());
+                            } else {
+                              setSelectedRemoteFiles(new Set([file.name]));
+                            }
+                            setLastSelectedRemoteIndex(idx);
+                          }
+                        }}
+                        onFileDoubleClick={(file) => handleRemoteFileAction(file as any)}
+                        onNavigateUp={() => changeRemoteDirectory('..')}
+                        isAtRoot={currentRemotePath === '/'}
+                        getFileIcon={(name, isDir) => {
+                          if (isDir) return iconProvider.getFolderIcon(64);
+                          return iconProvider.getFileIcon(name, 48);
+                        }}
+                        getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
+                        onContextMenu={(e, file) => file ? showRemoteContextMenu(e, file as any) : undefined}
+                        onDragStart={(e, file) => handleDragStart(e, file as any, true, selectedRemoteFiles, sortedRemoteFiles)}
+                        onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, true)}
+                        onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, true)}
+                        onDragLeave={handleDragLeave}
+                        onDragEnd={handleDragEnd}
+                        dragOverTarget={dropTargetPath}
+                        inlineRename={inlineRename}
+                        onInlineRenameChange={setInlineRenameValue}
+                        onInlineRenameCommit={commitInlineRename}
+                        onInlineRenameCancel={() => setInlineRename(null)}
+                        formatBytes={formatBytes}
+                        showFileExtensions={true}
+                      />
+                    ) : (
+                      /* Grid View */
+                      <div className="file-grid">
+                        {/* Go Up Item - always visible, disabled at root */}
+                        <div
+                          className={`file-grid-item file-grid-go-up ${currentRemotePath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
+                        >
+                          <div className="file-grid-icon">
+                            {iconProvider.getFolderUpIcon(32).icon}
+                          </div>
+                          <span className="file-grid-name italic text-gray-500">{t('browser.parentFolder')}</span>
+                        </div>
                         {sortedRemoteFiles.map((file, i) => (
-                          <tr
+                          <div
                             key={`${file.name}-${i}`}
-                            data-file-row
-                            role="row"
-                            aria-selected={selectedRemoteFiles.has(file.name)}
+                            data-file-card
                             draggable={file.name !== '..'}
                             onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
                             onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
                             onDragLeave={handleDragLeave}
                             onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
+                            className={`file-grid-item ${dropTargetPath === file.path && file.is_dir
+                              ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
+                              : selectedRemoteFiles.has(file.name) ? 'selected' : ''
+                              } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                             onClick={(e) => {
                               if (file.name === '..') return;
                               setActivePanel('remote');
                               if (e.shiftKey && lastSelectedRemoteIndex !== null) {
-                                // Shift+click: select range
                                 const start = Math.min(lastSelectedRemoteIndex, i);
                                 const end = Math.max(lastSelectedRemoteIndex, i);
                                 const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
                                 setSelectedRemoteFiles(new Set(rangeNames));
                               } else if (e.ctrlKey || e.metaKey) {
-                                // Ctrl/Cmd+click: toggle selection
                                 setSelectedRemoteFiles(prev => {
                                   const next = new Set(prev);
                                   if (next.has(file.name)) next.delete(file.name);
@@ -6071,7 +6560,6 @@ const App: React.FC = () => {
                                 });
                                 setLastSelectedRemoteIndex(i);
                               } else {
-                                // Normal click: toggle if already sole selection, otherwise select
                                 if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
                                   setSelectedRemoteFiles(new Set());
                                 } else {
@@ -6082,683 +6570,530 @@ const App: React.FC = () => {
                             }}
                             onDoubleClick={() => handleRemoteFileAction(file)}
                             onContextMenu={(e: React.MouseEvent) => showRemoteContextMenu(e, file)}
-                            className={`cursor-pointer transition-colors ${
-                              dropTargetPath === file.path && file.is_dir
-                                ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
-                                : selectedRemoteFiles.has(file.name)
-                                  ? 'bg-blue-100 dark:bg-blue-900/40'
-                                  : 'hover:bg-blue-50 dark:hover:bg-gray-700'
-                            } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
                           >
-                            <td className="px-4 py-2 flex items-center gap-2">
-                              {file.is_dir ? iconProvider.getFolderIcon(16).icon : iconProvider.getFileIcon(file.name, 16).icon}
-                              {inlineRename?.path === file.path && inlineRename?.isRemote ? (
-                                <input
-                                  ref={inlineRenameRef}
-                                  type="text"
-                                  value={inlineRenameValue}
-                                  onChange={(e) => setInlineRenameValue(e.target.value)}
-                                  onKeyDown={handleInlineRenameKeyDown}
-                                  onBlur={commitInlineRename}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="px-1 py-0.5 text-sm bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none min-w-[120px]"
+                            {file.is_dir ? (
+                              <div className="file-grid-icon">
+                                {iconProvider.getFolderIcon(32).icon}
+                              </div>
+                            ) : providerCaps.thumbnails && isImageFile(file.name) ? (
+                              <div className="file-grid-icon">
+                                <ProviderThumbnail
+                                  path={file.path}
+                                  name={file.name}
+                                  size={48}
                                 />
-                              ) : (
-                                <span
-                                  className="cursor-text"
-                                  onClick={(e) => {
-                                    if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
-                                      e.stopPropagation();
-                                      startInlineRename(file.path, file.name, true);
-                                    }
-                                  }}
-                                >
-                                  {displayName(file.name, file.is_dir)}
-                                </span>
-                              )}
-                              {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
-                              {getSyncBadge(file.path, file.modified || undefined, false)}
-                            </td>
-                            {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
-                            {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                            {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>}
-                            {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : viewMode === 'large' ? (
-                    /* Large Icons View */
-                    <LargeIconsGrid
-                      files={sortedRemoteFiles as any}
-                      selectedFiles={selectedRemoteFiles}
-                      currentPath={currentRemotePath}
-                      onFileClick={(file, e) => {
-                        setActivePanel('remote');
-                        const idx = sortedRemoteFiles.findIndex(f => f.name === file.name);
-                        if (e.shiftKey && lastSelectedRemoteIndex !== null) {
-                          const start = Math.min(lastSelectedRemoteIndex, idx);
-                          const end = Math.max(lastSelectedRemoteIndex, idx);
-                          const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
-                          setSelectedRemoteFiles(new Set(rangeNames));
-                        } else if (e.ctrlKey || e.metaKey) {
-                          setSelectedRemoteFiles(prev => {
-                            const next = new Set(prev);
-                            if (next.has(file.name)) next.delete(file.name);
-                            else next.add(file.name);
-                            return next;
-                          });
-                          setLastSelectedRemoteIndex(idx);
-                        } else {
-                          if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
-                            setSelectedRemoteFiles(new Set());
-                          } else {
-                            setSelectedRemoteFiles(new Set([file.name]));
-                          }
-                          setLastSelectedRemoteIndex(idx);
-                        }
-                      }}
-                      onFileDoubleClick={(file) => handleRemoteFileAction(file as any)}
-                      onNavigateUp={() => changeRemoteDirectory('..')}
-                      isAtRoot={currentRemotePath === '/'}
-                      getFileIcon={(name, isDir) => {
-                        if (isDir) return iconProvider.getFolderIcon(64);
-                        return iconProvider.getFileIcon(name, 48);
-                      }}
-                      getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
-                      onContextMenu={(e, file) => file ? showRemoteContextMenu(e, file as any) : undefined}
-                      onDragStart={(e, file) => handleDragStart(e, file as any, true, selectedRemoteFiles, sortedRemoteFiles)}
-                      onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, true)}
-                      onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, true)}
-                      onDragLeave={handleDragLeave}
-                      onDragEnd={handleDragEnd}
-                      dragOverTarget={dropTargetPath}
-                      inlineRename={inlineRename}
-                      onInlineRenameChange={setInlineRenameValue}
-                      onInlineRenameCommit={commitInlineRename}
-                      onInlineRenameCancel={() => setInlineRename(null)}
-                      formatBytes={formatBytes}
-                      showFileExtensions={true}
-                    />
-                  ) : (
-                    /* Grid View */
-                    <div className="file-grid">
-                      {/* Go Up Item - always visible, disabled at root */}
-                      <div
-                        className={`file-grid-item file-grid-go-up ${currentRemotePath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
-                      >
-                        <div className="file-grid-icon">
-                          {iconProvider.getFolderUpIcon(32).icon}
-                        </div>
-                        <span className="file-grid-name italic text-gray-500">{t('browser.parentFolder')}</span>
-                      </div>
-                      {sortedRemoteFiles.map((file, i) => (
-                        <div
-                          key={`${file.name}-${i}`}
-                          data-file-card
-                          draggable={file.name !== '..'}
-                          onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
-                          onDragEnd={handleDragEnd}
-                          onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
-                          className={`file-grid-item ${
-                            dropTargetPath === file.path && file.is_dir
-                              ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
-                              : selectedRemoteFiles.has(file.name) ? 'selected' : ''
-                          } ${dragData?.sourcePaths.includes(file.path) ? 'opacity-50' : ''}`}
-                          onClick={(e) => {
-                            if (file.name === '..') return;
-                            setActivePanel('remote');
-                            if (e.shiftKey && lastSelectedRemoteIndex !== null) {
-                              const start = Math.min(lastSelectedRemoteIndex, i);
-                              const end = Math.max(lastSelectedRemoteIndex, i);
-                              const rangeNames = sortedRemoteFiles.slice(start, end + 1).map(f => f.name);
-                              setSelectedRemoteFiles(new Set(rangeNames));
-                            } else if (e.ctrlKey || e.metaKey) {
-                              setSelectedRemoteFiles(prev => {
-                                const next = new Set(prev);
-                                if (next.has(file.name)) next.delete(file.name);
-                                else next.add(file.name);
-                                return next;
-                              });
-                              setLastSelectedRemoteIndex(i);
-                            } else {
-                              if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name)) {
-                                setSelectedRemoteFiles(new Set());
-                              } else {
-                                setSelectedRemoteFiles(new Set([file.name]));
-                              }
-                              setLastSelectedRemoteIndex(i);
-                            }
-                          }}
-                          onDoubleClick={() => handleRemoteFileAction(file)}
-                          onContextMenu={(e: React.MouseEvent) => showRemoteContextMenu(e, file)}
-                        >
-                          {file.is_dir ? (
-                            <div className="file-grid-icon">
-                              {iconProvider.getFolderIcon(32).icon}
-                            </div>
-                          ) : providerCaps.thumbnails && isImageFile(file.name) ? (
-                            <div className="file-grid-icon">
-                              <ProviderThumbnail
-                                path={file.path}
+                              </div>
+                            ) : isImageFile(file.name) ? (
+                              <ImageThumbnail
+                                path={currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`}
                                 name={file.name}
-                                size={48}
+                                fallbackIcon={iconProvider.getFileIcon(file.name).icon}
+                                isRemote={true}
                               />
-                            </div>
-                          ) : isImageFile(file.name) ? (
-                            <ImageThumbnail
-                              path={currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`}
-                              name={file.name}
-                              fallbackIcon={iconProvider.getFileIcon(file.name).icon}
-                              isRemote={true}
-                            />
-                          ) : (
-                            <div className="file-grid-icon">
-                              {iconProvider.getFileIcon(file.name).icon}
-                            </div>
-                          )}
-                          {inlineRename?.path === file.path && inlineRename?.isRemote ? (
-                            <input
-                              ref={inlineRenameRef}
-                              type="text"
-                              value={inlineRenameValue}
-                              onChange={(e) => setInlineRenameValue(e.target.value)}
-                              onKeyDown={handleInlineRenameKeyDown}
-                              onBlur={commitInlineRename}
-                              onClick={(e) => e.stopPropagation()}
-                              className="file-grid-name px-1 bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none text-center"
-                            />
-                          ) : (
-                            <span
-                              className="file-grid-name cursor-text"
-                              onClick={(e) => {
-                                if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
-                                  e.stopPropagation();
-                                  startInlineRename(file.path, file.name, true);
-                                }
-                              }}
-                            >
-                              {displayName(file.name, file.is_dir)}
-                            </span>
-                          )}
-                          {!file.is_dir && file.size && (
-                            <span className="file-grid-size">{formatBytes(file.size)}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>}
-
-
-              {/* Local — full width when remote panel is hidden */}
-              <LocalFilePanel
-                isAeroFileMode={!isConnected || !showRemotePanel}
-                isConnected={isConnected}
-                currentPath={currentLocalPath}
-                setCurrentPath={setCurrentLocalPath}
-                onNavigate={changeLocalDirectory}
-                onRefresh={loadLocalFiles}
-                isPathCoherent={isLocalPathCoherent}
-                isSyncPathMismatch={isSyncPathMismatch}
-                isSyncNavigation={isSyncNavigation}
-                syncBasePaths={syncBasePaths}
-                localFiles={localFiles}
-                sortedFiles={sortedLocalFiles}
-                selectedFiles={selectedLocalFiles}
-                setSelectedFiles={setSelectedLocalFiles}
-                lastSelectedIndex={lastSelectedLocalIndex}
-                setLastSelectedIndex={setLastSelectedLocalIndex}
-                setActivePanel={setActivePanel}
-                setPreviewFile={setPreviewFile}
-                sortField={localSortField}
-                sortOrder={localSortOrder}
-                onSort={handleLocalSort}
-                searchFilter={localSearchFilter}
-                setSearchFilter={setLocalSearchFilter}
-                showSearchBar={showLocalSearchBar}
-                setShowSearchBar={setShowLocalSearchBar}
-                searchRef={localSearchRef}
-                viewMode={viewMode}
-                visibleColumns={visibleColumns}
-                showFileExtensions={showFileExtensions}
-                debugMode={debugMode}
-                doubleClickAction={doubleClickAction}
-                inlineRename={inlineRename}
-                inlineRenameValue={inlineRenameValue}
-                setInlineRenameValue={setInlineRenameValue}
-                inlineRenameRef={inlineRenameRef}
-                onInlineRenameKeyDown={handleInlineRenameKeyDown}
-                onInlineRenameCommit={commitInlineRename}
-                onInlineRenameStart={startInlineRename}
-                onInlineRenameCancel={() => setInlineRename(null)}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                dropTargetPath={dropTargetPath}
-                dragSourcePaths={dragData?.sourcePaths || []}
-                crossPanelTarget={crossPanelTarget}
-                onPanelDragOver={handlePanelDragOver}
-                onPanelDrop={handlePanelDrop}
-                onPanelDragLeave={handlePanelDragLeave}
-                onContextMenu={showLocalContextMenu}
-                onEmptyContextMenu={showLocalEmptyContextMenu}
-                onOpenUniversalPreview={openUniversalPreview}
-                onOpenDevToolsPreview={openDevToolsPreview}
-                onUploadFile={uploadFile}
-                onOpenInFileManager={openInFileManager}
-                isTrashView={isTrashView}
-                trashItems={trashItems}
-                onEmptyTrash={handleEmptyTrash}
-                onRestoreTrashItem={handleRestoreTrashItem}
-                onNavigateTrash={handleNavigateTrash}
-                showSidebar={showSidebar}
-                recentPaths={recentPaths}
-                setRecentPaths={setRecentPaths}
-                iconProvider={iconProvider}
-                displayName={displayName}
-                getSyncBadge={getSyncBadge}
-                getTagsForFile={fileTags.getTagsForFile}
-                labelCounts={fileTags.labelCounts}
-                activeTagFilter={fileTags.activeTagFilter}
-                onTagFilter={fileTags.setActiveTagFilter}
-                t={t}
-                notify={notify}
-              />
-
-              {/* Preview Panel - only in local-only (AeroFile) mode */}
-              {showLocalPreview && (!isConnected || !showRemotePanel) && (
-                <div
-                  className="flex flex-col bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 animate-slide-in-right relative"
-                  style={{ width: previewPanelWidth, minWidth: 220, maxWidth: 500, flexShrink: 0 }}
-                >
-                  {/* Resize handle */}
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 z-10"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      previewResizing.current = true;
-                      const startX = e.clientX;
-                      const startW = previewPanelWidth;
-                      const onMove = (ev: MouseEvent) => {
-                        if (!previewResizing.current) return;
-                        const delta = startX - ev.clientX;
-                        setPreviewPanelWidth(Math.max(220, Math.min(500, startW + delta)));
-                      };
-                      const onUp = () => { previewResizing.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-                      window.addEventListener('mousemove', onMove);
-                      window.addEventListener('mouseup', onUp);
-                    }}
-                  />
-                  <div className="px-3 h-[43px] bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                    <Eye size={14} className="text-blue-500" /> {t('preview.fileInfo')}
-                  </div>
-                  <div className="flex-1 overflow-auto p-3">
-                    {previewFile ? (
-                      <div className="space-y-3">
-                        {/* File Icon/Thumbnail */}
-                        <div className="aspect-square bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
-                          {previewImageBase64 ? (
-                            <img
-                              src={previewImageBase64}
-                              alt={previewFile.name}
-                              className="w-full h-full object-contain"
-                            />
-                          ) : /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name) ? (
-                            <div className="text-gray-400 animate-pulse flex flex-col items-center">
-                              <Image size={32} className="text-blue-400 mb-1" />
-                              <span className="text-xs">{t('common.loading')}</span>
-                            </div>
-                          ) : previewFile.is_dir ? (
-                            iconProvider.getFolderIcon(48).icon
-                          ) : (
-                            iconProvider.getFileIcon(previewFile.name, 48).icon
-                          )}
-                        </div>
-
-                        {/* File Name */}
-                        <div className="text-center">
-                          <p className="font-medium text-sm truncate" title={previewFile.name}>{previewFile.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                            {previewFile.is_dir ? t('preview.typeDirectory') : previewFile.name.split('.').pop() || t('preview.typeFile')}
-                          </p>
-                        </div>
-
-                        {/* Detailed Info */}
-                        <div className="bg-gray-100 dark:bg-gray-700/50 rounded-lg p-3 space-y-2 text-xs">
-                          {/* Size */}
-                          {!previewFile.is_dir && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500 flex items-center gap-1.5">
-                                <HardDrive size={12} /> {t('preview.sizeLabel')}
+                            ) : (
+                              <div className="file-grid-icon">
+                                {iconProvider.getFileIcon(file.name).icon}
+                              </div>
+                            )}
+                            {inlineRename?.path === file.path && inlineRename?.isRemote ? (
+                              <input
+                                ref={inlineRenameRef}
+                                type="text"
+                                value={inlineRenameValue}
+                                onChange={(e) => setInlineRenameValue(e.target.value)}
+                                onKeyDown={handleInlineRenameKeyDown}
+                                onBlur={commitInlineRename}
+                                onClick={(e) => e.stopPropagation()}
+                                className="file-grid-name px-1 bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none text-center"
+                              />
+                            ) : (
+                              <span
+                                className="file-grid-name cursor-text"
+                                onClick={(e) => {
+                                  if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
+                                    e.stopPropagation();
+                                    startInlineRename(file.path, file.name, true);
+                                  }
+                                }}
+                              >
+                                {displayName(file.name, file.is_dir)}
                               </span>
-                              <span className="font-medium">{formatBytes(previewFile.size || 0)}</span>
-                            </div>
-                          )}
-
-                          {/* Type */}
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500 flex items-center gap-1.5">
-                              <FileType size={12} /> {t('preview.typeLabel')}
-                            </span>
-                            <span className="font-medium">
-                              {previewFile.is_dir ? t('preview.typeDirectory') : (() => {
-                                const ext = previewFile.name.split('.').pop()?.toLowerCase();
-                                if (/^(jpg|jpeg|png|gif|svg|webp|bmp)$/.test(ext || '')) return t('preview.typeImage');
-                                if (/^(mp4|webm|mov|avi|mkv)$/.test(ext || '')) return t('preview.typeVideo');
-                                if (/^(mp3|wav|ogg|flac|m4a|aac)$/.test(ext || '')) return t('preview.typeAudio');
-                                if (ext === 'pdf') return t('preview.typePdf');
-                                if (/^(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash)$/.test(ext || '')) return t('preview.typeCode');
-                                if (/^(zip|tar|gz|rar|7z)$/.test(ext || '')) return t('preview.typeArchive');
-                                if (/^(txt|md|log|csv)$/.test(ext || '')) return t('preview.typeText');
-                                return ext?.toUpperCase() || t('preview.typeFile');
-                              })()}
-                            </span>
+                            )}
+                            {!file.is_dir && file.size && (
+                              <span className="file-grid-size">{formatBytes(file.size)}</span>
+                            )}
                           </div>
-
-                          {/* Image Resolution */}
-                          {previewImageDimensions && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500 flex items-center gap-1.5">
-                                <Image size={12} /> {t('preview.resolutionLabel')}
-                              </span>
-                              <span className="font-medium">{previewImageDimensions.width} × {previewImageDimensions.height}</span>
-                            </div>
-                          )}
-
-                          {/* Modified */}
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500 flex items-center gap-1.5">
-                              <Clock size={12} /> {t('preview.modifiedLabel')}
-                            </span>
-                            <span className="font-medium text-right">{previewFile.modified || '—'}</span>
-                          </div>
-
-                          {/* Extension */}
-                          {!previewFile.is_dir && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500 flex items-center gap-1.5">
-                                <Database size={12} /> {t('preview.extensionLabel')}
-                              </span>
-                              <span className="font-mono text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 rounded">
-                                .{previewFile.name.split('.').pop()?.toLowerCase() || '—'}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Path */}
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-gray-500 flex items-center gap-1.5 shrink-0">
-                              <FolderOpen size={12} /> {t('preview.pathLabel')}
-                            </span>
-                            <span className="font-medium text-right truncate" title={previewFile.path}>{previewFile.path}</span>
-                          </div>
-                        </div>
-
-                        {/* Quick Actions */}
-                        <div className="space-y-2">
-                          {/* Open Preview button */}
-                          {isMediaPreviewable(previewFile.name) && (
-                            <button
-                              onClick={() => openUniversalPreview(previewFile, false)}
-                              className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
-                            >
-                              <Eye size={14} /> {t('preview.openPreview')}
-                            </button>
-                          )}
-
-                          {/* View Source - for text/code files */}
-                          {/\.(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash|txt|md|log)$/i.test(previewFile.name) && (
-                            <button
-                              onClick={() => openUniversalPreview(previewFile, false)}
-                              className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
-                            >
-                              <Code size={14} /> {t('preview.viewSource')}
-                            </button>
-                          )}
-
-                          {/* Copy Path */}
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(previewFile.path);
-                              notify.success(t('toast.clipboardCopied'), t('toast.pathCopied'));
-                            }}
-                            className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
-                          >
-                            <Copy size={14} /> {t('preview.copyPath')}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-gray-400 text-sm">
-                        <Eye size={32} className="mb-3 opacity-30" />
-                        <p className="font-medium">{t('preview.noFileSelected')}</p>
-                        <p className="text-xs mt-1 text-center">{t('preview.clickToViewDetails')}</p>
+                        ))}
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+                </div>}
+
+
+                {/* Local — full width when remote panel is hidden */}
+                <LocalFilePanel
+                  isAeroFileMode={!isConnected || !showRemotePanel}
+                  isConnected={isConnected}
+                  currentPath={currentLocalPath}
+                  setCurrentPath={setCurrentLocalPath}
+                  onNavigate={changeLocalDirectory}
+                  onRefresh={loadLocalFiles}
+                  isPathCoherent={isLocalPathCoherent}
+                  isSyncPathMismatch={isSyncPathMismatch}
+                  isSyncNavigation={isSyncNavigation}
+                  syncBasePaths={syncBasePaths}
+                  localFiles={localFiles}
+                  sortedFiles={sortedLocalFiles}
+                  selectedFiles={selectedLocalFiles}
+                  setSelectedFiles={setSelectedLocalFiles}
+                  lastSelectedIndex={lastSelectedLocalIndex}
+                  setLastSelectedIndex={setLastSelectedLocalIndex}
+                  setActivePanel={setActivePanel}
+                  setPreviewFile={setPreviewFile}
+                  sortField={localSortField}
+                  sortOrder={localSortOrder}
+                  onSort={handleLocalSort}
+                  searchFilter={localSearchFilter}
+                  setSearchFilter={setLocalSearchFilter}
+                  showSearchBar={showLocalSearchBar}
+                  setShowSearchBar={setShowLocalSearchBar}
+                  searchRef={localSearchRef}
+                  viewMode={viewMode}
+                  visibleColumns={visibleColumns}
+                  showFileExtensions={showFileExtensions}
+                  debugMode={debugMode}
+                  doubleClickAction={doubleClickAction}
+                  inlineRename={inlineRename}
+                  inlineRenameValue={inlineRenameValue}
+                  setInlineRenameValue={setInlineRenameValue}
+                  inlineRenameRef={inlineRenameRef}
+                  onInlineRenameKeyDown={handleInlineRenameKeyDown}
+                  onInlineRenameCommit={commitInlineRename}
+                  onInlineRenameStart={startInlineRename}
+                  onInlineRenameCancel={() => setInlineRename(null)}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  dropTargetPath={dropTargetPath}
+                  dragSourcePaths={dragData?.sourcePaths || []}
+                  crossPanelTarget={crossPanelTarget}
+                  onPanelDragOver={handlePanelDragOver}
+                  onPanelDrop={handlePanelDrop}
+                  onPanelDragLeave={handlePanelDragLeave}
+                  onContextMenu={showLocalContextMenu}
+                  onEmptyContextMenu={showLocalEmptyContextMenu}
+                  onOpenUniversalPreview={openUniversalPreview}
+                  onOpenDevToolsPreview={openDevToolsPreview}
+                  onUploadFile={uploadFile}
+                  onOpenInFileManager={openInFileManager}
+                  isTrashView={isTrashView}
+                  trashItems={trashItems}
+                  onEmptyTrash={handleEmptyTrash}
+                  onRestoreTrashItem={handleRestoreTrashItem}
+                  onNavigateTrash={handleNavigateTrash}
+                  showSidebar={showSidebar}
+                  recentPaths={recentPaths}
+                  setRecentPaths={setRecentPaths}
+                  iconProvider={iconProvider}
+                  displayName={displayName}
+                  getSyncBadge={getSyncBadge}
+                  getTagsForFile={fileTags.getTagsForFile}
+                  labelCounts={fileTags.labelCounts}
+                  activeTagFilter={fileTags.activeTagFilter}
+                  onTagFilter={fileTags.setActiveTagFilter}
+                  t={t}
+                  notify={notify}
+                />
+
+                {/* Preview Panel - only in local-only (AeroFile) mode */}
+                {showLocalPreview && (!isConnected || !showRemotePanel) && (
+                  <div
+                    className="flex flex-col bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 animate-slide-in-right relative"
+                    style={{ width: previewPanelWidth, minWidth: 220, maxWidth: 500, flexShrink: 0 }}
+                  >
+                    {/* Resize handle */}
+                    <div
+                      className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 z-10"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        previewResizing.current = true;
+                        const startX = e.clientX;
+                        const startW = previewPanelWidth;
+                        const onMove = (ev: MouseEvent) => {
+                          if (!previewResizing.current) return;
+                          const delta = startX - ev.clientX;
+                          setPreviewPanelWidth(Math.max(220, Math.min(500, startW + delta)));
+                        };
+                        const onUp = () => { previewResizing.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                        window.addEventListener('mousemove', onMove);
+                        window.addEventListener('mouseup', onUp);
+                      }}
+                    />
+                    <div className="px-3 h-[43px] bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                      <Eye size={14} className="text-blue-500" /> {t('preview.fileInfo')}
+                    </div>
+                    <div className="flex-1 overflow-auto p-3">
+                      {previewFile ? (
+                        <div className="space-y-3">
+                          {/* File Icon/Thumbnail */}
+                          <div className="aspect-square bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
+                            {previewImageBase64 ? (
+                              <img
+                                src={previewImageBase64}
+                                alt={previewFile.name}
+                                className="w-full h-full object-contain"
+                              />
+                            ) : /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(previewFile.name) ? (
+                              <div className="text-gray-400 animate-pulse flex flex-col items-center">
+                                <Image size={32} className="text-blue-400 mb-1" />
+                                <span className="text-xs">{t('common.loading')}</span>
+                              </div>
+                            ) : previewFile.is_dir ? (
+                              iconProvider.getFolderIcon(48).icon
+                            ) : (
+                              iconProvider.getFileIcon(previewFile.name, 48).icon
+                            )}
+                          </div>
+
+                          {/* File Name */}
+                          <div className="text-center">
+                            <p className="font-medium text-sm truncate" title={previewFile.name}>{previewFile.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                              {previewFile.is_dir ? t('preview.typeDirectory') : previewFile.name.split('.').pop() || t('preview.typeFile')}
+                            </p>
+                          </div>
+
+                          {/* Detailed Info */}
+                          <div className="bg-gray-100 dark:bg-gray-700/50 rounded-lg p-3 space-y-2 text-xs">
+                            {/* Size */}
+                            {!previewFile.is_dir && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-500 flex items-center gap-1.5">
+                                  <HardDrive size={12} /> {t('preview.sizeLabel')}
+                                </span>
+                                <span className="font-medium">{formatBytes(previewFile.size || 0)}</span>
+                              </div>
+                            )}
+
+                            {/* Type */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 flex items-center gap-1.5">
+                                <FileType size={12} /> {t('preview.typeLabel')}
+                              </span>
+                              <span className="font-medium">
+                                {previewFile.is_dir ? t('preview.typeDirectory') : (() => {
+                                  const ext = previewFile.name.split('.').pop()?.toLowerCase();
+                                  if (/^(jpg|jpeg|png|gif|svg|webp|bmp)$/.test(ext || '')) return t('preview.typeImage');
+                                  if (/^(mp4|webm|mov|avi|mkv)$/.test(ext || '')) return t('preview.typeVideo');
+                                  if (/^(mp3|wav|ogg|flac|m4a|aac)$/.test(ext || '')) return t('preview.typeAudio');
+                                  if (ext === 'pdf') return t('preview.typePdf');
+                                  if (/^(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash)$/.test(ext || '')) return t('preview.typeCode');
+                                  if (/^(zip|tar|gz|rar|7z)$/.test(ext || '')) return t('preview.typeArchive');
+                                  if (/^(txt|md|log|csv)$/.test(ext || '')) return t('preview.typeText');
+                                  return ext?.toUpperCase() || t('preview.typeFile');
+                                })()}
+                              </span>
+                            </div>
+
+                            {/* Image Resolution */}
+                            {previewImageDimensions && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-500 flex items-center gap-1.5">
+                                  <Image size={12} /> {t('preview.resolutionLabel')}
+                                </span>
+                                <span className="font-medium">{previewImageDimensions.width} × {previewImageDimensions.height}</span>
+                              </div>
+                            )}
+
+                            {/* Modified */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 flex items-center gap-1.5">
+                                <Clock size={12} /> {t('preview.modifiedLabel')}
+                              </span>
+                              <span className="font-medium text-right">{previewFile.modified || '—'}</span>
+                            </div>
+
+                            {/* Extension */}
+                            {!previewFile.is_dir && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-500 flex items-center gap-1.5">
+                                  <Database size={12} /> {t('preview.extensionLabel')}
+                                </span>
+                                <span className="font-mono text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 rounded">
+                                  .{previewFile.name.split('.').pop()?.toLowerCase() || '—'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Path */}
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-gray-500 flex items-center gap-1.5 shrink-0">
+                                <FolderOpen size={12} /> {t('preview.pathLabel')}
+                              </span>
+                              <span className="font-medium text-right truncate" title={previewFile.path}>{previewFile.path}</span>
+                            </div>
+                          </div>
+
+                          {/* Quick Actions */}
+                          <div className="space-y-2">
+                            {/* Open Preview button */}
+                            {isMediaPreviewable(previewFile.name) && (
+                              <button
+                                onClick={() => openUniversalPreview(previewFile, false)}
+                                className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
+                              >
+                                <Eye size={14} /> {t('preview.openPreview')}
+                              </button>
+                            )}
+
+                            {/* View Source - for text/code files */}
+                            {/\.(js|jsx|ts|tsx|py|rs|go|java|php|rb|c|cpp|h|css|scss|html|xml|json|yaml|yml|toml|sql|sh|bash|txt|md|log)$/i.test(previewFile.name) && (
+                              <button
+                                onClick={() => openUniversalPreview(previewFile, false)}
+                                className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
+                              >
+                                <Code size={14} /> {t('preview.viewSource')}
+                              </button>
+                            )}
+
+                            {/* Copy Path */}
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(previewFile.path);
+                                notify.success(t('toast.clipboardCopied'), t('toast.pathCopied'));
+                              }}
+                              className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            >
+                              <Copy size={14} /> {t('preview.copyPath')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 text-sm">
+                          <Eye size={32} className="mb-3 opacity-30" />
+                          <p className="font-medium">{t('preview.noFileSelected')}</p>
+                          <p className="text-xs mt-1 text-center">{t('preview.clickToViewDetails')}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
 
-      {/* Activity Log Panel - FileZilla-style horizontal panel */}
-      <ActivityLogPanel
-        isVisible={showActivityLog}
-        onToggle={() => setShowActivityLog(!showActivityLog)}
-        initialHeight={150}
-        minHeight={80}
-        maxHeight={400}
-        theme={getLogTheme(theme, isDark)}
-      />
+        {/* Activity Log Panel - FileZilla-style horizontal panel */}
+        <ActivityLogPanel
+          isVisible={showActivityLog}
+          onToggle={() => setShowActivityLog(!showActivityLog)}
+          initialHeight={150}
+          minHeight={80}
+          maxHeight={400}
+          theme={getLogTheme(theme, isDark)}
+        />
 
-      {/* DevTools V2 - 3-Column Responsive Layout (at bottom, below ActivityLog) */}
-      <DevToolsV2
-        isOpen={devToolsOpen}
-        previewFile={devToolsPreviewFile}
-        localPath={currentLocalPath}
-        remotePath={currentRemotePath}
-        onMaximizeChange={setDevToolsMaximized}
-        onClose={() => setDevToolsOpen(false)}
-        onClearFile={() => setDevToolsPreviewFile(null)}
-        editorTheme={getMonacoTheme(theme, isDark)}
-        appTheme={getEffectiveTheme(theme, isDark)}
-        providerType={connectionParams.protocol}
-        isConnected={isConnected}
-        selectedFiles={Array.from(selectedRemoteFiles)}
-        serverHost={connectionParams.server}
-        serverPort={connectionParams.port}
-        serverUser={connectionParams.username}
-        activeFilePanel={activePanel}
-        isCloudConnection={isCloudActive}
-        sshConnection={isConnected && connectionParams.protocol === 'sftp' ? {
-          host: connectionParams.server.split(':')[0],
-          port: connectionParams.port || 22,
-          username: connectionParams.username,
-          password: connectionParams.password || undefined,
-          privateKeyPath: connectionParams.options?.private_key_path,
-          keyPassphrase: connectionParams.options?.key_passphrase,
-        } : null}
-        onCheckHostKey={checkSftpHostKey}
-        onFileMutation={(target) => {
-          setTimeout(() => {
-            if (target === 'remote' || target === 'both') {
-              if (isConnected) loadRemoteFiles(undefined, true);
-            }
-            if (target === 'local' || target === 'both') {
-              loadLocalFiles(currentLocalPath);
-            }
-          }, 300);
-        }}
-        onSaveFile={async (content, file) => {
-          const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
-          try {
-            if (file.isRemote) {
-              await invoke('save_remote_file', { path: file.path, content });
-              humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
-              notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-              await loadRemoteFiles(undefined, true);
-            } else {
-              await invoke('save_local_file', { path: file.path, content });
-              humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
-              notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-              await loadLocalFiles(currentLocalPath);
-            }
-          } catch (error) {
-            humanLog.logError('UPLOAD', { filename: file.name }, logId);
-            notify.error(t('toast.saveFailed'), String(error));
-          }
-        }}
-      />
-
-      {showStatusBar && (
-        <StatusBar
-          isConnected={isConnected}
-          connectionSecurity={isConnected ? (() => {
-            const activeSession = sessions.find(s => s.id === activeSessionId);
-            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const opts = connectionParams.options ?? activeSession?.connectionParams?.options;
-            const verifyCert = opts?.verifyCert ?? true;
-            if (protocol === 'ftp') {
-              const tlsMode = opts?.tlsMode ?? 'explicit';
-              if (tlsMode === 'none') return 'insecure' as const;
-              if (tlsMode === 'explicit_if_available') return 'warning' as const;
-              // explicit or implicit — TLS is enforced
-              return verifyCert ? 'secure' as const : 'warning' as const;
-            }
-            if (protocol === 'ftps') {
-              return verifyCert ? 'secure' as const : 'warning' as const;
-            }
-            return 'secure' as const;
-          })() : undefined}
-          secureProtocol={isConnected ? (() => {
-            const activeSession = sessions.find(s => s.id === activeSessionId);
-            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            if (protocol === 'ftp') {
-              const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit';
-              if (tlsMode === 'none') return undefined;
-              return 'TLS';
-            }
-            if (protocol === 'ftps') return 'TLS';
-            if (protocol === 'sftp') return 'SSH';
-            if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
-            return 'HTTPS';
-          })() : undefined}
-          serverInfo={isConnected ? (() => {
-            // Get protocol from active session as fallback
-            const activeSession = sessions.find(s => s.id === activeSessionId);
-            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            if (protocol === 'googledrive') return 'Google Drive';
-            if (protocol === 'dropbox') return 'Dropbox';
-            if (protocol === 'onedrive') return 'OneDrive';
-            if (protocol === 'box') return 'Box';
-            if (protocol === 'pcloud') return 'pCloud';
-            if (protocol === 'azure') return 'Azure Blob';
-            if (protocol === 'filen') return 'Filen';
-            if (protocol === 'mega') return 'MEGA';
-            if (protocol === 's3') {
-              // Show bucket name or short hostname instead of full URL
-              const s3Server = connectionParams.server || activeSession?.connectionParams?.server || '';
-              try {
-                const url = new URL(s3Server.startsWith('http') ? s3Server : `https://${s3Server}`);
-                const host = url.hostname;
-                // Shorten Cloudflare R2 and AWS S3 URLs
-                if (host.includes('.r2.cloudflarestorage.com')) return `R2: ${host.split('.')[0].slice(0, 8)}...`;
-                if (host.includes('.amazonaws.com')) return host.replace('.s3.amazonaws.com', '').replace('.s3.', ' (S3 ');
-                return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
-              } catch { return 'S3'; }
-            }
-            // For FTP/FTPS/SFTP/etc, show username@server or session name
-            const server = connectionParams.server || activeSession?.connectionParams?.server;
-            const username = connectionParams.username || activeSession?.connectionParams?.username;
-            return server ? `${username}@${server}` : activeSession?.serverName;
-          })() : undefined}
-          remotePath={currentRemotePath}
+        {/* DevTools V2 - 3-Column Responsive Layout (at bottom, below ActivityLog) */}
+        <DevToolsV2
+          isOpen={devToolsOpen}
+          previewFile={devToolsPreviewFile}
           localPath={currentLocalPath}
-          remoteFileCount={remoteFiles.length}
-          localFileCount={localFiles.length}
-          activePanel={activePanel}
-          devToolsOpen={devToolsOpen}
-          aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
-          onToggleAeroFile={async () => {
-            if (showConnectionScreen) {
-              // On connection screen: enter AeroFile mode (same as "Local files >" button)
-              setShowConnectionScreen(false);
-              setActivePanel('local');
-              setShowSidebar(true);
-              await loadLocalFiles(currentLocalPath || '/');
-            } else if (isConnected) {
-              // Connected: toggle remote panel off/on (entering/exiting AeroFile mode)
-              setShowRemotePanel(prev => {
-                if (prev) { setActivePanel('local'); setShowSidebar(true); }
-                else { setShowLocalPreview(false); }
-                return !prev;
-              });
-            } else {
-              // Already in AeroFile mode (not connected, not on connection screen) — toggle sidebar
-              toggleSidebar();
-            }
-          }}
-          onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
-          aeroAgentOpen={devToolsOpen}
-          onToggleAeroAgent={() => {
-            if (!devToolsOpen) {
-              setDevToolsOpen(true);
-              // Ensure agent panel is visible after DevTools opens
-              setTimeout(() => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), 50);
-            } else {
-              // DevTools already open — toggle agent panel
-              window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }));
-            }
-          }}
-          onToggleSync={() => setShowSyncPanel(true)}
-          onToggleCloud={() => setShowCloudPanel(true)}
-          cloudEnabled={isCloudActive}
-          cloudSyncing={cloudSyncing}
-          transferQueueActive={transferQueue.hasActiveTransfers}
-          transferQueueCount={transferQueue.items.length}
-          onToggleTransferQueue={transferQueue.toggle}
-          showActivityLog={showActivityLog}
-          activityLogCount={activityLog.entries.length}
-          onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
-          updateAvailable={updateAvailable}
-          onShowUpdateToast={() => setUpdateToastDismissed(false)}
-          debugMode={debugMode}
-          onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
-          storageQuota={storageQuota}
-        />
-      )}
-
-      {/* Debug Panel */}
-      {debugMode && showDebugPanel && (
-        <DebugPanel
-          isVisible={true}
-          onClose={() => setShowDebugPanel(false)}
-          isConnected={isConnected}
-          connectionParams={{
-            server: connectionParams?.server || '',
-            username: connectionParams?.username || '',
-            protocol: connectionParams?.protocol || 'sftp',
-          }}
-          currentRemotePath={currentRemotePath}
+          remotePath={currentRemotePath}
+          onMaximizeChange={setDevToolsMaximized}
+          onClose={() => setDevToolsOpen(false)}
+          onClearFile={() => setDevToolsPreviewFile(null)}
+          editorTheme={getMonacoTheme(theme, isDark)}
           appTheme={getEffectiveTheme(theme, isDark)}
+          providerType={connectionParams.protocol}
+          isConnected={isConnected}
+          selectedFiles={Array.from(selectedRemoteFiles)}
+          serverHost={connectionParams.server}
+          serverPort={connectionParams.port}
+          serverUser={connectionParams.username}
+          activeFilePanel={activePanel}
+          isCloudConnection={isCloudActive}
+          sshConnection={isConnected && connectionParams.protocol === 'sftp' ? {
+            host: connectionParams.server.split(':')[0],
+            port: connectionParams.port || 22,
+            username: connectionParams.username,
+            password: connectionParams.password || undefined,
+            privateKeyPath: connectionParams.options?.private_key_path,
+            keyPassphrase: connectionParams.options?.key_passphrase,
+          } : null}
+          onCheckHostKey={checkSftpHostKey}
+          onFileMutation={(target) => {
+            setTimeout(() => {
+              if (target === 'remote' || target === 'both') {
+                if (isConnected) loadRemoteFiles(undefined, true);
+              }
+              if (target === 'local' || target === 'both') {
+                loadLocalFiles(currentLocalPath);
+              }
+            }, 300);
+          }}
+          onSaveFile={async (content, file) => {
+            const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
+            try {
+              if (file.isRemote) {
+                await invoke('save_remote_file', { path: file.path, content });
+                humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
+                notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
+                await loadRemoteFiles(undefined, true);
+              } else {
+                await invoke('save_local_file', { path: file.path, content });
+                humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
+                notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
+                await loadLocalFiles(currentLocalPath);
+              }
+            } catch (error) {
+              humanLog.logError('UPLOAD', { filename: file.name }, logId);
+              notify.error(t('toast.saveFailed'), String(error));
+            }
+          }}
         />
-      )}
 
-      {/* Dependencies Panel */}
-      <DependenciesPanel
-        isVisible={showDependenciesPanel}
-        onClose={() => setShowDependenciesPanel(false)}
-      />
-    </div>
+        {showStatusBar && (
+          <StatusBar
+            isConnected={isConnected}
+            connectionSecurity={isConnected ? (() => {
+              const activeSession = sessions.find(s => s.id === activeSessionId);
+              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              const opts = connectionParams.options ?? activeSession?.connectionParams?.options;
+              const verifyCert = opts?.verifyCert ?? true;
+              if (protocol === 'ftp') {
+                const tlsMode = opts?.tlsMode ?? 'explicit';
+                if (tlsMode === 'none') return 'insecure' as const;
+                if (tlsMode === 'explicit_if_available') return 'warning' as const;
+                // explicit or implicit — TLS is enforced
+                return verifyCert ? 'secure' as const : 'warning' as const;
+              }
+              if (protocol === 'ftps') {
+                return verifyCert ? 'secure' as const : 'warning' as const;
+              }
+              return 'secure' as const;
+            })() : undefined}
+            secureProtocol={isConnected ? (() => {
+              const activeSession = sessions.find(s => s.id === activeSessionId);
+              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              if (protocol === 'ftp') {
+                const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit';
+                if (tlsMode === 'none') return undefined;
+                return 'TLS';
+              }
+              if (protocol === 'ftps') return 'TLS';
+              if (protocol === 'sftp') return 'SSH';
+              if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
+              return 'HTTPS';
+            })() : undefined}
+            serverInfo={isConnected ? (() => {
+              // Get protocol from active session as fallback
+              const activeSession = sessions.find(s => s.id === activeSessionId);
+              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              if (protocol === 'googledrive') return 'Google Drive';
+              if (protocol === 'dropbox') return 'Dropbox';
+              if (protocol === 'onedrive') return 'OneDrive';
+              if (protocol === 'box') return 'Box';
+              if (protocol === 'pcloud') return 'pCloud';
+              if (protocol === 'azure') return 'Azure Blob';
+              if (protocol === 'filen') return 'Filen';
+              if (protocol === 'mega') return 'MEGA';
+              if (protocol === 's3') {
+                // Show bucket name or short hostname instead of full URL
+                const s3Server = connectionParams.server || activeSession?.connectionParams?.server || '';
+                try {
+                  const url = new URL(s3Server.startsWith('http') ? s3Server : `https://${s3Server}`);
+                  const host = url.hostname;
+                  // Shorten Cloudflare R2 and AWS S3 URLs
+                  if (host.includes('.r2.cloudflarestorage.com')) return `R2: ${host.split('.')[0].slice(0, 8)}...`;
+                  if (host.includes('.amazonaws.com')) return host.replace('.s3.amazonaws.com', '').replace('.s3.', ' (S3 ');
+                  return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
+                } catch { return 'S3'; }
+              }
+              // For FTP/FTPS/SFTP/etc, show username@server or session name
+              const server = connectionParams.server || activeSession?.connectionParams?.server;
+              const username = connectionParams.username || activeSession?.connectionParams?.username;
+              return server ? `${username}@${server}` : activeSession?.serverName;
+            })() : undefined}
+            remotePath={currentRemotePath}
+            localPath={currentLocalPath}
+            remoteFileCount={remoteFiles.length}
+            localFileCount={localFiles.length}
+            activePanel={activePanel}
+            devToolsOpen={devToolsOpen}
+            aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
+            onToggleAeroFile={async () => {
+              if (showConnectionScreen) {
+                // On connection screen: enter AeroFile mode (same as "Local files >" button)
+                setShowConnectionScreen(false);
+                setActivePanel('local');
+                setShowSidebar(true);
+                await loadLocalFiles(currentLocalPath || '/');
+              } else if (isConnected) {
+                // Connected: toggle remote panel off/on (entering/exiting AeroFile mode)
+                setShowRemotePanel(prev => {
+                  if (prev) { setActivePanel('local'); setShowSidebar(true); }
+                  else { setShowLocalPreview(false); }
+                  return !prev;
+                });
+              } else {
+                // Already in AeroFile mode (not connected, not on connection screen) — toggle sidebar
+                toggleSidebar();
+              }
+            }}
+            onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
+            aeroAgentOpen={devToolsOpen}
+            onToggleAeroAgent={() => {
+              if (!devToolsOpen) {
+                setDevToolsOpen(true);
+                // Ensure agent panel is visible after DevTools opens
+                setTimeout(() => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), 50);
+              } else {
+                // DevTools already open — toggle agent panel
+                window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }));
+              }
+            }}
+            onToggleSync={() => setShowSyncPanel(true)}
+            onToggleCloud={() => setShowCloudPanel(true)}
+            cloudEnabled={isCloudActive}
+            cloudSyncing={cloudSyncing}
+            transferQueueActive={transferQueue.hasActiveTransfers}
+            transferQueueCount={transferQueue.items.length}
+            onToggleTransferQueue={transferQueue.toggle}
+            showActivityLog={showActivityLog}
+            activityLogCount={activityLog.entries.length}
+            onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
+            updateAvailable={updateAvailable}
+            onShowUpdateToast={() => setUpdateToastDismissed(false)}
+            debugMode={debugMode}
+            onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
+            storageQuota={storageQuota}
+          />
+        )}
+
+        {/* Debug Panel */}
+        {debugMode && showDebugPanel && (
+          <DebugPanel
+            isVisible={true}
+            onClose={() => setShowDebugPanel(false)}
+            isConnected={isConnected}
+            connectionParams={{
+              server: connectionParams?.server || '',
+              username: connectionParams?.username || '',
+              protocol: connectionParams?.protocol || 'sftp',
+            }}
+            currentRemotePath={currentRemotePath}
+            appTheme={getEffectiveTheme(theme, isDark)}
+          />
+        )}
+
+        {/* Dependencies Panel */}
+        <DependenciesPanel
+          isVisible={showDependenciesPanel}
+          onClose={() => setShowDependenciesPanel(false)}
+        />
+      </div>
     </>
   );
 };

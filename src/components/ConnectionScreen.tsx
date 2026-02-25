@@ -155,8 +155,8 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
         setIsAuthenticating(true);
         setError(null);
         // Save credentials to vault
-        invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }).catch(() => {});
-        invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }).catch(() => {});
+        invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }).catch(() => { });
+        invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }).catch(() => { });
         try {
             await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
             setHasExistingTokens(true);
@@ -561,7 +561,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             });
 
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updatedServers));
-            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => {});
+            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => { });
             setSavedServersUpdate(Date.now());
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -584,7 +584,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
             const newServers = [...existingServers, newServer];
             localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
-            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
             setSavedServersUpdate(Date.now());
         }
     };
@@ -1049,7 +1049,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 localInitialPath: quickConnectDirs.localDir,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
                                         }
                                     }
                                     onConnect();
@@ -1084,7 +1084,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
                                         } else {
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
@@ -1094,7 +1094,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
                                                 } : s
                                             );
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
+                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => { });
                                         }
                                     }
                                     onConnect();
@@ -2125,10 +2125,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 <ExportImportDialog
                     servers={servers}
                     onImport={async (newServers) => {
-                        const updated = [...servers, ...newServers];
+                        // Read ground truth from localStorage to avoid stale state
+                        let currentServers: ServerProfile[] = [];
+                        try {
+                            const stored = localStorage.getItem(SERVERS_STORAGE_KEY);
+                            if (stored) currentServers = JSON.parse(stored);
+                        } catch { /* fallback */ }
+                        if (currentServers.length === 0) currentServers = servers;
+                        const updated = [...currentServers, ...newServers];
                         setServers(updated);
                         localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(updated));
-                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => {});
+                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => { });
                         setShowExportImport(false);
                         setSavedServersUpdate(Date.now());
                     }}

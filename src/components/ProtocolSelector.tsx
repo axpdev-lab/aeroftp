@@ -430,8 +430,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${
-                                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
                                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                                         : protocol.badge === 'Soon'
                                             ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
@@ -479,8 +478,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
                             </div>
                             {protocol.badge && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${
-                                    protocol.badge === 'Sync'
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${protocol.badge === 'Sync'
                                         ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                                         : protocol.badge === 'OAuth'
                                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -502,8 +500,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
 
             {/* Badge for selected protocol (hidden when FTP encryption is none) */}
             {value && effectiveBadge && !isOpen && (
-                <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${
-                    ['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge)
+                <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge)
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                         : effectiveBadge === 'OAuth'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -649,8 +646,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
                     )}
                 </div>
-                {endpointField ? (
-                    <div className="grid grid-cols-2 gap-3">
+                {endpointField ? (\n                    <div className={regionField ? "grid grid-cols-2 gap-3" : ""}>
+                    {regionField && (
                         <div>
                             <label className="block text-sm font-medium mb-1.5">
                                 {regionField?.label || t('protocol.region')}
@@ -678,10 +675,24 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 />
                             )}
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1.5">
-                                {endpointField?.label || t('protocol.customEndpoint')}
-                            </label>
+                    )}
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">
+                            {endpointField?.label || t('protocol.customEndpoint')}
+                        </label>
+                        {endpointField.type === 'select' && endpointField.options ? (
+                            <select
+                                value={options.endpoint || ''}
+                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                            >
+                                <option value="">{t('protocol.selectRegion')}</option>
+                                {endpointField.options.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        ) : (
                             <input
                                 type="text"
                                 value={options.endpoint || ''}
@@ -690,41 +701,42 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                                 placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
                             />
-                            {!isEditing && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {endpointField?.helpText || t('protocol.endpointHelp')}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                ) : (
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">
-                            {regionField?.label || t('protocol.region')}
-                        </label>
-                        {hasRegionSelect ? (
-                            <select
-                                value={options.region || ''}
-                                onChange={(e) => onChange({ ...options, region: e.target.value })}
-                                disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            >
-                                <option value="">{t('protocol.selectRegion')}</option>
-                                {regionField!.options!.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        ) : (
-                            <input
-                                type="text"
-                                value={options.region || ''}
-                                onChange={(e) => onChange({ ...options, region: e.target.value })}
-                                disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
-                            />
+                        )}
+                        {!isEditing && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                {endpointField?.helpText || t('protocol.endpointHelp')}
+                            </p>
                         )}
                     </div>
+                </div>
+                ) : (
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">
+                        {regionField?.label || t('protocol.region')}
+                    </label>
+                    {hasRegionSelect ? (
+                        <select
+                            value={options.region || ''}
+                            onChange={(e) => onChange({ ...options, region: e.target.value })}
+                            disabled={disabled}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        >
+                            <option value="">{t('protocol.selectRegion')}</option>
+                            {regionField!.options!.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    ) : (
+                        <input
+                            type="text"
+                            value={options.region || ''}
+                            onChange={(e) => onChange({ ...options, region: e.target.value })}
+                            disabled={disabled}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                            placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
+                        />
+                    )}
+                </div>
                 )}
                 {endpointField && (
                     <label className="flex items-center gap-2 text-sm cursor-pointer">

@@ -369,7 +369,29 @@
             "stopAll": "Tümünü durdur",
             "stopAllPending": "Tüm bekleyenleri durdur",
             "forceStop": "Zorla durdur (mevcut dosyayi kesintiye ugrat)",
-            "cancelledByUser": "Kullanıcı tarafından iptal edildi"
+            "cancelledByUser": "Kullanıcı tarafından iptal edildi",
+            "circuitBreaker": {
+                "paused": "Kuyruk duraklatıldı — birden fazla ardışık hata",
+                "batchStopped": "Aktarım durduruldu",
+                "fatalError": "Kritik hata: {reason}. Kalan aktarımlar iptal edildi.",
+                "attemptingReconnect": "Bağlantı yeniden kurulmaya çalışılıyor...",
+                "reconnectSuccess": "Bağlantı yeniden kuruldu. Aktarımlar devam ediyor.",
+                "reconnectFailed": "Yeniden bağlanılamadı. Kuyruk duraklatıldı.",
+                "connectionLost": "Bağlantı kesildi"
+            },
+            "errorKind": {
+                "network": "Ağ hatası",
+                "auth": "Kimlik doğrulama başarısız",
+                "path_not_found": "Yol bulunamadı",
+                "permission_denied": "Erişim reddedildi",
+                "quota_exceeded": "Depolama kotası aşıldı",
+                "rate_limit": "İstek sınırı aşıldı",
+                "timeout": "Bağlantı zaman aşımı",
+                "file_locked": "Dosya kilitli",
+                "disk_error": "Disk dolu veya G/Ç hatası",
+                "unknown": "Bilinmeyen hata"
+            },
+            "retryAllFailed": "Başarısızların tümünü yeniden dene"
         },
         "settings": {
             "title": "Ayarlar",
@@ -934,7 +956,8 @@
             "movedToTrash": "Çöp Kutusuna Taşındı",
             "moveToTrashFailed": "Çöp Kutusuna taşıma başarısız oldu",
             "batchRenameResult": "{success} yeniden adlandırıldı, {errors} başarısız",
-            "copyCompleted": "Kopyalama tamamlandı"
+            "copyCompleted": "Kopyalama tamamlandı",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",

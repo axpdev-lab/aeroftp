@@ -369,7 +369,29 @@
             "stopAll": "ყველას შეჩერება",
             "stopAllPending": "მოლოდინში მყოფთა შეჩერება",
             "forceStop": "იძულებითი გაჩერება (მიმდინარე ფაილის შეწყვეტა)",
-            "cancelledByUser": "გაუქმებულია მომხმარებლის მიერ"
+            "cancelledByUser": "გაუქმებულია მომხმარებლის მიერ",
+            "circuitBreaker": {
+                "paused": "რიგი შეჩერებულია — მრავალი თანმიმდევრული შეცდომა",
+                "batchStopped": "გადაცემა შეჩერდა",
+                "fatalError": "კრიტიკული შეცდომა: {reason}. დარჩენილი გადაცემები გაუქმდა.",
+                "attemptingReconnect": "კავშირის აღდგენის მცდელობა...",
+                "reconnectSuccess": "კავშირი აღდგა. გადაცემები გრძელდება.",
+                "reconnectFailed": "ხელახლა დაკავშირება ვერ მოხერხდა. რიგი შეჩერებულია.",
+                "connectionLost": "კავშირი დაიკარგა"
+            },
+            "errorKind": {
+                "network": "ქსელის შეცდომა",
+                "auth": "ავთენტიფიკაცია ვერ მოხერხდა",
+                "path_not_found": "ბილიკი ვერ მოიძებნა",
+                "permission_denied": "წვდომა აკრძალულია",
+                "quota_exceeded": "საცავის კვოტა ამოიწურა",
+                "rate_limit": "მოთხოვნების ლიმიტი გადაჭარბებულია",
+                "timeout": "კავშირის დრო ამოიწურა",
+                "file_locked": "ფაილი დაბლოკილია",
+                "disk_error": "დისკი სავსეა ან I/O შეცდომა",
+                "unknown": "უცნობი შეცდომა"
+            },
+            "retryAllFailed": "ყველა წარუმატებლის ხელახლა ცდა"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -934,7 +956,8 @@
             "movedToTrash": "გადატანილია სანაგვეში",
             "moveToTrashFailed": "სანაგვეში გადატანა ვერ მოხერხდა",
             "batchRenameResult": "{success} გადარქმეულია, {errors} ვერ შესრულდა",
-            "copyCompleted": "კოპირება დასრულებულია"
+            "copyCompleted": "კოპირება დასრულებულია",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",

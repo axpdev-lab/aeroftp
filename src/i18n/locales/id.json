@@ -369,7 +369,29 @@
             "stopAll": "Hentikan semua",
             "stopAllPending": "Hentikan semua yang menunggu",
             "forceStop": "Paksa berhenti (interupsi file saat ini)",
-            "cancelledByUser": "Dibatalkan oleh pengguna"
+            "cancelledByUser": "Dibatalkan oleh pengguna",
+            "circuitBreaker": {
+                "paused": "Antrean dijeda — beberapa kesalahan berturut-turut",
+                "batchStopped": "Transfer Dihentikan",
+                "fatalError": "Kesalahan fatal: {reason}. Transfer yang tersisa dibatalkan.",
+                "attemptingReconnect": "Mencoba memulihkan koneksi...",
+                "reconnectSuccess": "Koneksi dipulihkan. Melanjutkan transfer.",
+                "reconnectFailed": "Tidak dapat menyambung ulang. Antrean dijeda.",
+                "connectionLost": "Koneksi terputus"
+            },
+            "errorKind": {
+                "network": "Kesalahan jaringan",
+                "auth": "Autentikasi gagal",
+                "path_not_found": "Jalur tidak ditemukan",
+                "permission_denied": "Izin ditolak",
+                "quota_exceeded": "Kuota penyimpanan terlampaui",
+                "rate_limit": "Batas laju terlampaui",
+                "timeout": "Waktu koneksi habis",
+                "file_locked": "File terkunci",
+                "disk_error": "Disk penuh atau kesalahan I/O",
+                "unknown": "Kesalahan tidak diketahui"
+            },
+            "retryAllFailed": "Coba Ulang Semua yang Gagal"
         },
         "settings": {
             "title": "Pengaturan",
@@ -934,7 +956,8 @@
             "movedToTrash": "Dipindahkan ke Sampah",
             "moveToTrashFailed": "Gagal memindahkan ke Sampah",
             "batchRenameResult": "{success} diganti nama, {errors} gagal",
-            "copyCompleted": "Penyalinan selesai"
+            "copyCompleted": "Penyalinan selesai",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",

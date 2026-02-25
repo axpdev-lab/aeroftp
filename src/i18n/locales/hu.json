@@ -369,7 +369,29 @@
             "stopAll": "Összes leállítása",
             "stopAllPending": "Összes függőben lévő leállítása",
             "forceStop": "Kenyszerleallitas (aktualis fajl megszakitasa)",
-            "cancelledByUser": "A felhasználó megszakította"
+            "cancelledByUser": "A felhasználó megszakította",
+            "circuitBreaker": {
+                "paused": "Sor szüneteltetve — több egymást követő hiba",
+                "batchStopped": "Átvitel leállítva",
+                "fatalError": "Végzetes hiba: {reason}. A fennmaradó átvitelek törölve.",
+                "attemptingReconnect": "Kapcsolat helyreállítása folyamatban...",
+                "reconnectSuccess": "Kapcsolat helyreállítva. Átvitelek folytatása.",
+                "reconnectFailed": "Nem sikerült újracsatlakozni. Sor szüneteltetve.",
+                "connectionLost": "Kapcsolat elveszett"
+            },
+            "errorKind": {
+                "network": "Hálózati hiba",
+                "auth": "Hitelesítés sikertelen",
+                "path_not_found": "Útvonal nem található",
+                "permission_denied": "Hozzáférés megtagadva",
+                "quota_exceeded": "Tárhelykvóta túllépve",
+                "rate_limit": "Sebességkorlát túllépve",
+                "timeout": "Kapcsolat időtúllépés",
+                "file_locked": "Fájl zárolva",
+                "disk_error": "Lemez megtelt vagy I/O hiba",
+                "unknown": "Ismeretlen hiba"
+            },
+            "retryAllFailed": "Összes sikertelen újrapróbálása"
         },
         "settings": {
             "title": "Beállítások",
@@ -934,7 +956,8 @@
             "movedToTrash": "Kukába helyezve",
             "moveToTrashFailed": "Nem sikerült kukába helyezni",
             "batchRenameResult": "{success} átnevezve, {errors} sikertelen",
-            "copyCompleted": "Másolás befejezve"
+            "copyCompleted": "Másolás befejezve",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",

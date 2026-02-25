@@ -369,7 +369,29 @@
             "stopAll": "Detener todo",
             "stopAllPending": "Detener todos los pendientes",
             "forceStop": "Detención forzada (interrumpir archivo actual)",
-            "cancelledByUser": "Cancelado por el usuario"
+            "cancelledByUser": "Cancelado por el usuario",
+            "circuitBreaker": {
+                "paused": "Cola en pausa — múltiples errores consecutivos",
+                "batchStopped": "Transferencia detenida",
+                "fatalError": "Error fatal: {reason}. Las transferencias restantes se han cancelado.",
+                "attemptingReconnect": "Intentando restaurar la conexión...",
+                "reconnectSuccess": "Conexión restaurada. Reanudando transferencias.",
+                "reconnectFailed": "No se pudo reconectar. Cola en pausa.",
+                "connectionLost": "Conexión perdida"
+            },
+            "errorKind": {
+                "network": "Error de red",
+                "auth": "Autenticación fallida",
+                "path_not_found": "Ruta no encontrada",
+                "permission_denied": "Permiso denegado",
+                "quota_exceeded": "Cuota de almacenamiento excedida",
+                "rate_limit": "Límite de solicitudes excedido",
+                "timeout": "Tiempo de conexión agotado",
+                "file_locked": "Archivo bloqueado",
+                "disk_error": "Disco lleno o error de E/S",
+                "unknown": "Error desconocido"
+            },
+            "retryAllFailed": "Reintentar todos los fallidos"
         },
         "settings": {
             "title": "Configuración",
@@ -934,7 +956,8 @@
             "movedToTrash": "Movido a la papelera",
             "moveToTrashFailed": "Error al mover a la papelera",
             "batchRenameResult": "{success} renombrados, {errors} fallidos",
-            "copyCompleted": "Copia completada"
+            "copyCompleted": "Copia completada",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",

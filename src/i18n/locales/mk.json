@@ -369,7 +369,29 @@
             "stopAll": "Запри сè",
             "stopAllPending": "Запри сè на чекање",
             "forceStop": "Принудно запирање (прекини ја тековната датотека)",
-            "cancelledByUser": "Откажано од корисникот"
+            "cancelledByUser": "Откажано од корисникот",
+            "circuitBreaker": {
+                "paused": "Редот е паузиран — повеќе последователни грешки",
+                "batchStopped": "Преносот е запрен",
+                "fatalError": "Фатална грешка: {reason}. Преостанатите преноси се откажани.",
+                "attemptingReconnect": "Обид за обновување на врската...",
+                "reconnectSuccess": "Врската е обновена. Преносите продолжуваат.",
+                "reconnectFailed": "Не може да се повторно поврзе. Редот е паузиран.",
+                "connectionLost": "Врската е изгубена"
+            },
+            "errorKind": {
+                "network": "Мрежна грешка",
+                "auth": "Автентикацијата не успеа",
+                "path_not_found": "Патеката не е пронајдена",
+                "permission_denied": "Пристапот е одбиен",
+                "quota_exceeded": "Квотата за складирање е надмината",
+                "rate_limit": "Лимитот на барања е надминат",
+                "timeout": "Истечено време на врска",
+                "file_locked": "Датотеката е заклучена",
+                "disk_error": "Дискот е полн или I/O грешка",
+                "unknown": "Непозната грешка"
+            },
+            "retryAllFailed": "Обиди ги повторно сите неуспешни"
         },
         "settings": {
             "title": "Поставки",
@@ -934,7 +956,8 @@
             "movedToTrash": "Преместено во Корпа",
             "moveToTrashFailed": "Неуспешно преместување во Корпа",
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
-            "copyCompleted": "Копирањето е завршено"
+            "copyCompleted": "Копирањето е завршено",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",

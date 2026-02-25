@@ -369,7 +369,29 @@
             "stopAll": "Aturar tot",
             "stopAllPending": "Aturar tots els pendents",
             "forceStop": "Aturada forçada (interrompre el fitxer actual)",
-            "cancelledByUser": "Cancel·lat per l'usuari"
+            "cancelledByUser": "Cancel·lat per l'usuari",
+            "circuitBreaker": {
+                "paused": "Cua en pausa — múltiples errors consecutius",
+                "batchStopped": "Transferència aturada",
+                "fatalError": "Error fatal: {reason}. Les transferències restants s'han cancel·lat.",
+                "attemptingReconnect": "Intentant restaurar la connexió...",
+                "reconnectSuccess": "Connexió restaurada. Reprenent les transferències.",
+                "reconnectFailed": "No s'ha pogut reconnectar. Cua en pausa.",
+                "connectionLost": "Connexió perduda"
+            },
+            "errorKind": {
+                "network": "Error de xarxa",
+                "auth": "Autenticació fallida",
+                "path_not_found": "Camí no trobat",
+                "permission_denied": "Permís denegat",
+                "quota_exceeded": "Quota d'emmagatzematge superada",
+                "rate_limit": "Límit de peticions superat",
+                "timeout": "Temps d'espera de connexió esgotat",
+                "file_locked": "Fitxer bloquejat",
+                "disk_error": "Disc ple o error d'E/S",
+                "unknown": "Error desconegut"
+            },
+            "retryAllFailed": "Reintenta tots els fallits"
         },
         "settings": {
             "title": "Configuracio",
@@ -934,7 +956,8 @@
             "movedToTrash": "S'han mogut {count} element(s) a la paperera",
             "moveToTrashFailed": "No s'ha pogut moure a la paperera",
             "batchRenameResult": "{success} reanomenats, {errors} fallits",
-            "copyCompleted": "Copia completada"
+            "copyCompleted": "Copia completada",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",

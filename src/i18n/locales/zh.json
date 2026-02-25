@@ -369,7 +369,29 @@
             "stopAll": "全部停止",
             "stopAllPending": "停止所有等待项",
             "forceStop": "强制停止（中断当前文件）",
-            "cancelledByUser": "已被用户取消"
+            "cancelledByUser": "已被用户取消",
+            "circuitBreaker": {
+                "paused": "队列已暂停 — 多次连续错误",
+                "batchStopped": "传输已停止",
+                "fatalError": "致命错误：{reason}。剩余传输已取消。",
+                "attemptingReconnect": "正在尝试恢复连接...",
+                "reconnectSuccess": "连接已恢复，正在继续传输。",
+                "reconnectFailed": "无法重新连接。队列已暂停。",
+                "connectionLost": "连接已断开"
+            },
+            "errorKind": {
+                "network": "网络错误",
+                "auth": "身份验证失败",
+                "path_not_found": "路径未找到",
+                "permission_denied": "权限被拒绝",
+                "quota_exceeded": "存储配额已超出",
+                "rate_limit": "请求频率超出限制",
+                "timeout": "连接超时",
+                "file_locked": "文件已锁定",
+                "disk_error": "磁盘已满或 I/O 错误",
+                "unknown": "未知错误"
+            },
+            "retryAllFailed": "重试所有失败项"
         },
         "settings": {
             "title": "设置",
@@ -934,7 +956,8 @@
             "movedToTrash": "已移至废纸篓",
             "moveToTrashFailed": "移至废纸篓失败",
             "batchRenameResult": "{success} 个已重命名，{errors} 个失败",
-            "copyCompleted": "复制完成"
+            "copyCompleted": "复制完成",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap } from 'lucide-react';
+import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play } from 'lucide-react';
 import { formatBytes } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -35,6 +35,10 @@ interface TransferQueueProps {
     isVisible: boolean;
     onToggle: () => void;
     forceStopMode?: boolean;
+    isPaused?: boolean;
+    pauseReason?: string | null;
+    onResume?: () => void;
+    onRetryAllFailed?: () => void;
 }
 
 const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
@@ -130,12 +134,14 @@ interface HeaderDropdownProps {
     onClear?: () => void;
     onClearCompleted?: () => void;
     onStopAll?: () => void;
+    onRetryAllFailed?: () => void;
     hasCompleted: boolean;
     hasPending: boolean;
     hasItems: boolean;
+    hasErrors: boolean;
 }
 
-const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearCompleted, onStopAll, hasCompleted, hasPending, hasItems }) => {
+const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearCompleted, onStopAll, onRetryAllFailed, hasCompleted, hasPending, hasItems, hasErrors }) => {
     const t = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const buttonRef = useRef<HTMLButtonElement>(null);
@@ -184,6 +190,7 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
                 <div ref={dropdownRef} className="fixed bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-[170px] z-[200]"
                     style={{ top: pos.top, right: pos.right }}
                 >
+                    {onRetryAllFailed && menuItem(<RotateCcw size={12} />, t('transfer.retryAllFailed'), onRetryAllFailed, !hasErrors)}
                     {onClearCompleted && menuItem(<Check size={12} />, t('transfer.clearCompleted'), onClearCompleted, !hasCompleted)}
                     {onStopAll && menuItem(<Square size={12} />, t('transfer.stopAllPending'), onStopAll, !hasPending)}
                     {onClear && menuItem(<Trash2 size={12} />, t('transfer.clearAll'), onClear, !hasItems, 'hover:text-red-300')}
@@ -203,7 +210,11 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     onRetryItem,
     isVisible,
     onToggle,
-    forceStopMode
+    forceStopMode,
+    isPaused,
+    pauseReason,
+    onResume,
+    onRetryAllFailed,
 }) => {
     const t = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -302,9 +313,9 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     disabled={!forceStopMode && transferringCount === 0 && pendingCount === 0}
                                     className={`p-1 rounded transition-colors ${
                                         forceStopMode
-                                            ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 animate-pulse'
+                                            ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-900/30'
                                             : (transferringCount > 0 || pendingCount > 0)
-                                                ? 'text-red-400 hover:text-red-300 hover:bg-red-900/30 animate-pulse'
+                                                ? 'text-red-500 hover:text-red-400 hover:bg-red-900/30'
                                                 : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'
                                     }`}
                                     title={forceStopMode ? t('transfer.forceStop') : t('transfer.stopAll')}
@@ -349,13 +360,46 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 onClear={onClear}
                                 onClearCompleted={onClearCompleted}
                                 onStopAll={onStopAll}
+                                onRetryAllFailed={onRetryAllFailed}
                                 hasCompleted={completedCount > 0}
                                 hasPending={transferringCount > 0 || pendingCount > 0}
                                 hasItems={items.length > 0}
+                                hasErrors={errorCount > 0}
                             />
                         </div>
                     </div>
                 </div>
+
+                {/* Pause Banner — shown when circuit breaker trips */}
+                {isPaused && (
+                    <div className="flex items-center justify-between px-3 py-2 bg-amber-900/30 border-b border-amber-700/50">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <AlertTriangle size={14} className="text-amber-400 flex-shrink-0" />
+                            <span className="text-amber-300 text-xs truncate">
+                                {pauseReason || t('transfer.circuitBreaker.paused')}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                            {onResume && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onResume(); }}
+                                    className="px-2 py-1 text-[11px] bg-green-600 hover:bg-green-500 text-white rounded transition-colors flex items-center gap-1"
+                                >
+                                    <Play size={10} />
+                                    {t('transfer.resumeAll')}
+                                </button>
+                            )}
+                            {onStopAll && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onStopAll(); }}
+                                    className="px-2 py-1 text-[11px] bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                                >
+                                    {t('transfer.cancelAll')}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Queue List - Terminal Output */}
                 <div
@@ -656,6 +700,19 @@ export const useTransferQueue = () => {
         ));
     };
 
+    // Re-queue all failed items (except user-cancelled) — returns IDs for retry callback execution
+    const retryAllFailed = (): string[] => {
+        const failedIds: string[] = [];
+        setItems(prev => prev.map(item => {
+            if (item.status === 'error' && item.error && !item.error.includes('cancelled') && !item.error.includes('Stopped by user')) {
+                failedIds.push(item.id);
+                return { ...item, status: 'pending' as TransferStatus, error: undefined, progress: undefined, startTime: Date.now(), endTime: undefined };
+            }
+            return item;
+        }));
+        return failedIds;
+    };
+
     // Simple toggle for manual control
     const toggle = () => {
         // Cancel any auto-hide when user manually toggles
@@ -691,6 +748,7 @@ export const useTransferQueue = () => {
         stopAll,
         removeItem,
         retryItem,
+        retryAllFailed,
         toggle
     };
 };

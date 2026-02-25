@@ -369,7 +369,29 @@
             "stopAll": "Pysäytä kaikki",
             "stopAllPending": "Pysäytä odottavat",
             "forceStop": "Pakota pysäytys (keskeytä nykyinen tiedosto)",
-            "cancelledByUser": "Käyttäjän peruuttama"
+            "cancelledByUser": "Käyttäjän peruuttama",
+            "circuitBreaker": {
+                "paused": "Jono keskeytetty — useita peräkkäisiä virheitä",
+                "batchStopped": "Siirto pysäytetty",
+                "fatalError": "Kriittinen virhe: {reason}. Jäljellä olevat siirrot peruutettu.",
+                "attemptingReconnect": "Yhteyttä palautetaan...",
+                "reconnectSuccess": "Yhteys palautettu. Siirrot jatkuvat.",
+                "reconnectFailed": "Uudelleenyhdistäminen epäonnistui. Jono keskeytetty.",
+                "connectionLost": "Yhteys katkennut"
+            },
+            "errorKind": {
+                "network": "Verkkovirhe",
+                "auth": "Todennus epäonnistui",
+                "path_not_found": "Polkua ei löydy",
+                "permission_denied": "Pääsy evätty",
+                "quota_exceeded": "Tallennustilan kiintiö ylitetty",
+                "rate_limit": "Pyyntraja ylitetty",
+                "timeout": "Yhteyden aikakatkaisu",
+                "file_locked": "Tiedosto on lukittu",
+                "disk_error": "Levy täynnä tai I/O-virhe",
+                "unknown": "Tuntematon virhe"
+            },
+            "retryAllFailed": "Yritä kaikkia epäonnistuneita uudelleen"
         },
         "settings": {
             "title": "Asetukset",
@@ -934,7 +956,8 @@
             "movedToTrash": "Siirretty roskakoriin",
             "moveToTrashFailed": "Siirtäminen roskakoriin epäonnistui",
             "batchRenameResult": "{success} nimetty uudelleen, {errors} epäonnistui",
-            "copyCompleted": "Kopiointi valmis"
+            "copyCompleted": "Kopiointi valmis",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",

@@ -369,7 +369,29 @@
             "stopAll": "Zaustavi sve",
             "stopAllPending": "Zaustavi sve na čekanju",
             "forceStop": "Prisilno zaustavi (prekini trenutnu datoteku)",
-            "cancelledByUser": "Otkazano od strane korisnika"
+            "cancelledByUser": "Otkazano od strane korisnika",
+            "circuitBreaker": {
+                "paused": "Red je pauziran — višestruke uzastopne pogreške",
+                "batchStopped": "Prijenos zaustavljen",
+                "fatalError": "Fatalna pogreška: {reason}. Preostali prijenosi su otkazani.",
+                "attemptingReconnect": "Pokušaj ponovnog uspostavljanja veze...",
+                "reconnectSuccess": "Veza obnovljena. Nastavljanje prijenosa.",
+                "reconnectFailed": "Nije moguće ponovno povezivanje. Red je pauziran.",
+                "connectionLost": "Veza izgubljena"
+            },
+            "errorKind": {
+                "network": "Mrežna pogreška",
+                "auth": "Autentifikacija neuspješna",
+                "path_not_found": "Putanja nije pronađena",
+                "permission_denied": "Pristup odbijen",
+                "quota_exceeded": "Kvota pohrane premašena",
+                "rate_limit": "Ograničenje brzine premašeno",
+                "timeout": "Istek vremena veze",
+                "file_locked": "Datoteka zaključana",
+                "disk_error": "Disk pun ili I/O pogreška",
+                "unknown": "Nepoznata pogreška"
+            },
+            "retryAllFailed": "Ponovi sve neuspjele"
         },
         "settings": {
             "title": "Postavke",
@@ -934,7 +956,8 @@
             "movedToTrash": "Premješteno u smeće",
             "moveToTrashFailed": "Premještanje u smeće nije uspjelo",
             "batchRenameResult": "{success} preimenovano, {errors} neuspjelo",
-            "copyCompleted": "Kopiranje dovršeno"
+            "copyCompleted": "Kopiranje dovršeno",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",

@@ -369,7 +369,29 @@
             "stopAll": "Itigil lahat",
             "stopAllPending": "Itigil lahat ng naghihintay",
             "forceStop": "Piliting ihinto (putulin ang kasalukuyang file)",
-            "cancelledByUser": "Kinansela ng gumagamit"
+            "cancelledByUser": "Kinansela ng gumagamit",
+            "circuitBreaker": {
+                "paused": "Naka-pause ang pila — maraming magkakasunod na error",
+                "batchStopped": "Itinigil ang paglipat",
+                "fatalError": "Matinding error: {reason}. Nakansela ang natitirang mga paglipat.",
+                "attemptingReconnect": "Sinusubukang ibalik ang koneksyon...",
+                "reconnectSuccess": "Naibalik ang koneksyon. Nagpapatuloy sa paglipat.",
+                "reconnectFailed": "Hindi makakonekta muli. Naka-pause ang pila.",
+                "connectionLost": "Nawala ang koneksyon"
+            },
+            "errorKind": {
+                "network": "Error sa network",
+                "auth": "Nabigo ang pag-authenticate",
+                "path_not_found": "Hindi nahanap ang path",
+                "permission_denied": "Tinanggihan ang pahintulot",
+                "quota_exceeded": "Lumagpas na sa storage quota",
+                "rate_limit": "Lumagpas na sa rate limit",
+                "timeout": "Nag-timeout ang koneksyon",
+                "file_locked": "Naka-lock ang file",
+                "disk_error": "Puno na ang disk o may I/O error",
+                "unknown": "Hindi kilalang error"
+            },
+            "retryAllFailed": "I-retry lahat ng nabigo"
         },
         "settings": {
             "title": "Mga Setting",
@@ -934,7 +956,8 @@
             "movedToTrash": "Inilipat sa Basurahan",
             "moveToTrashFailed": "Nabigo ang paglipat sa Basurahan",
             "batchRenameResult": "{success} napalitan ang pangalan, {errors} nabigo",
-            "copyCompleted": "Kumpleto na ang pagkopya"
+            "copyCompleted": "Kumpleto na ang pagkopya",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",

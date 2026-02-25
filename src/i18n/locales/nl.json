@@ -369,7 +369,29 @@
             "stopAll": "Alles stoppen",
             "stopAllPending": "Alle wachtende stoppen",
             "forceStop": "Geforceerd stoppen (huidig bestand onderbreken)",
-            "cancelledByUser": "Geannuleerd door gebruiker"
+            "cancelledByUser": "Geannuleerd door gebruiker",
+            "circuitBreaker": {
+                "paused": "Wachtrij gepauzeerd — meerdere opeenvolgende fouten",
+                "batchStopped": "Overdracht gestopt",
+                "fatalError": "Fatale fout: {reason}. Resterende overdrachten geannuleerd.",
+                "attemptingReconnect": "Verbinding herstellen...",
+                "reconnectSuccess": "Verbinding hersteld. Overdrachten worden hervat.",
+                "reconnectFailed": "Kan niet opnieuw verbinden. Wachtrij gepauzeerd.",
+                "connectionLost": "Verbinding verbroken"
+            },
+            "errorKind": {
+                "network": "Netwerkfout",
+                "auth": "Verificatie mislukt",
+                "path_not_found": "Pad niet gevonden",
+                "permission_denied": "Toegang geweigerd",
+                "quota_exceeded": "Opslagquotum overschreden",
+                "rate_limit": "Snelheidslimiet overschreden",
+                "timeout": "Verbinding verlopen",
+                "file_locked": "Bestand vergrendeld",
+                "disk_error": "Schijf vol of I/O-fout",
+                "unknown": "Onbekende fout"
+            },
+            "retryAllFailed": "Alle mislukte opnieuw proberen"
         },
         "settings": {
             "title": "Instellingen",
@@ -934,7 +956,8 @@
             "movedToTrash": "Verplaatst naar Prullenbak",
             "moveToTrashFailed": "Verplaatsen naar Prullenbak mislukt",
             "batchRenameResult": "{success} hernoemd, {errors} mislukt",
-            "copyCompleted": "Kopiëren voltooid"
+            "copyCompleted": "Kopiëren voltooid",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",

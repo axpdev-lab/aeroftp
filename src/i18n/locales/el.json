@@ -369,7 +369,29 @@
             "stopAll": "Διακοπή όλων",
             "stopAllPending": "Διακοπή όλων σε αναμονή",
             "forceStop": "Αναγκαστική διακοπή (διακοπή τρέχοντος αρχείου)",
-            "cancelledByUser": "Ακυρώθηκε από τον χρήστη"
+            "cancelledByUser": "Ακυρώθηκε από τον χρήστη",
+            "circuitBreaker": {
+                "paused": "Η ουρά τέθηκε σε παύση — πολλαπλά διαδοχικά σφάλματα",
+                "batchStopped": "Η μεταφορά σταμάτησε",
+                "fatalError": "Κρίσιμο σφάλμα: {reason}. Οι υπόλοιπες μεταφορές ακυρώθηκαν.",
+                "attemptingReconnect": "Γίνεται προσπάθεια επανασύνδεσης...",
+                "reconnectSuccess": "Η σύνδεση αποκαταστάθηκε. Συνέχιση μεταφορών.",
+                "reconnectFailed": "Αδυναμία επανασύνδεσης. Η ουρά τέθηκε σε παύση.",
+                "connectionLost": "Η σύνδεση χάθηκε"
+            },
+            "errorKind": {
+                "network": "Σφάλμα δικτύου",
+                "auth": "Η ταυτοποίηση απέτυχε",
+                "path_not_found": "Η διαδρομή δεν βρέθηκε",
+                "permission_denied": "Δεν επιτρέπεται η πρόσβαση",
+                "quota_exceeded": "Το όριο αποθήκευσης ξεπεράστηκε",
+                "rate_limit": "Το όριο αιτημάτων ξεπεράστηκε",
+                "timeout": "Λήξη χρόνου σύνδεσης",
+                "file_locked": "Το αρχείο είναι κλειδωμένο",
+                "disk_error": "Δίσκος πλήρης ή σφάλμα I/O",
+                "unknown": "Άγνωστο σφάλμα"
+            },
+            "retryAllFailed": "Επανάληψη όλων των αποτυχημένων"
         },
         "settings": {
             "title": "Ρυθμίσεις",
@@ -934,7 +956,8 @@
             "movedToTrash": "Μετακινήθηκε στον κάδο απορριμμάτων",
             "moveToTrashFailed": "Αποτυχία μετακίνησης στον κάδο απορριμμάτων",
             "batchRenameResult": "{success} μετονομάστηκαν, {errors} απέτυχαν",
-            "copyCompleted": "Η αντιγραφή ολοκληρώθηκε"
+            "copyCompleted": "Η αντιγραφή ολοκληρώθηκε",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",

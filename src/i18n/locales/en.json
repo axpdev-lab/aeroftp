@@ -2693,6 +2693,7 @@
       "connectionLostManual": "Could not reconnect. Please reconnect manually.",
       "connectionLostTitle": "Connection Lost",
       "connectionSuccess": "Connected to {server}",
+      "localPathNotFound": "Local folder \"{path}\" not found. Navigated to home directory.",
       "copyCompleted": "Copy completed",
       "copyFailed": "Copy failed",
       "copyNotSupported": "Server-side copy not supported",
@@ -2802,7 +2803,29 @@
       "forceStop": "Force stop (interrupt current file)",
       "stopAll": "Stop all",
       "stopAllPending": "Stop all pending",
-      "transferring": "Transferring..."
+      "transferring": "Transferring...",
+      "circuitBreaker": {
+        "paused": "Queue paused — multiple consecutive errors",
+        "batchStopped": "Transfer Stopped",
+        "fatalError": "Fatal error: {reason}. Remaining transfers cancelled.",
+        "attemptingReconnect": "Attempting to restore connection...",
+        "reconnectSuccess": "Connection restored. Resuming transfers.",
+        "reconnectFailed": "Could not reconnect. Queue paused.",
+        "connectionLost": "Connection lost"
+      },
+      "errorKind": {
+        "network": "Network error",
+        "auth": "Authentication failed",
+        "path_not_found": "Path not found",
+        "permission_denied": "Permission denied",
+        "quota_exceeded": "Storage quota exceeded",
+        "rate_limit": "Rate limit exceeded",
+        "timeout": "Connection timeout",
+        "file_locked": "File locked",
+        "disk_error": "Disk full or I/O error",
+        "unknown": "Unknown error"
+      },
+      "retryAllFailed": "Retry All Failed"
     },
     "trash": {
       "deletedAt": "Deleted",

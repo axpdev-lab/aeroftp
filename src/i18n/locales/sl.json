@@ -369,7 +369,29 @@
             "stopAll": "Ustavi vse",
             "stopAllPending": "Ustavi vse v čakanju",
             "forceStop": "Prisilna ustavitev (prekini trenutno datoteko)",
-            "cancelledByUser": "Preklicano s strani uporabnika"
+            "cancelledByUser": "Preklicano s strani uporabnika",
+            "circuitBreaker": {
+                "paused": "Čakalna vrsta zaustavljena — več zaporednih napak",
+                "batchStopped": "Prenos ustavljen",
+                "fatalError": "Usodna napaka: {reason}. Preostali prenosi preklicani.",
+                "attemptingReconnect": "Poskus ponovne vzpostavitve povezave...",
+                "reconnectSuccess": "Povezava obnovljena. Nadaljevanje prenosov.",
+                "reconnectFailed": "Ponovna povezava ni uspela. Čakalna vrsta zaustavljena.",
+                "connectionLost": "Povezava izgubljena"
+            },
+            "errorKind": {
+                "network": "Omrežna napaka",
+                "auth": "Preverjanje pristnosti ni uspelo",
+                "path_not_found": "Pot ni najdena",
+                "permission_denied": "Dovoljenje zavrnjeno",
+                "quota_exceeded": "Kvota prostora presežena",
+                "rate_limit": "Omejitev zahtev presežena",
+                "timeout": "Časovna omejitev povezave",
+                "file_locked": "Datoteka zaklenjena",
+                "disk_error": "Disk poln ali napaka V/I",
+                "unknown": "Neznana napaka"
+            },
+            "retryAllFailed": "Ponovi vse neuspele"
         },
         "settings": {
             "title": "Nastavitve",
@@ -934,7 +956,8 @@
             "movedToTrash": "Premaknjeno v koš",
             "moveToTrashFailed": "Premikanje v koš ni uspelo",
             "batchRenameResult": "{success} preimenovanih, {errors} neuspešnih",
-            "copyCompleted": "Kopiranje končano"
+            "copyCompleted": "Kopiranje končano",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",

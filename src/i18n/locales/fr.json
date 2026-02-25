@@ -369,7 +369,29 @@
             "stopAll": "Tout arrêter",
             "stopAllPending": "Arrêter les transferts en attente",
             "forceStop": "Arrêt forcé (interrompre le fichier en cours)",
-            "cancelledByUser": "Annulé par l'utilisateur"
+            "cancelledByUser": "Annulé par l'utilisateur",
+            "circuitBreaker": {
+                "paused": "File d'attente en pause — erreurs consécutives multiples",
+                "batchStopped": "Transfert arrêté",
+                "fatalError": "Erreur fatale : {reason}. Les transferts restants ont été annulés.",
+                "attemptingReconnect": "Tentative de restauration de la connexion...",
+                "reconnectSuccess": "Connexion restaurée. Reprise des transferts.",
+                "reconnectFailed": "Impossible de se reconnecter. File d'attente en pause.",
+                "connectionLost": "Connexion perdue"
+            },
+            "errorKind": {
+                "network": "Erreur réseau",
+                "auth": "Échec de l'authentification",
+                "path_not_found": "Chemin introuvable",
+                "permission_denied": "Permission refusée",
+                "quota_exceeded": "Quota de stockage dépassé",
+                "rate_limit": "Limite de requêtes dépassée",
+                "timeout": "Délai de connexion dépassé",
+                "file_locked": "Fichier verrouillé",
+                "disk_error": "Disque plein ou erreur d'E/S",
+                "unknown": "Erreur inconnue"
+            },
+            "retryAllFailed": "Réessayer tous les échecs"
         },
         "settings": {
             "title": "Paramètres",
@@ -934,7 +956,8 @@
             "movedToTrash": "Déplacé vers la corbeille",
             "moveToTrashFailed": "Échec du déplacement vers la corbeille",
             "batchRenameResult": "{success} renommés, {errors} échoués",
-            "copyCompleted": "Copie terminée"
+            "copyCompleted": "Copie terminée",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",

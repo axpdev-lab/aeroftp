@@ -369,7 +369,29 @@
             "stopAll": "सब रोकें",
             "stopAllPending": "सभी लंबित रोकें",
             "forceStop": "बलपूर्वक रोकें (वर्तमान फ़ाइल बाधित करें)",
-            "cancelledByUser": "उपयोगकर्ता द्वारा रद्द किया गया"
+            "cancelledByUser": "उपयोगकर्ता द्वारा रद्द किया गया",
+            "circuitBreaker": {
+                "paused": "कतार रोकी गई — कई लगातार त्रुटियाँ",
+                "batchStopped": "स्थानांतरण रोक दिया गया",
+                "fatalError": "घातक त्रुटि: {reason}। शेष स्थानांतरण रद्द कर दिए गए।",
+                "attemptingReconnect": "कनेक्शन पुनर्स्थापित करने का प्रयास...",
+                "reconnectSuccess": "कनेक्शन पुनर्स्थापित। स्थानांतरण फिर से शुरू।",
+                "reconnectFailed": "पुनः कनेक्ट नहीं हो सका। कतार रोकी गई।",
+                "connectionLost": "कनेक्शन टूट गया"
+            },
+            "errorKind": {
+                "network": "नेटवर्क त्रुटि",
+                "auth": "प्रमाणीकरण विफल",
+                "path_not_found": "पथ नहीं मिला",
+                "permission_denied": "अनुमति अस्वीकृत",
+                "quota_exceeded": "संग्रहण कोटा पार हो गया",
+                "rate_limit": "अनुरोध सीमा पार हो गई",
+                "timeout": "कनेक्शन समय सीमा समाप्त",
+                "file_locked": "फ़ाइल लॉक है",
+                "disk_error": "डिस्क भरी है या I/O त्रुटि",
+                "unknown": "अज्ञात त्रुटि"
+            },
+            "retryAllFailed": "सभी विफल पुनः प्रयास करें"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -934,7 +956,8 @@
             "movedToTrash": "ट्रैश में भेजा गया",
             "moveToTrashFailed": "ट्रैश में भेजना विफल रहा",
             "batchRenameResult": "{success} का नाम बदला गया, {errors} विफल",
-            "copyCompleted": "प्रतिलिपि पूर्ण"
+            "copyCompleted": "प्रतिलिपि पूर्ण",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",

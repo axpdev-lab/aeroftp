@@ -369,7 +369,29 @@
             "stopAll": "Hentikan semua",
             "stopAllPending": "Hentikan semua yang menunggu",
             "forceStop": "Paksa berhenti (ganggu fail semasa)",
-            "cancelledByUser": "Dibatalkan oleh pengguna"
+            "cancelledByUser": "Dibatalkan oleh pengguna",
+            "circuitBreaker": {
+                "paused": "Baris gilir dijeda — pelbagai ralat berturut-turut",
+                "batchStopped": "Pemindahan Dihentikan",
+                "fatalError": "Ralat maut: {reason}. Pemindahan yang tinggal telah dibatalkan.",
+                "attemptingReconnect": "Cubaan memulihkan sambungan...",
+                "reconnectSuccess": "Sambungan dipulihkan. Meneruskan pemindahan.",
+                "reconnectFailed": "Tidak dapat menyambung semula. Baris gilir dijeda.",
+                "connectionLost": "Sambungan terputus"
+            },
+            "errorKind": {
+                "network": "Ralat rangkaian",
+                "auth": "Pengesahan gagal",
+                "path_not_found": "Laluan tidak dijumpai",
+                "permission_denied": "Kebenaran ditolak",
+                "quota_exceeded": "Kuota storan melebihi had",
+                "rate_limit": "Had kadar melebihi",
+                "timeout": "Sambungan tamat masa",
+                "file_locked": "Fail dikunci",
+                "disk_error": "Cakera penuh atau ralat I/O",
+                "unknown": "Ralat tidak diketahui"
+            },
+            "retryAllFailed": "Cuba Semula Semua yang Gagal"
         },
         "settings": {
             "title": "Tetapan",
@@ -934,7 +956,8 @@
             "movedToTrash": "Dipindahkan ke Sampah",
             "moveToTrashFailed": "Gagal memindahkan ke Sampah",
             "batchRenameResult": "{success} dinamakan semula, {errors} gagal",
-            "copyCompleted": "Penyalinan selesai"
+            "copyCompleted": "Penyalinan selesai",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",

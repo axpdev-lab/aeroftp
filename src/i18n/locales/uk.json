@@ -369,7 +369,29 @@
             "stopAll": "Зупинити все",
             "stopAllPending": "Зупинити всі очікувані",
             "forceStop": "Примусова зупинка (перервати поточний файл)",
-            "cancelledByUser": "Скасовано користувачем"
+            "cancelledByUser": "Скасовано користувачем",
+            "circuitBreaker": {
+                "paused": "Чергу призупинено — кілька послідовних помилок",
+                "batchStopped": "Передачу зупинено",
+                "fatalError": "Критична помилка: {reason}. Решту передач скасовано.",
+                "attemptingReconnect": "Спроба відновлення з'єднання...",
+                "reconnectSuccess": "З'єднання відновлено. Поновлення передач.",
+                "reconnectFailed": "Не вдалося повторно з'єднатися. Чергу призупинено.",
+                "connectionLost": "З'єднання втрачено"
+            },
+            "errorKind": {
+                "network": "Помилка мережі",
+                "auth": "Помилка автентифікації",
+                "path_not_found": "Шлях не знайдено",
+                "permission_denied": "Доступ заборонено",
+                "quota_exceeded": "Квоту сховища перевищено",
+                "rate_limit": "Перевищено ліміт запитів",
+                "timeout": "Час очікування з'єднання вичерпано",
+                "file_locked": "Файл заблоковано",
+                "disk_error": "Диск заповнено або помилка введення/виведення",
+                "unknown": "Невідома помилка"
+            },
+            "retryAllFailed": "Повторити всі невдалі"
         },
         "settings": {
             "title": "Налаштування",
@@ -934,7 +956,8 @@
             "movedToTrash": "Переміщено до кошика",
             "moveToTrashFailed": "Не вдалося перемістити до кошика",
             "batchRenameResult": "{success} перейменовано, {errors} не вдалося",
-            "copyCompleted": "Копіювання завершено"
+            "copyCompleted": "Копіювання завершено",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",

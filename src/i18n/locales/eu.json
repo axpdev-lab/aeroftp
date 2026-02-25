@@ -369,7 +369,29 @@
             "stopAll": "Gelditu dena",
             "stopAllPending": "Gelditu zain daudenak",
             "forceStop": "Behartu gelditzea (uneko fitxategia eten)",
-            "cancelledByUser": "Erabiltzaileak bertan behera utzia"
+            "cancelledByUser": "Erabiltzaileak bertan behera utzia",
+            "circuitBreaker": {
+                "paused": "Ilara pausatuta — hainbat errore jarraian",
+                "batchStopped": "Transferentzia gelditu da",
+                "fatalError": "Errore larria: {reason}. Gainerako transferentziak bertan behera utzi dira.",
+                "attemptingReconnect": "Konexioa berreskuratzen saiatzen...",
+                "reconnectSuccess": "Konexioa berreskuratuta. Transferentziak berrekiten.",
+                "reconnectFailed": "Ezin izan da birkonektatu. Ilara pausatuta.",
+                "connectionLost": "Konexioa galdu da"
+            },
+            "errorKind": {
+                "network": "Sare-errorea",
+                "auth": "Autentifikazioak huts egin du",
+                "path_not_found": "Bidea ez da aurkitu",
+                "permission_denied": "Baimena ukatua",
+                "quota_exceeded": "Biltegiratze-kuota gainditua",
+                "rate_limit": "Eskaera-muga gainditua",
+                "timeout": "Konexioaren denbora-muga gainditua",
+                "file_locked": "Fitxategia blokeatuta",
+                "disk_error": "Diskoa beteta edo I/O errorea",
+                "unknown": "Errore ezezaguna"
+            },
+            "retryAllFailed": "Huts egin duten guztiak berriz saiatu"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -934,7 +956,8 @@
             "movedToTrash": "{count} elementu zakarrontzira mugitu dira",
             "moveToTrashFailed": "Ezin izan da zakarrontzira mugitu",
             "batchRenameResult": "{success} berrizendatu, {errors} huts egin",
-            "copyCompleted": "Kopia osatua"
+            "copyCompleted": "Kopia osatua",
+            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
