@@ -61,6 +61,7 @@ export interface ProviderOptions {
   bucket?: string;
   region?: string;
   endpoint?: string;  // For S3-compatible (MinIO, etc.)
+  accountId?: string; // Cloudflare R2 account ID (used to compute endpoint)
   pathStyle?: boolean;
 
   // WebDAV-specific

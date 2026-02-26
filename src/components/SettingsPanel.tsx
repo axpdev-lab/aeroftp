@@ -11,6 +11,7 @@ import { useIconTheme } from '../hooks/useIconTheme';
 import { getIconThemeProvider, type IconTheme } from '../utils/iconThemes';
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider, ProviderType } from '../types';
+import { getProviderById, resolveS3Endpoint } from '../providers';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -290,6 +291,72 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
     const [showEditPassword, setShowEditPassword] = useState(false);
     const [showExportImport, setShowExportImport] = useState(false);
+
+    // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
+    // Resolve S3 endpoint and accountId when editing a server
+    useEffect(() => {
+        if (!editingServer) return;
+        if (editingServer.protocol !== 's3' || !editingServer.providerId) return;
+        const provider = getProviderById(editingServer.providerId);
+        if (!provider) return;
+        const template = provider.defaults?.endpointTemplate;
+        let updatedOptions = { ...editingServer.options };
+        let changed = false;
+
+        // Extract accountId from old-format endpoint (Cloudflare R2 migration)
+        if (template?.includes('{accountId}') && updatedOptions.endpoint && !updatedOptions.accountId) {
+            const templateRegex = template.replace('{accountId}', '(.+)').replace(/\./g, '\\.');
+            const match = updatedOptions.endpoint.match(new RegExp(templateRegex));
+            if (match?.[1]) {
+                updatedOptions = { ...updatedOptions, accountId: match[1] };
+                changed = true;
+            }
+        }
+
+        // Resolve endpoint if missing
+        if (!updatedOptions.endpoint) {
+            let effectiveRegion = updatedOptions.region || provider.defaults?.region;
+            if (!effectiveRegion && template && !template.includes('{accountId}')) {
+                const regionField = provider.fields?.find(f => f.key === 'region');
+                if (regionField?.type === 'select' && regionField.options?.length) {
+                    effectiveRegion = regionField.options[0].value;
+                    updatedOptions = { ...updatedOptions, region: effectiveRegion };
+                }
+            }
+            const extraParams = updatedOptions.accountId ? { accountId: updatedOptions.accountId } : undefined;
+            const resolved = provider.defaults?.endpoint
+                || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
+                || undefined;
+            if (resolved) {
+                updatedOptions = { ...updatedOptions, endpoint: resolved };
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            setEditingServer(prev => prev && prev.id === editingServer.id
+                ? { ...prev, options: updatedOptions }
+                : prev);
+        }
+    }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Load password from vault when editing an existing server
+    useEffect(() => {
+        if (!editingServer) return;
+        if (editingServer.password) return; // Already has password (user typed it)
+        if (!editingServer.hasStoredCredential) return;
+        const serverId = editingServer.id;
+        (async () => {
+            try {
+                const storedPassword = await invoke<string>('get_credential', { account: `server_${serverId}` });
+                if (storedPassword) {
+                    setEditingServer(prev => prev && prev.id === serverId ? { ...prev, password: storedPassword } : prev);
+                }
+            } catch {
+                // No credential stored or vault locked — leave password field empty
+            }
+        })();
+    }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
     const [hasChanges, setHasChanges] = useState(false);
     const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
@@ -1318,34 +1385,49 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                         {/* S3 Specific Fields */}
                                                         {isS3 && (
-                                                            <div className="grid grid-cols-2 gap-2">
+                                                            <>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={t('settings.s3BucketPlaceholder')}
+                                                                            value={editingServer.options?.bucket || ''}
+                                                                            onChange={e => setEditingServer({
+                                                                                ...editingServer,
+                                                                                options: { ...editingServer.options, bucket: e.target.value }
+                                                                            })}
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={t('settings.s3RegionPlaceholder')}
+                                                                            value={editingServer.options?.region || ''}
+                                                                            onChange={e => setEditingServer({
+                                                                                ...editingServer,
+                                                                                options: { ...editingServer.options, region: e.target.value }
+                                                                            })}
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                </div>
                                                                 <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.endpointUrl')}</label>
                                                                     <input
                                                                         type="text"
-                                                                        placeholder={t('settings.s3BucketPlaceholder')}
-                                                                        value={editingServer.options?.bucket || ''}
+                                                                        placeholder="s3.amazonaws.com"
+                                                                        value={editingServer.options?.endpoint || ''}
                                                                         onChange={e => setEditingServer({
                                                                             ...editingServer,
-                                                                            options: { ...editingServer.options, bucket: e.target.value }
+                                                                            options: { ...editingServer.options, endpoint: e.target.value }
                                                                         })}
                                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                     />
                                                                 </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('settings.s3RegionPlaceholder')}
-                                                                        value={editingServer.options?.region || ''}
-                                                                        onChange={e => setEditingServer({
-                                                                            ...editingServer,
-                                                                            options: { ...editingServer.options, region: e.target.value }
-                                                                        })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            </div>
+                                                            </>
                                                         )}
 
                                                         {/* Azure Specific Fields */}

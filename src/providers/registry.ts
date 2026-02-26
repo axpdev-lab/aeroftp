@@ -276,18 +276,19 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'R2 API Token → Secret Access Key' },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-r2-bucket' },
             {
-                key: 'endpoint',
-                label: 'Account Endpoint',
-                type: 'url',
+                key: 'accountId',
+                label: 'Account ID',
+                type: 'text',
                 required: true,
-                placeholder: '<ACCOUNT_ID>.r2.cloudflarestorage.com',
-                helpText: 'R2 → Overview → S3 API endpoint (without https://)',
+                placeholder: 'a1b2c3d4e5f6...',
+                helpText: 'Cloudflare Dashboard → R2 → Overview → Account ID',
                 group: 'server',
             },
         ],
         defaults: {
             pathStyle: true,
             region: 'auto',
+            endpointTemplate: '{accountId}.r2.cloudflarestorage.com',
         },
         features: {
             shareLink: true,
@@ -1160,10 +1161,11 @@ export const getAllProviders = () => providerRegistry.getAll();
 export const getStableProviders = () => providerRegistry.getStable();
 
 /**
- * Resolve the S3 endpoint for a provider based on its endpointTemplate and region.
+ * Resolve the S3 endpoint for a provider based on its endpointTemplate.
+ * Supports {region} and {accountId} (and any other) template variables.
  * Returns null for providers without a template (e.g. Amazon S3 uses default AWS endpoint).
  */
-export const resolveS3Endpoint = (providerId: string | undefined, region: string | undefined): string | null => {
+export const resolveS3Endpoint = (providerId: string | undefined, region?: string, extraParams?: Record<string, string>): string | null => {
     if (!providerId) return null;
     const provider = providerRegistry.getById(providerId);
     if (!provider) return null;
@@ -1173,6 +1175,16 @@ export const resolveS3Endpoint = (providerId: string | undefined, region: string
     }
 
     const template = provider?.defaults?.endpointTemplate;
-    if (!template || !region) return null;
-    return template.replace('{region}', region);
+    if (!template) return null;
+
+    let result = template;
+    if (region) result = result.replace('{region}', region);
+    if (extraParams) {
+        for (const [key, value] of Object.entries(extraParams)) {
+            result = result.replace(`{${key}}`, value);
+        }
+    }
+    // If still has unreplaced placeholders, return null
+    if (result.includes('{')) return null;
+    return result;
 };

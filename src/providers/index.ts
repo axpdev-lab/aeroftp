@@ -21,4 +21,5 @@ export {
     getProvidersByCategory,
     getAllProviders,
     getStableProviders,
+    resolveS3Endpoint,
 } from './registry';

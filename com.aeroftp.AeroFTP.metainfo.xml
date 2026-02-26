@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.7.1" date="2026-02-26">
+      <description>
+        <p>S3 Provider Preset UX and Cloudflare R2 Account ID: Overhauled S3 connection forms so all preset fields (endpoint, region) are visible, pre-filled, and follow the disabled-plus-Edit pattern. Cloudflare R2 now has a dedicated Account ID input that auto-computes the endpoint with an Edit escape hatch for future-proofing. Fixed endpoint resolution for endpointTemplate providers and backward-compatible editing of saved servers.</p>
+      </description>
+    </release>
     <release version="2.7.0" date="2026-02-26">
       <description>
         <p>FileLu Native API — 19th Protocol: Added FileLu cloud storage as the 19th supported protocol via its native REST API. Includes privacy-focused features: per-file and per-folder password protection, public/private visibility toggle, server-side file cloning, trash management with restore and permanent delete, and remote URL upload. Also adds FileLu FTP, FTPS, WebDAV, and S3 presets for users who prefer standard protocols.</p>

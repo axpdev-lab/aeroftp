@@ -16,7 +16,7 @@ import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
-import { getProviderById, ProviderConfig } from '../providers';
+import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 // Storage key for saved servers (same as SavedServers component)
@@ -723,6 +723,45 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSaveConnection(true); // Implied for editing
         setSelectedProviderId(profile.providerId || null);
 
+        // Resolve endpoint and accountId from registry for S3 profiles
+        let profileOptions = profile.options || {};
+        if (profile.protocol === 's3' && profile.providerId) {
+            const provider = getProviderById(profile.providerId);
+            if (provider) {
+                // Extract accountId from old-format endpoint (e.g. Cloudflare R2 migration)
+                const template = provider.defaults?.endpointTemplate;
+                if (template?.includes('{accountId}') && profileOptions.endpoint && !profileOptions.accountId) {
+                    // Reverse-extract accountId from stored endpoint using template pattern
+                    const templateRegex = template.replace('{accountId}', '(.+)').replace(/\./g, '\\.');
+                    const match = profileOptions.endpoint.match(new RegExp(templateRegex));
+                    if (match?.[1]) {
+                        profileOptions = { ...profileOptions, accountId: match[1] };
+                    }
+                }
+
+                // Resolve endpoint if missing
+                if (!profileOptions.endpoint) {
+                    let effectiveRegion = profileOptions.region || provider.defaults?.region;
+                    if (!effectiveRegion && provider.defaults?.endpointTemplate && !template?.includes('{accountId}')) {
+                        const regionField = provider.fields?.find(f => f.key === 'region');
+                        if (regionField?.type === 'select' && regionField.options?.length) {
+                            effectiveRegion = regionField.options[0].value;
+                        }
+                    }
+                    const extraParams = profileOptions.accountId ? { accountId: profileOptions.accountId } : undefined;
+                    const resolvedEndpoint = provider.defaults?.endpoint
+                        || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
+                        || undefined;
+                    if (resolvedEndpoint) {
+                        profileOptions = { ...profileOptions, endpoint: resolvedEndpoint };
+                        if (effectiveRegion && !profileOptions.region) {
+                            profileOptions = { ...profileOptions, region: effectiveRegion };
+                        }
+                    }
+                }
+            }
+        }
+
         // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
             server: profile.host,
@@ -730,7 +769,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             username: profile.username,
             password: profile.password || '', // Set immediately, will be updated if stored
             protocol: profile.protocol || 'ftp',
-            options: profile.options || {}
+            options: profileOptions
         });
 
         onQuickConnectDirsChange({
@@ -752,7 +791,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         username: profile.username,
                         password: storedPassword,
                         protocol: profile.protocol || 'ftp',
-                        options: profile.options || {}
+                        options: profileOptions
                     });
                 }
             } catch {
@@ -840,6 +879,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSelectedProviderId(provider.id);
         setPresetUnlocked({});
 
+        // For endpointTemplate providers without a default region, auto-select the first region option
+        let effectiveRegion = provider.defaults?.region;
+        if (!effectiveRegion && provider.defaults?.endpointTemplate) {
+            const regionField = provider.fields?.find(f => f.key === 'region');
+            if (regionField?.type === 'select' && regionField.options?.length) {
+                effectiveRegion = regionField.options[0].value;
+            }
+        }
+
+        // Resolve S3 endpoint: static defaults.endpoint OR computed from endpointTemplate + region
+        const resolvedEndpoint = provider.defaults?.endpoint
+            || resolveS3Endpoint(provider.id, effectiveRegion)
+            || undefined;
+
         // Apply provider defaults
         const newParams: ConnectionParams = {
             ...connectionParams,
@@ -850,8 +903,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             options: {
                 ...connectionParams.options,
                 pathStyle: provider.defaults?.pathStyle,
-                region: provider.defaults?.region,
-                endpoint: provider.defaults?.endpoint,
+                region: effectiveRegion,
+                endpoint: resolvedEndpoint,
             },
         };
         onConnectionParamsChange(newParams);
@@ -1162,30 +1215,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            {selectedProvider.signupUrl && (
-                                                <a
-                                                    href={selectedProvider.signupUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-xs text-emerald-500 hover:text-emerald-600 flex items-center gap-1 transition-colors"
-                                                    title={t('connection.createAccount')}
-                                                >
-                                                    <ExternalLink size={12} />
-                                                    {t('connection.createAccount')}
-                                                </a>
-                                            )}
-                                            {selectedProvider.helpUrl && (
-                                                <a
-                                                    href={selectedProvider.helpUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
-                                                    title={t('connection.docs')}
-                                                >
-                                                    <ExternalLink size={12} />
-                                                    {t('connection.docs')}
-                                                </a>
-                                            )}
                                             <button
                                                 onClick={() => setSelectedProviderId(null)}
                                                 className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
@@ -2097,10 +2126,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     /* Traditional connection fields (FTP/S3/WebDAV) */
                                     <>
                                         {(() => {
-                                            const providerHasNoEndpoint = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.fields?.find(f => f.key === 'endpoint');
+                                            const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
                                             const serverLocked = hasPresetServer && !presetUnlocked['server'] && !editingProfileId;
-                                            return providerHasNoEndpoint ? null : (
+                                            return isNonGenericS3 ? null : (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1.5">

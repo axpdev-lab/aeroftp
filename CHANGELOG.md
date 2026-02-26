@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.1] - 2026-02-26
+
+### S3 Provider Preset UX & Cloudflare R2 Account ID
+
+Comprehensive overhaul of S3 provider connection forms, ensuring all preset fields (endpoint, region) are visible, pre-filled, and follow the disabled + Edit pattern. Cloudflare R2 gets a dedicated Account ID input that auto-computes the endpoint, with an Edit escape hatch for future-proofing.
+
+#### Added
+
+- **Cloudflare R2 Account ID field**: Dedicated input with visual endpoint suffix (`.r2.cloudflarestorage.com`) shown inline. Endpoint auto-computed as user types the Account ID
+- **Cloudflare R2 Edit escape hatch**: Pencil button unlocks the full endpoint for manual editing, future-proofing against domain changes
+- **`resolveS3Endpoint` extra params**: Function now supports arbitrary template variables (`{accountId}`, `{region}`, etc.) beyond the original `{region}` only
+- **`accountId` field in `ProviderOptions`**: New optional field in TypeScript types and `ProtocolFieldsProps`
+
+#### Fixed
+
+- **S3 endpoint empty on provider select**: For `endpointTemplate` providers (Wasabi, DigitalOcean, Alibaba, Tencent), the first region option is now auto-selected so the endpoint computes immediately instead of remaining blank
+- **S3 endpoint empty on edit**: When editing a saved S3 server, the endpoint is now resolved from the provider registry if not stored in the profile (backward compatibility for servers saved before this change)
+- **Cloudflare R2 migration**: Old-format endpoints (full URL stored directly) are automatically reverse-parsed to extract the Account ID when editing
+- **SettingsPanel S3 endpoint always visible**: Endpoint field now renders for all S3 servers in the edit modal, not only when `options.endpoint` was already populated
+- **SettingsPanel password loading from vault**: Added `useEffect` with `get_credential` call to load stored passwords when opening the edit modal
+- **Duplicate signup/docs links removed**: Links no longer appear in both the provider header and ProtocolFields section
+
+#### Changed
+
+- **Cloudflare R2 registry**: `endpoint` field replaced with `accountId` field + `endpointTemplate: '{accountId}.r2.cloudflarestorage.com'`
+
+---
+
 ## [2.7.0] - 2026-02-26
 
 ### FileLu Native API — 19th Protocol

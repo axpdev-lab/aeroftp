@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
-import { getProviderById } from '../providers';
+import { getProviderById, resolveS3Endpoint } from '../providers';
 import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
@@ -541,6 +541,7 @@ interface ProtocolFieldsProps {
         bucket?: string;
         region?: string;
         endpoint?: string;
+        accountId?: string;
         pathStyle?: boolean;
         // SFTP-specific
         private_key_path?: string;
@@ -642,7 +643,55 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const bucketField = providerConfig?.fields?.find(f => f.key === 'bucket');
         const regionField = providerConfig?.fields?.find(f => f.key === 'region');
         const endpointField = providerConfig?.fields?.find(f => f.key === 'endpoint');
+        const accountIdField = providerConfig?.fields?.find(f => f.key === 'accountId');
         const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
+
+        // Endpoint architecture:
+        // - hasEndpointTemplate: endpoint computed from region/accountId (Wasabi, DO, Cloudflare R2)
+        // - hasStaticEndpoint: fixed endpoint (FileLu S3)
+        // - hasUserEndpointField: user must enter endpoint (Backblaze, IDrive e2, Storj)
+        // - hasAccountIdTemplate: endpoint computed from accountId (Cloudflare R2) — shows only fixed part
+        const hasEndpointTemplate = !!providerConfig?.defaults?.endpointTemplate;
+        const hasStaticEndpoint = !!providerConfig?.defaults?.endpoint;
+        const hasAccountIdTemplate = hasEndpointTemplate && !!accountIdField;
+        const hasPresetEndpoint = (hasEndpointTemplate || hasStaticEndpoint) && !providerConfig?.isGeneric;
+        const hasUserEndpointField = !!endpointField && !hasPresetEndpoint;
+
+        // For accountId templates, extract the fixed suffix (e.g. ".r2.cloudflarestorage.com")
+        const endpointFixedPart = hasAccountIdTemplate
+            ? providerConfig!.defaults!.endpointTemplate!.replace(/\{accountId\}/, '')
+            : undefined;
+
+        // Show endpoint row: for accountId providers show fixed part inline, otherwise full endpoint
+        const showEndpoint = (hasPresetEndpoint && !hasAccountIdTemplate) || hasUserEndpointField;
+
+        // Region change handler: for endpointTemplate providers, also recompute endpoint
+        const handleRegionChange = (newRegion: string) => {
+            const updatedOptions = { ...options, region: newRegion };
+            if (hasEndpointTemplate && selectedProviderId) {
+                const computed = resolveS3Endpoint(selectedProviderId, newRegion, options.accountId ? { accountId: options.accountId } : undefined);
+                if (computed) updatedOptions.endpoint = computed;
+            }
+            onChange(updatedOptions);
+        };
+
+        // Account ID change handler: for accountId-based endpointTemplate (Cloudflare R2)
+        const handleAccountIdChange = (newAccountId: string) => {
+            const updatedOptions = { ...options, accountId: newAccountId };
+            if (hasEndpointTemplate && selectedProviderId) {
+                const computed = resolveS3Endpoint(selectedProviderId, options.region, newAccountId ? { accountId: newAccountId } : undefined);
+                if (computed) updatedOptions.endpoint = computed;
+            }
+            onChange(updatedOptions);
+        };
+
+        // Endpoint locked state (disabled + Edit button for preset endpoints)
+        const endpointLocked = hasPresetEndpoint && !presetUnlocked['endpoint'] && !isEditing;
+
+        // Endpoint placeholder: use template pattern when available
+        const endpointPlaceholder = endpointField?.placeholder
+            || providerConfig?.defaults?.endpointTemplate?.replace(/\{(\w+)\}/g, '<$1>')
+            || t('protocol.endpointPlaceholder');
 
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
@@ -667,22 +716,88 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
                     )}
                 </div>
-                {endpointField ? (
-                    <div className={regionField ? "grid grid-cols-2 gap-3" : ""}>
-                    {regionField && (
+
+                {/* Account ID + fixed endpoint suffix (e.g. Cloudflare R2: [account_id].r2.cloudflarestorage.com) */}
+                {accountIdField && (
+                    <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <label className="block text-sm font-medium">
+                                {presetUnlocked['endpointSuffix'] ? 'Endpoint' : (accountIdField.label || 'Account ID')}
+                                {endpointFixedPart && !presetUnlocked['endpointSuffix'] && (
+                                    <span className="text-xs font-normal text-gray-400 ml-1.5">→ Endpoint</span>
+                                )}
+                            </label>
+                            {endpointFixedPart && onPresetUnlock && !isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (presetUnlocked['endpointSuffix']) {
+                                            onPresetUnlock('endpointSuffix');
+                                        } else {
+                                            // When unlocking, merge accountId + suffix into endpoint for manual editing
+                                            const fullEndpoint = options.endpoint || ((options.accountId || '') + endpointFixedPart);
+                                            onChange({ ...options, endpoint: fullEndpoint });
+                                            onPresetUnlock('endpointSuffix');
+                                        }
+                                    }}
+                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
+                                >
+                                    <Pencil size={10} />
+                                    {presetUnlocked['endpointSuffix'] ? t('protocol.s3Endpoint') : t('common.edit')}
+                                </button>
+                            )}
+                        </div>
+                        {presetUnlocked['endpointSuffix'] ? (
+                            /* Unlocked: full endpoint field */
+                            <input
+                                type="text"
+                                value={options.endpoint || ''}
+                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                placeholder={endpointPlaceholder}
+                            />
+                        ) : (
+                            /* Locked: Account ID input + fixed suffix */
+                            <div className="flex items-center gap-0">
+                                <input
+                                    type="text"
+                                    value={options.accountId || ''}
+                                    onChange={(e) => handleAccountIdChange(e.target.value)}
+                                    disabled={disabled}
+                                    className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-xl border-r-0 flex-1 min-w-0' : 'rounded-xl w-full'}`}
+                                    placeholder={accountIdField.placeholder || 'Account ID'}
+                                    required={accountIdField.required}
+                                />
+                                {endpointFixedPart && (
+                                    <span className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-xl text-sm text-gray-500 dark:text-gray-300 whitespace-nowrap">
+                                        {endpointFixedPart}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {!isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
+                            <p className="text-xs text-gray-500 mt-1">{accountIdField.helpText}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Region field */}
+                {regionField && (
+                    <div className={showEndpoint ? "grid grid-cols-2 gap-3" : ""}>
                         <div>
                             <label className="block text-sm font-medium mb-1.5">
-                                {regionField?.label || t('protocol.region')}
+                                {regionField.label || t('protocol.region')}
                             </label>
                             {hasRegionSelect ? (
                                 <select
                                     value={options.region || ''}
-                                    onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                    onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                                 >
                                     <option value="">{t('protocol.selectRegion')}</option>
-                                    {regionField!.options!.map(opt => (
+                                    {regionField.options!.map(opt => (
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
@@ -690,135 +805,109 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 <input
                                     type="text"
                                     value={options.region || ''}
-                                    onChange={(e) => onChange({ ...options, region: e.target.value })}
+                                    onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                                     placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
                                 />
                             )}
                         </div>
-                    )}
-                    <div>
-                        {(() => {
-                            const hasPresetEndpoint = providerConfig && providerConfig.defaults?.endpoint && !providerConfig.isGeneric;
-                            const endpointLocked = hasPresetEndpoint && !presetUnlocked['endpoint'] && !isEditing;
-                            return (
-                                <>
-                                    <div className="flex items-center gap-2 mb-1.5">
-                                        <label className="block text-sm font-medium">
-                                            {endpointField?.label || t('protocol.customEndpoint')}
-                                        </label>
-                                        {endpointLocked && onPresetUnlock && (
-                                            <button
-                                                type="button"
-                                                onClick={() => onPresetUnlock('endpoint')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
-                                            >
-                                                <Pencil size={10} />
-                                                {t('common.edit')}
-                                            </button>
-                                        )}
-                                    </div>
-                                    {endpointField.type === 'select' && endpointField.options ? (
-                                        <select
-                                            value={options.endpoint || ''}
-                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                            disabled={disabled || !!endpointLocked}
-                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+
+                        {/* Endpoint next to region (when both present) */}
+                        {showEndpoint && (
+                            <div>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <label className="block text-sm font-medium">
+                                        {endpointField?.label || t('protocol.s3Endpoint')}
+                                    </label>
+                                    {endpointLocked && onPresetUnlock && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onPresetUnlock('endpoint')}
+                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
                                         >
-                                            <option value="">{t('protocol.selectRegion')}</option>
-                                            {endpointField.options.map(opt => (
-                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            value={options.endpoint || ''}
-                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                            disabled={disabled || !!endpointLocked}
-                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
-                                        />
+                                            <Pencil size={10} />
+                                            {t('common.edit')}
+                                        </button>
                                     )}
-                                    {!isEditing && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            {endpointField?.helpText || t('protocol.endpointHelp')}
-                                        </p>
-                                    )}
-                                </>
-                            );
-                        })()}
+                                </div>
+                                {endpointField?.type === 'select' && endpointField.options ? (
+                                    <select
+                                        value={options.endpoint || ''}
+                                        onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                        disabled={disabled || !!endpointLocked}
+                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        <option value="">{t('protocol.selectRegion')}</option>
+                                        {endpointField.options.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={options.endpoint || ''}
+                                        onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                        disabled={disabled || !!endpointLocked}
+                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        placeholder={endpointPlaceholder}
+                                    />
+                                )}
+                                {!isEditing && endpointField?.helpText && (
+                                    <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
-                </div>
-                ) : (
-                <>
-                <div className={providerConfig?.defaults?.endpoint ? "grid grid-cols-2 gap-3" : ""}>
+                )}
+
+                {/* Endpoint standalone (when no region field) */}
+                {showEndpoint && !regionField && (
                     <div>
-                        <label className="block text-sm font-medium mb-1.5">
-                            {regionField?.label || t('protocol.region')}
-                        </label>
-                        {hasRegionSelect ? (
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <label className="block text-sm font-medium">
+                                {endpointField?.label || t('protocol.s3Endpoint')}
+                            </label>
+                            {endpointLocked && onPresetUnlock && (
+                                <button
+                                    type="button"
+                                    onClick={() => onPresetUnlock('endpoint')}
+                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
+                                >
+                                    <Pencil size={10} />
+                                    {t('common.edit')}
+                                </button>
+                            )}
+                        </div>
+                        {endpointField?.type === 'select' && endpointField.options ? (
                             <select
-                                value={options.region || ''}
-                                onChange={(e) => onChange({ ...options, region: e.target.value })}
-                                disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                value={options.endpoint || ''}
+                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                disabled={disabled || !!endpointLocked}
+                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">{t('protocol.selectRegion')}</option>
-                                {regionField!.options!.map(opt => (
+                                {endpointField.options.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
                         ) : (
                             <input
                                 type="text"
-                                value={options.region || ''}
-                                onChange={(e) => onChange({ ...options, region: e.target.value })}
-                                disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
+                                value={options.endpoint || ''}
+                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                disabled={disabled || !!endpointLocked}
+                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                placeholder={endpointPlaceholder}
                             />
                         )}
+                        {!isEditing && endpointField?.helpText && (
+                            <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                        )}
                     </div>
-                    {providerConfig?.defaults?.endpoint && (
-                        <div>
-                            {(() => {
-                                const endpointLocked = !presetUnlocked['endpoint'] && !isEditing;
-                                return (
-                                    <>
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                            <label className="block text-sm font-medium">
-                                                {t('protocol.s3Endpoint')}
-                                            </label>
-                                            {endpointLocked && onPresetUnlock && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onPresetUnlock('endpoint')}
-                                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
-                                                >
-                                                    <Pencil size={10} />
-                                                    {t('common.edit')}
-                                                </button>
-                                            )}
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={options.endpoint || providerConfig.defaults.endpoint || ''}
-                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                            disabled={disabled || !!endpointLocked}
-                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            placeholder={providerConfig.defaults.endpoint}
-                                        />
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    )}
-                </div>
-                </>
                 )}
-                {(endpointField || providerConfig?.defaults?.endpoint) && (
+
+                {(showEndpoint || hasAccountIdTemplate) && (
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                             type="checkbox"
@@ -888,16 +977,31 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         </span>
                     </div>
                 )}
-                {!isEditing && providerConfig?.helpUrl && (
-                    <a
-                        href={providerConfig.helpUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                    >
-                        <ExternalLink size={12} />
-                        {t('protocol.providerDocumentation', { name: providerConfig.name })}
-                    </a>
+                {!isEditing && (providerConfig?.helpUrl || providerConfig?.signupUrl) && (
+                    <div className="flex items-center gap-3 mt-1">
+                        {providerConfig.signupUrl && (
+                            <a
+                                href={providerConfig.signupUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                            >
+                                <ExternalLink size={12} />
+                                {t('connection.createAccount')}
+                            </a>
+                        )}
+                        {providerConfig.helpUrl && (
+                            <a
+                                href={providerConfig.helpUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                                <ExternalLink size={12} />
+                                {t('protocol.providerDocumentation', { name: providerConfig.name })}
+                            </a>
+                        )}
+                    </div>
                 )}
             </div>
         );
