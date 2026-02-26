@@ -1193,7 +1193,7 @@
             "seafileDesc": "Odprtokodna shramba v oblaku",
             "seafileTooltip": "Seafile - Samogostovan odprtokodni oblak s podporo WebDAV",
             "fileluDesc": "Večprotokolna shramba v oblaku",
-            "fileluTooltip": "FileLu - 20GB brezplačne shrambe s FTP, FTPS, WebDAV, S3 in nativnim API-jem",
+            "fileluTooltip": "FileLu - 1GB brezplačne shrambe s FTP, FTPS, WebDAV, S3 in nativnim API-jem",
             "fileluFtpDesc": "FileLu prek FTP",
             "fileluFtpsDesc": "FileLu prek varnega FTPS",
             "fileluWebdavDesc": "FileLu prek WebDAV",

@@ -1193,7 +1193,7 @@
             "seafileDesc": "Opensource cloudopslag",
             "seafileTooltip": "Seafile - Zelfgehoste opensource cloud met WebDAV-ondersteuning",
             "fileluDesc": "Multi-protocol cloudopslag",
-            "fileluTooltip": "FileLu - 20GB gratis opslag met FTP, FTPS, WebDAV, S3 en native API",
+            "fileluTooltip": "FileLu - 1GB gratis opslag met FTP, FTPS, WebDAV, S3 en native API",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via beveiligde FTPS",
             "fileluWebdavDesc": "FileLu via WebDAV",

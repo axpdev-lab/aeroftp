@@ -1193,7 +1193,7 @@
             "seafileDesc": "Molnlagring med öppen källkod",
             "seafileTooltip": "Seafile - Självhostat moln med öppen källkod och WebDAV-stöd",
             "fileluDesc": "Flerprotokoll molnlagring",
-            "fileluTooltip": "FileLu - 20GB gratis lagring med FTP, FTPS, WebDAV, S3 och native API",
+            "fileluTooltip": "FileLu - 1GB gratis lagring med FTP, FTPS, WebDAV, S3 och native API",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via säkert FTPS",
             "fileluWebdavDesc": "FileLu via WebDAV",

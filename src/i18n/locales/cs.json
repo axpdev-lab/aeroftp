@@ -1193,7 +1193,7 @@
             "seafileDesc": "Open-source cloudové úložiště",
             "seafileTooltip": "Seafile - Samohostovaný open-source cloud s podporou WebDAV",
             "fileluDesc": "Cloudové úložiště s více protokoly",
-            "fileluTooltip": "FileLu - 20GB bezplatného úložiště s FTP, FTPS, WebDAV, S3 a nativním API",
+            "fileluTooltip": "FileLu - 1GB bezplatného úložiště s FTP, FTPS, WebDAV, S3 a nativním API",
             "fileluFtpDesc": "FileLu přes FTP",
             "fileluFtpsDesc": "FileLu přes zabezpečený FTPS",
             "fileluWebdavDesc": "FileLu přes WebDAV",

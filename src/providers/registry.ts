@@ -894,7 +894,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'filelu',
         name: 'FileLu',
-        description: 'Cloud storage with FTP, WebDAV, S3 and native API (20 GB free)',
+        description: 'Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)',
         protocol: 'filelu',
         category: 'oauth',
         icon: 'Cloud',

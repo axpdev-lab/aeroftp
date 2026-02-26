@@ -1193,7 +1193,7 @@
             "seafileDesc": "Avatud lähtekoodiga pilvesalvestus",
             "seafileTooltip": "Seafile - Ise majutatav avatud lähtekoodiga pilv WebDAV toega",
             "fileluDesc": "Mitmeprotokollne pilvsalvestus",
-            "fileluTooltip": "FileLu - 20GB tasuta salvestusruum koos FTP, FTPS, WebDAV, S3 ja natiivsete API-ga",
+            "fileluTooltip": "FileLu - 1GB tasuta salvestusruum koos FTP, FTPS, WebDAV, S3 ja natiivsete API-ga",
             "fileluFtpDesc": "FileLu FTP kaudu",
             "fileluFtpsDesc": "FileLu turvalise FTPS kaudu",
             "fileluWebdavDesc": "FileLu WebDAV kaudu",

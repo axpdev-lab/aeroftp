@@ -1193,7 +1193,7 @@
             "seafileDesc": "Nyílt forrású felhőtárhely",
             "seafileTooltip": "Seafile - Önkiszolgáló nyílt forrású felhő WebDAV támogatással",
             "fileluDesc": "Többprotokollos felhőtárhely",
-            "fileluTooltip": "FileLu - 20GB ingyenes tárhely FTP, FTPS, WebDAV, S3 és natív API támogatással",
+            "fileluTooltip": "FileLu - 1GB ingyenes tárhely FTP, FTPS, WebDAV, S3 és natív API támogatással",
             "fileluFtpDesc": "FileLu FTP-n keresztül",
             "fileluFtpsDesc": "FileLu biztonságos FTPS-en keresztül",
             "fileluWebdavDesc": "FileLu WebDAV-on keresztül",

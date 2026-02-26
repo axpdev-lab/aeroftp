@@ -1193,7 +1193,7 @@
             "seafileDesc": "Chmura open-source",
             "seafileTooltip": "Seafile - Samoobslugowa chmura open-source z obsługą WebDAV",
             "fileluDesc": "Wieloprotokołowa pamięć w chmurze",
-            "fileluTooltip": "FileLu - 20GB darmowej przestrzeni z obsługą FTP, FTPS, WebDAV, S3 i natywnego API",
+            "fileluTooltip": "FileLu - 1GB darmowej przestrzeni z obsługą FTP, FTPS, WebDAV, S3 i natywnego API",
             "fileluFtpDesc": "FileLu przez FTP",
             "fileluFtpsDesc": "FileLu przez bezpieczne FTPS",
             "fileluWebdavDesc": "FileLu przez WebDAV",

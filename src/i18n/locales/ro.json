@@ -1193,7 +1193,7 @@
             "seafileDesc": "Stocare cloud open-source",
             "seafileTooltip": "Seafile - Cloud auto-găzduit open-source cu suport WebDAV",
             "fileluDesc": "Stocare în cloud multi-protocol",
-            "fileluTooltip": "FileLu - 20GB stocare gratuită cu FTP, FTPS, WebDAV, S3 și API nativ",
+            "fileluTooltip": "FileLu - 1GB stocare gratuită cu FTP, FTPS, WebDAV, S3 și API nativ",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via FTPS securizat",
             "fileluWebdavDesc": "FileLu via WebDAV",

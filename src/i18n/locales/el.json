@@ -1193,7 +1193,7 @@
             "seafileDesc": "Αποθηκευτικός χώρος cloud ανοιχτού κώδικα",
             "seafileTooltip": "Seafile - Αυτο-φιλοξενούμενο cloud ανοιχτού κώδικα με υποστήριξη WebDAV",
             "fileluDesc": "Αποθήκευση νέφους πολλαπλών πρωτοκόλλων",
-            "fileluTooltip": "FileLu - 20GB δωρεάν αποθηκευτικός χώρος με FTP, FTPS, WebDAV, S3 και εγγενές API",
+            "fileluTooltip": "FileLu - 1GB δωρεάν αποθηκευτικός χώρος με FTP, FTPS, WebDAV, S3 και εγγενές API",
             "fileluFtpDesc": "FileLu μέσω FTP",
             "fileluFtpsDesc": "FileLu μέσω ασφαλούς FTPS",
             "fileluWebdavDesc": "FileLu μέσω WebDAV",

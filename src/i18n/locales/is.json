@@ -1193,7 +1193,7 @@
             "seafileDesc": "Opinn skjalageymsluský",
             "seafileTooltip": "Seafile - Sjálfshjálað opinn skjalageymsluský með WebDAV stuðningi",
             "fileluDesc": "Fjölreglugeymsla í skýi",
-            "fileluTooltip": "FileLu - 20GB ókeypis geymsla með FTP, FTPS, WebDAV, S3 og native API",
+            "fileluTooltip": "FileLu - 1GB ókeypis geymsla með FTP, FTPS, WebDAV, S3 og native API",
             "fileluFtpDesc": "FileLu í gegnum FTP",
             "fileluFtpsDesc": "FileLu í gegnum öruggt FTPS",
             "fileluWebdavDesc": "FileLu í gegnum WebDAV",

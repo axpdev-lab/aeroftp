@@ -1193,7 +1193,7 @@
             "seafileDesc": "오픈 소스 클라우드 스토리지",
             "seafileTooltip": "Seafile - WebDAV 지원 자체 호스팅 오픈 소스 클라우드",
             "fileluDesc": "멀티 프로토콜 클라우드 스토리지",
-            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 및 네이티브 API를 지원하는 20GB 무료 스토리지",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 및 네이티브 API를 지원하는 1GB 무료 스토리지",
             "fileluFtpDesc": "FTP를 통한 FileLu",
             "fileluFtpsDesc": "보안 FTPS를 통한 FileLu",
             "fileluWebdavDesc": "WebDAV를 통한 FileLu",

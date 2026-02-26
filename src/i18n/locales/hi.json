@@ -1193,7 +1193,7 @@
             "seafileDesc": "ओपन-सोर्स क्लाउड स्टोरेज",
             "seafileTooltip": "Seafile - WebDAV समर्थन के साथ स्व-होस्टेड ओपन-सोर्स क्लाउड",
             "fileluDesc": "मल्टी-प्रोटोकॉल क्लाउड स्टोरेज",
-            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 और नेटिव API के साथ 20GB मुफ़्त स्टोरेज",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 और नेटिव API के साथ 1GB मुफ़्त स्टोरेज",
             "fileluFtpDesc": "FTP के माध्यम से FileLu",
             "fileluFtpsDesc": "सुरक्षित FTPS के माध्यम से FileLu",
             "fileluWebdavDesc": "WebDAV के माध्यम से FileLu",

@@ -1193,7 +1193,7 @@
             "seafileDesc": "Kode irekiko hodeiko biltegiratzea",
             "seafileTooltip": "Seafile - Norberak ostatatutako kode irekiko hodeia WebDAV euskarriarekin",
             "fileluDesc": "Protokolo anitzeko hodeiko biltegiratzea",
-            "fileluTooltip": "FileLu - 20GB doako biltegiratze FTP, FTPS, WebDAV, S3 eta API natiboaren bidez",
+            "fileluTooltip": "FileLu - 1GB doako biltegiratze FTP, FTPS, WebDAV, S3 eta API natiboaren bidez",
             "fileluFtpDesc": "FileLu FTP bidez",
             "fileluFtpsDesc": "FileLu FTPS seguru bidez",
             "fileluWebdavDesc": "FileLu WebDAV bidez",

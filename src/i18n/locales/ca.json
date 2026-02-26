@@ -1193,7 +1193,7 @@
             "seafileDesc": "Emmagatzematge al núvol de codi obert",
             "seafileTooltip": "Seafile - Núvol de codi obert autoallotjat amb compatibilitat WebDAV",
             "fileluDesc": "Emmagatzematge al núvol multiprotocol",
-            "fileluTooltip": "FileLu - 20GB d'emmagatzematge gratuït amb FTP, FTPS, WebDAV, S3 i API nativa",
+            "fileluTooltip": "FileLu - 1GB d'emmagatzematge gratuït amb FTP, FTPS, WebDAV, S3 i API nativa",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via FTPS segur",
             "fileluWebdavDesc": "FileLu via WebDAV",

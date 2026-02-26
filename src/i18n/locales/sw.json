@@ -1193,7 +1193,7 @@
             "seafileDesc": "Hifadhi ya wingu la chanzo huria",
             "seafileTooltip": "Seafile - Wingu la chanzo huria linalojihifadhi na msaada wa WebDAV",
             "fileluDesc": "Hifadhi ya wingu yenye itifaki nyingi",
-            "fileluTooltip": "FileLu - GB 20 za hifadhi bila malipo na FTP, FTPS, WebDAV, S3 na API asili",
+            "fileluTooltip": "FileLu - GB 1 za hifadhi bila malipo na FTP, FTPS, WebDAV, S3 na API asili",
             "fileluFtpDesc": "FileLu kupitia FTP",
             "fileluFtpsDesc": "FileLu kupitia FTPS salama",
             "fileluWebdavDesc": "FileLu kupitia WebDAV",

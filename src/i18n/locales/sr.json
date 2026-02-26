@@ -1193,7 +1193,7 @@
             "seafileDesc": "Отворено облак складиште",
             "seafileTooltip": "Seafile - Самохостовано отворено облак са подршком за WebDAV",
             "fileluDesc": "Вишепротоколна складишта у облаку",
-            "fileluTooltip": "FileLu - 20GB бесплатног простора са FTP, FTPS, WebDAV, S3 и нативним API-јем",
+            "fileluTooltip": "FileLu - 1GB бесплатног простора са FTP, FTPS, WebDAV, S3 и нативним API-јем",
             "fileluFtpDesc": "FileLu преко FTP",
             "fileluFtpsDesc": "FileLu преко безбедног FTPS",
             "fileluWebdavDesc": "FileLu преко WebDAV",

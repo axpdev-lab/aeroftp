@@ -1193,7 +1193,7 @@
             "seafileDesc": "ที่เก็บข้อมูลบนคลาวด์โอเพนซอร์ส",
             "seafileTooltip": "Seafile - คลาวด์โอเพนซอร์สที่โฮสต์เองพร้อมรองรับ WebDAV",
             "fileluDesc": "พื้นที่จัดเก็บคลาวด์รองรับหลายโปรโตคอล",
-            "fileluTooltip": "FileLu - พื้นที่จัดเก็บฟรี 20GB รองรับ FTP, FTPS, WebDAV, S3 และ API แบบเนทีฟ",
+            "fileluTooltip": "FileLu - พื้นที่จัดเก็บฟรี 1GB รองรับ FTP, FTPS, WebDAV, S3 และ API แบบเนทีฟ",
             "fileluFtpDesc": "FileLu ผ่าน FTP",
             "fileluFtpsDesc": "FileLu ผ่าน FTPS ที่ปลอดภัย",
             "fileluWebdavDesc": "FileLu ผ่าน WebDAV",

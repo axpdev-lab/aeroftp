@@ -1193,7 +1193,7 @@
             "seafileDesc": "Open source-skylagring",
             "seafileTooltip": "Seafile - Selvhostet open source-sky med WebDAV-understøttelse",
             "fileluDesc": "Multi-protokol cloud-lager",
-            "fileluTooltip": "FileLu - 20GB gratis lager med FTP, FTPS, WebDAV, S3 og native API",
+            "fileluTooltip": "FileLu - 1GB gratis lager med FTP, FTPS, WebDAV, S3 og native API",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via sikker FTPS",
             "fileluWebdavDesc": "FileLu via WebDAV",

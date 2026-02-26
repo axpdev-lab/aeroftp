@@ -1193,7 +1193,7 @@
             "seafileDesc": "Almacenamiento en la nube de código abierto",
             "seafileTooltip": "Seafile - Nube de código abierto autoalojada con compatibilidad WebDAV",
             "fileluDesc": "Almacenamiento en nube multiprotocolo",
-            "fileluTooltip": "FileLu - 20GB de almacenamiento gratuito con FTP, FTPS, WebDAV, S3 y API nativa",
+            "fileluTooltip": "FileLu - 1GB de almacenamiento gratuito con FTP, FTPS, WebDAV, S3 y API nativa",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via FTPS seguro",
             "fileluWebdavDesc": "FileLu via WebDAV",

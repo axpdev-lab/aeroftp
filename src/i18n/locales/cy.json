@@ -1193,7 +1193,7 @@
             "seafileDesc": "Storfa Cwmwl Cod Agored",
             "seafileTooltip": "Seafile - Cwmwl cod agored hunan-gynhaliol gyda chefnogaeth WebDAV",
             "fileluDesc": "Storfa Cwmwl Aml-Brotocol",
-            "fileluTooltip": "FileLu - 20GB o storfa am ddim gyda FTP, FTPS, WebDAV, S3 ac API brodorol",
+            "fileluTooltip": "FileLu - 1GB o storfa am ddim gyda FTP, FTPS, WebDAV, S3 ac API brodorol",
             "fileluFtpDesc": "FileLu drwy FTP",
             "fileluFtpsDesc": "FileLu drwy FTPS diogel",
             "fileluWebdavDesc": "FileLu drwy WebDAV",

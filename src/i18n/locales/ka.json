@@ -1193,7 +1193,7 @@
             "seafileDesc": "ღია კოდის ღრუბლოვანი საცავი",
             "seafileTooltip": "Seafile - თვითჰოსტინგის ღია კოდის ღრუბლი WebDAV მხარდაჭერით",
             "fileluDesc": "მრავალპროტოკოლიანი ღრუბლოვანი საცავი",
-            "fileluTooltip": "FileLu - 20GB უფასო საცავი FTP, FTPS, WebDAV, S3 და native API-ით",
+            "fileluTooltip": "FileLu - 1GB უფასო საცავი FTP, FTPS, WebDAV, S3 და native API-ით",
             "fileluFtpDesc": "FileLu FTP-ის საშუალებით",
             "fileluFtpsDesc": "FileLu უსაფრთხო FTPS-ის საშუალებით",
             "fileluWebdavDesc": "FileLu WebDAV-ის საშუალებით",

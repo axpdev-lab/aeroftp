@@ -1193,7 +1193,7 @@
             "seafileDesc": "Lưu trữ đám mây mã nguồn mở",
             "seafileTooltip": "Seafile - Đám mây mã nguồn mở tự lưu trữ với hỗ trợ WebDAV",
             "fileluDesc": "Lưu trữ đám mây đa giao thức",
-            "fileluTooltip": "FileLu - 20GB lưu trữ miễn phí với FTP, FTPS, WebDAV, S3 và API gốc",
+            "fileluTooltip": "FileLu - 1GB lưu trữ miễn phí với FTP, FTPS, WebDAV, S3 và API gốc",
             "fileluFtpDesc": "FileLu qua FTP",
             "fileluFtpsDesc": "FileLu qua FTPS bảo mật",
             "fileluWebdavDesc": "FileLu qua WebDAV",

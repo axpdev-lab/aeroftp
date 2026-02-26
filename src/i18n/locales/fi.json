@@ -1193,7 +1193,7 @@
             "seafileDesc": "Avoimen lähdekoodin pilvitallennustila",
             "seafileTooltip": "Seafile - Itse isännöity avoimen lähdekoodin pilvi WebDAV-tuella",
             "fileluDesc": "Moniprotokollinen pilvitallennus",
-            "fileluTooltip": "FileLu - 20GB ilmainen tallennustila FTP, FTPS, WebDAV, S3 ja natiivi API:lla",
+            "fileluTooltip": "FileLu - 1GB ilmainen tallennustila FTP, FTPS, WebDAV, S3 ja natiivi API:lla",
             "fileluFtpDesc": "FileLu FTP:n kautta",
             "fileluFtpsDesc": "FileLu suojatun FTPS:n kautta",
             "fileluWebdavDesc": "FileLu WebDAV:n kautta",

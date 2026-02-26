@@ -1847,7 +1847,7 @@
       "drimeDesc": "Secure Cloud Storage",
       "drimeTooltip": "Drime Cloud - 20GB free secure cloud storage with REST API",
       "fileluDesc": "Multi-Protocol Cloud Storage",
-      "fileluTooltip": "FileLu - 20GB free storage with FTP, FTPS, WebDAV, S3 and native API",
+      "fileluTooltip": "FileLu - 1GB free storage with FTP, FTPS, WebDAV, S3 and native API",
       "fileluFtpDesc": "FileLu via FTP",
       "fileluFtpsDesc": "FileLu via secure FTPS",
       "fileluWebdavDesc": "FileLu via WebDAV",

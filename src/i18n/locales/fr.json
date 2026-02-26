@@ -1193,7 +1193,7 @@
             "seafileDesc": "Stockage cloud open source",
             "seafileTooltip": "Seafile - Cloud open source auto-hébergé avec prise en charge WebDAV",
             "fileluDesc": "Stockage cloud multi-protocole",
-            "fileluTooltip": "FileLu - 20 Go de stockage gratuit avec FTP, FTPS, WebDAV, S3 et API native",
+            "fileluTooltip": "FileLu - 1 Go de stockage gratuit avec FTP, FTPS, WebDAV, S3 et API native",
             "fileluFtpDesc": "FileLu via FTP",
             "fileluFtpsDesc": "FileLu via FTPS sécurisé",
             "fileluWebdavDesc": "FileLu via WebDAV",

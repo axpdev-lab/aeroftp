@@ -1193,7 +1193,7 @@
             "seafileDesc": "Atvirojo kodo debesijos saugykla",
             "seafileTooltip": "Seafile - Savarankiškai talpinamas atvirojo kodo debesis su WebDAV palaikymu",
             "fileluDesc": "Daugiprotokolis debesų saugykla",
-            "fileluTooltip": "FileLu - 20GB nemokama saugykla su FTP, FTPS, WebDAV, S3 ir natyvia API",
+            "fileluTooltip": "FileLu - 1GB nemokama saugykla su FTP, FTPS, WebDAV, S3 ir natyvia API",
             "fileluFtpDesc": "FileLu per FTP",
             "fileluFtpsDesc": "FileLu per saugų FTPS",
             "fileluWebdavDesc": "FileLu per WebDAV",

@@ -1193,7 +1193,7 @@
             "seafileDesc": "ការប្រើក្លោដលើប្រភេទបើក",
             "seafileTooltip": "Seafile - ក្លោដប្រភេទបើកស្រោរោស្តដោយខ្លួនឯងដែលគាំទ្រត្រូវ WebDAV",
             "fileluDesc": "ការផ្ទុកទិន្នន័យលើពពកច្រើនពិធីការ",
-            "fileluTooltip": "FileLu - ទំហំផ្ទុក 20GB ដោយឥតគិតថ្លៃ រួមជាមួយ FTP, FTPS, WebDAV, S3 និង API ដើម",
+            "fileluTooltip": "FileLu - ទំហំផ្ទុក 1GB ដោយឥតគិតថ្លៃ រួមជាមួយ FTP, FTPS, WebDAV, S3 និង API ដើម",
             "fileluFtpDesc": "FileLu តាម FTP",
             "fileluFtpsDesc": "FileLu តាម FTPS ដែលមានសុវត្ថិភាព",
             "fileluWebdavDesc": "FileLu តាម WebDAV",

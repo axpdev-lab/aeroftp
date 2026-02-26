@@ -1193,7 +1193,7 @@
             "seafileDesc": "オープンソースクラウドストレージ",
             "seafileTooltip": "Seafile - WebDAV対応のセルフホスト型オープンソースクラウド",
             "fileluDesc": "マルチプロトコルクラウドストレージ",
-            "fileluTooltip": "FileLu - FTP、FTPS、WebDAV、S3およびネイティブAPI対応の20GB無料ストレージ",
+            "fileluTooltip": "FileLu - FTP、FTPS、WebDAV、S3およびネイティブAPI対応の1GB無料ストレージ",
             "fileluFtpDesc": "FTP経由のFileLu",
             "fileluFtpsDesc": "セキュアなFTPS経由のFileLu",
             "fileluWebdavDesc": "WebDAV経由のFileLu",

@@ -1193,7 +1193,7 @@
             "seafileDesc": "Açık kaynak bulut depolama",
             "seafileTooltip": "Seafile - WebDAV destekli, kendi sunucunuzda barındırılan açık kaynak bulut",
             "fileluDesc": "Çok protokollü bulut depolama",
-            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 ve yerel API destekli 20GB ücretsiz depolama",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 ve yerel API destekli 1GB ücretsiz depolama",
             "fileluFtpDesc": "FileLu FTP üzerinden",
             "fileluFtpsDesc": "FileLu güvenli FTPS üzerinden",
             "fileluWebdavDesc": "FileLu WebDAV üzerinden",

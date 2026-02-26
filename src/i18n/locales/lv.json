@@ -1193,7 +1193,7 @@
             "seafileDesc": "Atvērtā pirmkoda mākoņkrātuve",
             "seafileTooltip": "Seafile - Pašmitinots atvērtā pirmkoda mākonis ar WebDAV atbalstu",
             "fileluDesc": "Daudzprotokolu mākoņkrātuve",
-            "fileluTooltip": "FileLu - 20GB bezmaksas krātuve ar FTP, FTPS, WebDAV, S3 un natīvo API",
+            "fileluTooltip": "FileLu - 1GB bezmaksas krātuve ar FTP, FTPS, WebDAV, S3 un natīvo API",
             "fileluFtpDesc": "FileLu caur FTP",
             "fileluFtpsDesc": "FileLu caur drošo FTPS",
             "fileluWebdavDesc": "FileLu caur WebDAV",

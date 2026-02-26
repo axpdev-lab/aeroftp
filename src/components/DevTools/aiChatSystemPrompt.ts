@@ -230,7 +230,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Download**: POST \`/file/direct_link\` to get URL → stream from URL.
 - **Features**: list, upload, download, mkdir, delete, rename, move (set_folder/folder/move), clone, share link, storage quota.
 - **Also supports**: FTP/FTPS (ftp.filelu.com:21/990), WebDAV, S3-compatible (S5).
-- **Storage**: 20GB free.
+- **Storage**: 1GB free.
 
 ### Archives & Encryption
 - **ZIP**: AES-256 encryption, compression levels 0-9.
@@ -325,7 +325,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         kdrive: '### Infomaniak kDrive\n- **Auth**: API Token (Bearer). Swiss-hosted. 15GB free. 60 req/min rate limit.',
         drime: '### Drime Cloud\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
-        filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 20GB free.',
+        filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 1GB free.',
     };
 
     const active = activeProvider ? sections[activeProvider.toLowerCase()] || '' : '';

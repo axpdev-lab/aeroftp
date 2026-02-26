@@ -1193,7 +1193,7 @@
             "seafileDesc": "Penyimpanan Cloud Sumber Terbuka",
             "seafileTooltip": "Seafile - Cloud sumber terbuka yang dihosting sendiri dengan dukungan WebDAV",
             "fileluDesc": "Penyimpanan awan multi-protokol",
-            "fileluTooltip": "FileLu - 20GB penyimpanan gratis dengan FTP, FTPS, WebDAV, S3 dan API native",
+            "fileluTooltip": "FileLu - 1GB penyimpanan gratis dengan FTP, FTPS, WebDAV, S3 dan API native",
             "fileluFtpDesc": "FileLu melalui FTP",
             "fileluFtpsDesc": "FileLu melalui FTPS yang aman",
             "fileluWebdavDesc": "FileLu melalui WebDAV",

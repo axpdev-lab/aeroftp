@@ -1193,7 +1193,7 @@
             "seafileDesc": "Облачно хранилище с отворен код",
             "seafileTooltip": "Seafile - Самостоятелно хоствано облачно хранилище с отворен код с поддръжка на WebDAV",
             "fileluDesc": "Многопротоколно облачно хранилище",
-            "fileluTooltip": "FileLu - 20GB безплатно хранилище с FTP, FTPS, WebDAV, S3 и нативен API",
+            "fileluTooltip": "FileLu - 1GB безплатно хранилище с FTP, FTPS, WebDAV, S3 и нативен API",
             "fileluFtpDesc": "FileLu чрез FTP",
             "fileluFtpsDesc": "FileLu чрез защитен FTPS",
             "fileluWebdavDesc": "FileLu чрез WebDAV",

@@ -1193,7 +1193,7 @@
             "seafileDesc": "开源云存储",
             "seafileTooltip": "Seafile - 支持WebDAV的自托管开源云存储",
             "fileluDesc": "多协议云存储",
-            "fileluTooltip": "FileLu - 支持 FTP、FTPS、WebDAV、S3 和原生 API 的 20GB 免费存储",
+            "fileluTooltip": "FileLu - 支持 FTP、FTPS、WebDAV、S3 和原生 API 的 1GB 免费存储",
             "fileluFtpDesc": "通过 FTP 连接 FileLu",
             "fileluFtpsDesc": "通过安全 FTPS 连接 FileLu",
             "fileluWebdavDesc": "通过 WebDAV 连接 FileLu",
