@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 25 February 2026
-> Version: v2.6.6 (AeroCloud Multi-Protocol, SFTP Symlink Fix, Connection Save Fix)
+> Last Updated: 26 February 2026
+> Version: v2.7.0 (FileLu Native API — 19th Protocol)
 
 ---
 
@@ -28,21 +28,22 @@
 | **Zoho WorkDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Internxt Drive** | Client-side AES-256-CTR | Password (PBKDF2 + BIP39) | secrecy (zero-on-drop) | E2E Encrypted |
 | **kDrive** | HTTPS | API Token (Bearer) | Universal Vault | TLS Certificate |
+| **FileLu** | HTTPS | API Key | Universal Vault | TLS Certificate |
 
 ### Security Features by Protocol
 
-| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive |
-|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes |
-| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - |
-| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - | - | - |
-| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
-| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - | - | - |
-| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - |
-| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes | Yes | - |
-| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu |
+|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|
+| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
+| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - | - |
+| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - | - | - | - |
+| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - | - | - | - |
+| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - |
+| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes | Yes | - | - |
+| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -50,17 +51,17 @@
 
 ### Core Operations
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive |
-|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|
-| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes | Yes | Yes | Yes*** |
-| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu |
+|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|
+| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes | Yes | Yes | Yes*** | Yes |
+| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No | Yes |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete
@@ -68,23 +69,28 @@
 
 ### Advanced Operations (v1.4.0)
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive |
-|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|
-| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes |
-| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - |
-| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu |
+|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|
+| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes | Yes† |
+| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
+| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
+| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
+| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Remote URL Fetch** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
+| **File Password** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
+| **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
+
+†FileLu Server Copy = server-side clone (`filelu_clone_file`)
 
 ---
 
@@ -106,6 +112,26 @@
 | **Zoho WorkDrive** | Native | `provider_create_share_link` | Team share link |
 | **Internxt Drive** | Native | `provider_create_share_link` | E2E encrypted share link |
 | **kDrive** | — | — | Not yet implemented |
+| **FileLu** | Native | `provider_create_share_link` | Public share link via FileLu API |
+
+---
+
+## FileLu Special Features (v2.7.0)
+
+FileLu exposes privacy and management features beyond generic file operations:
+
+| Feature | API Endpoint | Tauri Command | Notes |
+|---------|-------------|---------------|-------|
+| **File Password** | `/file/set_password` | `filelu_set_file_password` | Set or remove password on any file |
+| **Privacy Toggle** | `/file/only_me` | `filelu_set_file_privacy` | Toggle private (only-me) or public visibility |
+| **Server Clone** | `/file/clone` | `filelu_clone_file` | Duplicate file server-side; returns share URL |
+| **Folder Password** | `/folder/set_password` | `filelu_set_folder_password` | Requires `fld_token` from folder listing |
+| **Folder Settings** | `/folder/setting` | `filelu_set_folder_settings` | FileDrop (anonymous uploads) + Public Folder |
+| **List Trash** | `/files/deleted` | `filelu_list_deleted` | Returns deleted files with timestamps |
+| **Restore File** | `/file/restore` | `filelu_restore_file` | Restore by `file_code` |
+| **Restore Folder** | `/folder/restore` | `filelu_restore_folder` | Restore by `fld_id` |
+| **Permanent Delete** | `/file/remove` | `filelu_permanent_delete` | Bypass trash, irrecoverable |
+| **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |
 
 ---
 
@@ -214,6 +240,7 @@ Bidirectional directory synchronization compares local and remote files by times
 | **Zoho WorkDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Internxt Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **kDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **FileLu** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 
 ### Sync Modes
 - **Remote → Local**: Download newer remote files
@@ -242,7 +269,7 @@ Persistent JSON index stored at `~/.config/aeroftp/sync-index/` enables:
 
 ## Provider Keep-Alive (v1.5.1)
 
-All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt Drive, and kDrive.
+All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt Drive, kDrive, and FileLu.
 
 ---
 
@@ -255,6 +282,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 | **InfiniCLOUD** | Stable | Japan-based, 20 GB free |
 | **CloudMe** | Stable | Swedish, 3 GB free, Digest auth (auto-detected) |
 | **Nextcloud** | Beta | Self-hosted WebDAV |
+| **Seafile** | Stable | Self-hosted or cloud, WebDAV via `seafdav` endpoint |
 
 ---
 
@@ -309,6 +337,15 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 - ID-based file system, cursor-based pagination, server-side copy
 - API: `https://api.infomaniak.com/`
 
+### FileLu (v2.7.0)
+
+- Privacy-focused cloud storage with 20 GB free
+- Auth: API Key (generated from Account Settings → Developer API Key)
+- Native REST API with full `StorageProvider` trait implementation
+- FTP/FTPS/WebDAV/S3-compatible access also available as separate presets
+- Special features: file/folder password, private/public toggle, server-side clone, trash management, remote URL upload
+- API: `https://api.filelu.com/`
+
 ---
 
 ## AeroAgent AI (v1.6.0)
@@ -339,7 +376,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 45 tools work identically across all 17 protocols via the `StorageProvider` trait:
+All 45 tools work identically across all 19 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -521,11 +558,13 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.5.2 | **AeroImage** — Built-in image editor (crop, resize, rotate, flip, color adjustments, effects, 6 output formats) | Done |
 | v2.6.0 | **AeroAgent Ecosystem** — 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
 
+| v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
+
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.7.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
+| v2.8.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
 
 ---
 

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nome da conexion (opcional)",
             "cancelEditing": "Cancelar edicion",
             "saveChanges": "Gardar cambios",
+            "createAccount": "Crear conta",
             "docs": "Documentacion",
             "minutes": "minutos",
             "localPathPlaceholder": "/home/usuario/proxectos",
@@ -724,7 +725,9 @@
             "selectAll": "Seleccionar Todo",
             "deselectAll": "Deseleccionar Todo",
             "selected": "seleccionados",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Se non se definiu ningunha icona, o favicon ou o icon.png do servidor detéctase automaticamente.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Non se puido mover ao lixo",
             "batchRenameResult": "{success} renomeados, {errors} fallidos",
             "copyCompleted": "Copia completada",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Non se atopou o cartafol local \"{path}\". Navegouse ao directorio de inicio."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideal para nubes autoxestionadas, dispositivos NAS e compartición de arquivos.",
             "selectProviderPrompt": "Selecciona un provedor anterior ou escolle \"Custom\"",
             "seafileDesc": "Almacenamento na nube de código aberto",
-            "seafileTooltip": "Seafile - Nube de código aberto autoaloxada con compatibilidade WebDAV"
+            "seafileTooltip": "Seafile - Nube de código aberto autoaloxada con compatibilidade WebDAV",
+            "fileluDesc": "Almacenamento na nube multiprotocolo",
+            "fileluTooltip": "FileLu - 20GB de almacenamento gratuíto con FTP, FTPS, WebDAV, S3 e API nativa",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via FTPS seguro",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 almacenamento compatible con S3"
         },
         "shortcuts": {
             "title": "Atallos de teclado",
@@ -3111,6 +3120,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Establecer contrasinal do ficheiro",
+            "enterFilePassword": "Introduce o contrasinal (deixa en branco para eliminalo):",
+            "filePasswordSet": "Contrasinal do ficheiro establecido",
+            "filePasswordRemoved": "Contrasinal do ficheiro eliminado",
+            "filePasswordError": "Non se puido establecer o contrasinal do ficheiro",
+            "togglePrivate": "Establecer como privado",
+            "fileSetPrivate": "O ficheiro agora é privado",
+            "makePublic": "Establecer como público",
+            "fileSetPublic": "O ficheiro agora é público",
+            "cloneFile": "Clonar ficheiro (no servidor)",
+            "cloneSuccess": "Ficheiro clonado — URL copiada ao portapapeis",
+            "cloneError": "A clonación fallou",
+            "setFolderPassword": "Establecer contrasinal do cartafol",
+            "enterFolderPassword": "Introduce o contrasinal do cartafol (deixa en branco para eliminalo):",
+            "folderPasswordSet": "Contrasinal do cartafol establecido",
+            "folderPasswordRemoved": "Contrasinal do cartafol eliminado",
+            "folderPasswordError": "Non se puido establecer o contrasinal do cartafol",
+            "folderSettings": "Configuración do cartafol",
+            "filedrop": "FileDrop (permitir subidas de calquera persoa)",
+            "filedropDesc": "Outras persoas poden subir ficheiros a este cartafol sen conta",
+            "folderPublic": "Cartafol público",
+            "folderPublicDesc": "Calquera pode explorar o contido deste cartafol",
+            "folderSettingsSaved": "Configuración do cartafol gardada",
+            "viewTrash": "Ver ficheiros eliminados",
+            "remoteUrlUpload": "Subir desde URL",
+            "remoteUrlUploadDesc": "Pega un enlace directo — FileLu descargará o ficheiro no servidor",
+            "remoteUrlDest": "Destino",
+            "remoteUrlUploaded": "Subida iniciada (file_code: {code})",
+            "remoteUrlError": "A subida desde URL remota fallou",
+            "startUpload": "Iniciar subida",
+            "trashTitle": "FileLu Ficheiros eliminados",
+            "restoreSelected": "Restaurar seleccionados",
+            "permanentDelete": "Eliminar permanentemente",
+            "permanentDeleteOne": "Eliminar permanentemente",
+            "trashEmpty": "Non hai ficheiros eliminados",
+            "restore": "Restaurar",
+            "trashFooter": "Os ficheiros restaurados reaparecerán no seu cartafol orixinal"
+        }
     }
 }

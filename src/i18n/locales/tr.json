@@ -144,6 +144,7 @@
             "connectionNameOptional": "Bağlantı adı (isteğe bağlı)",
             "cancelEditing": "Düzenlemeyi İptal Et",
             "saveChanges": "Değişiklikleri Kaydet",
+            "createAccount": "Hesap Oluştur",
             "docs": "Belgeler",
             "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Tümünü Seç",
             "deselectAll": "Tümünün Seçimini Kaldır",
             "selected": "seçili",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Herhangi bir simge ayarlanmamışsa, sunucudaki favicon veya icon.png otomatik olarak algılanır.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Çöp Kutusuna taşıma başarısız oldu",
             "batchRenameResult": "{success} yeniden adlandırıldı, {errors} başarısız",
             "copyCompleted": "Kopyalama tamamlandı",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Yerel klasör \"{path}\" bulunamadı. Ana dizine gidildi."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Kendi kendine barındırılan bulutlar, NAS cihazları ve dosya paylaşımı için ideal.",
             "selectProviderPrompt": "Yukarıdaki bir sağlayıcı seçin veya \"Custom\" seçeneğini seçin",
             "seafileDesc": "Açık kaynak bulut depolama",
-            "seafileTooltip": "Seafile - WebDAV destekli, kendi sunucunuzda barındırılan açık kaynak bulut"
+            "seafileTooltip": "Seafile - WebDAV destekli, kendi sunucunuzda barındırılan açık kaynak bulut",
+            "fileluDesc": "Çok protokollü bulut depolama",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 ve yerel API destekli 20GB ücretsiz depolama",
+            "fileluFtpDesc": "FileLu FTP üzerinden",
+            "fileluFtpsDesc": "FileLu güvenli FTPS üzerinden",
+            "fileluWebdavDesc": "FileLu WebDAV üzerinden",
+            "fileluS3Desc": "FileLu S5 S3 uyumlu depolama"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -3092,6 +3101,45 @@
                     "installed": "Yüklü"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Dosya Parolası Belirle",
+            "enterFilePassword": "Parola girin (kaldırmak için boş bırakın):",
+            "filePasswordSet": "Dosya parolası belirlendi",
+            "filePasswordRemoved": "Dosya parolası kaldırıldı",
+            "filePasswordError": "Dosya parolası belirlenemedi",
+            "togglePrivate": "Gizli Olarak Ayarla",
+            "fileSetPrivate": "Dosya artık gizli",
+            "makePublic": "Herkese Açık Olarak Ayarla",
+            "fileSetPublic": "Dosya artık herkese açık",
+            "cloneFile": "Dosyayı Kopyala (sunucu tarafında)",
+            "cloneSuccess": "Dosya kopyalandı — URL panoya kopyalandı",
+            "cloneError": "Kopyalama başarısız oldu",
+            "setFolderPassword": "Klasör Parolası Belirle",
+            "enterFolderPassword": "Klasör parolası girin (kaldırmak için boş bırakın):",
+            "folderPasswordSet": "Klasör parolası belirlendi",
+            "folderPasswordRemoved": "Klasör parolası kaldırıldı",
+            "folderPasswordError": "Klasör parolası belirlenemedi",
+            "folderSettings": "Klasör Ayarları",
+            "filedrop": "FileDrop (herkesten yüklemeye izin ver)",
+            "filedropDesc": "Diğerleri bu klasöre hesap olmadan dosya yükleyebilir",
+            "folderPublic": "Herkese Açık Klasör",
+            "folderPublicDesc": "Herkes bu klasörün içeriğine göz atabilir",
+            "folderSettingsSaved": "Klasör ayarları kaydedildi",
+            "viewTrash": "Silinen Dosyaları Görüntüle",
+            "remoteUrlUpload": "URL'den Yükle",
+            "remoteUrlUploadDesc": "Doğrudan bir bağlantı yapıştırın — FileLu dosyayı sunucu tarafında indirecek",
+            "remoteUrlDest": "Hedef",
+            "remoteUrlUploaded": "Yükleme başladı (file_code: {code})",
+            "remoteUrlError": "Uzak URL'den yükleme başarısız oldu",
+            "startUpload": "Yüklemeyi Başlat",
+            "trashTitle": "FileLu Silinen Dosyaları",
+            "restoreSelected": "Seçilileri geri yükle",
+            "permanentDelete": "Kalıcı olarak sil",
+            "permanentDeleteOne": "Kalıcı olarak sil",
+            "trashEmpty": "Silinmiş dosya yok",
+            "restore": "Geri Yükle",
+            "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir"
         }
     }
 }

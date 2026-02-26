@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nama sambungan (pilihan)",
             "cancelEditing": "Batal Pengeditan",
             "saveChanges": "Simpan Perubahan",
+            "createAccount": "Cipta Akaun",
             "docs": "Dokumen",
             "minutes": "minit",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Pilih Semua",
             "deselectAll": "Nyahpilih Semua",
             "selected": "dipilih",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Jika tiada ikon ditetapkan, favicon atau icon.png daripada pelayan akan dikesan secara automatik.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Gagal memindahkan ke Sampah",
             "batchRenameResult": "{success} dinamakan semula, {errors} gagal",
             "copyCompleted": "Penyalinan selesai",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Folder tempatan \"{path}\" tidak ditemui. Telah dinavigasi ke direktori rumah."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Sesuai untuk awan yang dihos sendiri, peranti NAS dan perkongsian fail.",
             "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\"",
             "seafileDesc": "Storan Awan Sumber Terbuka",
-            "seafileTooltip": "Seafile - Awan sumber terbuka hos sendiri dengan sokongan WebDAV"
+            "seafileTooltip": "Seafile - Awan sumber terbuka hos sendiri dengan sokongan WebDAV",
+            "fileluDesc": "Storan awan pelbagai protokol",
+            "fileluTooltip": "FileLu - 20GB storan percuma dengan FTP, FTPS, WebDAV, S3 dan API natif",
+            "fileluFtpDesc": "FileLu melalui FTP",
+            "fileluFtpsDesc": "FileLu melalui FTPS yang selamat",
+            "fileluWebdavDesc": "FileLu melalui WebDAV",
+            "fileluS3Desc": "FileLu S5 storan serasi S3"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -3092,6 +3101,45 @@
                     "installed": "Dipasang"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Tetapkan Kata Laluan Fail",
+            "enterFilePassword": "Masukkan kata laluan (biarkan kosong untuk mengeluarkan):",
+            "filePasswordSet": "Kata laluan fail telah ditetapkan",
+            "filePasswordRemoved": "Kata laluan fail telah dikeluarkan",
+            "filePasswordError": "Gagal menetapkan kata laluan fail",
+            "togglePrivate": "Tetapkan sebagai Peribadi",
+            "fileSetPrivate": "Fail kini bersifat peribadi",
+            "makePublic": "Tetapkan sebagai Awam",
+            "fileSetPublic": "Fail kini bersifat awam",
+            "cloneFile": "Klon Fail (sisi pelayan)",
+            "cloneSuccess": "Fail telah diklon — URL disalin ke papan klip",
+            "cloneError": "Pengklonan gagal",
+            "setFolderPassword": "Tetapkan Kata Laluan Folder",
+            "enterFolderPassword": "Masukkan kata laluan folder (biarkan kosong untuk mengeluarkan):",
+            "folderPasswordSet": "Kata laluan folder telah ditetapkan",
+            "folderPasswordRemoved": "Kata laluan folder telah dikeluarkan",
+            "folderPasswordError": "Gagal menetapkan kata laluan folder",
+            "folderSettings": "Tetapan Folder",
+            "filedrop": "FileDrop (benarkan muat naik daripada sesiapa sahaja)",
+            "filedropDesc": "Orang lain boleh memuat naik fail ke folder ini tanpa akaun",
+            "folderPublic": "Folder Awam",
+            "folderPublicDesc": "Sesiapa sahaja boleh melayari kandungan folder ini",
+            "folderSettingsSaved": "Tetapan folder disimpan",
+            "viewTrash": "Lihat Fail yang Dipadam",
+            "remoteUrlUpload": "Muat Naik dari URL",
+            "remoteUrlUploadDesc": "Tampal pautan terus — FileLu akan memuat turun fail di sisi pelayan",
+            "remoteUrlDest": "Destinasi",
+            "remoteUrlUploaded": "Muat naik dimulakan (file_code: {code})",
+            "remoteUrlError": "Muat naik URL jauh gagal",
+            "startUpload": "Mulakan Muat Naik",
+            "trashTitle": "FileLu Fail yang Dipadam",
+            "restoreSelected": "Pulihkan yang dipilih",
+            "permanentDelete": "Padam secara kekal",
+            "permanentDeleteOne": "Padam secara kekal",
+            "trashEmpty": "Tiada fail yang dipadam",
+            "restore": "Pulihkan",
+            "trashFooter": "Fail yang dipulihkan akan muncul semula dalam folder asalnya"
         }
     }
 }

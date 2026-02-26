@@ -16,10 +16,8 @@
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
-
-// List of provider protocols (non-FTP)
-const PROVIDER_PROTOCOLS = ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp'];
 
 interface DragData {
     files: string[];  // File names being dragged
@@ -82,7 +80,8 @@ export function useDragAndDrop({
     // Helper: Check if current connection is a Provider (non-FTP)
     const isProvider = useCallback(() => {
         const effectiveProtocol = getEffectiveProtocol();
-        return effectiveProtocol && PROVIDER_PROTOCOLS.includes(effectiveProtocol);
+        if (!effectiveProtocol) return false;
+        return isNonFtpProvider(effectiveProtocol as ProviderType);
     }, [getEffectiveProtocol]);
 
     /**

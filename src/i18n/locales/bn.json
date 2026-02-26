@@ -144,6 +144,7 @@
             "connectionNameOptional": "সংযোগের নাম (ঐচ্ছিক)",
             "cancelEditing": "সম্পাদনা বাতিল করুন",
             "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
+            "createAccount": "অ্যাকাউন্ট তৈরি করুন",
             "docs": "ডকুমেন্টস",
             "minutes": "মিনিট",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "সবগুলো নির্বাচন করুন",
             "deselectAll": "সবগুলো অনির্বাচন করুন",
             "selected": "নির্বাচিত",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "কোনো আইকন সেট না থাকলে, সার্ভার থেকে favicon বা icon.png স্বয়ংক্রিয়ভাবে শনাক্ত করা হয়।",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "ট্র্যাশে সরাতে ব্যর্থ হয়েছে",
             "batchRenameResult": "{success} পুনঃনামকরণ হয়েছে, {errors} ব্যর্থ হয়েছে",
             "copyCompleted": "অনুলিপি সম্পন্ন",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "স্থানীয় ফোল্ডার \"{path}\" পাওয়া যায়নি। হোম ডিরেক্টরিতে নেভিগেট করা হয়েছে।"
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "স্ব-হোস্টেড ক্লাউড, NAS ডিভাইস এবং ফাইল শেয়ারিংয়ের জন্য আদর্শ।",
             "selectProviderPrompt": "উপরে একটি প্রদানকারী নির্বাচন করুন বা \"Custom\" চয়ন করুন",
             "seafileDesc": "ওপেন-সোর্স ক্লাউড স্টোরেজ",
-            "seafileTooltip": "Seafile - WebDAV সমর্থন সহ স্ব-হোস্টেড ওপেন-সোর্স ক্লাউড"
+            "seafileTooltip": "Seafile - WebDAV সমর্থন সহ স্ব-হোস্টেড ওপেন-সোর্স ক্লাউড",
+            "fileluDesc": "মাল্টি-প্রোটোকল ক্লাউড স্টোরেজ",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 এবং নেটিভ API সহ 20GB বিনামূল্যে স্টোরেজ",
+            "fileluFtpDesc": "FTP এর মাধ্যমে FileLu",
+            "fileluFtpsDesc": "নিরাপদ FTPS এর মাধ্যমে FileLu",
+            "fileluWebdavDesc": "WebDAV এর মাধ্যমে FileLu",
+            "fileluS3Desc": "FileLu S5 S3-সামঞ্জস্যপূর্ণ স্টোরেজ"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -3089,6 +3098,45 @@
                     "installed": "ইনস্টল করা"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "ফাইল পাসওয়ার্ড সেট করুন",
+            "enterFilePassword": "পাসওয়ার্ড লিখুন (সরাতে ফাঁকা রাখুন):",
+            "filePasswordSet": "ফাইল পাসওয়ার্ড সেট হয়েছে",
+            "filePasswordRemoved": "ফাইল পাসওয়ার্ড সরানো হয়েছে",
+            "filePasswordError": "ফাইল পাসওয়ার্ড সেট করতে ব্যর্থ হয়েছে",
+            "togglePrivate": "প্রাইভেট হিসেবে সেট করুন",
+            "fileSetPrivate": "ফাইলটি এখন প্রাইভেট",
+            "makePublic": "পাবলিক হিসেবে সেট করুন",
+            "fileSetPublic": "ফাইলটি এখন পাবলিক",
+            "cloneFile": "ফাইল ক্লোন করুন (সার্ভার-সাইড)",
+            "cloneSuccess": "ফাইল ক্লোন করা হয়েছে — URL ক্লিপবোর্ডে কপি হয়েছে",
+            "cloneError": "ক্লোন ব্যর্থ হয়েছে",
+            "setFolderPassword": "ফোল্ডার পাসওয়ার্ড সেট করুন",
+            "enterFolderPassword": "ফোল্ডার পাসওয়ার্ড লিখুন (সরাতে ফাঁকা রাখুন):",
+            "folderPasswordSet": "ফোল্ডার পাসওয়ার্ড সেট হয়েছে",
+            "folderPasswordRemoved": "ফোল্ডার পাসওয়ার্ড সরানো হয়েছে",
+            "folderPasswordError": "ফোল্ডার পাসওয়ার্ড সেট করতে ব্যর্থ হয়েছে",
+            "folderSettings": "ফোল্ডার সেটিংস",
+            "filedrop": "FileDrop (যে কেউ আপলোড করতে দিন)",
+            "filedropDesc": "অন্যরা অ্যাকাউন্ট ছাড়াই এই ফোল্ডারে ফাইল আপলোড করতে পারবেন",
+            "folderPublic": "পাবলিক ফোল্ডার",
+            "folderPublicDesc": "যে কেউ এই ফোল্ডারের বিষয়বস্তু দেখতে পারবেন",
+            "folderSettingsSaved": "ফোল্ডার সেটিংস সংরক্ষিত হয়েছে",
+            "viewTrash": "মুছে ফেলা ফাইল দেখুন",
+            "remoteUrlUpload": "URL থেকে আপলোড করুন",
+            "remoteUrlUploadDesc": "একটি সরাসরি লিংক পেস্ট করুন — FileLu সার্ভার-সাইড থেকে ফাইলটি ডাউনলোড করবে",
+            "remoteUrlDest": "গন্তব্য",
+            "remoteUrlUploaded": "আপলোড শুরু হয়েছে (file_code: {code})",
+            "remoteUrlError": "রিমোট URL আপলোড ব্যর্থ হয়েছে",
+            "startUpload": "আপলোড শুরু করুন",
+            "trashTitle": "FileLu মুছে ফেলা ফাইল",
+            "restoreSelected": "নির্বাচিত পুনরুদ্ধার করুন",
+            "permanentDelete": "স্থায়ীভাবে মুছুন",
+            "permanentDeleteOne": "স্থায়ীভাবে মুছুন",
+            "trashEmpty": "কোনো মুছে ফেলা ফাইল নেই",
+            "restore": "পুনরুদ্ধার করুন",
+            "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে"
         }
     }
 }

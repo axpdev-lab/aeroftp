@@ -144,6 +144,7 @@
             "connectionNameOptional": "Име на врска (опционално)",
             "cancelEditing": "Откажи уредување",
             "saveChanges": "Зачувај промени",
+            "createAccount": "Креирај сметка",
             "docs": "Документација",
             "minutes": "минути",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Избери ги сите",
             "deselectAll": "Откажи го изборот на сите",
             "selected": "избрано",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ако не е поставена икона, favicon или icon.png од серверот се откриваат автоматски.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Неуспешно преместување во Корпа",
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
             "copyCompleted": "Копирањето е завршено",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Локалната папка \"{path}\" не е пронајдена. Пренасочено кон домашниот директориум."
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Идеално за самохостирани облаци, NAS уреди и споделување датотеки.",
             "selectProviderPrompt": "Изберете пружател погоре или изберете \"Custom\"",
             "seafileDesc": "Облак со отворен код",
-            "seafileTooltip": "Seafile - Самохостиран облак со отворен код со WebDAV поддршка"
+            "seafileTooltip": "Seafile - Самохостиран облак со отворен код со WebDAV поддршка",
+            "fileluDesc": "Мулти-протоколно складирање во облак",
+            "fileluTooltip": "FileLu - 20GB бесплатно складирање со FTP, FTPS, WebDAV, S3 и native API",
+            "fileluFtpDesc": "FileLu преку FTP",
+            "fileluFtpsDesc": "FileLu преку безбеден FTPS",
+            "fileluWebdavDesc": "FileLu преку WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-компатибилно складирање"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -3111,6 +3120,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Постави лозинка за датотека",
+            "enterFilePassword": "Внесете лозинка (оставете празно за отстранување):",
+            "filePasswordSet": "Лозинката за датотека е поставена",
+            "filePasswordRemoved": "Лозинката за датотека е отстранета",
+            "filePasswordError": "Неуспешно поставување на лозинка за датотека",
+            "togglePrivate": "Постави како приватно",
+            "fileSetPrivate": "Датотеката е сега приватна",
+            "makePublic": "Постави како јавно",
+            "fileSetPublic": "Датотеката е сега јавна",
+            "cloneFile": "Клонирај датотека (на страна на сервер)",
+            "cloneSuccess": "Датотеката е клонирана — URL е копиран во клипборд",
+            "cloneError": "Клонирањето не успеа",
+            "setFolderPassword": "Постави лозинка за папка",
+            "enterFolderPassword": "Внесете лозинка за папка (оставете празно за отстранување):",
+            "folderPasswordSet": "Лозинката за папка е поставена",
+            "folderPasswordRemoved": "Лозинката за папка е отстранета",
+            "folderPasswordError": "Неуспешно поставување на лозинка за папка",
+            "folderSettings": "Поставки на папка",
+            "filedrop": "FileDrop (дозволи прикачување од секого)",
+            "filedropDesc": "Другите можат да прикачуваат датотеки во оваа папка без сметка",
+            "folderPublic": "Јавна папка",
+            "folderPublicDesc": "Секој може да ја прелистува содржината на оваа папка",
+            "folderSettingsSaved": "Поставките на папката се зачувани",
+            "viewTrash": "Прикажи избришани датотеки",
+            "remoteUrlUpload": "Прикачи од URL",
+            "remoteUrlUploadDesc": "Залепете директна врска — FileLu ќе ја преземе датотеката на страна на сервер",
+            "remoteUrlDest": "Одредиште",
+            "remoteUrlUploaded": "Прикачувањето е започнато (file_code: {code})",
+            "remoteUrlError": "Прикачувањето од оддалечен URL не успеа",
+            "startUpload": "Започни прикачување",
+            "trashTitle": "FileLu избришани датотеки",
+            "restoreSelected": "Врати избрани",
+            "permanentDelete": "Трајно бришење",
+            "permanentDeleteOne": "Трајно бришење",
+            "trashEmpty": "Нема избришани датотеки",
+            "restore": "Врати",
+            "trashFooter": "Вратените датотеки ќе се повторно прикажат во нивната оригинална папка"
+        }
     }
 }

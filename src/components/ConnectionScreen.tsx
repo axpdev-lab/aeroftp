@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -454,6 +454,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
 
+    // Track which preset fields have been unlocked for editing
+    const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
+
     // When re-opening dropdown with a protocol already selected, clear the selection
     const handleProtocolSelectorOpenChange = (open: boolean) => {
         setIsProtocolSelectorOpen(open);
@@ -528,6 +531,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
 
+        const normalizedParams = protocol === 'filelu'
+            ? {
+                ...connectionParams,
+                server: connectionParams.server || 'filelu.com',
+                username: connectionParams.username || 'api-key',
+                port: connectionParams.port || 443,
+            }
+            : connectionParams;
+
         // MEGA: Add/Update session expiry (24h)
         const optionsToSave = { ...connectionParams.options };
         if (protocol === 'mega') {
@@ -545,9 +557,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     return {
                         ...s,
                         name: connectionName || s.name,
-                        host: connectionParams.server,
-                        port: connectionParams.port || getDefaultPort(protocol),
-                        username: connectionParams.username,
+                        host: normalizedParams.server,
+                        port: normalizedParams.port || getDefaultPort(protocol),
+                        username: normalizedParams.username,
                         hasStoredCredential: credentialStored || (s.hasStoredCredential && !connectionParams.password),
                         protocol: protocol as ProviderType,
                         options: optionsToSave,
@@ -569,10 +581,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
             const newServer: ServerProfile = {
                 id: newId,
-                name: connectionName || connectionParams.server || protocol,
-                host: connectionParams.server,
-                port: connectionParams.port || getDefaultPort(protocol),
-                username: connectionParams.username,
+                name: connectionName || normalizedParams.server || protocol,
+                host: normalizedParams.server,
+                port: normalizedParams.port || getDefaultPort(protocol),
+                username: normalizedParams.username,
                 hasStoredCredential: credentialStored,
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
@@ -634,34 +646,40 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return (
             <div className="mt-2">
                 <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
-                <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[proto] || PROTOCOL_COLORS.ftp} text-white`}`}>
-                        {customIconForSave ? (
-                            <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
-                        ) : faviconForSave ? (
-                            <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
-                        ) : (
-                            <span className="font-bold text-sm">{letter}</span>
-                        )}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={pickCustomIcon}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
-                    >
-                        <Image size={12} />
-                        {t('settings.chooseIcon')}
-                    </button>
-                    {customIconForSave && (
+                <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-3 flex-1">
+                        <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[proto] || PROTOCOL_COLORS.ftp} text-white`}`}>
+                            {customIconForSave ? (
+                                <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                            ) : faviconForSave ? (
+                                <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                            ) : (
+                                <span className="font-bold text-sm">{letter}</span>
+                            )}
+                        </div>
                         <button
                             type="button"
-                            onClick={() => setCustomIconForSave(undefined)}
-                            className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
-                            title={t('settings.removeIcon')}
+                            onClick={pickCustomIcon}
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
                         >
-                            <X size={14} />
+                            <Image size={12} />
+                            {t('settings.chooseIcon')}
                         </button>
-                    )}
+                        {customIconForSave && (
+                            <button
+                                type="button"
+                                onClick={() => setCustomIconForSave(undefined)}
+                                className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                                title={t('settings.removeIcon')}
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-start gap-1 text-gray-400 dark:text-gray-500 text-xs max-w-[180px] pt-1">
+                        <Info size={12} className="shrink-0 mt-0.5" />
+                        <span>{t('settings.iconAutoDetectHint')}</span>
+                    </div>
                 </div>
             </div>
         );
@@ -799,14 +817,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         // Reset provider selection when protocol changes
         setSelectedProviderId(null);
+        setPresetUnlocked({});
+
+        const protocolDefaults: Partial<ConnectionParams> = newProtocol === 'filelu'
+            ? { server: 'filelu.com', username: 'api-key', port: 443 }
+            : {};
 
         // Reset ALL form fields (clear previous server's credentials)
         onConnectionParamsChange({
-            server: '',
-            username: '',
+            server: protocolDefaults.server || '',
+            username: protocolDefaults.username || '',
             password: '',
             protocol: newProtocol,
-            port: getDefaultPort(newProtocol),
+            port: protocolDefaults.port || getDefaultPort(newProtocol),
             options: {},
         });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -815,6 +838,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Handle provider selection (for S3/WebDAV)
     const handleProviderSelect = (provider: ProviderConfig) => {
         setSelectedProviderId(provider.id);
+        setPresetUnlocked({});
 
         // Apply provider defaults
         const newParams: ConnectionParams = {
@@ -827,6 +851,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ...connectionParams.options,
                 pathStyle: provider.defaults?.pathStyle,
                 region: provider.defaults?.region,
+                endpoint: provider.defaults?.endpoint,
             },
         };
         onConnectionParamsChange(newParams);
@@ -1137,6 +1162,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
+                                            {selectedProvider.signupUrl && (
+                                                <a
+                                                    href={selectedProvider.signupUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-emerald-500 hover:text-emerald-600 flex items-center gap-1 transition-colors"
+                                                    title={t('connection.createAccount')}
+                                                >
+                                                    <ExternalLink size={12} />
+                                                    {t('connection.createAccount')}
+                                                </a>
+                                            )}
                                             {selectedProvider.helpUrl && (
                                                 <a
                                                     href={selectedProvider.helpUrl}
@@ -1160,7 +1197,123 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
 
                                 {/* Connection Fields Area */}
-                                {protocol === 'jottacloud' ? (
+                                {protocol === 'filelu' ? (
+                                    /* FileLu Specific Form — API Key */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        password: e.target.value,
+                                                        server: 'filelu.com',
+                                                        port: 443,
+                                                        username: 'api-key'
+                                                    })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                                                    placeholder={t('ai.settings.enterApiKey')}
+                                                    autoFocus
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
+                                            <span>{t('protocol.fileluTooltip')}</span>
+                                            <a
+                                                href="https://filelu.com/5253515355.html"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-violet-500 hover:text-violet-400 transition-colors"
+                                                title="FileLu"
+                                                aria-label="Open FileLu link"
+                                            >
+                                                <ExternalLink size={12} />
+                                            </a>
+                                        </p>
+
+                                        {/* Optional Remote/Local Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={saveConnection}
+                                                    onChange={(e) => setSaveConnection(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 border-gray-300 dark:border-gray-600"
+                                                />
+                                                <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                    <Save size={14} />
+                                                    {t('connection.saveToServers')}
+                                                </span>
+                                            </label>
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                                    />
+                                                    {renderIconPicker()}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-3">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-violet-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : protocol === 'jottacloud' ? (
                                     /* Jottacloud Specific Form — Login Token only */
                                     <div className="space-y-4 pt-2">
                                         <div>
@@ -1945,17 +2098,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <>
                                         {(() => {
                                             const providerHasNoEndpoint = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.fields?.find(f => f.key === 'endpoint');
+                                            const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
+                                            const serverLocked = hasPresetServer && !presetUnlocked['server'] && !editingProfileId;
                                             return providerHasNoEndpoint ? null : (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
-                                                        <label className="block text-sm font-medium mb-1.5">
-                                                            {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
-                                                        </label>
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <label className="block text-sm font-medium">
+                                                                {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
+                                                            </label>
+                                                            {serverLocked && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPresetUnlocked(prev => ({ ...prev, server: true }))}
+                                                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
+                                                                    title={t('common.edit')}
+                                                                >
+                                                                    <Pencil size={10} />
+                                                                    {t('common.edit')}
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                         <input
                                                             type="text"
                                                             value={connectionParams.server}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                                            disabled={!!serverLocked}
+                                                            className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${serverLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                             placeholder={getServerPlaceholder()}
                                                         />
                                                     </div>
@@ -1965,7 +2134,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             type="number"
                                                             value={connectionParams.port || getDefaultPort(protocol)}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || getDefaultPort(protocol) })}
-                                                            className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-center"
+                                                            disabled={!!serverLocked}
+                                                            className={`w-full px-3 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-center ${serverLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                             min={1}
                                                             max={65535}
                                                         />
@@ -2008,6 +2178,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             onBrowseKeyFile={protocol === 'sftp' ? handleBrowseSshKey : undefined}
                                             selectedProviderId={selectedProviderId}
                                             isEditing={!!editingProfileId}
+                                            presetUnlocked={presetUnlocked}
+                                            onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                         />
 
                                         <div>

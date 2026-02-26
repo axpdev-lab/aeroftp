@@ -144,6 +144,7 @@
             "connectionNameOptional": "Enw cysylltiad (dewisol)",
             "cancelEditing": "Canslo Golygu",
             "saveChanges": "Cadw Newidiadau",
+            "createAccount": "Creu cyfrif",
             "docs": "Dogfennau",
             "minutes": "munudau",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Dewis Pob Un",
             "deselectAll": "Dad-ddewis Pob Un",
             "selected": "wedi'u dewis",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Os na osodir unrhyw eicon, caiff y favicon neu'r icon.png o'r gweinydd ei ganfod yn awtomatig.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Methwyd symud i'r sbwriel",
             "batchRenameResult": "{success} wedi'u hailenwi, {errors} wedi methu",
             "copyCompleted": "Copïo wedi'i gwblhau",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Ni chanfuwyd ffolder leol \"{path}\". Llywiwyd i'r cyfeiriadur cartref."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Delfrydol ar gyfer cymylau hunod, dyfeisiau NAS a rhannu ffeiliau.",
             "selectProviderPrompt": "Dewiswch darparwr uchod neu dewiswch \"Custom\"",
             "seafileDesc": "Storfa Cwmwl Cod Agored",
-            "seafileTooltip": "Seafile - Cwmwl cod agored hunan-gynhaliol gyda chefnogaeth WebDAV"
+            "seafileTooltip": "Seafile - Cwmwl cod agored hunan-gynhaliol gyda chefnogaeth WebDAV",
+            "fileluDesc": "Storfa Cwmwl Aml-Brotocol",
+            "fileluTooltip": "FileLu - 20GB o storfa am ddim gyda FTP, FTPS, WebDAV, S3 ac API brodorol",
+            "fileluFtpDesc": "FileLu drwy FTP",
+            "fileluFtpsDesc": "FileLu drwy FTPS diogel",
+            "fileluWebdavDesc": "FileLu drwy WebDAV",
+            "fileluS3Desc": "FileLu S5 storfa sy'n gydnaws ag S3"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -3108,6 +3117,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Gosod Cyfrinair Ffeil",
+            "enterFilePassword": "Rhowch gyfrinair (gadewch yn wag i'w dynnu):",
+            "filePasswordSet": "Cyfrinair ffeil wedi'i osod",
+            "filePasswordRemoved": "Cyfrinair ffeil wedi'i dynnu",
+            "filePasswordError": "Methwyd gosod cyfrinair ffeil",
+            "togglePrivate": "Gosod fel Preifat",
+            "fileSetPrivate": "Mae'r ffeil bellach yn breifat",
+            "makePublic": "Gosod fel Cyhoeddus",
+            "fileSetPublic": "Mae'r ffeil bellach yn gyhoeddus",
+            "cloneFile": "Clonio Ffeil (ochr y gweinydd)",
+            "cloneSuccess": "Ffeil wedi'i chlonio — URL wedi'i gopïo i'r clipfwrdd",
+            "cloneError": "Methodd y clonio",
+            "setFolderPassword": "Gosod Cyfrinair Ffolder",
+            "enterFolderPassword": "Rhowch gyfrinair ffolder (gadewch yn wag i'w dynnu):",
+            "folderPasswordSet": "Cyfrinair ffolder wedi'i osod",
+            "folderPasswordRemoved": "Cyfrinair ffolder wedi'i dynnu",
+            "folderPasswordError": "Methwyd gosod cyfrinair ffolder",
+            "folderSettings": "Gosodiadau Ffolder",
+            "filedrop": "FileDrop (caniatáu llwytho i fyny gan unrhyw un)",
+            "filedropDesc": "Gall eraill lwytho ffeiliau i'r ffolder hon heb gyfrif",
+            "folderPublic": "Ffolder Gyhoeddus",
+            "folderPublicDesc": "Gall unrhyw un bori cynnwys y ffolder hon",
+            "folderSettingsSaved": "Gosodiadau ffolder wedi'u cadw",
+            "viewTrash": "Gweld Ffeiliau Wedi'u Dileu",
+            "remoteUrlUpload": "Llwytho i fyny o URL",
+            "remoteUrlUploadDesc": "Gludwch ddolen uniongyrchol — bydd FileLu yn lawrlwytho'r ffeil o ochr y gweinydd",
+            "remoteUrlDest": "Cyrchfan",
+            "remoteUrlUploaded": "Llwytho i fyny wedi dechrau (file_code: {code})",
+            "remoteUrlError": "Methodd llwytho i fyny o URL anghysbell",
+            "startUpload": "Dechrau Llwytho i Fyny",
+            "trashTitle": "FileLu Ffeiliau Wedi'u Dileu",
+            "restoreSelected": "Adfer y rhai a ddewiswyd",
+            "permanentDelete": "Dileu'n barhaol",
+            "permanentDeleteOne": "Dileu'n barhaol",
+            "trashEmpty": "Dim ffeiliau wedi'u dileu",
+            "restore": "Adfer",
+            "trashFooter": "Bydd ffeiliau a adferirwyd yn ailymddangos yn eu ffolder wreiddiol"
+        }
     }
 }

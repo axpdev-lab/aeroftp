@@ -81,6 +81,133 @@ impl S3Provider {
             }
         }
     }
+
+    fn is_filelu_s3_endpoint(&self) -> bool {
+        self.config
+            .endpoint
+            .as_deref()
+            .map(|ep| {
+                let lower = ep.to_ascii_lowercase();
+                lower.contains("s5lu.com") || lower.contains("filelu")
+            })
+            .unwrap_or(false)
+    }
+
+    async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
+        let to_key = to.trim_start_matches('/');
+        let mut last_status: Option<StatusCode> = None;
+
+        for attempt in 0..5 {
+            let response = self.s3_request(Method::HEAD, to_key, None, None).await?;
+            let status = response.status();
+            debug!(
+                "S3 rename verify attempt {}: HEAD {} -> {}",
+                attempt + 1,
+                to_key,
+                status
+            );
+
+            if status == StatusCode::OK {
+                return Ok(());
+            }
+
+            // Some S3-compatible providers may return temporary/inconsistent HEAD results
+            // immediately after CopyObject. Fall back to prefix listing and exact-key match.
+            if matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED) {
+                let listed_keys = self.list_keys_with_prefix(to_key).await?;
+                debug!(
+                    "S3 rename verify attempt {}: list prefix '{}' returned {} keys",
+                    attempt + 1,
+                    to_key,
+                    listed_keys.len()
+                );
+                if listed_keys.iter().any(|k| k == to_key) {
+                    debug!(
+                        "S3 rename verify attempt {}: destination '{}' found via list",
+                        attempt + 1,
+                        to_key
+                    );
+                    return Ok(());
+                }
+            }
+
+            last_status = Some(status);
+
+            if !matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED) || attempt == 4 {
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(75 * (1 << attempt))).await;
+        }
+
+        Err(ProviderError::ServerError(format!(
+            "Copy verification failed: destination {} not readable after copy (status: {})",
+            to,
+            last_status
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        )))
+    }
+
+    async fn rename_filelu_safe(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_key = from.trim_start_matches('/');
+        let to_key = to.trim_start_matches('/');
+
+        debug!("FileLu S3 safe rename start: {} -> {}", from_key, to_key);
+
+        let source_response = self.s3_request(Method::GET, from_key, None, None).await?;
+        let source_status = source_response.status();
+        if source_status != StatusCode::OK {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu safe rename read failed ({}): {}",
+                source_status,
+                from
+            )));
+        }
+
+        let source_bytes = source_response
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let put_response = self
+            .s3_request(Method::PUT, to_key, None, Some(source_bytes.to_vec()))
+            .await?;
+        let put_status = put_response.status();
+        let put_body = put_response.text().await.unwrap_or_default();
+
+        match put_status {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                if put_body.to_ascii_lowercase().contains("<error>") {
+                    let err_code = put_body
+                        .split("<Code>").nth(1)
+                        .and_then(|s| s.split("</Code>").next())
+                        .unwrap_or("PutError");
+                    let err_msg = put_body
+                        .split("<Message>").nth(1)
+                        .and_then(|s| s.split("</Message>").next())
+                        .unwrap_or("S3 provider returned an error during put");
+                    return Err(ProviderError::ServerError(format!(
+                        "FileLu safe rename write failed ({}): {} - {}",
+                        put_status,
+                        sanitize_api_error(err_code),
+                        sanitize_api_error(err_msg)
+                    )));
+                }
+            }
+            _ => {
+                return Err(ProviderError::ServerError(format!(
+                    "FileLu safe rename write failed ({}): {}",
+                    put_status,
+                    sanitize_api_error(&put_body)
+                )));
+            }
+        }
+
+        self.delete(from).await?;
+        info!("Renamed file (FileLu safe path) {} to {}", from, to);
+        Ok(())
+    }
     
     /// Sign a request using AWS Signature Version 4
     /// This is a simplified implementation - for production, consider using aws-sigv4
@@ -1274,8 +1401,13 @@ impl StorageProvider for S3Provider {
         let keys = self.list_keys_with_prefix(&prefix).await?;
 
         if keys.is_empty() {
+            if self.is_filelu_s3_endpoint() {
+                return self.rename_filelu_safe(from, to).await;
+            }
+
             // Single file rename: copy + delete
             self.server_copy(from, to).await?;
+            self.verify_copy_target_exists(to).await?;
             self.delete(from).await?;
             info!("Renamed file (copy+delete) {} to {}", from, to);
         } else {
@@ -1715,13 +1847,34 @@ impl StorageProvider for S3Provider {
         let response = request.send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        match response.status() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        match status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                // S3-compatible providers may return HTTP 200 with an XML <Error> payload.
+                // Treat this as a failed copy to avoid deleting the source during rename.
+                if body.to_ascii_lowercase().contains("<error>") {
+                    let err_code = body
+                        .split("<Code>").nth(1)
+                        .and_then(|s| s.split("</Code>").next())
+                        .unwrap_or("CopyError");
+                    let err_msg = body
+                        .split("<Message>").nth(1)
+                        .and_then(|s| s.split("</Message>").next())
+                        .unwrap_or("S3 provider returned an error during copy");
+                    return Err(ProviderError::ServerError(format!(
+                        "Copy failed ({}): {} - {}",
+                        status,
+                        sanitize_api_error(err_code),
+                        sanitize_api_error(err_msg)
+                    )));
+                }
+
                 info!("Copied {} to {}", from, to);
                 Ok(())
             }
-            status => {
-                let body = response.text().await.unwrap_or_default();
+            _ => {
                 Err(ProviderError::ServerError(format!("Copy failed ({}): {}", status, sanitize_api_error(&body))))
             }
         }

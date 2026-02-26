@@ -212,6 +212,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://docs.aws.amazon.com/s3/',
+        signupUrl: 'https://aws.amazon.com/free/',
     },
     {
         id: 'backblaze',
@@ -259,6 +260,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.backblaze.com/b2/docs/',
+        signupUrl: 'https://www.backblaze.com/sign-up/cloud-storage',
     },
     {
         id: 'cloudflare-r2',
@@ -292,6 +294,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://developers.cloudflare.com/r2/',
+        signupUrl: 'https://dash.cloudflare.com/sign-up',
     },
     {
         id: 'idrive-e2',
@@ -325,6 +328,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.idrive.com/s3-storage-e2/',
+        signupUrl: 'https://www.idrive.com/e2/sign-up',
     },
     {
         id: 'wasabi',
@@ -373,6 +377,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://docs.wasabi.com/',
+        signupUrl: 'https://console.wasabisys.com/signup',
     },
     {
         id: 'storj',
@@ -409,6 +414,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://storj.dev/dcs/api/s3/s3-compatible-gateway',
+        signupUrl: 'https://www.storj.io/signup',
     },
     {
         id: 'digitalocean-spaces',
@@ -448,6 +454,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://docs.digitalocean.com/products/spaces/',
+        signupUrl: 'https://cloud.digitalocean.com/registrations/new',
     },
     {
         id: 'oracle-cloud',
@@ -481,6 +488,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/s3compatibleapi.htm',
+        signupUrl: 'https://signup.cloud.oracle.com/',
     },
     {
         id: 'alibaba-oss',
@@ -521,6 +529,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.alibabacloud.com/help/en/oss/developer-reference/use-aws-sdks-to-access-oss',
+        signupUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
     },
     {
         id: 'tencent-cos',
@@ -565,6 +574,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.tencentcloud.com/document/product/436/32537',
+        signupUrl: 'https://www.tencentcloud.com/account/register',
     },
 
     {
@@ -596,6 +606,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://min.io/docs/minio/linux/index.html',
+        signupUrl: 'https://min.io/download',
     },
 
     // =========================================================================
@@ -617,6 +628,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
+        signupUrl: 'https://www.4shared.com/reg0.jsp',
     },
     {
         id: 'cloudme',
@@ -640,30 +652,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.cloudme.com/en/webdav',
-    },
-    {
-        id: 'seafile',
-        name: 'Seafile',
-        description: 'Open-source self-hosted cloud storage with WebDAV',
-        protocol: 'webdav',
-        category: 'webdav',
-        icon: 'Cloud',
-        color: '#E86C00',
-        stable: false,
-        fields: [
-            { ...COMMON_FIELDS.server, placeholder: 'https://your-server.com/seafdav/' },
-            { ...COMMON_FIELDS.username, placeholder: 'Your Seafile email' },
-            { ...COMMON_FIELDS.password },
-        ],
-        defaults: {
-            server: 'https://cloud.seafile.com/seafdav/',
-            port: 443,
-        },
-        features: {
-            shareLink: false,
-            sync: true,
-        },
-        helpUrl: 'https://manual.seafile.com/extension/webdav/',
+        signupUrl: 'https://www.cloudme.com/signup',
     },
     {
         id: 'drivehq',
@@ -687,6 +676,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://www.drivehq.com/help/',
+        signupUrl: 'https://www.drivehq.com/secure/SignUp.aspx',
     },
     {
         id: 'koofr',
@@ -715,6 +705,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://app.koofr.net/help/webdav',
+        signupUrl: 'https://app.koofr.net/registrations/new',
     },
     {
         id: 'jianguoyun',
@@ -747,6 +738,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://help.jianguoyun.com/?p=2064',
+        signupUrl: 'https://www.jianguoyun.com/d/signup',
     },
     {
         id: 'infinicloud',
@@ -784,6 +776,32 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         helpUrl: 'https://infini-cloud.net/en/developer_webdav.html',
+        signupUrl: 'https://infini-cloud.net/en/entry.html',
+    },
+    {
+        id: 'seafile',
+        name: 'Seafile',
+        description: 'Open-source self-hosted cloud storage with WebDAV',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#E86C00',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.server, placeholder: 'https://your-server.com/seafdav/' },
+            { ...COMMON_FIELDS.username, placeholder: 'Your Seafile email' },
+            { ...COMMON_FIELDS.password },
+        ],
+        defaults: {
+            server: 'https://plus.seafile.com/seafdav/',
+            port: 443,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://manual.seafile.com/extension/webdav/',
+        signupUrl: 'https://cloud.seafile.com/accounts/register/',
     },
     {
         id: 'nextcloud',
@@ -821,6 +839,7 @@ export const PROVIDERS: ProviderConfig[] = [
             trash: true,
         },
         helpUrl: 'https://docs.nextcloud.com/',
+        signupUrl: 'https://nextcloud.com/sign-up/',
     },
     {
         id: 'mega',
@@ -865,6 +884,206 @@ export const PROVIDERS: ProviderConfig[] = [
             thumbnails: true, // Special feature
         },
         helpUrl: 'https://mega.io/help',
+        signupUrl: 'https://mega.nz/register',
+    },
+
+    // =========================================================================
+    // FILELU — Native REST API + FTP/FTPS/WebDAV/S3 presets
+    // =========================================================================
+    {
+        id: 'filelu',
+        name: 'FileLu',
+        description: 'Cloud storage with FTP, WebDAV, S3 and native API (20 GB free)',
+        protocol: 'filelu',
+        category: 'oauth',
+        icon: 'Cloud',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            {
+                key: 'password',
+                label: 'API Key',
+                type: 'password',
+                required: true,
+                placeholder: 'Your FileLu API key',
+                helpText: 'Account Settings → Developer API Key → switch ON to generate',
+                group: 'credentials',
+            },
+        ],
+        defaults: {},
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        helpUrl: 'https://filelu.com/pages/api',
+        signupUrl: 'https://filelu.com/5253515355.html',
+    },
+    {
+        id: 'filelu-ftp',
+        name: 'FileLu FTP',
+        description: 'FileLu via FTP (port 21)',
+        protocol: 'ftp',
+        category: 'ftp',
+        icon: 'Server',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            {
+                key: 'username',
+                label: 'FTP Login',
+                type: 'text',
+                required: true,
+                placeholder: 'Your FileLu username',
+                helpText: 'Account Settings → FTP Login',
+                group: 'credentials',
+            },
+            {
+                key: 'password',
+                label: 'FTP Password',
+                type: 'password',
+                required: true,
+                helpText: 'Account Settings → FTP Password (Account password by default)',
+                group: 'credentials',
+            },
+        ],
+        defaults: {
+            server: 'ftp.filelu.com',
+            port: 21,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://filelu.com/account/',
+        signupUrl: 'https://filelu.com/5253515355.html',
+    },
+    {
+        id: 'filelu-ftps',
+        name: 'FileLu FTPS',
+        description: 'FileLu via secure FTPS Implicit (port 990)',
+        protocol: 'ftps',
+        category: 'ftp',
+        icon: 'Lock',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            {
+                key: 'username',
+                label: 'FTP Login',
+                type: 'text',
+                required: true,
+                placeholder: 'Your FileLu username',
+                helpText: 'Account Settings → FTP Login',
+                group: 'credentials',
+            },
+            {
+                key: 'password',
+                label: 'FTP Password',
+                type: 'password',
+                required: true,
+                helpText: 'Account Settings → FTP Password',
+                group: 'credentials',
+            },
+        ],
+        defaults: {
+            server: 'ftp.filelu.com',
+            port: 990,
+            tls_mode: 'implicit',
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://filelu.com/account/',
+        signupUrl: 'https://filelu.com/5253515355.html',
+    },
+    {
+        id: 'filelu-webdav',
+        name: 'FileLu WebDAV',
+        description: 'FileLu via WebDAV (enable in Account Settings)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Globe',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            {
+                key: 'username',
+                label: 'Username',
+                type: 'text',
+                required: true,
+                placeholder: 'Your FileLu username',
+                group: 'credentials',
+            },
+            {
+                key: 'password',
+                label: 'Password',
+                type: 'password',
+                required: true,
+                helpText: 'Your FileLu account password',
+                group: 'credentials',
+            },
+        ],
+        defaults: {
+            server: 'https://webdav.filelu.com',
+            port: 443,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        helpUrl: 'https://filelu.com/account/',
+        signupUrl: 'https://filelu.com/5253515355.html',
+    },
+    {
+        id: 'filelu-s3',
+        name: 'FileLu S5 (S3)',
+        description: 'FileLu S3-compatible object storage (enable in Account Settings)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Database',
+        color: '#8B5CF6',
+        stable: false,
+        fields: [
+            {
+                ...COMMON_FIELDS.accessKeyId,
+                helpText: 'Account Settings → FileLu S5 Object Storage → Access Key ID',
+            },
+            {
+                ...COMMON_FIELDS.secretAccessKey,
+                helpText: 'Account Settings → FileLu S5 Object Storage → Secret Access Key',
+            },
+            {
+                ...COMMON_FIELDS.bucket,
+                placeholder: 'my-filelu-bucket',
+                helpText: 'Your FileLu S5 bucket name',
+            },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                options: [
+                    { value: 'global', label: 'Global (default)' },
+                    { value: 'us-east', label: 'US East' },
+                    { value: 'eu-central', label: 'EU Central' },
+                    { value: 'ap-southeast', label: 'AP Southeast' },
+                    { value: 'me-central', label: 'ME Central' },
+                ],
+                group: 'server',
+            },
+        ],
+        defaults: {
+            pathStyle: true,
+            region: 'global',
+            endpoint: 's5lu.com',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        helpUrl: 'https://filelu.com/account/',
+        signupUrl: 'https://filelu.com/5253515355.html',
     },
 ];
 
@@ -945,9 +1164,15 @@ export const getStableProviders = () => providerRegistry.getStable();
  * Returns null for providers without a template (e.g. Amazon S3 uses default AWS endpoint).
  */
 export const resolveS3Endpoint = (providerId: string | undefined, region: string | undefined): string | null => {
-    if (!providerId || !region) return null;
+    if (!providerId) return null;
     const provider = providerRegistry.getById(providerId);
+    if (!provider) return null;
+
+    if (provider.defaults?.endpoint) {
+        return provider.defaults.endpoint;
+    }
+
     const template = provider?.defaults?.endpointTemplate;
-    if (!template) return null;
+    if (!template || !region) return null;
     return template.replace('{region}', region);
 };

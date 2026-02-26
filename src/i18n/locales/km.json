@@ -144,6 +144,7 @@
             "connectionNameOptional": "ឈ្មោះការតភ្ជាប់ (ស្រេចចិត្ត)",
             "cancelEditing": "បោះបង់ការកែសម្រួល",
             "saveChanges": "រក្សាទុកការផ្លាស់ប្តូរ",
+            "createAccount": "បង្កើតគណនី",
             "docs": "ឯកសារ",
             "minutes": "នាទី",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "ជ្រើសរើសទាំងអស់",
             "deselectAll": "មិនជ្រើសរើសទាំងអស់",
             "selected": "បានជ្រើសរើស",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "ប្រសិនបើមិនមានរូបតំណាងត្រូវបានកំណត់ favicon ឬ icon.png ពីម៉ាស៊ីនបម្រើនឹងត្រូវបានរកឃើញដោយស្វ័យប្រវត្តិ។",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "បរាជ័យក្នុងការផ្លាស់ទីទៅធុងសម្រាម",
             "batchRenameResult": "{success} ប្តូរឈ្មោះហើយ, {errors} បរាជ័យ",
             "copyCompleted": "ការចម្លងបានបញ្ចប់",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "រកមិនឃើញថតក្នុងម៉ាស៊ីន \"{path}\"។ បានរុករកទៅថតផ្ទះ។"
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "ល្អបំផុតសម្រាប់ពពកដែលរៀបចំដោយខ្លួនឯង ឧបករណ៍ NAS និងការចែករំលែកឯកសារ។",
             "selectProviderPrompt": "ជ្រើសរើសក្រុមហ៊ុនផ្តល់ដំណើរការខាងលើ ឬជ្រើសរើស \"Custom\"",
             "seafileDesc": "ការប្រើក្លោដលើប្រភេទបើក",
-            "seafileTooltip": "Seafile - ក្លោដប្រភេទបើកស្រោរោស្តដោយខ្លួនឯងដែលគាំទ្រត្រូវ WebDAV"
+            "seafileTooltip": "Seafile - ក្លោដប្រភេទបើកស្រោរោស្តដោយខ្លួនឯងដែលគាំទ្រត្រូវ WebDAV",
+            "fileluDesc": "ការផ្ទុកទិន្នន័យលើពពកច្រើនពិធីការ",
+            "fileluTooltip": "FileLu - ទំហំផ្ទុក 20GB ដោយឥតគិតថ្លៃ រួមជាមួយ FTP, FTPS, WebDAV, S3 និង API ដើម",
+            "fileluFtpDesc": "FileLu តាម FTP",
+            "fileluFtpsDesc": "FileLu តាម FTPS ដែលមានសុវត្ថិភាព",
+            "fileluWebdavDesc": "FileLu តាម WebDAV",
+            "fileluS3Desc": "FileLu S5 ការផ្ទុកដែលឆបគ្នាជាមួយ S3"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3111,6 +3120,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "កំណត់ពាក្យសម្ងាត់ឯកសារ",
+            "enterFilePassword": "បញ្ចូលពាក្យសម្ងាត់ (ទុកចោលឱ្យទទេដើម្បីដកចេញ):",
+            "filePasswordSet": "បានកំណត់ពាក្យសម្ងាត់ឯកសារ",
+            "filePasswordRemoved": "បានដកពាក្យសម្ងាត់ឯកសារ",
+            "filePasswordError": "បរាជ័យក្នុងការកំណត់ពាក្យសម្ងាត់ឯកសារ",
+            "togglePrivate": "កំណត់ជាឯកជន",
+            "fileSetPrivate": "ឯកសារឥឡូវជាឯកជន",
+            "makePublic": "កំណត់ជាសាធារណៈ",
+            "fileSetPublic": "ឯកសារឥឡូវជាសាធារណៈ",
+            "cloneFile": "ចម្លងឯកសារ (ម៉ាស៊ីនមេ)",
+            "cloneSuccess": "ឯកសារត្រូវបានចម្លង — URL ត្រូវបានចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
+            "cloneError": "ការចម្លងបានបរាជ័យ",
+            "setFolderPassword": "កំណត់ពាក្យសម្ងាត់ថត",
+            "enterFolderPassword": "បញ្ចូលពាក្យសម្ងាត់ថត (ទុកចោលឱ្យទទេដើម្បីដកចេញ):",
+            "folderPasswordSet": "បានកំណត់ពាក្យសម្ងាត់ថត",
+            "folderPasswordRemoved": "បានដកពាក្យសម្ងាត់ថត",
+            "folderPasswordError": "បរាជ័យក្នុងការកំណត់ពាក្យសម្ងាត់ថត",
+            "folderSettings": "ការកំណត់ថត",
+            "filedrop": "FileDrop (អនុញ្ញាតការផ្ទុកឡើងពីអ្នកណាក៏បាន)",
+            "filedropDesc": "អ្នកដទៃអាចផ្ទុកឯកសារឡើងទៅថតនេះដោយគ្មានគណនី",
+            "folderPublic": "ថតសាធារណៈ",
+            "folderPublicDesc": "អ្នកណាក៏ដោយអាចរកមើលមាតិកានៃថតនេះ",
+            "folderSettingsSaved": "បានរក្សាទុកការកំណត់ថត",
+            "viewTrash": "មើលឯកសារដែលបានលុប",
+            "remoteUrlUpload": "ផ្ទុកឡើងពី URL",
+            "remoteUrlUploadDesc": "បិទភ្ជាប់តំណផ្ទាល់ — FileLu នឹងទាញយកឯកសារពីម៉ាស៊ីនមេ",
+            "remoteUrlDest": "ទិសដៅ",
+            "remoteUrlUploaded": "ការផ្ទុកឡើងបានចាប់ផ្ដើម (file_code: {code})",
+            "remoteUrlError": "ការផ្ទុកឡើងពី URL ពីចម្ងាយបានបរាជ័យ",
+            "startUpload": "ចាប់ផ្ដើមផ្ទុកឡើង",
+            "trashTitle": "FileLu ឯកសារដែលបានលុប",
+            "restoreSelected": "ស្ដារឯកសារដែលបានជ្រើសរើស",
+            "permanentDelete": "លុបជាអចិន្ត្រៃយ៍",
+            "permanentDeleteOne": "លុបជាអចិន្ត្រៃយ៍",
+            "trashEmpty": "គ្មានឯកសារដែលបានលុប",
+            "restore": "ស្ដារ",
+            "trashFooter": "ឯកសារដែលបានស្ដារនឹងបង្ហាញឡើងវិញនៅក្នុងថតដើមរបស់ពួកវា"
+        }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Tên kết nối (tùy chọn)",
             "cancelEditing": "Hủy chỉnh sửa",
             "saveChanges": "Lưu thay đổi",
+            "createAccount": "Tạo tài khoản",
             "docs": "Tài liệu",
             "minutes": "phút",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Chọn tất cả",
             "deselectAll": "Bỏ chọn tất cả",
             "selected": "đã chọn",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Nếu không có icon nào được đặt, favicon hoặc icon.png từ máy chủ sẽ được phát hiện tự động.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Không thể chuyển vào Thùng rác",
             "batchRenameResult": "{success} đã đổi tên, {errors} thất bại",
             "copyCompleted": "Sao chép hoàn tất",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Không tìm thấy thư mục cục bộ \"{path}\". Đã điều hướng đến thư mục chính."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Lý tưởng cho đám mây tự lưu trữ, thiết bị NAS và chia sẻ tệp.",
             "selectProviderPrompt": "Chọn một nhà cung cấp ở trên hoặc chọn \"Custom\"",
             "seafileDesc": "Lưu trữ đám mây mã nguồn mở",
-            "seafileTooltip": "Seafile - Đám mây mã nguồn mở tự lưu trữ với hỗ trợ WebDAV"
+            "seafileTooltip": "Seafile - Đám mây mã nguồn mở tự lưu trữ với hỗ trợ WebDAV",
+            "fileluDesc": "Lưu trữ đám mây đa giao thức",
+            "fileluTooltip": "FileLu - 20GB lưu trữ miễn phí với FTP, FTPS, WebDAV, S3 và API gốc",
+            "fileluFtpDesc": "FileLu qua FTP",
+            "fileluFtpsDesc": "FileLu qua FTPS bảo mật",
+            "fileluWebdavDesc": "FileLu qua WebDAV",
+            "fileluS3Desc": "FileLu S5 lưu trữ tương thích S3"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3092,6 +3101,45 @@
                     "installed": "Đã cài đặt"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Đặt mật khẩu tệp",
+            "enterFilePassword": "Nhập mật khẩu (để trống để xóa):",
+            "filePasswordSet": "Đã đặt mật khẩu tệp",
+            "filePasswordRemoved": "Đã xóa mật khẩu tệp",
+            "filePasswordError": "Không thể đặt mật khẩu tệp",
+            "togglePrivate": "Đặt làm riêng tư",
+            "fileSetPrivate": "Tệp hiện là riêng tư",
+            "makePublic": "Đặt làm công khai",
+            "fileSetPublic": "Tệp hiện là công khai",
+            "cloneFile": "Nhân bản tệp (phía máy chủ)",
+            "cloneSuccess": "Đã nhân bản tệp — URL đã sao chép vào bảng nhớ tạm",
+            "cloneError": "Nhân bản thất bại",
+            "setFolderPassword": "Đặt mật khẩu thư mục",
+            "enterFolderPassword": "Nhập mật khẩu thư mục (để trống để xóa):",
+            "folderPasswordSet": "Đã đặt mật khẩu thư mục",
+            "folderPasswordRemoved": "Đã xóa mật khẩu thư mục",
+            "folderPasswordError": "Không thể đặt mật khẩu thư mục",
+            "folderSettings": "Cài đặt thư mục",
+            "filedrop": "FileDrop (cho phép tải lên từ bất kỳ ai)",
+            "filedropDesc": "Người khác có thể tải tệp lên thư mục này mà không cần tài khoản",
+            "folderPublic": "Thư mục công khai",
+            "folderPublicDesc": "Bất kỳ ai cũng có thể duyệt nội dung của thư mục này",
+            "folderSettingsSaved": "Đã lưu cài đặt thư mục",
+            "viewTrash": "Xem tệp đã xóa",
+            "remoteUrlUpload": "Tải lên từ URL",
+            "remoteUrlUploadDesc": "Dán liên kết trực tiếp — FileLu sẽ tải tệp về phía máy chủ",
+            "remoteUrlDest": "Đích",
+            "remoteUrlUploaded": "Đã bắt đầu tải lên (file_code: {code})",
+            "remoteUrlError": "Tải lên từ URL từ xa thất bại",
+            "startUpload": "Bắt đầu tải lên",
+            "trashTitle": "Tệp đã xóa của FileLu",
+            "restoreSelected": "Khôi phục đã chọn",
+            "permanentDelete": "Xóa vĩnh viễn",
+            "permanentDeleteOne": "Xóa vĩnh viễn",
+            "trashEmpty": "Không có tệp đã xóa",
+            "restore": "Khôi phục",
+            "trashFooter": "Các tệp đã khôi phục sẽ xuất hiện lại trong thư mục gốc của chúng"
         }
     }
 }

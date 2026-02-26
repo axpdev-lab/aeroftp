@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.0] - 2026-02-26
+
+### FileLu Native API — 19th Protocol
+
+Full integration of FileLu cloud storage via its native REST API, adding privacy-focused features unavailable through generic WebDAV or S3 connections: per-file and per-folder password protection, public/private visibility toggle, server-side file cloning, trash management with restore and permanent delete, and remote URL upload (server-side fetch).
+
+#### Added
+
+- **FileLu provider (19th protocol)**: Native REST API integration (`filelu.rs`) authenticated via API key. Supports all standard `StorageProvider` operations: list, upload, download, delete, rename, mkdir, stat, search, share link, storage quota
+- **FileLu FTP/FTPS/WebDAV/S3 presets**: Four additional connection modes for users who prefer standard protocols — `filelu-ftp` (port 21), `filelu-ftps` (Implicit TLS, port 990), `filelu-webdav`, and `filelu-s3` (S3-compatible "FileLu S5") — registered in the provider registry
+- **File password protection**: Set or remove password on any individual file via context menu (`filelu_set_file_password`)
+- **Privacy toggle**: Mark files as Private (only-me) or Public via context menu (`filelu_set_file_privacy`)
+- **Server-side file clone**: Duplicate a file on the server without re-uploading; URL of the clone is copied to clipboard (`filelu_clone_file`)
+- **Folder password protection**: Set or remove password on a folder, using the folder's `fld_token` retrieved from the API (`filelu_set_folder_password`)
+- **Folder settings dialog**: Toggle FileDrop (allow anonymous uploads) and Public Folder access per-folder (`filelu_set_folder_settings`)
+- **Trash manager UI**: `FileLuTrashManager.tsx` modal — lists deleted files with deletion timestamp, multi-select, bulk restore, bulk permanent delete, and per-row quick actions
+- **Remote URL upload**: Paste a direct download link; FileLu fetches the file server-side and stores it in the specified destination folder (`filelu_remote_url_upload`)
+- **Restore from trash**: Restore individual deleted files (`filelu_restore_file`) or folders (`filelu_restore_folder`)
+- **Permanent delete**: Bypass trash and permanently remove a file (`filelu_permanent_delete`)
+- **10 new Tauri commands**: `filelu_set_file_password`, `filelu_set_file_privacy`, `filelu_clone_file`, `filelu_set_folder_password`, `filelu_set_folder_settings`, `filelu_list_deleted`, `filelu_restore_file`, `filelu_restore_folder`, `filelu_permanent_delete`, `filelu_remote_url_upload`
+- **39 new i18n keys**: FileLu UI strings + `settings.protocolFilelu` + `toast.localPathNotFound` — translated across all 47 languages
+
+#### Fixed
+
+- **`BaseProtocol` type**: Added `'filelu'` and `'ftps'` to the TypeScript union type in `src/providers/types.ts`; added `endpoint` and `tls_mode` to `ProviderConfig.defaults` interface to eliminate build errors in the provider registry
+
+---
+
 ## [2.6.10] - 2026-02-25
 
 ### CI Recovery & Release Realignment

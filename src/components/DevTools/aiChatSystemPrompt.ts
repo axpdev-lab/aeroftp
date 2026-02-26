@@ -222,6 +222,16 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **API**: \`https://workdrive.zoho.{tld}/api/v1/\` (JSON:API format).
 - **Features**: search, trash management (list/restore/permanent delete), folder hierarchy.
 
+### FileLu
+- **Auth**: API Key (query param \`key=\`). Generated at FileLu Account Settings → Developer API Key.
+- **API**: \`https://filelu.com/api\`. JSON responses with \`status/msg/result\` envelope.
+- **ID-based**: Folders use numeric \`fld_id\` (root = 0), files use alphanumeric \`file_code\`.
+- **Upload**: 2-step — GET \`/upload/server\` → POST multipart to returned URL.
+- **Download**: POST \`/file/direct_link\` to get URL → stream from URL.
+- **Features**: list, upload, download, mkdir, delete, rename, move (set_folder/folder/move), clone, share link, storage quota.
+- **Also supports**: FTP/FTPS (ftp.filelu.com:21/990), WebDAV, S3-compatible (S5).
+- **Storage**: 20GB free.
+
 ### Archives & Encryption
 - **ZIP**: AES-256 encryption, compression levels 0-9.
 - **7z**: LZMA2 compression, AES-256 encryption.
@@ -315,6 +325,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         kdrive: '### Infomaniak kDrive\n- **Auth**: API Token (Bearer). Swiss-hosted. 15GB free. 60 req/min rate limit.',
         drime: '### Drime Cloud\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
+        filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 20GB free.',
     };
 
     const active = activeProvider ? sections[activeProvider.toLowerCase()] || '' : '';

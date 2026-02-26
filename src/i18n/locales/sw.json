@@ -144,6 +144,7 @@
             "connectionNameOptional": "Jina la muunganisho (hiari)",
             "cancelEditing": "Ghairi Kuhariri",
             "saveChanges": "Hifadhi Mabadiliko",
+            "createAccount": "Unda Akaunti",
             "docs": "Nyaraka",
             "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Chagua Zote",
             "deselectAll": "Ondoa Chaguo Zote",
             "selected": "zilizochaguliwa",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ikiwa aikoni haijawekwa, favicon au icon.png kutoka kwa seva itagunduliwa kiotomatiki.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Imeshindwa kuhamisha kwenye Takataka",
             "batchRenameResult": "{success} zimebadilishwa jina, {errors} zimeshindwa",
             "copyCompleted": "Kunakili kumekamilika",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Folda ya ndani \"{path}\" haikupatikana. Imeelekeza kwenye saraka ya nyumbani."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Bora kwa miabingu yenye owneroperations wenyewe, vifaa vya NAS, na kushiriki faili.",
             "selectProviderPrompt": "Chagua mtoa huduma hapo juu au chagua \"Custom\"",
             "seafileDesc": "Hifadhi ya wingu la chanzo huria",
-            "seafileTooltip": "Seafile - Wingu la chanzo huria linalojihifadhi na msaada wa WebDAV"
+            "seafileTooltip": "Seafile - Wingu la chanzo huria linalojihifadhi na msaada wa WebDAV",
+            "fileluDesc": "Hifadhi ya wingu yenye itifaki nyingi",
+            "fileluTooltip": "FileLu - GB 20 za hifadhi bila malipo na FTP, FTPS, WebDAV, S3 na API asili",
+            "fileluFtpDesc": "FileLu kupitia FTP",
+            "fileluFtpsDesc": "FileLu kupitia FTPS salama",
+            "fileluWebdavDesc": "FileLu kupitia WebDAV",
+            "fileluS3Desc": "FileLu S5 hifadhi inayolingana na S3"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -3092,6 +3101,45 @@
                     "installed": "Imewekwa"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Weka Nenosiri la Faili",
+            "enterFilePassword": "Weka nenosiri (acha wazi kuondoa):",
+            "filePasswordSet": "Nenosiri la faili limewekwa",
+            "filePasswordRemoved": "Nenosiri la faili limeondolewa",
+            "filePasswordError": "Imeshindwa kuweka nenosiri la faili",
+            "togglePrivate": "Weka kama Binafsi",
+            "fileSetPrivate": "Faili sasa ni la kibinafsi",
+            "makePublic": "Weka kama Umma",
+            "fileSetPublic": "Faili sasa ni la umma",
+            "cloneFile": "Nakili Faili (upande wa seva)",
+            "cloneSuccess": "Faili imenakiliwa — URL imenakiliwa kwenye ubao wa kunakili",
+            "cloneError": "Kunakili kumeshindwa",
+            "setFolderPassword": "Weka Nenosiri la Folda",
+            "enterFolderPassword": "Weka nenosiri la folda (acha wazi kuondoa):",
+            "folderPasswordSet": "Nenosiri la folda limewekwa",
+            "folderPasswordRemoved": "Nenosiri la folda limeondolewa",
+            "folderPasswordError": "Imeshindwa kuweka nenosiri la folda",
+            "folderSettings": "Mipangilio ya Folda",
+            "filedrop": "FileDrop (ruhusu upakiaji kutoka kwa yeyote)",
+            "filedropDesc": "Wengine wanaweza kupakia faili kwenye folda hii bila akaunti",
+            "folderPublic": "Folda ya Umma",
+            "folderPublicDesc": "Mtu yeyote anaweza kuvinjari maudhui ya folda hii",
+            "folderSettingsSaved": "Mipangilio ya folda imehifadhiwa",
+            "viewTrash": "Tazama Faili Zilizofutwa",
+            "remoteUrlUpload": "Pakia kutoka URL",
+            "remoteUrlUploadDesc": "Bandika kiungo cha moja kwa moja — FileLu itapakua faili upande wa seva",
+            "remoteUrlDest": "Marudio",
+            "remoteUrlUploaded": "Upakiaji umeanza (file_code: {code})",
+            "remoteUrlError": "Upakiaji kutoka URL ya mbali umeshindwa",
+            "startUpload": "Anza Kupakia",
+            "trashTitle": "Faili Zilizofutwa za FileLu",
+            "restoreSelected": "Rejesha zilizochaguliwa",
+            "permanentDelete": "Futa kabisa",
+            "permanentDeleteOne": "Futa kabisa",
+            "trashEmpty": "Hakuna faili zilizofutwa",
+            "restore": "Rejesha",
+            "trashFooter": "Faili zilizorejeshwa zitaonekana tena katika folda yake ya asili"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Verbindingsnaam (optioneel)",
             "cancelEditing": "Bewerken annuleren",
             "saveChanges": "Wijzigingen opslaan",
+            "createAccount": "Account aanmaken",
             "docs": "Documentatie",
             "minutes": "minuten",
             "localPathPlaceholder": "/home/gebruiker/projecten",
@@ -724,7 +725,9 @@
             "selectAll": "Alles selecteren",
             "deselectAll": "Alles deselecteren",
             "selected": "geselecteerd",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Als er geen pictogram is ingesteld, wordt de favicon of icon.png van de server automatisch gedetecteerd.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Verplaatsen naar Prullenbak mislukt",
             "batchRenameResult": "{success} hernoemd, {errors} mislukt",
             "copyCompleted": "Kopiëren voltooid",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Lokale map \"{path}\" niet gevonden. Genavigeerd naar de thuismap."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideaal voor zelf-gehoste clouds, NAS-apparaten en bestandsdeling.",
             "selectProviderPrompt": "Selecteer een provider hierboven of kies \"Custom\"",
             "seafileDesc": "Opensource cloudopslag",
-            "seafileTooltip": "Seafile - Zelfgehoste opensource cloud met WebDAV-ondersteuning"
+            "seafileTooltip": "Seafile - Zelfgehoste opensource cloud met WebDAV-ondersteuning",
+            "fileluDesc": "Multi-protocol cloudopslag",
+            "fileluTooltip": "FileLu - 20GB gratis opslag met FTP, FTPS, WebDAV, S3 en native API",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via beveiligde FTPS",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-compatibele opslag"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3082,6 +3091,45 @@
                     "installed": "Geïnstalleerd"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Bestandswachtwoord instellen",
+            "enterFilePassword": "Voer wachtwoord in (laat leeg om te verwijderen):",
+            "filePasswordSet": "Bestandswachtwoord ingesteld",
+            "filePasswordRemoved": "Bestandswachtwoord verwijderd",
+            "filePasswordError": "Instellen van bestandswachtwoord mislukt",
+            "togglePrivate": "Instellen als privé",
+            "fileSetPrivate": "Bestand is nu privé",
+            "makePublic": "Instellen als openbaar",
+            "fileSetPublic": "Bestand is nu openbaar",
+            "cloneFile": "Bestand klonen (server-side)",
+            "cloneSuccess": "Bestand gekloond — URL gekopieerd naar klembord",
+            "cloneError": "Klonen mislukt",
+            "setFolderPassword": "Mapwachtwoord instellen",
+            "enterFolderPassword": "Voer mapwachtwoord in (laat leeg om te verwijderen):",
+            "folderPasswordSet": "Mapwachtwoord ingesteld",
+            "folderPasswordRemoved": "Mapwachtwoord verwijderd",
+            "folderPasswordError": "Instellen van mapwachtwoord mislukt",
+            "folderSettings": "Mapinstellingen",
+            "filedrop": "FileDrop (uploads van iedereen toestaan)",
+            "filedropDesc": "Anderen kunnen bestanden uploaden naar deze map zonder account",
+            "folderPublic": "Openbare map",
+            "folderPublicDesc": "Iedereen kan de inhoud van deze map bekijken",
+            "folderSettingsSaved": "Mapinstellingen opgeslagen",
+            "viewTrash": "Verwijderde bestanden bekijken",
+            "remoteUrlUpload": "Uploaden via URL",
+            "remoteUrlUploadDesc": "Plak een directe link — FileLu downloadt het bestand server-side",
+            "remoteUrlDest": "Bestemming",
+            "remoteUrlUploaded": "Upload gestart (file_code: {code})",
+            "remoteUrlError": "Externe URL-upload mislukt",
+            "startUpload": "Upload starten",
+            "trashTitle": "FileLu verwijderde bestanden",
+            "restoreSelected": "Geselecteerde herstellen",
+            "permanentDelete": "Permanent verwijderen",
+            "permanentDeleteOne": "Permanent verwijderen",
+            "trashEmpty": "Geen verwijderde bestanden",
+            "restore": "Herstellen",
+            "trashFooter": "Herstelde bestanden verschijnen opnieuw in hun oorspronkelijke map"
         }
     }
 }

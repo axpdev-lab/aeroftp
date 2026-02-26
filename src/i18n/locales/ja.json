@@ -144,6 +144,7 @@
             "connectionNameOptional": "接続名（任意）",
             "cancelEditing": "編集をキャンセル",
             "saveChanges": "変更を保存",
+            "createAccount": "アカウントを作成",
             "docs": "ドキュメント",
             "minutes": "分",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "すべて選択",
             "deselectAll": "すべて選択解除",
             "selected": "選択済み",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "アイコンが設定されていない場合、サーバーの favicon または icon.png が自動的に検出されます。",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "ゴミ箱への移動に失敗しました",
             "batchRenameResult": "{success} 件の名前変更成功、{errors} 件の失敗",
             "copyCompleted": "コピーが完了しました",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "ローカルフォルダー \"{path}\" が見つかりませんでした。ホームディレクトリに移動しました。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "自己ホスト型クラウド、NASデバイス、ファイル共有に最適です。",
             "selectProviderPrompt": "上記のプロバイダーを選択するか、\"Custom\"を選択してください",
             "seafileDesc": "オープンソースクラウドストレージ",
-            "seafileTooltip": "Seafile - WebDAV対応のセルフホスト型オープンソースクラウド"
+            "seafileTooltip": "Seafile - WebDAV対応のセルフホスト型オープンソースクラウド",
+            "fileluDesc": "マルチプロトコルクラウドストレージ",
+            "fileluTooltip": "FileLu - FTP、FTPS、WebDAV、S3およびネイティブAPI対応の20GB無料ストレージ",
+            "fileluFtpDesc": "FTP経由のFileLu",
+            "fileluFtpsDesc": "セキュアなFTPS経由のFileLu",
+            "fileluWebdavDesc": "WebDAV経由のFileLu",
+            "fileluS3Desc": "FileLu S5 S3互換ストレージ"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3079,6 +3088,45 @@
                     "installed": "インストール済み"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "ファイルパスワードを設定",
+            "enterFilePassword": "パスワードを入力（削除する場合は空白のまま）:",
+            "filePasswordSet": "ファイルパスワードを設定しました",
+            "filePasswordRemoved": "ファイルパスワードを削除しました",
+            "filePasswordError": "ファイルパスワードの設定に失敗しました",
+            "togglePrivate": "プライベートに設定",
+            "fileSetPrivate": "ファイルはプライベートになりました",
+            "makePublic": "公開に設定",
+            "fileSetPublic": "ファイルは公開になりました",
+            "cloneFile": "ファイルをクローン（サーバーサイド）",
+            "cloneSuccess": "ファイルをクローンしました — URLをクリップボードにコピーしました",
+            "cloneError": "クローンに失敗しました",
+            "setFolderPassword": "フォルダーパスワードを設定",
+            "enterFolderPassword": "フォルダーパスワードを入力（削除する場合は空白のまま）:",
+            "folderPasswordSet": "フォルダーパスワードを設定しました",
+            "folderPasswordRemoved": "フォルダーパスワードを削除しました",
+            "folderPasswordError": "フォルダーパスワードの設定に失敗しました",
+            "folderSettings": "フォルダー設定",
+            "filedrop": "FileDrop（誰からでもアップロードを許可）",
+            "filedropDesc": "アカウントなしで他のユーザーがこのフォルダーにファイルをアップロードできます",
+            "folderPublic": "公開フォルダー",
+            "folderPublicDesc": "誰でもこのフォルダーの内容を閲覧できます",
+            "folderSettingsSaved": "フォルダー設定を保存しました",
+            "viewTrash": "削除済みファイルを表示",
+            "remoteUrlUpload": "URLからアップロード",
+            "remoteUrlUploadDesc": "直接リンクを貼り付けると、FileLuがサーバーサイドでファイルをダウンロードします",
+            "remoteUrlDest": "送信先",
+            "remoteUrlUploaded": "アップロードを開始しました（file_code: {code}）",
+            "remoteUrlError": "リモートURLのアップロードに失敗しました",
+            "startUpload": "アップロード開始",
+            "trashTitle": "FileLu 削除済みファイル",
+            "restoreSelected": "選択したものを復元",
+            "permanentDelete": "完全に削除",
+            "permanentDeleteOne": "完全に削除",
+            "trashEmpty": "削除済みファイルはありません",
+            "restore": "復元",
+            "trashFooter": "復元されたファイルは元のフォルダーに再表示されます"
         }
     }
 }

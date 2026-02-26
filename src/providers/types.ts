@@ -9,7 +9,7 @@
 // Protocol Types
 // ============================================================================
 
-export type BaseProtocol = 'ftp' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared';
+export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu';
 
 export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega';
 
@@ -94,6 +94,10 @@ export interface ProviderConfig {
         save_session?: boolean; // MEGA save session
         /** S3 endpoint URL template with {region} placeholder, e.g. 'https://s3.{region}.wasabisys.com' */
         endpointTemplate?: string;
+        /** Direct S3 endpoint URL */
+        endpoint?: string;
+        /** FTP TLS mode */
+        tls_mode?: string;
     };
 
     /** API endpoints for provider-specific features */
@@ -128,6 +132,9 @@ export interface ProviderConfig {
 
     /** Documentation/help URL */
     helpUrl?: string;
+
+    /** Sign-up / Create account URL */
+    signupUrl?: string;
 
     /** Whether this provider is fully tested/stable */
     stable?: boolean;

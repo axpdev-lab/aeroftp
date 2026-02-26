@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nom de la connexió (opcional)",
             "cancelEditing": "Cancel·lar edició",
             "saveChanges": "Desar canvis",
+            "createAccount": "Crea un compte",
             "docs": "Docs",
             "minutes": "minuts",
             "localPathPlaceholder": "/home/usuari/projectes",
@@ -724,7 +725,9 @@
             "selectAll": "Selecciona-ho tot",
             "deselectAll": "Desselecciona-ho tot",
             "selected": "seleccionat",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Si no s'ha definit cap icona, el favicon o l'icon.png del servidor es detecta automàticament.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "No s'ha pogut moure a la paperera",
             "batchRenameResult": "{success} reanomenats, {errors} fallits",
             "copyCompleted": "Copia completada",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "La carpeta local \"{path}\" no s'ha trobat. S'ha navegat al directori d'inici."
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideal per a núvols autogestionats, dispositius NAS i compartició de fitxers.",
             "selectProviderPrompt": "Selecciona un proveïdor anterior o escull \"Custom\"",
             "seafileDesc": "Emmagatzematge al núvol de codi obert",
-            "seafileTooltip": "Seafile - Núvol de codi obert autoallotjat amb compatibilitat WebDAV"
+            "seafileTooltip": "Seafile - Núvol de codi obert autoallotjat amb compatibilitat WebDAV",
+            "fileluDesc": "Emmagatzematge al núvol multiprotocol",
+            "fileluTooltip": "FileLu - 20GB d'emmagatzematge gratuït amb FTP, FTPS, WebDAV, S3 i API nativa",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via FTPS segur",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 emmagatzematge compatible amb S3"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -3108,6 +3117,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Establir contrasenya del fitxer",
+            "enterFilePassword": "Introduïu la contrasenya (deixeu en blanc per eliminar-la):",
+            "filePasswordSet": "Contrasenya del fitxer establerta",
+            "filePasswordRemoved": "Contrasenya del fitxer eliminada",
+            "filePasswordError": "No s'ha pogut establir la contrasenya del fitxer",
+            "togglePrivate": "Establir com a privat",
+            "fileSetPrivate": "El fitxer ara és privat",
+            "makePublic": "Establir com a públic",
+            "fileSetPublic": "El fitxer ara és públic",
+            "cloneFile": "Clonar fitxer (al servidor)",
+            "cloneSuccess": "Fitxer clonat — URL copiat al porta-retalls",
+            "cloneError": "Ha fallat la clonació",
+            "setFolderPassword": "Establir contrasenya de la carpeta",
+            "enterFolderPassword": "Introduïu la contrasenya de la carpeta (deixeu en blanc per eliminar-la):",
+            "folderPasswordSet": "Contrasenya de la carpeta establerta",
+            "folderPasswordRemoved": "Contrasenya de la carpeta eliminada",
+            "folderPasswordError": "No s'ha pogut establir la contrasenya de la carpeta",
+            "folderSettings": "Configuració de la carpeta",
+            "filedrop": "FileDrop (permetre pujades de qualsevol)",
+            "filedropDesc": "Altres persones poden pujar fitxers a aquesta carpeta sense un compte",
+            "folderPublic": "Carpeta pública",
+            "folderPublicDesc": "Qualsevol pot veure el contingut d'aquesta carpeta",
+            "folderSettingsSaved": "Configuració de la carpeta desada",
+            "viewTrash": "Veure fitxers eliminats",
+            "remoteUrlUpload": "Pujar des d'URL",
+            "remoteUrlUploadDesc": "Enganxeu un enllaç directe — FileLu descarregarà el fitxer al servidor",
+            "remoteUrlDest": "Destinació",
+            "remoteUrlUploaded": "Pujada iniciada (file_code: {code})",
+            "remoteUrlError": "La pujada des d'URL remota ha fallat",
+            "startUpload": "Iniciar pujada",
+            "trashTitle": "FileLu Fitxers eliminats",
+            "restoreSelected": "Restaurar seleccionats",
+            "permanentDelete": "Eliminar permanentment",
+            "permanentDeleteOne": "Eliminar permanentment",
+            "trashEmpty": "Cap fitxer eliminat",
+            "restore": "Restaurar",
+            "trashFooter": "Els fitxers restaurats reapareixeran a la seva carpeta original"
+        }
     }
 }

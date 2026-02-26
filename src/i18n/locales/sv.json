@@ -144,6 +144,7 @@
             "connectionNameOptional": "Anslutningsnamn (valfritt)",
             "cancelEditing": "Avbryt redigering",
             "saveChanges": "Spara ändringar",
+            "createAccount": "Skapa konto",
             "docs": "Dokument",
             "minutes": "minuter",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Markera alla",
             "deselectAll": "Avmarkera alla",
             "selected": "markerade",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Om ingen ikon är inställd identifieras favicon eller icon.png från servern automatiskt.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Det gick inte att flytta till papperskorgen",
             "batchRenameResult": "{success} omdöpta, {errors} misslyckades",
             "copyCompleted": "Kopiering slutförd",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Den lokala mappen \"{path}\" hittades inte. Navigerade till hemkatalogen."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Perfekt för själv-hostade moln, NAS-enheter och fildelning.",
             "selectProviderPrompt": "Välj en leverantör ovan eller välj \"Custom\"",
             "seafileDesc": "Molnlagring med öppen källkod",
-            "seafileTooltip": "Seafile - Självhostat moln med öppen källkod och WebDAV-stöd"
+            "seafileTooltip": "Seafile - Självhostat moln med öppen källkod och WebDAV-stöd",
+            "fileluDesc": "Flerprotokoll molnlagring",
+            "fileluTooltip": "FileLu - 20GB gratis lagring med FTP, FTPS, WebDAV, S3 och native API",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via säkert FTPS",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-kompatibel lagring"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -3089,6 +3098,45 @@
                     "installed": "Installerade"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Ange fillösenord",
+            "enterFilePassword": "Ange lösenord (lämna tomt för att ta bort):",
+            "filePasswordSet": "Fillösenord angivet",
+            "filePasswordRemoved": "Fillösenord borttaget",
+            "filePasswordError": "Det gick inte att ange fillösenord",
+            "togglePrivate": "Ange som privat",
+            "fileSetPrivate": "Filen är nu privat",
+            "makePublic": "Ange som offentlig",
+            "fileSetPublic": "Filen är nu offentlig",
+            "cloneFile": "Klona fil (på server)",
+            "cloneSuccess": "Filen klonad — URL kopierad till urklipp",
+            "cloneError": "Kloning misslyckades",
+            "setFolderPassword": "Ange maplösenord",
+            "enterFolderPassword": "Ange maplösenord (lämna tomt för att ta bort):",
+            "folderPasswordSet": "Maplösenord angivet",
+            "folderPasswordRemoved": "Maplösenord borttaget",
+            "folderPasswordError": "Det gick inte att ange maplösenord",
+            "folderSettings": "Mappinställningar",
+            "filedrop": "FileDrop (tillåt uppladdningar från alla)",
+            "filedropDesc": "Andra kan ladda upp filer till den här mappen utan ett konto",
+            "folderPublic": "Offentlig mapp",
+            "folderPublicDesc": "Vem som helst kan bläddra i innehållet i den här mappen",
+            "folderSettingsSaved": "Mappinställningar sparade",
+            "viewTrash": "Visa borttagna filer",
+            "remoteUrlUpload": "Ladda upp från URL",
+            "remoteUrlUploadDesc": "Klistra in en direktlänk — FileLu laddar ner filen på servern",
+            "remoteUrlDest": "Destination",
+            "remoteUrlUploaded": "Uppladdning påbörjad (file_code: {code})",
+            "remoteUrlError": "Uppladdning från fjärr-URL misslyckades",
+            "startUpload": "Starta uppladdning",
+            "trashTitle": "Borttagna filer i FileLu",
+            "restoreSelected": "Återställ markerade",
+            "permanentDelete": "Ta bort permanent",
+            "permanentDeleteOne": "Ta bort permanent",
+            "trashEmpty": "Inga borttagna filer",
+            "restore": "Återställ",
+            "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp"
         }
     }
 }

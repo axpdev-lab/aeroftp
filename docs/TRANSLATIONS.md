@@ -1,8 +1,8 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 22 February 2026
-> Version: v2.6.0
-> Languages: 47 | Keys: 2739 | Coverage: 100%
+> Last Updated: 26 February 2026
+> Version: v2.7.0
+> Languages: 47 | Keys: 2860 | Coverage: 100%
 
 ---
 
@@ -118,10 +118,10 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ## Translation Keys (2320)
 
-Translations are organized by 35+ namespaces:
+Translations are organized by 36+ namespaces:
 
-| Namespace | Description | Keys |
-|-----------|-------------|------|
+| Namespace | Description | Keys (approx.) |
+|-----------|-------------|----------------|
 | `common` | Buttons, actions (Save, Cancel, Delete...) | General UI |
 | `connection` | Connection screen labels | Login form |
 | `protocol` | Protocol-specific labels | FTP, SFTP, S3, etc. |
@@ -162,6 +162,7 @@ Translations are organized by 35+ namespaces:
 | `syncPanel` | AeroSync panel | Profiles, compression, delta sync, multi-path, templates, rollback (v2.1.2+) |
 | `commandPalette` | Command Palette | Commands, categories, search (v2.6.0) |
 | `pluginBrowser` | Plugin Browser | Install, update, remove (v2.6.0) |
+| `filelu` | FileLu provider | Password, privacy, clone, trash, remote upload (v2.7.0) |
 
 ---
 

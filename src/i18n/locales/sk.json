@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nazov pripojenia (volitelne)",
             "cancelEditing": "Zrusit upravu",
             "saveChanges": "Ulozit zmeny",
+            "createAccount": "Vytvoriť účet",
             "docs": "Dokumentacia",
             "minutes": "minut",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Vybrať všetko",
             "deselectAll": "Zrušiť výber všetkého",
             "selected": "vybrané",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ak nie je nastavená žiadna ikona, favicon alebo icon.png zo servera sa zistí automaticky.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Presun do koša sa nepodaril",
             "batchRenameResult": "{success} premenovaných, {errors} zlyhalo",
             "copyCompleted": "Kopírovanie dokončené",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Lokálny priečinok \"{path}\" nebol nájdený. Navigácia presmerovaná do domovského adresára."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideálne pre vlastné cloudové systémy, zariadenia NAS a zdieľanie súborov.",
             "selectProviderPrompt": "Vyberte poskytovateľa vyššie alebo vyberte \"Custom\"",
             "seafileDesc": "Open-source cloudové úložisko",
-            "seafileTooltip": "Seafile - Vlastný open-source cloud s podporou WebDAV"
+            "seafileTooltip": "Seafile - Vlastný open-source cloud s podporou WebDAV",
+            "fileluDesc": "Viacprotokové cloudové úložisko",
+            "fileluTooltip": "FileLu - 20GB bezplatného úložiska s FTP, FTPS, WebDAV, S3 a natívnym API",
+            "fileluFtpDesc": "FileLu cez FTP",
+            "fileluFtpsDesc": "FileLu cez zabezpečený FTPS",
+            "fileluWebdavDesc": "FileLu cez WebDAV",
+            "fileluS3Desc": "FileLu S5 úložisko kompatibilné s S3"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -3089,6 +3098,45 @@
                     "installed": "Nainštalované"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Nastaviť heslo súboru",
+            "enterFilePassword": "Zadajte heslo (ponechajte prázdne pre odstránenie):",
+            "filePasswordSet": "Heslo súboru bolo nastavené",
+            "filePasswordRemoved": "Heslo súboru bolo odstránené",
+            "filePasswordError": "Nepodarilo sa nastaviť heslo súboru",
+            "togglePrivate": "Nastaviť ako súkromný",
+            "fileSetPrivate": "Súbor je teraz súkromný",
+            "makePublic": "Nastaviť ako verejný",
+            "fileSetPublic": "Súbor je teraz verejný",
+            "cloneFile": "Klonovať súbor (na serveri)",
+            "cloneSuccess": "Súbor bol naklonovaný — URL skopírovaná do schránky",
+            "cloneError": "Klonovanie zlyhalo",
+            "setFolderPassword": "Nastaviť heslo priečinka",
+            "enterFolderPassword": "Zadajte heslo priečinka (ponechajte prázdne pre odstránenie):",
+            "folderPasswordSet": "Heslo priečinka bolo nastavené",
+            "folderPasswordRemoved": "Heslo priečinka bolo odstránené",
+            "folderPasswordError": "Nepodarilo sa nastaviť heslo priečinka",
+            "folderSettings": "Nastavenia priečinka",
+            "filedrop": "FileDrop (povoliť nahrávanie od všetkých)",
+            "filedropDesc": "Ostatní môžu nahrávať súbory do tohto priečinka bez účtu",
+            "folderPublic": "Verejný priečinok",
+            "folderPublicDesc": "Ktokoľvek môže prehliadať obsah tohto priečinka",
+            "folderSettingsSaved": "Nastavenia priečinka boli uložené",
+            "viewTrash": "Zobraziť zmazané súbory",
+            "remoteUrlUpload": "Nahrať z URL",
+            "remoteUrlUploadDesc": "Vložte priamy odkaz — FileLu stiahne súbor na serveri",
+            "remoteUrlDest": "Cieľ",
+            "remoteUrlUploaded": "Nahrávanie spustené (file_code: {code})",
+            "remoteUrlError": "Nahrávanie zo vzdialenej URL zlyhalo",
+            "startUpload": "Spustiť nahrávanie",
+            "trashTitle": "Zmazané súbory FileLu",
+            "restoreSelected": "Obnoviť vybrané",
+            "permanentDelete": "Trvale zmazať",
+            "permanentDeleteOne": "Trvale zmazať",
+            "trashEmpty": "Žiadne zmazané súbory",
+            "restore": "Obnoviť",
+            "trashFooter": "Obnovené súbory sa znova objavia v pôvodnom priečinku"
         }
     }
 }

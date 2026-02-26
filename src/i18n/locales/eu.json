@@ -144,6 +144,7 @@
             "connectionNameOptional": "Konexio izena (aukerakoa)",
             "cancelEditing": "Edizioa bertan behera utzi",
             "saveChanges": "Aldaketak gorde",
+            "createAccount": "Sortu kontua",
             "docs": "Dokumentazioa",
             "minutes": "minutu",
             "localPathPlaceholder": "/home/erabiltzailea/proiektuak",
@@ -724,7 +725,9 @@
             "selectAll": "Hautatu Guztiak",
             "deselectAll": "Deshautatu Guztiak",
             "selected": "hautatuta",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ikonorik ezarri ezean, zerbitzariaren favicon edo icon.png automatikoki detektatzen da.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Ezin izan da zakarrontzira mugitu",
             "batchRenameResult": "{success} berrizendatu, {errors} huts egin",
             "copyCompleted": "Kopia osatua",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "\"{path}\" tokiko karpeta ez da aurkitu. Hasierako direktoriora nabigatu da."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Autojabea diren hodeiak, NAS gailuak eta fitxategiak partekatzeko egokia.",
             "selectProviderPrompt": "Hautatu hornitzailea goian edo hautatu \"Custom\"",
             "seafileDesc": "Kode irekiko hodeiko biltegiratzea",
-            "seafileTooltip": "Seafile - Norberak ostatatutako kode irekiko hodeia WebDAV euskarriarekin"
+            "seafileTooltip": "Seafile - Norberak ostatatutako kode irekiko hodeia WebDAV euskarriarekin",
+            "fileluDesc": "Protokolo anitzeko hodeiko biltegiratzea",
+            "fileluTooltip": "FileLu - 20GB doako biltegiratze FTP, FTPS, WebDAV, S3 eta API natiboaren bidez",
+            "fileluFtpDesc": "FileLu FTP bidez",
+            "fileluFtpsDesc": "FileLu FTPS seguru bidez",
+            "fileluWebdavDesc": "FileLu WebDAV bidez",
+            "fileluS3Desc": "FileLu S5 S3-rekin bateragarria den biltegiratze"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -3111,6 +3120,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Ezarri fitxategiaren pasahitza",
+            "enterFilePassword": "Sartu pasahitza (utzi hutsik kentzeko):",
+            "filePasswordSet": "Fitxategiaren pasahitza ezarri da",
+            "filePasswordRemoved": "Fitxategiaren pasahitza kendu da",
+            "filePasswordError": "Ezin izan da fitxategiaren pasahitza ezarri",
+            "togglePrivate": "Ezarri pribatu gisa",
+            "fileSetPrivate": "Fitxategia orain pribatua da",
+            "makePublic": "Ezarri publiko gisa",
+            "fileSetPublic": "Fitxategia orain publikoa da",
+            "cloneFile": "Klonatu fitxategia (zerbitzariaren aldean)",
+            "cloneSuccess": "Fitxategia klonatu da — URLa arbelean kopiatu da",
+            "cloneError": "Klonazioak huts egin du",
+            "setFolderPassword": "Ezarri karpetaren pasahitza",
+            "enterFolderPassword": "Sartu karpetaren pasahitza (utzi hutsik kentzeko):",
+            "folderPasswordSet": "Karpetaren pasahitza ezarri da",
+            "folderPasswordRemoved": "Karpetaren pasahitza kendu da",
+            "folderPasswordError": "Ezin izan da karpetaren pasahitza ezarri",
+            "folderSettings": "Karpetaren ezarpenak",
+            "filedrop": "FileDrop (edonori igotzea baimendu)",
+            "filedropDesc": "Beste batzuek kontua gabe igo ditzakete fitxategiak karpeta honetara",
+            "folderPublic": "Karpeta publikoa",
+            "folderPublicDesc": "Edonork arakattu dezake karpeta honen edukia",
+            "folderSettingsSaved": "Karpetaren ezarpenak gordeta",
+            "viewTrash": "Ikusi ezabatutako fitxategiak",
+            "remoteUrlUpload": "Igo URLtik",
+            "remoteUrlUploadDesc": "Itsatsi esteka zuzen bat — FileLuk fitxategia zerbitzariaren aldean deskargatu duen",
+            "remoteUrlDest": "Helmuga",
+            "remoteUrlUploaded": "Igoera hasi da (file_code: {code})",
+            "remoteUrlError": "Urruneko URLaren igoerak huts egin du",
+            "startUpload": "Hasi igoera",
+            "trashTitle": "FileLu Ezabatutako fitxategiak",
+            "restoreSelected": "Leheneratu hautatuak",
+            "permanentDelete": "Ezabatu betirako",
+            "permanentDeleteOne": "Ezabatu betirako",
+            "trashEmpty": "Ez dago ezabatutako fitxategirik",
+            "restore": "Leheneratu",
+            "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira"
+        }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Yhteyden nimi (valinnainen)",
             "cancelEditing": "Peruuta muokkaus",
             "saveChanges": "Tallenna muutokset",
+            "createAccount": "Luo tili",
             "docs": "Dokumentaatio",
             "minutes": "minuuttia",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Valitse kaikki",
             "deselectAll": "Poista kaikkien valinta",
             "selected": "valittu",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Jos kuvaketta ei ole asetettu, palvelimen favicon tai icon.png havaitaan automaattisesti.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Siirtäminen roskakoriin epäonnistui",
             "batchRenameResult": "{success} nimetty uudelleen, {errors} epäonnistui",
             "copyCompleted": "Kopiointi valmis",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Paikallista kansiota \"{path}\" ei löydy. Siirryttiin kotihakemistoon."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ihanteellinen itsepalvelun pilville, NAS-laitteille ja tiedostojen jakamiselle.",
             "selectProviderPrompt": "Valitse palveluntarjoaja yllä tai valitse \"Custom\"",
             "seafileDesc": "Avoimen lähdekoodin pilvitallennustila",
-            "seafileTooltip": "Seafile - Itse isännöity avoimen lähdekoodin pilvi WebDAV-tuella"
+            "seafileTooltip": "Seafile - Itse isännöity avoimen lähdekoodin pilvi WebDAV-tuella",
+            "fileluDesc": "Moniprotokollinen pilvitallennus",
+            "fileluTooltip": "FileLu - 20GB ilmainen tallennustila FTP, FTPS, WebDAV, S3 ja natiivi API:lla",
+            "fileluFtpDesc": "FileLu FTP:n kautta",
+            "fileluFtpsDesc": "FileLu suojatun FTPS:n kautta",
+            "fileluWebdavDesc": "FileLu WebDAV:n kautta",
+            "fileluS3Desc": "FileLu S5 S3-yhteensopiva tallennus"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3092,6 +3101,45 @@
                     "installed": "Asennetut"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Aseta tiedoston salasana",
+            "enterFilePassword": "Syötä salasana (jätä tyhjäksi poistamiseksi):",
+            "filePasswordSet": "Tiedoston salasana asetettu",
+            "filePasswordRemoved": "Tiedoston salasana poistettu",
+            "filePasswordError": "Tiedoston salasanan asettaminen epäonnistui",
+            "togglePrivate": "Aseta yksityiseksi",
+            "fileSetPrivate": "Tiedosto on nyt yksityinen",
+            "makePublic": "Aseta julkiseksi",
+            "fileSetPublic": "Tiedosto on nyt julkinen",
+            "cloneFile": "Kloonaa tiedosto (palvelinpuoli)",
+            "cloneSuccess": "Tiedosto kloonattu — URL kopioitu leikepöydälle",
+            "cloneError": "Kloonaus epäonnistui",
+            "setFolderPassword": "Aseta kansion salasana",
+            "enterFolderPassword": "Syötä kansion salasana (jätä tyhjäksi poistamiseksi):",
+            "folderPasswordSet": "Kansion salasana asetettu",
+            "folderPasswordRemoved": "Kansion salasana poistettu",
+            "folderPasswordError": "Kansion salasanan asettaminen epäonnistui",
+            "folderSettings": "Kansion asetukset",
+            "filedrop": "FileDrop (salli lataukset keneltä tahansa)",
+            "filedropDesc": "Muut voivat ladata tiedostoja tähän kansioon ilman tiliä",
+            "folderPublic": "Julkinen kansio",
+            "folderPublicDesc": "Kaikki voivat selata tämän kansion sisältöä",
+            "folderSettingsSaved": "Kansion asetukset tallennettu",
+            "viewTrash": "Näytä poistetut tiedostot",
+            "remoteUrlUpload": "Lataa URL:sta",
+            "remoteUrlUploadDesc": "Liitä suora linkki — FileLu lataa tiedoston palvelinpuolella",
+            "remoteUrlDest": "Kohde",
+            "remoteUrlUploaded": "Lataus aloitettu (file_code: {code})",
+            "remoteUrlError": "Etä-URL-lataus epäonnistui",
+            "startUpload": "Aloita lataus",
+            "trashTitle": "FileLu Poistetut tiedostot",
+            "restoreSelected": "Palauta valitut",
+            "permanentDelete": "Poista pysyvästi",
+            "permanentDeleteOne": "Poista pysyvästi",
+            "trashEmpty": "Ei poistettuja tiedostoja",
+            "restore": "Palauta",
+            "trashFooter": "Palautetut tiedostot näkyvät uudelleen alkuperäisessä kansiossaan"
         }
     }
 }

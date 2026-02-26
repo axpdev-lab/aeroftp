@@ -144,6 +144,7 @@
             "connectionNameOptional": "Ryšio pavadinimas (neprivalomas)",
             "cancelEditing": "Atšaukti redagavimą",
             "saveChanges": "Išsaugoti pakeitimus",
+            "createAccount": "Sukurti paskyrą",
             "docs": "Dokumentacija",
             "minutes": "minučių",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Pasirinkti visus",
             "deselectAll": "Atžymėti visus",
             "selected": "pasirinkta",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Jei piktograma nenustatyta, automatiškai aptinkamas serverio favicon arba icon.png.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Nepavyko perkelti į šiukšlinę",
             "batchRenameResult": "{success} pervadinta, {errors} nepavyko",
             "copyCompleted": "Kopijavimas baigtas",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Vietinis aplankas \"{path}\" nerastas. Pereita į pagrindinį katalogą."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Idealu savitarnos debesims, NAS įrenginiams ir failų bendrinimui.",
             "selectProviderPrompt": "Pasirinkite teikėją aukščiau arba pasirinkite \"Custom\"",
             "seafileDesc": "Atvirojo kodo debesijos saugykla",
-            "seafileTooltip": "Seafile - Savarankiškai talpinamas atvirojo kodo debesis su WebDAV palaikymu"
+            "seafileTooltip": "Seafile - Savarankiškai talpinamas atvirojo kodo debesis su WebDAV palaikymu",
+            "fileluDesc": "Daugiprotokolis debesų saugykla",
+            "fileluTooltip": "FileLu - 20GB nemokama saugykla su FTP, FTPS, WebDAV, S3 ir natyvia API",
+            "fileluFtpDesc": "FileLu per FTP",
+            "fileluFtpsDesc": "FileLu per saugų FTPS",
+            "fileluWebdavDesc": "FileLu per WebDAV",
+            "fileluS3Desc": "FileLu S5 S3 suderinama saugykla"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -3092,6 +3101,45 @@
                     "installed": "Įdiegta"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Nustatyti failo slaptažodį",
+            "enterFilePassword": "Įveskite slaptažodį (palikite tuščią, kad pašalintumėte):",
+            "filePasswordSet": "Failo slaptažodis nustatytas",
+            "filePasswordRemoved": "Failo slaptažodis pašalintas",
+            "filePasswordError": "Nepavyko nustatyti failo slaptažodžio",
+            "togglePrivate": "Nustatyti kaip privačią",
+            "fileSetPrivate": "Failas dabar privatus",
+            "makePublic": "Nustatyti kaip viešą",
+            "fileSetPublic": "Failas dabar viešas",
+            "cloneFile": "Klonuoti failą (serverio pusėje)",
+            "cloneSuccess": "Failas klonuotas — URL nukopijuotas į iškarpinę",
+            "cloneError": "Klonavimas nepavyko",
+            "setFolderPassword": "Nustatyti aplanko slaptažodį",
+            "enterFolderPassword": "Įveskite aplanko slaptažodį (palikite tuščią, kad pašalintumėte):",
+            "folderPasswordSet": "Aplanko slaptažodis nustatytas",
+            "folderPasswordRemoved": "Aplanko slaptažodis pašalintas",
+            "folderPasswordError": "Nepavyko nustatyti aplanko slaptažodžio",
+            "folderSettings": "Aplanko nustatymai",
+            "filedrop": "FileDrop (leisti įkelti bet kam)",
+            "filedropDesc": "Kiti gali įkelti failus į šį aplanką be paskyros",
+            "folderPublic": "Viešas aplankas",
+            "folderPublicDesc": "Bet kas gali naršyti šio aplanko turinį",
+            "folderSettingsSaved": "Aplanko nustatymai išsaugoti",
+            "viewTrash": "Peržiūrėti ištrintus failus",
+            "remoteUrlUpload": "Įkelti iš URL",
+            "remoteUrlUploadDesc": "Įklijuokite tiesioginę nuorodą — FileLu atsisiųs failą serverio pusėje",
+            "remoteUrlDest": "Paskirties vieta",
+            "remoteUrlUploaded": "Įkėlimas pradėtas (file_code: {code})",
+            "remoteUrlError": "Nutolinto URL įkėlimas nepavyko",
+            "startUpload": "Pradėti įkėlimą",
+            "trashTitle": "FileLu ištrinti failai",
+            "restoreSelected": "Atkurti pasirinktus",
+            "permanentDelete": "Ištrinti visam laikui",
+            "permanentDeleteOne": "Ištrinti visam laikui",
+            "trashEmpty": "Nėra ištrintų failų",
+            "restore": "Atkurti",
+            "trashFooter": "Atkurti failai vėl pasirodys pradiniame aplanke"
         }
     }
 }

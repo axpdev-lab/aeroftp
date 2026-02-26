@@ -144,6 +144,7 @@
             "connectionNameOptional": "Pangalan ng koneksyon (opsyonal)",
             "cancelEditing": "Kanselahin ang Pag-edit",
             "saveChanges": "I-save ang mga Pagbabago",
+            "createAccount": "Lumikha ng Account",
             "docs": "Mga Dokumento",
             "minutes": "minuto",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Piliin Lahat",
             "deselectAll": "Alisan ng Pagpili Lahat",
             "selected": "napili",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Kung walang nakatakdang icon, ang favicon o icon.png mula sa server ay awtomatikong natutukoy.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Nabigo ang paglipat sa Basurahan",
             "batchRenameResult": "{success} napalitan ang pangalan, {errors} nabigo",
             "copyCompleted": "Kumpleto na ang pagkopya",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Hindi nahanap ang lokal na folder na \"{path}\". Na-navigate sa home directory."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Perpekto para sa self-hosted clouds, NAS devices, at file sharing.",
             "selectProviderPrompt": "Pumili ng provider sa itaas o piliin ang \"Custom\"",
             "seafileDesc": "Open-source na cloud storage",
-            "seafileTooltip": "Seafile - Self-hosted na open-source cloud na may suporta sa WebDAV"
+            "seafileTooltip": "Seafile - Self-hosted na open-source cloud na may suporta sa WebDAV",
+            "fileluDesc": "Multi-protocol na cloud storage",
+            "fileluTooltip": "FileLu - 20GB libreng storage na may FTP, FTPS, WebDAV, S3 at native API",
+            "fileluFtpDesc": "FileLu sa pamamagitan ng FTP",
+            "fileluFtpsDesc": "FileLu sa pamamagitan ng ligtas na FTPS",
+            "fileluWebdavDesc": "FileLu sa pamamagitan ng WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-compatible na storage"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3111,6 +3120,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Itakda ang Password ng File",
+            "enterFilePassword": "Maglagay ng password (iwanang blangko para alisin):",
+            "filePasswordSet": "Naitakda ang password ng file",
+            "filePasswordRemoved": "Naalis ang password ng file",
+            "filePasswordError": "Nabigo sa pagtakda ng password ng file",
+            "togglePrivate": "Itakda bilang Pribado",
+            "fileSetPrivate": "Pribado na ang file",
+            "makePublic": "Itakda bilang Pampubliko",
+            "fileSetPublic": "Pampubliko na ang file",
+            "cloneFile": "I-clone ang File (sa server)",
+            "cloneSuccess": "Na-clone ang file — Nakopya ang URL sa clipboard",
+            "cloneError": "Nabigo ang pag-clone",
+            "setFolderPassword": "Itakda ang Password ng Folder",
+            "enterFolderPassword": "Maglagay ng password ng folder (iwanang blangko para alisin):",
+            "folderPasswordSet": "Naitakda ang password ng folder",
+            "folderPasswordRemoved": "Naalis ang password ng folder",
+            "folderPasswordError": "Nabigo sa pagtakda ng password ng folder",
+            "folderSettings": "Mga Setting ng Folder",
+            "filedrop": "FileDrop (payagan ang mga upload mula sa sinuman)",
+            "filedropDesc": "Maaaring mag-upload ng mga file sa folder na ito ang iba nang walang account",
+            "folderPublic": "Pampublikong Folder",
+            "folderPublicDesc": "Maaaring i-browse ng sinuman ang mga nilalaman ng folder na ito",
+            "folderSettingsSaved": "Nai-save ang mga setting ng folder",
+            "viewTrash": "Tingnan ang Mga Tinanggal na File",
+            "remoteUrlUpload": "Mag-upload mula sa URL",
+            "remoteUrlUploadDesc": "I-paste ang isang direktang link — Ido-download ng FileLu ang file sa server",
+            "remoteUrlDest": "Patutunguhan",
+            "remoteUrlUploaded": "Nagsimula na ang upload (file_code: {code})",
+            "remoteUrlError": "Nabigo ang pag-upload mula sa remote URL",
+            "startUpload": "Simulan ang Upload",
+            "trashTitle": "Mga Tinanggal na File ng FileLu",
+            "restoreSelected": "I-restore ang mga napili",
+            "permanentDelete": "Permanenteng tanggalin",
+            "permanentDeleteOne": "Permanenteng tanggalin",
+            "trashEmpty": "Walang tinanggal na mga file",
+            "restore": "I-restore",
+            "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder"
+        }
     }
 }

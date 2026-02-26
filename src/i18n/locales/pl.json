@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nazwa połączenia (opcjonalnie)",
             "cancelEditing": "Anuluj edycję",
             "saveChanges": "Zapisz zmiany",
+            "createAccount": "Utwórz konto",
             "docs": "Dokumentacja",
             "minutes": "minut",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Zaznacz wszystkie",
             "deselectAll": "Odznacz wszystkie",
             "selected": "zaznaczono",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Jeśli nie ustawiono ikony, favicon lub icon.png z serwera zostanie wykryty automatycznie.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Nie udało się przenieść do Kosza",
             "batchRenameResult": "{success} zmieniono nazwę, {errors} nie powiodło się",
             "copyCompleted": "Kopiowanie zakończone",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Lokalny folder \"{path}\" nie znaleziony. Nawigowano do katalogu domowego."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Idealne do chmur hostowanych samodzielnie, urządzeń NAS i udostępniania plików.",
             "selectProviderPrompt": "Wybierz dostawcę powyżej lub wybierz \"Custom\"",
             "seafileDesc": "Chmura open-source",
-            "seafileTooltip": "Seafile - Samoobslugowa chmura open-source z obsługą WebDAV"
+            "seafileTooltip": "Seafile - Samoobslugowa chmura open-source z obsługą WebDAV",
+            "fileluDesc": "Wieloprotokołowa pamięć w chmurze",
+            "fileluTooltip": "FileLu - 20GB darmowej przestrzeni z obsługą FTP, FTPS, WebDAV, S3 i natywnego API",
+            "fileluFtpDesc": "FileLu przez FTP",
+            "fileluFtpsDesc": "FileLu przez bezpieczne FTPS",
+            "fileluWebdavDesc": "FileLu przez WebDAV",
+            "fileluS3Desc": "FileLu S5 magazyn zgodny z S3"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -3079,6 +3088,45 @@
                     "installed": "Zainstalowane"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Ustaw hasło pliku",
+            "enterFilePassword": "Wprowadź hasło (pozostaw puste, aby usunąć):",
+            "filePasswordSet": "Hasło pliku ustawione",
+            "filePasswordRemoved": "Hasło pliku usunięte",
+            "filePasswordError": "Nie udało się ustawić hasła pliku",
+            "togglePrivate": "Ustaw jako prywatny",
+            "fileSetPrivate": "Plik jest teraz prywatny",
+            "makePublic": "Ustaw jako publiczny",
+            "fileSetPublic": "Plik jest teraz publiczny",
+            "cloneFile": "Sklonuj plik (po stronie serwera)",
+            "cloneSuccess": "Plik sklonowany — URL skopiowany do schowka",
+            "cloneError": "Klonowanie nie powiodło się",
+            "setFolderPassword": "Ustaw hasło folderu",
+            "enterFolderPassword": "Wprowadź hasło folderu (pozostaw puste, aby usunąć):",
+            "folderPasswordSet": "Hasło folderu ustawione",
+            "folderPasswordRemoved": "Hasło folderu usunięte",
+            "folderPasswordError": "Nie udało się ustawić hasła folderu",
+            "folderSettings": "Ustawienia folderu",
+            "filedrop": "FileDrop (zezwól na przesyłanie od wszystkich)",
+            "filedropDesc": "Inni mogą przesyłać pliki do tego folderu bez konta",
+            "folderPublic": "Publiczny folder",
+            "folderPublicDesc": "Każdy może przeglądać zawartość tego folderu",
+            "folderSettingsSaved": "Ustawienia folderu zapisane",
+            "viewTrash": "Wyświetl usunięte pliki",
+            "remoteUrlUpload": "Prześlij z URL",
+            "remoteUrlUploadDesc": "Wklej bezpośredni link — FileLu pobierze plik po stronie serwera",
+            "remoteUrlDest": "Cel",
+            "remoteUrlUploaded": "Przesyłanie rozpoczęte (file_code: {code})",
+            "remoteUrlError": "Przesyłanie z zdalnego URL nie powiodło się",
+            "startUpload": "Rozpocznij przesyłanie",
+            "trashTitle": "Usunięte pliki FileLu",
+            "restoreSelected": "Przywróć zaznaczone",
+            "permanentDelete": "Usuń trwale",
+            "permanentDeleteOne": "Usuń trwale",
+            "trashEmpty": "Brak usuniętych plików",
+            "restore": "Przywróć",
+            "trashFooter": "Przywrócone pliki pojawią się ponownie w swoim oryginalnym folderze"
         }
     }
 }

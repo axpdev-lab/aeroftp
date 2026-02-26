@@ -144,6 +144,7 @@
             "connectionNameOptional": "Naziv konekcije (opciono)",
             "cancelEditing": "Otkaži uređivanje",
             "saveChanges": "Sačuvaj izmene",
+            "createAccount": "Креирај налог",
             "docs": "Dokumentacija",
             "minutes": "minuta",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Изабери све",
             "deselectAll": "Поништи избор свих",
             "selected": "изабрано",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ако икона није постављена, favicon или icon.png са сервера се аутоматски детектује.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Премештање у корпу није успело",
             "batchRenameResult": "{success} преименовано, {errors} неуспешно",
             "copyCompleted": "Копирање завршено",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Локална фасцикла \"{path}\" није пронађена. Пређено у почетни директоријум."
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Идеалан за самоприпремљене облаке, NAS уређаје и дељење датотека.",
             "selectProviderPrompt": "Изаберите пружаоца изнад или изаберите \"Custom\"",
             "seafileDesc": "Отворено облак складиште",
-            "seafileTooltip": "Seafile - Самохостовано отворено облак са подршком за WebDAV"
+            "seafileTooltip": "Seafile - Самохостовано отворено облак са подршком за WebDAV",
+            "fileluDesc": "Вишепротоколна складишта у облаку",
+            "fileluTooltip": "FileLu - 20GB бесплатног простора са FTP, FTPS, WebDAV, S3 и нативним API-јем",
+            "fileluFtpDesc": "FileLu преко FTP",
+            "fileluFtpsDesc": "FileLu преко безбедног FTPS",
+            "fileluWebdavDesc": "FileLu преко WebDAV",
+            "fileluS3Desc": "FileLu S5 складиштење компатибилно са S3"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",
@@ -3089,6 +3098,45 @@
                     "installed": "Инсталирано"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Постави лозинку датотеке",
+            "enterFilePassword": "Унесите лозинку (оставите празно за уклањање):",
+            "filePasswordSet": "Лозинка датотеке постављена",
+            "filePasswordRemoved": "Лозинка датотеке уклоњена",
+            "filePasswordError": "Није успело постављање лозинке датотеке",
+            "togglePrivate": "Постави као приватно",
+            "fileSetPrivate": "Датотека је сада приватна",
+            "makePublic": "Постави као јавно",
+            "fileSetPublic": "Датотека је сада јавна",
+            "cloneFile": "Клонирај датотеку (на серверу)",
+            "cloneSuccess": "Датотека клонирана — URL копиран у clipboard",
+            "cloneError": "Клонирање није успело",
+            "setFolderPassword": "Постави лозинку фасцикле",
+            "enterFolderPassword": "Унесите лозинку фасцикле (оставите празно за уклањање):",
+            "folderPasswordSet": "Лозинка фасцикле постављена",
+            "folderPasswordRemoved": "Лозинка фасцикле уклоњена",
+            "folderPasswordError": "Није успело постављање лозинке фасцикле",
+            "folderSettings": "Подешавања фасцикле",
+            "filedrop": "FileDrop (дозволи отпремање свима)",
+            "filedropDesc": "Други могу да отпремају датотеке у ову фасциклу без налога",
+            "folderPublic": "Јавна фасцикла",
+            "folderPublicDesc": "Свако може да прегледа садржај ове фасцикле",
+            "folderSettingsSaved": "Подешавања фасцикле сачувана",
+            "viewTrash": "Прикажи обрисане датотеке",
+            "remoteUrlUpload": "Отпреми са URL",
+            "remoteUrlUploadDesc": "Налепите директну везу — FileLu ће преузети датотеку на серверу",
+            "remoteUrlDest": "Одредиште",
+            "remoteUrlUploaded": "Отпремање започето (file_code: {code})",
+            "remoteUrlError": "Отпремање са удаљеног URL није успело",
+            "startUpload": "Започни отпремање",
+            "trashTitle": "Обрисане датотеке FileLu",
+            "restoreSelected": "Врати изабране",
+            "permanentDelete": "Трајно обриши",
+            "permanentDeleteOne": "Трајно обриши",
+            "trashEmpty": "Нема обрисаних датотека",
+            "restore": "Врати",
+            "trashFooter": "Враћене датотеке ће се поново појавити у свом оригиналном фолдеру"
         }
     }
 }

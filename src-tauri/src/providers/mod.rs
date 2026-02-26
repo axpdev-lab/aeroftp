@@ -40,6 +40,7 @@ pub mod internxt;
 pub mod kdrive;
 pub mod jottacloud;
 pub mod drime_cloud;
+pub mod filelu;
 pub mod http_retry;
 
 pub use types::*;
@@ -64,6 +65,7 @@ pub use internxt::InternxtProvider;
 pub use kdrive::KDriveProvider;
 pub use jottacloud::JottacloudProvider;
 pub use drime_cloud::DrimeCloudProvider;
+pub use filelu::FileLuProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -570,6 +572,10 @@ impl ProviderFactory {
                 let drime_config = DrimeCloudConfig::from_provider_config(config)?;
                 Ok(Box::new(DrimeCloudProvider::new(drime_config)))
             }
+            ProviderType::FileLu => {
+                let filelu_config = FileLuConfig::from_provider_config(config)?;
+                Ok(Box::new(FileLuProvider::new(filelu_config)))
+            }
         }
     }
     
@@ -596,6 +602,7 @@ impl ProviderFactory {
             ProviderType::Internxt,
             ProviderType::KDrive,
             ProviderType::DrimeCloud,
+            ProviderType::FileLu,
         ]
     }
 }

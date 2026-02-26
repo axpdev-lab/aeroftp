@@ -45,6 +45,7 @@ import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
+import { FileLuTrashManager } from './components/FileLuTrashManager';
 import { GoogleDriveTrashManager } from './components/GoogleDriveTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
@@ -97,6 +98,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
+import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
@@ -280,6 +282,13 @@ const App: React.FC = () => {
   const [showJottaTrash, setShowJottaTrash] = useState(false);
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
+  const [showFileLuTrash, setShowFileLuTrash] = useState(false);
+  const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
+    path: string; name: string; filedrop: boolean; isPublic: boolean;
+  } | null>(null);
+  const [fileLuRemoteUploadDialog, setFileLuRemoteUploadDialog] = useState<{
+    destPath: string;
+  } | null>(null);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -427,6 +436,19 @@ const App: React.FC = () => {
         <CheckCircle2 size={12} className="text-green-500 ml-1" />
       </span>
     );
+  };
+
+  const parseMetadataBool = (value: unknown): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+  };
+
+  const isPasswordProtectedFile = (file: RemoteFile): boolean => {
+    const metadata = file.metadata;
+    if (!metadata) return false;
+    return parseMetadataBool(metadata.filelu_password_protected);
   };
 
   // Check if local path is coherent with the connected remote server
@@ -1669,9 +1691,45 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu'];
   // Providers that support server-side copy (for context menu)
   const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime'];
+
+  const getProviderHostFallback = (protocol?: string, username?: string): string => {
+    switch (protocol) {
+      case 'azure':
+        return username ? `${username}.blob.core.windows.net` : 'blob.core.windows.net';
+      case 'internxt':
+        return 'gateway.internxt.com';
+      case 'kdrive':
+        return 'api.infomaniak.com';
+      case 'jottacloud':
+        return 'jfs.jottacloud.com';
+      case 'drime':
+        return 'app.drime.cloud';
+      case 'mega':
+        return 'mega.nz';
+      case 'filen':
+        return 'filen.io';
+      case 'filelu':
+        return 'filelu.com';
+      default:
+        return 'localhost';
+    }
+  };
+
+  const normalizeProviderConnectionParams = (params: ConnectionParams): ConnectionParams => {
+    const protocol = params.protocol;
+    if (protocol === 'filelu') {
+      return {
+        ...params,
+        server: params.server || 'filelu.com',
+        port: params.port || 443,
+        username: params.username || 'api-key',
+      };
+    }
+    return params;
+  };
 
   const logConnectionSteps = async (
     server: string,
@@ -1775,6 +1833,8 @@ const App: React.FC = () => {
       }
     }
 
+    effectiveParams = normalizeProviderConnectionParams(effectiveParams);
+
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = effectiveParams.protocol;
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
@@ -1830,6 +1890,8 @@ const App: React.FC = () => {
         ? effectiveParams.options?.bucket || 'S3'
         : protocol === 'azure'
           ? effectiveParams.options?.bucket || 'Azure'
+          : protocol === 'filelu'
+            ? 'FileLu'
           : protocol === 'kdrive'
             ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
@@ -1862,7 +1924,7 @@ const App: React.FC = () => {
           password: effectiveParams.password,
           initial_path: quickConnectDirs.remoteDir || null,
           bucket: effectiveParams.options?.bucket,
-          region: effectiveParams.options?.region || 'us-east-1',
+          region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
           endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
           path_style: effectiveParams.options?.pathStyle || false,
           save_session: effectiveParams.options?.save_session,
@@ -1885,7 +1947,7 @@ const App: React.FC = () => {
           const accepted = await checkSftpHostKey(effectiveParams.server, effectiveParams.port || 22);
           if (!accepted) { setLoading(false); return; }
         }
-        const connHost = effectiveParams.server || (protocol === 'azure' ? `${effectiveParams.username}.blob.core.windows.net` : protocol === 'internxt' ? 'gateway.internxt.com' : protocol === 'kdrive' ? 'api.infomaniak.com' : protocol === 'jottacloud' ? 'jfs.jottacloud.com' : protocol === 'mega' ? 'mega.nz' : protocol === 'filen' ? 'filen.io' : 'localhost');
+        const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
         await invoke('provider_connect', { params: providerParams });
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -1917,6 +1979,7 @@ const App: React.FC = () => {
           is_dir: f.is_dir,
           modified: f.modified,
           permissions: f.permissions,
+          metadata: f.metadata,
         }));
         logger.debug('[connectToFtp] Converted files:', files.length);
         setRemoteFiles(files);
@@ -2293,7 +2356,7 @@ const App: React.FC = () => {
           password: connectParams.password,
           initial_path: targetSession.remotePath || null,
           bucket: connectParams.options?.bucket,
-          region: connectParams.options?.region || 'us-east-1',
+          region: connectParams.options?.region || (connectParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
           endpoint: connectParams.options?.endpoint || resolveS3Endpoint(connectParams.providerId, connectParams.options?.region as string) || (protocol === 's3' && connectParams.server && !connectParams.server.includes('amazonaws.com') ? connectParams.server : null),
           path_style: connectParams.options?.pathStyle || false,
           private_key_path: connectParams.options?.private_key_path || null,
@@ -4344,6 +4407,10 @@ const App: React.FC = () => {
     const currentProtocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const currentServer = connectionParams.server || activeSession?.connectionParams?.server;
     const currentUsername = connectionParams.username || activeSession?.connectionParams?.username;
+    const filePrivacy = (file.permissions || '').toLowerCase();
+    const isFileLuContext = currentProtocol === 'filelu' && count === 1;
+    const isFileLuPrivate = isFileLuContext && filePrivacy === 'private';
+    const isFileLuPublic = isFileLuContext && filePrivacy === 'public';
 
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
@@ -4433,6 +4500,146 @@ const App: React.FC = () => {
         },
         divider: true,
       }] : []),
+      // FileLu: provider-specific actions
+      ...(currentProtocol === 'filelu' ? [
+        ...(() => {
+          if (isFileLuPrivate) {
+            return [{
+              label: t('filelu.makePublic'),
+              icon: <span style={{ fontSize: 13 }}>🌐</span>,
+              action: async () => {
+                try {
+                  await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
+                  setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
+                  notify.success(t('filelu.fileSetPublic'));
+                } catch (err) { notify.error(String(err)); }
+              },
+            }];
+          }
+          if (isFileLuPublic) {
+            return [{
+              label: t('filelu.togglePrivate'),
+              icon: <span style={{ fontSize: 13 }}>👁</span>,
+              action: async () => {
+                try {
+                  await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: true });
+                  setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'private' } : r));
+                  notify.success(t('filelu.fileSetPrivate'));
+                } catch (err) { notify.error(String(err)); }
+              },
+            }];
+          }
+          return [];
+        })(),
+        // --- File actions (single file, not dir) ---
+        ...(!file.is_dir && filesToUse.length === 1 ? [
+          {
+            label: t('filelu.setFilePassword'),
+            icon: <span style={{ fontSize: 13 }}>🔒</span>,
+            disabled: isFileLuPrivate,
+            action: async () => {
+              setInputDialog({
+                title: t('filelu.setFilePassword'),
+                defaultValue: '',
+                isPassword: true,
+                placeholder: t('filelu.enterFilePassword'),
+                onConfirm: async (pwd: string) => {
+                  setInputDialog(null);
+                  try {
+                    await invoke('filelu_set_file_password', { path: file.path, password: pwd });
+                    setRemoteFiles(prev => prev.map(r => r.path === file.path
+                      ? {
+                          ...r,
+                          metadata: {
+                            ...(r.metadata || {}),
+                            filelu_password_protected: pwd ? 'true' : 'false',
+                          },
+                        }
+                      : r,
+                    ));
+                    notify.success(pwd ? t('filelu.filePasswordSet') : t('filelu.filePasswordRemoved'));
+                  } catch (err) {
+                    notify.error(t('filelu.filePasswordError'), String(err));
+                  }
+                }
+              });
+            },
+          },
+          {
+            label: t('filelu.cloneFile'),
+            icon: <span style={{ fontSize: 13 }}>📋</span>,
+            action: async () => {
+              try {
+                const url = await invoke<string>('filelu_clone_file', { path: file.path });
+                if (url) {
+                  try {
+                    await navigator.clipboard.writeText(url);
+                  } catch {
+                    await invoke('copy_to_clipboard', { text: url });
+                  }
+                }
+                notify.success(t('filelu.cloneSuccess'));
+                loadRemoteFiles(undefined, true);
+              } catch (err) { notify.error(t('filelu.cloneError'), String(err)); }
+            },
+          },
+        ] : []),
+        // --- Folder actions (single folder) ---
+        ...(file.is_dir && filesToUse.length === 1 ? [
+          {
+            label: t('filelu.setFolderPassword'),
+            icon: <span style={{ fontSize: 13 }}>🔒</span>,
+            disabled: isFileLuPrivate,
+            action: async () => {
+              setInputDialog({
+                title: t('filelu.setFolderPassword'),
+                defaultValue: '',
+                isPassword: true,
+                placeholder: t('filelu.enterFolderPassword'),
+                onConfirm: async (pwd: string) => {
+                  setInputDialog(null);
+                  try {
+                    await invoke('filelu_set_folder_password', { path: file.path, password: pwd });
+                    setRemoteFiles(prev => prev.map(r => r.path === file.path
+                      ? {
+                          ...r,
+                          metadata: {
+                            ...(r.metadata || {}),
+                            filelu_password_protected: pwd ? 'true' : 'false',
+                          },
+                        }
+                      : r,
+                    ));
+                    notify.success(pwd ? t('filelu.folderPasswordSet') : t('filelu.folderPasswordRemoved'));
+                  } catch (err) {
+                    notify.error(t('filelu.folderPasswordError'), String(err));
+                  }
+                }
+              });
+            },
+          },
+          {
+            label: t('filelu.folderSettings'),
+            icon: <span style={{ fontSize: 13 }}>⚙️</span>,
+            action: () => setFileLuFolderSettingsDialog({
+              path: file.path, name: file.name, filedrop: false, isPublic: false,
+            }),
+          },
+        ] : []),
+        // --- Always visible ---
+        {
+          label: t('filelu.viewTrash'),
+          icon: <Trash2 size={14} className="text-violet-500" />,
+          action: () => setShowFileLuTrash(true),
+          divider: true,
+        },
+        ...(file.is_dir && filesToUse.length === 1 ? [{
+          label: t('filelu.remoteUrlUpload'),
+          icon: <span style={{ fontSize: 13 }}>🌐</span>,
+          action: () => setFileLuRemoteUploadDialog({ destPath: file.path }),
+          divider: true,
+        }] : []),
+      ] : []),
       {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
           const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
@@ -4500,6 +4707,34 @@ const App: React.FC = () => {
           default: return <Share2 size={14} />;
         }
       })();
+
+      if (currentProtocol === 'filelu' && isFileLuPrivate) {
+        items.push({
+          label: t('contextMenu.createShareLink'),
+          icon: shareIcon,
+          disabled: true,
+          action: () => {},
+        });
+
+        if (!file.is_dir) {
+          items.push({
+            label: `${t('filelu.makePublic')} + ${t('contextMenu.createShareLink')}`,
+            icon: <Share2 size={14} />,
+            action: async () => {
+              try {
+                await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
+                setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
+                notify.info(t('contextMenu.creatingShareLink'), t('contextMenu.shareLinkMoment'));
+                const shareUrl = await invoke<string>('provider_create_share_link', { path: file.path });
+                await invoke('copy_to_clipboard', { text: shareUrl });
+                notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+              } catch (err: unknown) {
+                notify.error(t('contextMenu.shareLinkFailed'), String(err));
+              }
+            }
+          });
+        }
+      } else {
       items.push({
         label: t('contextMenu.createShareLink'),
         icon: shareIcon,
@@ -4514,6 +4749,7 @@ const App: React.FC = () => {
           }
         }
       });
+      }
     }
 
     // Add Import MEGA Link option (MEGA only)
@@ -5101,6 +5337,9 @@ const App: React.FC = () => {
     e.stopPropagation();
     setSelectedRemoteFiles(new Set());
 
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const currentProtocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+
     const items: ContextMenuItem[] = [
       {
         label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
@@ -5116,6 +5355,11 @@ const App: React.FC = () => {
         label: t('contextMenu.refresh') || 'Refresh', icon: <RefreshCw size={14} />,
         action: () => loadRemoteFiles(),
       },
+      ...(currentProtocol === 'filelu' ? [{
+        label: t('filelu.remoteUrlUpload'),
+        icon: <span style={{ fontSize: 13 }}>🌐</span>,
+        action: () => setFileLuRemoteUploadDialog({ destPath: currentRemotePath }),
+      }] : []),
       {
         label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
         action: () => setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name))),
@@ -5706,6 +5950,108 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showFileLuTrash && (
+          <FileLuTrashManager
+            onClose={() => setShowFileLuTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {/* FileLu: Folder Settings Dialog */}
+        {fileLuFolderSettingsDialog && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] animate-scale-in p-6">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-4">
+                {t('filelu.folderSettings')}: <span className="text-[var(--color-accent)]">{fileLuFolderSettingsDialog.name}</span>
+              </h2>
+              <div className="space-y-3 mb-5">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fileLuFolderSettingsDialog.filedrop}
+                    onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, filedrop: e.target.checked } : null)}
+                    className="w-4 h-4 accent-[var(--color-accent)]"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('filelu.filedrop')}</div>
+                    <div className="text-xs text-[var(--color-text-muted)]">{t('filelu.filedropDesc')}</div>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fileLuFolderSettingsDialog.isPublic}
+                    onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, isPublic: e.target.checked } : null)}
+                    className="w-4 h-4 accent-[var(--color-accent)]"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('filelu.folderPublic')}</div>
+                    <div className="text-xs text-[var(--color-text-muted)]">{t('filelu.folderPublicDesc')}</div>
+                  </div>
+                </label>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setFileLuFolderSettingsDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={async () => {
+                    const d = fileLuFolderSettingsDialog;
+                    if (!d) return;
+                    try {
+                      await invoke('filelu_set_folder_settings', { path: d.path, filedrop: d.filedrop, isPublic: d.isPublic });
+                      notify.success(t('filelu.folderSettingsSaved'));
+                    } catch (err) { notify.error(String(err)); }
+                    setFileLuFolderSettingsDialog(null);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+                >
+                  {t('common.save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* FileLu: Remote URL Upload Dialog */}
+        {fileLuRemoteUploadDialog && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-md mx-4 rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] animate-scale-in p-6">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-4">🌐 {t('filelu.remoteUrlUpload')}</h2>
+              <p className="text-sm text-[var(--color-text-muted)] mb-4">{t('filelu.remoteUrlUploadDesc')}</p>
+              <input
+                id="filelu-remote-url-input"
+                type="url"
+                placeholder="https://example.com/file.zip"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] mb-2"
+                autoFocus
+              />
+              <p className="text-xs text-[var(--color-text-muted)] mb-5">
+                {t('filelu.remoteUrlDest')}: <span className="font-mono text-[var(--color-accent)]">{fileLuRemoteUploadDialog.destPath}</span>
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setFileLuRemoteUploadDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={async () => {
+                    const input = document.getElementById('filelu-remote-url-input') as HTMLInputElement;
+                    const url = input?.value?.trim();
+                    if (!url) return;
+                    const d = fileLuRemoteUploadDialog;
+                    setFileLuRemoteUploadDialog(null);
+                    try {
+                      const code = await invoke<string>('filelu_remote_url_upload', { remoteUrl: url, destPath: d.destPath });
+                      notify.success(t('filelu.remoteUrlUploaded', { code }));
+                      loadRemoteFiles(undefined, true);
+                    } catch (err) { notify.error(t('filelu.remoteUrlError'), String(err)); }
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+                >
+                  {t('filelu.startUpload')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {compressDialogState && (
           <CompressDialog
@@ -5770,9 +6116,11 @@ const App: React.FC = () => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
 
+                const normalizedParams = normalizeProviderConnectionParams(params);
+
                 // Check if this is an OAuth provider
-                const isOAuth = params.protocol && (isOAuthProvider(params.protocol) || isFourSharedProvider(params.protocol));
-                logger.debug('[onSavedServerConnect] params:', { ...params, password: params.password ? '***' : null });
+                const isOAuth = normalizedParams.protocol && (isOAuthProvider(normalizedParams.protocol) || isFourSharedProvider(normalizedParams.protocol));
+                logger.debug('[onSavedServerConnect] params:', { ...normalizedParams, password: normalizedParams.password ? '***' : null });
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
 
                 if (isOAuth) {
@@ -5781,10 +6129,10 @@ const App: React.FC = () => {
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   setShowConnectionScreen(false);
                   const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
-                  const providerName = params.displayName || (params.protocol && providerNames[params.protocol]) || params.protocol || 'Unknown';
+                  const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                   // Load remote files for OAuth provider - pass protocol explicitly
-                  const savedOauthResp = await loadRemoteFiles(params.protocol);
+                  const savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
                   // Navigate to initial local directory if specified (with fallback for invalid paths)
                   let resolvedLocalPath = currentLocalPath;
                   if (localInitialPath) {
@@ -5793,12 +6141,12 @@ const App: React.FC = () => {
                   // Create session with provider name — pass fresh files to avoid stale closure
                   createSession(
                     providerName,
-                    params,
+                    normalizedParams,
                     savedOauthResp?.current_path || initialPath || '/',
                     resolvedLocalPath,
                     savedOauthResp?.files
                   );
-                  fetchStorageQuota(params.protocol);
+                  fetchStorageQuota(normalizedParams.protocol);
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -5806,7 +6154,7 @@ const App: React.FC = () => {
                 }
 
                 // Check if this is a non-FTP provider protocol (S3, WebDAV, MEGA, Filen use provider_connect)
-                const isProvider = params.protocol && isNonFtpProvider(params.protocol);
+                const isProvider = normalizedParams.protocol && isNonFtpProvider(normalizedParams.protocol);
 
                 if (isProvider) {
                   // S3/WebDAV connection via provider_connect
@@ -5814,14 +6162,16 @@ const App: React.FC = () => {
                   setIsSyncNavigation(false);
                   setSyncBasePaths(null);
                   // Use displayName if available - no protocol prefix, icon shows protocol
-                  const providerName = params.displayName || (params.protocol === 's3'
-                    ? params.options?.bucket || 'S3'
-                    : params.protocol === 'azure'
-                      ? params.options?.bucket || 'Azure'
-                      : params.protocol === 'mega' || params.protocol === 'internxt' || params.protocol === 'filen'
-                        ? params.username
-                        : params.server.split(':')[0]);
-                  const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                  const providerName = normalizedParams.displayName || (normalizedParams.protocol === 's3'
+                    ? normalizedParams.options?.bucket || 'S3'
+                    : normalizedParams.protocol === 'azure'
+                      ? normalizedParams.options?.bucket || 'Azure'
+                      : normalizedParams.protocol === 'filelu'
+                        ? 'FileLu'
+                        : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'
+                          ? normalizedParams.username
+                          : normalizedParams.server.split(':')[0]);
+                  const protocolLabel = (normalizedParams.protocol || 'FTP').toUpperCase();
                   const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
                   try {
@@ -5831,42 +6181,42 @@ const App: React.FC = () => {
 
                     // Build provider connection params
                     const providerParams = {
-                      protocol: params.protocol,
-                      server: params.server,
-                      port: params.port,
-                      username: params.username,
-                      password: params.password,
+                      protocol: normalizedParams.protocol,
+                      server: normalizedParams.server,
+                      port: normalizedParams.port,
+                      username: normalizedParams.username,
+                      password: normalizedParams.password,
                       initial_path: initialPath || null,
-                      bucket: params.options?.bucket,
-                      region: params.options?.region || 'us-east-1',
-                      endpoint: params.options?.endpoint || resolveS3Endpoint(params.providerId, params.options?.region as string) || (params.protocol === 's3' && params.server && !params.server.includes('amazonaws.com') ? params.server : null),
-                      path_style: params.options?.pathStyle || false,
-                      save_session: params.options?.save_session,
-                      session_expires_at: params.options?.session_expires_at,
+                      bucket: normalizedParams.options?.bucket,
+                      region: normalizedParams.options?.region || (normalizedParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
+                      endpoint: normalizedParams.options?.endpoint || resolveS3Endpoint(normalizedParams.providerId, normalizedParams.options?.region as string) || (normalizedParams.protocol === 's3' && normalizedParams.server && !normalizedParams.server.includes('amazonaws.com') ? normalizedParams.server : null),
+                      path_style: normalizedParams.options?.pathStyle || false,
+                      save_session: normalizedParams.options?.save_session,
+                      session_expires_at: normalizedParams.options?.session_expires_at,
                       // SFTP-specific options
-                      private_key_path: params.options?.private_key_path || null,
-                      key_passphrase: params.options?.key_passphrase || null,
-                      timeout: params.options?.timeout || 30,
+                      private_key_path: normalizedParams.options?.private_key_path || null,
+                      key_passphrase: normalizedParams.options?.key_passphrase || null,
+                      timeout: normalizedParams.options?.timeout || 30,
                       // FTP/FTPS-specific options
-                      tls_mode: params.options?.tlsMode || (params.protocol === 'ftps' ? 'implicit' : undefined),
-                      verify_cert: params.options?.verifyCert !== undefined ? params.options.verifyCert : true,
+                      tls_mode: normalizedParams.options?.tlsMode || (normalizedParams.protocol === 'ftps' ? 'implicit' : undefined),
+                      verify_cert: normalizedParams.options?.verifyCert !== undefined ? normalizedParams.options.verifyCert : true,
                       // Filen-specific options
-                      two_factor_code: params.options?.two_factor_code || null,
+                      two_factor_code: normalizedParams.options?.two_factor_code || null,
                     };
 
                     logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
                     // SEC-P1-06: TOFU host key check for SFTP
-                    if (params.protocol === 'sftp') {
-                      const accepted = await checkSftpHostKey(params.server, params.port || 22);
+                    if (normalizedParams.protocol === 'sftp') {
+                      const accepted = await checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22);
                       if (!accepted) return;
                     }
-                    const savedConnHost = params.server || (params.protocol === 'azure' ? `${params.username}.blob.core.windows.net` : params.protocol === 'internxt' ? 'gateway.internxt.com' : params.protocol === 'kdrive' ? 'api.infomaniak.com' : params.protocol === 'jottacloud' ? 'jfs.jottacloud.com' : params.protocol === 'mega' ? 'mega.nz' : params.protocol === 'filen' ? 'filen.io' : 'localhost');
-                    const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, params.port || 443, params.protocol || 'ftp');
+                    const savedConnHost = normalizedParams.server || getProviderHostFallback(normalizedParams.protocol, normalizedParams.username);
+                    const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, normalizedParams.port || 443, normalizedParams.protocol || 'ftp');
                     await invoke('provider_connect', { params: providerParams });
-                    if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(params.port || 443) }) });
-                    logConnectionSuccess(params.protocol || 'ftp', params.username, {
-                      tlsMode: params.options?.tlsMode,
-                      private_key_path: params.options?.private_key_path || undefined,
+                    if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(normalizedParams.port || 443) }) });
+                    logConnectionSuccess(normalizedParams.protocol || 'ftp', normalizedParams.username, {
+                      tlsMode: normalizedParams.options?.tlsMode,
+                      private_key_path: normalizedParams.options?.private_key_path || undefined,
                     });
 
                     setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -5885,6 +6235,7 @@ const App: React.FC = () => {
                       is_dir: f.is_dir,
                       modified: f.modified,
                       permissions: f.permissions,
+                      metadata: f.metadata,
                     }));
                     setRemoteFiles(files);
                     setCurrentRemotePath(response.current_path);
@@ -5897,12 +6248,12 @@ const App: React.FC = () => {
 
                     createSession(
                       providerName,
-                      params,
+                      normalizedParams,
                       response.current_path,
                       resolvedLocalPath2,
                       files
                     );
-                    fetchStorageQuota(params.protocol);
+                    fetchStorageQuota(normalizedParams.protocol);
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -6457,7 +6808,7 @@ const App: React.FC = () => {
                               </td>
                               {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
                               {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap" title={file.permissions || undefined}>{file.permissions || '-'}</td>}
+                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} /></td>}
                               {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                             </tr>
                           ))}

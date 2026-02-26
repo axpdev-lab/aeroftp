@@ -62,7 +62,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
@@ -205,6 +205,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         internxt: 'from-blue-500 to-blue-400',
         kdrive: 'from-blue-500 to-sky-400',
         drime: 'from-green-500 to-emerald-400',
+        filelu: 'from-violet-500 to-fuchsia-400',
         fourshared: 'from-blue-500 to-cyan-400',
         zohoworkdrive: 'from-yellow-500 to-orange-400',
     };
@@ -413,7 +414,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
         // Build connection params - for providers, don't append port to host
         // SFTP/MEGA use provider_connect which handles port separately
-        const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega'].includes(server.protocol);
+        const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu'].includes(server.protocol);
         const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
         const serverString = isProviderProtocol
             ? server.host  // S3/WebDAV/SFTP/MEGA: use host only

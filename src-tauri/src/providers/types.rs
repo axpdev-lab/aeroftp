@@ -51,6 +51,8 @@ pub enum ProviderType {
     Jottacloud,
     /// Drime Cloud (20GB Secure Cloud)
     DrimeCloud,
+    /// FileLu Cloud Storage (API key authentication)
+    FileLu,
 }
 
 impl fmt::Display for ProviderType {
@@ -76,6 +78,7 @@ impl fmt::Display for ProviderType {
             ProviderType::KDrive => write!(f, "kDrive"),
             ProviderType::Jottacloud => write!(f, "Jottacloud"),
             ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
+            ProviderType::FileLu => write!(f, "FileLu"),
         }
     }
 }
@@ -104,6 +107,7 @@ impl ProviderType {
             ProviderType::KDrive => 443,
             ProviderType::Jottacloud => 443,
             ProviderType::DrimeCloud => 443,
+            ProviderType::FileLu => 443,
         }
     }
     
@@ -129,7 +133,8 @@ impl ProviderType {
             ProviderType::Internxt |
             ProviderType::KDrive |
             ProviderType::Jottacloud |
-            ProviderType::DrimeCloud
+            ProviderType::DrimeCloud |
+            ProviderType::FileLu
         )
     }
 
@@ -321,17 +326,22 @@ impl S3Config {
             .unwrap_or_else(|| "us-east-1".to_string())
             .trim().to_string();
 
-        let endpoint = if config.host.is_empty() || config.host == "s3.amazonaws.com" {
-            None
+        let endpoint_raw = if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
+            Some(config.host.trim().to_string())
         } else {
-            // Ensure endpoint has scheme
-            let host = config.host.trim();
-            if host.starts_with("http://") || host.starts_with("https://") {
-                Some(host.to_string())
-            } else {
-                Some(format!("https://{}", host))
-            }
+            // Fallback: endpoint resolved by frontend (e.g. from endpointTemplate for Wasabi)
+            config.extra.get("endpoint")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
         };
+        tracing::debug!("S3Config: host={:?}, extra_endpoint={:?}", config.host, config.extra.get("endpoint"));
+        let endpoint = endpoint_raw.map(|host| {
+            if host.starts_with("http://") || host.starts_with("https://") {
+                host
+            } else {
+                format!("https://{}", host)
+            }
+        });
         
         let path_style = config.extra.get("path_style")
             .map(|v| v == "true" || v == "1")
@@ -676,6 +686,26 @@ impl DrimeCloudConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("API token required for Drime Cloud".to_string()))?;
         Ok(Self {
             api_token: token.into(),
+            initial_path: config.initial_path.clone(),
+        })
+    }
+}
+
+/// FileLu configuration (API Key)
+#[derive(Debug, Clone)]
+pub struct FileLuConfig {
+    /// API key from FileLu account settings
+    pub api_key: secrecy::SecretString,
+    /// Optional initial remote path
+    pub initial_path: Option<String>,
+}
+
+impl FileLuConfig {
+    pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
+        let api_key = config.password.clone()
+            .ok_or_else(|| ProviderError::InvalidConfig("API key required for FileLu".to_string()))?;
+        Ok(Self {
+            api_key: api_key.into(),
             initial_path: config.initial_path.clone(),
         })
     }

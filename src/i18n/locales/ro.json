@@ -144,6 +144,7 @@
             "connectionNameOptional": "Numele conexiunii (opțional)",
             "cancelEditing": "Anulare editare",
             "saveChanges": "Salvare modificări",
+            "createAccount": "Creează cont",
             "docs": "Documentație",
             "minutes": "minute",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Selectați tot",
             "deselectAll": "Deselectați tot",
             "selected": "selectat",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Dacă nu este setat niciun icon, favicon-ul sau icon.png de pe server este detectat automat.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Mutarea în Coș de gunoi a eșuat",
             "batchRenameResult": "{success} redenumite, {errors} eșuate",
             "copyCompleted": "Copiere finalizată",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Folderul local \"{path}\" nu a fost găsit. S-a navigat la directorul acasă."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideal pentru cloud-uri self-hosted, dispozitive NAS și partajare de fișiere.",
             "selectProviderPrompt": "Selectați un furnizor mai sus sau alegeți \"Custom\"",
             "seafileDesc": "Stocare cloud open-source",
-            "seafileTooltip": "Seafile - Cloud auto-găzduit open-source cu suport WebDAV"
+            "seafileTooltip": "Seafile - Cloud auto-găzduit open-source cu suport WebDAV",
+            "fileluDesc": "Stocare în cloud multi-protocol",
+            "fileluTooltip": "FileLu - 20GB stocare gratuită cu FTP, FTPS, WebDAV, S3 și API nativ",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via FTPS securizat",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 stocare compatibilă cu S3"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -3079,6 +3088,45 @@
                     "installed": "Instalate"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Setați parola fișierului",
+            "enterFilePassword": "Introduceți parola (lăsați gol pentru a elimina):",
+            "filePasswordSet": "Parola fișierului a fost setată",
+            "filePasswordRemoved": "Parola fișierului a fost eliminată",
+            "filePasswordError": "Eroare la setarea parolei fișierului",
+            "togglePrivate": "Setați ca privat",
+            "fileSetPrivate": "Fișierul este acum privat",
+            "makePublic": "Setați ca public",
+            "fileSetPublic": "Fișierul este acum public",
+            "cloneFile": "Clonați fișierul (pe server)",
+            "cloneSuccess": "Fișier clonat — URL copiat în clipboard",
+            "cloneError": "Clonarea a eșuat",
+            "setFolderPassword": "Setați parola folderului",
+            "enterFolderPassword": "Introduceți parola folderului (lăsați gol pentru a elimina):",
+            "folderPasswordSet": "Parola folderului a fost setată",
+            "folderPasswordRemoved": "Parola folderului a fost eliminată",
+            "folderPasswordError": "Eroare la setarea parolei folderului",
+            "folderSettings": "Setări folder",
+            "filedrop": "FileDrop (permite încărcări de la oricine)",
+            "filedropDesc": "Alții pot încărca fișiere în acest folder fără un cont",
+            "folderPublic": "Folder public",
+            "folderPublicDesc": "Oricine poate naviga conținutul acestui folder",
+            "folderSettingsSaved": "Setările folderului au fost salvate",
+            "viewTrash": "Vizualizați fișierele șterse",
+            "remoteUrlUpload": "Încărcați de la URL",
+            "remoteUrlUploadDesc": "Inserați un link direct — FileLu va descărca fișierul pe server",
+            "remoteUrlDest": "Destinație",
+            "remoteUrlUploaded": "Încărcare începută (file_code: {code})",
+            "remoteUrlError": "Încărcarea URL-ului de la distanță a eșuat",
+            "startUpload": "Începeți încărcarea",
+            "trashTitle": "Fișiere șterse FileLu",
+            "restoreSelected": "Restaurați selectate",
+            "permanentDelete": "Ștergeți definitiv",
+            "permanentDeleteOne": "Ștergeți definitiv",
+            "trashEmpty": "Nu există fișiere șterse",
+            "restore": "Restaurați",
+            "trashFooter": "Fișierele restaurate vor reapărea în folderul lor original"
         }
     }
 }

@@ -42,6 +42,7 @@ pub async fn create_cloud_provider(
         "internxt" => create_via_factory(config, ProviderType::Internxt).await,
         "kdrive" => create_via_factory(config, ProviderType::KDrive).await,
         "jottacloud" => create_via_factory(config, ProviderType::Jottacloud).await,
+        "filelu" => create_via_factory(config, ProviderType::FileLu).await,
 
         // --- OAuth2 providers: direct instantiation ---
         "googledrive" => create_google_drive(config).await,

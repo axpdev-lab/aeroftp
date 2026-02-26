@@ -144,6 +144,7 @@
             "connectionNameOptional": "Forbindelsesnavn (valgfrit)",
             "cancelEditing": "Annuller redigering",
             "saveChanges": "Gem ændringer",
+            "createAccount": "Opret konto",
             "docs": "Dokumentation",
             "minutes": "minutter",
             "localPathPlaceholder": "/home/bruger/projekter",
@@ -724,7 +725,9 @@
             "selectAll": "Vælg alle",
             "deselectAll": "Fravælg alle",
             "selected": "valgt",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Hvis der ikke er angivet et ikon, registreres favicon eller icon.png fra serveren automatisk.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Kunne ikke flytte til papirkurven",
             "batchRenameResult": "{success} omdøbt, {errors} mislykkedes",
             "copyCompleted": "Kopiering fuldført",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Den lokale mappe \"{path}\" blev ikke fundet. Navigerede til hjemmekataloget."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideelt til selvhostede skyer, NAS-enheder og fildeling.",
             "selectProviderPrompt": "Vælg en udbyder ovenfor eller vælg \"Custom\"",
             "seafileDesc": "Open source-skylagring",
-            "seafileTooltip": "Seafile - Selvhostet open source-sky med WebDAV-understøttelse"
+            "seafileTooltip": "Seafile - Selvhostet open source-sky med WebDAV-understøttelse",
+            "fileluDesc": "Multi-protokol cloud-lager",
+            "fileluTooltip": "FileLu - 20GB gratis lager med FTP, FTPS, WebDAV, S3 og native API",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via sikker FTPS",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-kompatibelt lager"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -3089,6 +3098,45 @@
                     "installed": "Installeret"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Angiv filadgangskode",
+            "enterFilePassword": "Indtast adgangskode (lad være tom for at fjerne):",
+            "filePasswordSet": "Filadgangskode angivet",
+            "filePasswordRemoved": "Filadgangskode fjernet",
+            "filePasswordError": "Kunne ikke angive filadgangskode",
+            "togglePrivate": "Angiv som privat",
+            "fileSetPrivate": "Filen er nu privat",
+            "makePublic": "Angiv som offentlig",
+            "fileSetPublic": "Filen er nu offentlig",
+            "cloneFile": "Klon fil (serversiden)",
+            "cloneSuccess": "Fil klonet — URL kopieret til udklipsholder",
+            "cloneError": "Kloning mislykkedes",
+            "setFolderPassword": "Angiv mappeadgangskode",
+            "enterFolderPassword": "Indtast mappeadgangskode (lad være tom for at fjerne):",
+            "folderPasswordSet": "Mappeadgangskode angivet",
+            "folderPasswordRemoved": "Mappeadgangskode fjernet",
+            "folderPasswordError": "Kunne ikke angive mappeadgangskode",
+            "folderSettings": "Mappeindstillinger",
+            "filedrop": "FileDrop (tillad uploads fra alle)",
+            "filedropDesc": "Andre kan uploade filer til denne mappe uden en konto",
+            "folderPublic": "Offentlig mappe",
+            "folderPublicDesc": "Alle kan gennemse indholdet af denne mappe",
+            "folderSettingsSaved": "Mappeindstillinger gemt",
+            "viewTrash": "Se slettede filer",
+            "remoteUrlUpload": "Upload fra URL",
+            "remoteUrlUploadDesc": "Indsæt et direkte link — FileLu downloader filen på serversiden",
+            "remoteUrlDest": "Destination",
+            "remoteUrlUploaded": "Upload startet (file_code: {code})",
+            "remoteUrlError": "Upload fra ekstern URL mislykkedes",
+            "startUpload": "Start upload",
+            "trashTitle": "FileLu Slettede filer",
+            "restoreSelected": "Gendan valgte",
+            "permanentDelete": "Slet permanent",
+            "permanentDeleteOne": "Slet permanent",
+            "trashEmpty": "Ingen slettede filer",
+            "restore": "Gendan",
+            "trashFooter": "Gendannede filer vises igen i deres originale mappe"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "ชื่อการเชื่อมต่อ (ไม่บังคับ)",
             "cancelEditing": "ยกเลิกการแก้ไข",
             "saveChanges": "บันทึกการเปลี่ยนแปลง",
+            "createAccount": "สร้างบัญชี",
             "docs": "เอกสาร",
             "minutes": "นาที",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "เลือกทั้งหมด",
             "deselectAll": "ยกเลิกการเลือกทั้งหมด",
             "selected": "ที่เลือกไว้",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "หากไม่ได้ตั้งค่าไอคอน ระบบจะตรวจจับ favicon หรือ icon.png จากเซิร์ฟเวอร์โดยอัตโนมัติ",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "ไม่สามารถย้ายไปยังถังขยะได้",
             "batchRenameResult": "{success} เปลี่ยนชื่อสำเร็จ, {errors} ล้มเหลว",
             "copyCompleted": "คัดลอกเสร็จสมบูรณ์",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "ไม่พบโฟลเดอร์ในเครื่อง \"{path}\" นำทางไปยังไดเรกทอรีหน้าแรกแล้ว"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "เหมาะสำหรับคลาวด์ที่โฮสต์เองอุปกรณ์ NAS และการแชร์ไฟล์",
             "selectProviderPrompt": "เลือกผู้ให้บริการด้านบนหรือเลือก \"Custom\"",
             "seafileDesc": "ที่เก็บข้อมูลบนคลาวด์โอเพนซอร์ส",
-            "seafileTooltip": "Seafile - คลาวด์โอเพนซอร์สที่โฮสต์เองพร้อมรองรับ WebDAV"
+            "seafileTooltip": "Seafile - คลาวด์โอเพนซอร์สที่โฮสต์เองพร้อมรองรับ WebDAV",
+            "fileluDesc": "พื้นที่จัดเก็บคลาวด์รองรับหลายโปรโตคอล",
+            "fileluTooltip": "FileLu - พื้นที่จัดเก็บฟรี 20GB รองรับ FTP, FTPS, WebDAV, S3 และ API แบบเนทีฟ",
+            "fileluFtpDesc": "FileLu ผ่าน FTP",
+            "fileluFtpsDesc": "FileLu ผ่าน FTPS ที่ปลอดภัย",
+            "fileluWebdavDesc": "FileLu ผ่าน WebDAV",
+            "fileluS3Desc": "FileLu S5 พื้นที่จัดเก็บที่รองรับ S3"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -3092,6 +3101,45 @@
                     "installed": "ติดตั้งแล้ว"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "ตั้งรหัสผ่านไฟล์",
+            "enterFilePassword": "ป้อนรหัสผ่าน (เว้นว่างเพื่อลบ):",
+            "filePasswordSet": "ตั้งรหัสผ่านไฟล์แล้ว",
+            "filePasswordRemoved": "ลบรหัสผ่านไฟล์แล้ว",
+            "filePasswordError": "ไม่สามารถตั้งรหัสผ่านไฟล์ได้",
+            "togglePrivate": "ตั้งเป็นส่วนตัว",
+            "fileSetPrivate": "ไฟล์เป็นส่วนตัวแล้ว",
+            "makePublic": "ตั้งเป็นสาธารณะ",
+            "fileSetPublic": "ไฟล์เป็นสาธารณะแล้ว",
+            "cloneFile": "โคลนไฟล์ (ฝั่งเซิร์ฟเวอร์)",
+            "cloneSuccess": "โคลนไฟล์แล้ว — คัดลอก URL ไปยังคลิปบอร์ดแล้ว",
+            "cloneError": "การโคลนล้มเหลว",
+            "setFolderPassword": "ตั้งรหัสผ่านโฟลเดอร์",
+            "enterFolderPassword": "ป้อนรหัสผ่านโฟลเดอร์ (เว้นว่างเพื่อลบ):",
+            "folderPasswordSet": "ตั้งรหัสผ่านโฟลเดอร์แล้ว",
+            "folderPasswordRemoved": "ลบรหัสผ่านโฟลเดอร์แล้ว",
+            "folderPasswordError": "ไม่สามารถตั้งรหัสผ่านโฟลเดอร์ได้",
+            "folderSettings": "การตั้งค่าโฟลเดอร์",
+            "filedrop": "FileDrop (อนุญาตให้ทุกคนอัปโหลด)",
+            "filedropDesc": "ผู้อื่นสามารถอัปโหลดไฟล์ไปยังโฟลเดอร์นี้โดยไม่ต้องมีบัญชี",
+            "folderPublic": "โฟลเดอร์สาธารณะ",
+            "folderPublicDesc": "ทุกคนสามารถเรียกดูเนื้อหาของโฟลเดอร์นี้ได้",
+            "folderSettingsSaved": "บันทึกการตั้งค่าโฟลเดอร์แล้ว",
+            "viewTrash": "ดูไฟล์ที่ลบแล้ว",
+            "remoteUrlUpload": "อัปโหลดจาก URL",
+            "remoteUrlUploadDesc": "วางลิงก์ตรง — FileLu จะดาวน์โหลดไฟล์ทางฝั่งเซิร์ฟเวอร์",
+            "remoteUrlDest": "ปลายทาง",
+            "remoteUrlUploaded": "เริ่มอัปโหลดแล้ว (file_code: {code})",
+            "remoteUrlError": "การอัปโหลดจาก URL ระยะไกลล้มเหลว",
+            "startUpload": "เริ่มอัปโหลด",
+            "trashTitle": "ไฟล์ที่ลบแล้วของ FileLu",
+            "restoreSelected": "กู้คืนที่เลือก",
+            "permanentDelete": "ลบถาวร",
+            "permanentDeleteOne": "ลบถาวร",
+            "trashEmpty": "ไม่มีไฟล์ที่ลบแล้ว",
+            "restore": "กู้คืน",
+            "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม"
         }
     }
 }

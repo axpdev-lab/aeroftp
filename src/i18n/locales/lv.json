@@ -144,6 +144,7 @@
             "connectionNameOptional": "Savienojuma nosaukums (neobligāts)",
             "cancelEditing": "Atcelt rediģēšanu",
             "saveChanges": "Saglabāt izmaiņas",
+            "createAccount": "Izveidot kontu",
             "docs": "Dokumentācija",
             "minutes": "minūtes",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Atlasīt visus",
             "deselectAll": "Noņemt atlasi visiem",
             "selected": "atlasīts",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ja ikona nav iestatīta, servera favicon vai icon.png tiek noteikts automātiski.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Neizdevās pārvietot uz atkritni",
             "batchRenameResult": "{success} pārdēvēti, {errors} neizdevās",
             "copyCompleted": "Kopēšana pabeigta",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Lokālā mape \"{path}\" nav atrasta. Navigēts uz mājas direktoriju."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideāls pašapkalpojuma mākoņiem, NAS ierīcēm un failu koplietošanai.",
             "selectProviderPrompt": "Atlasiet pakalpojuma sniedzēju iepriekš vai atlasiet \"Custom\"",
             "seafileDesc": "Atvērtā pirmkoda mākoņkrātuve",
-            "seafileTooltip": "Seafile - Pašmitinots atvērtā pirmkoda mākonis ar WebDAV atbalstu"
+            "seafileTooltip": "Seafile - Pašmitinots atvērtā pirmkoda mākonis ar WebDAV atbalstu",
+            "fileluDesc": "Daudzprotokolu mākoņkrātuve",
+            "fileluTooltip": "FileLu - 20GB bezmaksas krātuve ar FTP, FTPS, WebDAV, S3 un natīvo API",
+            "fileluFtpDesc": "FileLu caur FTP",
+            "fileluFtpsDesc": "FileLu caur drošo FTPS",
+            "fileluWebdavDesc": "FileLu caur WebDAV",
+            "fileluS3Desc": "FileLu S5 S3 saderīga krātuve"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3092,6 +3101,45 @@
                     "installed": "Instalēti"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Iestatīt faila paroli",
+            "enterFilePassword": "Ievadiet paroli (atstājiet tukšu, lai noņemtu):",
+            "filePasswordSet": "Faila parole iestatīta",
+            "filePasswordRemoved": "Faila parole noņemta",
+            "filePasswordError": "Neizdevās iestatīt faila paroli",
+            "togglePrivate": "Iestatīt kā privātu",
+            "fileSetPrivate": "Fails tagad ir privāts",
+            "makePublic": "Iestatīt kā publisku",
+            "fileSetPublic": "Fails tagad ir publisks",
+            "cloneFile": "Klonēt failu (servera pusē)",
+            "cloneSuccess": "Fails klonēts — URL nokopēts starpliktuvē",
+            "cloneError": "Klonēšana neizdevās",
+            "setFolderPassword": "Iestatīt mapes paroli",
+            "enterFolderPassword": "Ievadiet mapes paroli (atstājiet tukšu, lai noņemtu):",
+            "folderPasswordSet": "Mapes parole iestatīta",
+            "folderPasswordRemoved": "Mapes parole noņemta",
+            "folderPasswordError": "Neizdevās iestatīt mapes paroli",
+            "folderSettings": "Mapes iestatījumi",
+            "filedrop": "FileDrop (atļaut augšupielādi ikvienam)",
+            "filedropDesc": "Citi var augšupielādēt failus šajā mapē bez konta",
+            "folderPublic": "Publiska mape",
+            "folderPublicDesc": "Ikviens var pārlūkot šīs mapes saturu",
+            "folderSettingsSaved": "Mapes iestatījumi saglabāti",
+            "viewTrash": "Skatīt dzēstos failus",
+            "remoteUrlUpload": "Augšupielādēt no URL",
+            "remoteUrlUploadDesc": "Ielīmējiet tiešo saiti — FileLu lejupielādēs failu servera pusē",
+            "remoteUrlDest": "Galamērķis",
+            "remoteUrlUploaded": "Augšupielāde sākta (file_code: {code})",
+            "remoteUrlError": "Attālā URL augšupielāde neizdevās",
+            "startUpload": "Sākt augšupielādi",
+            "trashTitle": "FileLu dzēstie faili",
+            "restoreSelected": "Atjaunot atlasītos",
+            "permanentDelete": "Dzēst neatgriezeniski",
+            "permanentDeleteOne": "Dzēst neatgriezeniski",
+            "trashEmpty": "Nav dzēstu failu",
+            "restore": "Atjaunot",
+            "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē"
         }
     }
 }

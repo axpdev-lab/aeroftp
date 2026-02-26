@@ -177,6 +177,7 @@
             "connectionNameOptional": "Nome connessione (opzionale)",
             "cancelEditing": "Annulla Modifica",
             "saveChanges": "Salva Modifiche",
+            "createAccount": "Crea Account",
             "docs": "Docs",
             "minutes": "minuti",
             "localPathPlaceholder": "/home/utente/progetti",
@@ -343,7 +344,13 @@
             "jottacloudDesc": "Cloud Norvegese (5GB gratis)",
             "jottacloudTooltip": "Jottacloud - Archiviazione cloud norvegese conforme al GDPR con 5GB gratuiti",
             "drimeDesc": "Archiviazione Cloud Sicura",
-            "drimeTooltip": "Drime Cloud - 20GB di archiviazione cloud sicura gratuita con REST API"
+            "drimeTooltip": "Drime Cloud - 20GB di archiviazione cloud sicura gratuita con REST API",
+            "fileluDesc": "Cloud Storage Multi-Protocollo",
+            "fileluTooltip": "FileLu - 20 GB gratuiti con FTP, FTPS, WebDAV, S3 e API nativa",
+            "fileluFtpDesc": "FileLu tramite FTP",
+            "fileluFtpsDesc": "FileLu tramite FTPS sicuro",
+            "fileluWebdavDesc": "FileLu tramite WebDAV",
+            "fileluS3Desc": "FileLu S5 storage compatibile S3"
         },
         "browser": {
             "remote": "Remoto",
@@ -873,7 +880,9 @@
             "iconsTab": "Icone",
             "chooseIcon": "Scegli icona",
             "removeIcon": "Rimuovi icona",
-            "serverIcon": "Icona server"
+            "serverIcon": "Icona server",
+            "iconAutoDetectHint": "Se non impostata, la favicon o icon.png del server viene rilevata automaticamente.",
+            "protocolFilelu": "FileLu"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -1158,7 +1167,7 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "batchRenameResult": "{success} rinominati, {errors} falliti",
             "copyCompleted": "Copia completata",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -3078,6 +3087,45 @@
             "noTags": "Nessuna etichetta",
             "removeTag": "Rimuovi etichetta",
             "tags": "Etichette"
+        },
+        "filelu": {
+            "setFilePassword": "Imposta Password File",
+            "enterFilePassword": "Inserisci password (lascia vuoto per rimuovere):",
+            "filePasswordSet": "Password file impostata",
+            "filePasswordRemoved": "Password file rimossa",
+            "filePasswordError": "Impossibile impostare la password del file",
+            "togglePrivate": "Rendi Privato",
+            "fileSetPrivate": "Il file è ora privato",
+            "makePublic": "Rendi Pubblico",
+            "fileSetPublic": "Il file è ora pubblico",
+            "cloneFile": "Clona File (lato server)",
+            "cloneSuccess": "File clonato — URL copiato negli appunti",
+            "cloneError": "Clonazione fallita",
+            "setFolderPassword": "Imposta Password Cartella",
+            "enterFolderPassword": "Inserisci password cartella (lascia vuoto per rimuovere):",
+            "folderPasswordSet": "Password cartella impostata",
+            "folderPasswordRemoved": "Password cartella rimossa",
+            "folderPasswordError": "Impossibile impostare la password della cartella",
+            "folderSettings": "Impostazioni Cartella",
+            "filedrop": "FileDrop (consenti upload a chiunque)",
+            "filedropDesc": "Chiunque può caricare file in questa cartella senza account",
+            "folderPublic": "Cartella Pubblica",
+            "folderPublicDesc": "Chiunque può sfogliare il contenuto di questa cartella",
+            "folderSettingsSaved": "Impostazioni cartella salvate",
+            "viewTrash": "Visualizza File Eliminati",
+            "remoteUrlUpload": "Upload da URL",
+            "remoteUrlUploadDesc": "Incolla un link diretto — FileLu scaricherà il file lato server",
+            "remoteUrlDest": "Destinazione",
+            "remoteUrlUploaded": "Upload avviato (file_code: {code})",
+            "remoteUrlError": "Upload da URL remoto fallito",
+            "startUpload": "Avvia Upload",
+            "trashTitle": "File Eliminati FileLu",
+            "restoreSelected": "Ripristina selezionati",
+            "permanentDelete": "Elimina definitivamente",
+            "permanentDeleteOne": "Elimina definitivamente",
+            "trashEmpty": "Nessun file eliminato",
+            "restore": "Ripristina",
+            "trashFooter": "I file ripristinati riappariranno nella cartella originale"
         }
     }
 }

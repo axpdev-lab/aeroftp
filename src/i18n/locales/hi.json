@@ -144,6 +144,7 @@
             "connectionNameOptional": "कनेक्शन का नाम (वैकल्पिक)",
             "cancelEditing": "संपादन रद्द करें",
             "saveChanges": "परिवर्तन सहेजें",
+            "createAccount": "खाता बनाएं",
             "docs": "दस्तावेज़",
             "minutes": "मिनट",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "सभी चुनें",
             "deselectAll": "सभी का चयन हटाएं",
             "selected": "चयनित",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "यदि कोई आइकन सेट नहीं है, तो सर्वर से favicon या icon.png स्वतः पहचान लिया जाता है।",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "ट्रैश में भेजना विफल रहा",
             "batchRenameResult": "{success} का नाम बदला गया, {errors} विफल",
             "copyCompleted": "प्रतिलिपि पूर्ण",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "स्थानीय फ़ोल्डर \"{path}\" नहीं मिला। होम डायरेक्टरी पर नेविगेट किया गया।"
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "स्व-होस्ट किए गए क्लाउड, NAS डिवाइस और फ़ाइल साझाकरण के लिए आदर्श।",
             "selectProviderPrompt": "ऊपर एक प्रदाता चुनें या \"Custom\" चुनें",
             "seafileDesc": "ओपन-सोर्स क्लाउड स्टोरेज",
-            "seafileTooltip": "Seafile - WebDAV समर्थन के साथ स्व-होस्टेड ओपन-सोर्स क्लाउड"
+            "seafileTooltip": "Seafile - WebDAV समर्थन के साथ स्व-होस्टेड ओपन-सोर्स क्लाउड",
+            "fileluDesc": "मल्टी-प्रोटोकॉल क्लाउड स्टोरेज",
+            "fileluTooltip": "FileLu - FTP, FTPS, WebDAV, S3 और नेटिव API के साथ 20GB मुफ़्त स्टोरेज",
+            "fileluFtpDesc": "FTP के माध्यम से FileLu",
+            "fileluFtpsDesc": "सुरक्षित FTPS के माध्यम से FileLu",
+            "fileluWebdavDesc": "WebDAV के माध्यम से FileLu",
+            "fileluS3Desc": "FileLu S5 S3-संगत स्टोरेज"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -3092,6 +3101,45 @@
                     "installed": "इंस्टॉल किए गए"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "फ़ाइल पासवर्ड सेट करें",
+            "enterFilePassword": "पासवर्ड दर्ज करें (हटाने के लिए खाली छोड़ें):",
+            "filePasswordSet": "फ़ाइल पासवर्ड सेट हो गया",
+            "filePasswordRemoved": "फ़ाइल पासवर्ड हटा दिया गया",
+            "filePasswordError": "फ़ाइल पासवर्ड सेट करने में विफल",
+            "togglePrivate": "प्राइवेट के रूप में सेट करें",
+            "fileSetPrivate": "फ़ाइल अब प्राइवेट है",
+            "makePublic": "पब्लिक के रूप में सेट करें",
+            "fileSetPublic": "फ़ाइल अब पब्लिक है",
+            "cloneFile": "फ़ाइल क्लोन करें (सर्वर-साइड)",
+            "cloneSuccess": "फ़ाइल क्लोन हो गई — URL क्लिपबोर्ड पर कॉपी हो गया",
+            "cloneError": "क्लोनिंग विफल हुई",
+            "setFolderPassword": "फ़ोल्डर पासवर्ड सेट करें",
+            "enterFolderPassword": "फ़ोल्डर पासवर्ड दर्ज करें (हटाने के लिए खाली छोड़ें):",
+            "folderPasswordSet": "फ़ोल्डर पासवर्ड सेट हो गया",
+            "folderPasswordRemoved": "फ़ोल्डर पासवर्ड हटा दिया गया",
+            "folderPasswordError": "फ़ोल्डर पासवर्ड सेट करने में विफल",
+            "folderSettings": "फ़ोल्डर सेटिंग्स",
+            "filedrop": "FileDrop (किसी को भी अपलोड करने दें)",
+            "filedropDesc": "अन्य लोग बिना अकाउंट के इस फ़ोल्डर में फ़ाइलें अपलोड कर सकते हैं",
+            "folderPublic": "पब्लिक फ़ोल्डर",
+            "folderPublicDesc": "कोई भी इस फ़ोल्डर की सामग्री देख सकता है",
+            "folderSettingsSaved": "फ़ोल्डर सेटिंग्स सहेजी गईं",
+            "viewTrash": "हटाई गई फ़ाइलें देखें",
+            "remoteUrlUpload": "URL से अपलोड करें",
+            "remoteUrlUploadDesc": "एक सीधा लिंक पेस्ट करें — FileLu सर्वर-साइड पर फ़ाइल डाउनलोड करेगा",
+            "remoteUrlDest": "गंतव्य",
+            "remoteUrlUploaded": "अपलोड शुरू हो गया (file_code: {code})",
+            "remoteUrlError": "रिमोट URL अपलोड विफल हुआ",
+            "startUpload": "अपलोड शुरू करें",
+            "trashTitle": "FileLu हटाई गई फ़ाइलें",
+            "restoreSelected": "चयनित पुनर्स्थापित करें",
+            "permanentDelete": "स्थायी रूप से हटाएं",
+            "permanentDeleteOne": "स्थायी रूप से हटाएं",
+            "trashEmpty": "कोई हटाई गई फ़ाइलें नहीं",
+            "restore": "पुनर्स्थापित करें",
+            "trashFooter": "पुनर्स्थापित फ़ाइलें अपने मूल फ़ोल्डर में फिर से दिखाई देंगी"
         }
     }
 }

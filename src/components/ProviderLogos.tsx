@@ -215,6 +215,17 @@ export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// FileLu — PNG logo
+export const FileLuLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/filelu.png"
+        alt="FileLu"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // 4shared — blue "4" logo
 export const FourSharedLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 400 400">
@@ -331,4 +342,9 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'kdrive': KDriveLogo,
     'jottacloud': JottacloudLogo,
     'drime': DrimeCloudLogo,
+    'filelu': FileLuLogo,
+    'filelu-ftp': FileLuLogo,
+    'filelu-ftps': FileLuLogo,
+    'filelu-webdav': FileLuLogo,
+    'filelu-s3': FileLuLogo,
 };

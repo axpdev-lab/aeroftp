@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nama koneksi (opsional)",
             "cancelEditing": "Batal mengedit",
             "saveChanges": "Simpan perubahan",
+            "createAccount": "Buat Akun",
             "docs": "Dokumentasi",
             "minutes": "menit",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Pilih Semua",
             "deselectAll": "Batalkan Semua",
             "selected": "dipilih",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Jika tidak ada ikon yang diatur, favicon atau icon.png dari server akan terdeteksi secara otomatis.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Gagal memindahkan ke Sampah",
             "batchRenameResult": "{success} diganti nama, {errors} gagal",
             "copyCompleted": "Penyalinan selesai",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Folder lokal \"{path}\" tidak ditemukan. Dinavigasi ke direktori beranda."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideal untuk cloud yang di-host sendiri, perangkat NAS, dan berbagi file.",
             "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\"",
             "seafileDesc": "Penyimpanan Cloud Sumber Terbuka",
-            "seafileTooltip": "Seafile - Cloud sumber terbuka yang dihosting sendiri dengan dukungan WebDAV"
+            "seafileTooltip": "Seafile - Cloud sumber terbuka yang dihosting sendiri dengan dukungan WebDAV",
+            "fileluDesc": "Penyimpanan awan multi-protokol",
+            "fileluTooltip": "FileLu - 20GB penyimpanan gratis dengan FTP, FTPS, WebDAV, S3 dan API native",
+            "fileluFtpDesc": "FileLu melalui FTP",
+            "fileluFtpsDesc": "FileLu melalui FTPS yang aman",
+            "fileluWebdavDesc": "FileLu melalui WebDAV",
+            "fileluS3Desc": "FileLu S5 penyimpanan kompatibel S3"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -3089,6 +3098,45 @@
                     "installed": "Terpasang"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Atur Kata Sandi File",
+            "enterFilePassword": "Masukkan kata sandi (kosongkan untuk menghapus):",
+            "filePasswordSet": "Kata sandi file telah diatur",
+            "filePasswordRemoved": "Kata sandi file dihapus",
+            "filePasswordError": "Gagal mengatur kata sandi file",
+            "togglePrivate": "Jadikan Privat",
+            "fileSetPrivate": "File sekarang bersifat privat",
+            "makePublic": "Jadikan Publik",
+            "fileSetPublic": "File sekarang bersifat publik",
+            "cloneFile": "Klon File (sisi server)",
+            "cloneSuccess": "File dikloning — URL disalin ke clipboard",
+            "cloneError": "Kloning gagal",
+            "setFolderPassword": "Atur Kata Sandi Folder",
+            "enterFolderPassword": "Masukkan kata sandi folder (kosongkan untuk menghapus):",
+            "folderPasswordSet": "Kata sandi folder telah diatur",
+            "folderPasswordRemoved": "Kata sandi folder dihapus",
+            "folderPasswordError": "Gagal mengatur kata sandi folder",
+            "folderSettings": "Pengaturan Folder",
+            "filedrop": "FileDrop (izinkan unggahan dari siapa saja)",
+            "filedropDesc": "Orang lain dapat mengunggah file ke folder ini tanpa akun",
+            "folderPublic": "Folder Publik",
+            "folderPublicDesc": "Siapa saja dapat menjelajahi isi folder ini",
+            "folderSettingsSaved": "Pengaturan folder disimpan",
+            "viewTrash": "Lihat File yang Dihapus",
+            "remoteUrlUpload": "Unggah dari URL",
+            "remoteUrlUploadDesc": "Tempelkan tautan langsung — FileLu akan mengunduh file dari sisi server",
+            "remoteUrlDest": "Tujuan",
+            "remoteUrlUploaded": "Unggahan dimulai (file_code: {code})",
+            "remoteUrlError": "Unggahan URL jarak jauh gagal",
+            "startUpload": "Mulai Unggah",
+            "trashTitle": "File yang Dihapus FileLu",
+            "restoreSelected": "Pulihkan yang dipilih",
+            "permanentDelete": "Hapus permanen",
+            "permanentDeleteOne": "Hapus permanen",
+            "trashEmpty": "Tidak ada file yang dihapus",
+            "restore": "Pulihkan",
+            "trashFooter": "File yang dipulihkan akan muncul kembali di folder aslinya"
         }
     }
 }

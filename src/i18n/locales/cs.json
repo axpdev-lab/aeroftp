@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nazev pripojeni (volitelne)",
             "cancelEditing": "Zrusit upravu",
             "saveChanges": "Ulozit zmeny",
+            "createAccount": "Vytvořit účet",
             "docs": "Dokumentace",
             "minutes": "minut",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Vybrat vše",
             "deselectAll": "Zrušit výběr všech",
             "selected": "vybráno",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Pokud není nastavena žádná ikona, favicon nebo icon.png ze serveru se detekuje automaticky.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Přesun do koše se nezdařil",
             "batchRenameResult": "{success} přejmenováno, {errors} selhalo",
             "copyCompleted": "Kopírování dokončeno",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Místní složka \"{path}\" nebyla nalezena. Přešlo se do domovského adresáře."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideální pro vlastní cloudy, zařízení NAS a sdílení souborů.",
             "selectProviderPrompt": "Vyberte poskytovatele výše nebo zvolte \"Custom\"",
             "seafileDesc": "Open-source cloudové úložiště",
-            "seafileTooltip": "Seafile - Samohostovaný open-source cloud s podporou WebDAV"
+            "seafileTooltip": "Seafile - Samohostovaný open-source cloud s podporou WebDAV",
+            "fileluDesc": "Cloudové úložiště s více protokoly",
+            "fileluTooltip": "FileLu - 20GB bezplatného úložiště s FTP, FTPS, WebDAV, S3 a nativním API",
+            "fileluFtpDesc": "FileLu přes FTP",
+            "fileluFtpsDesc": "FileLu přes zabezpečený FTPS",
+            "fileluWebdavDesc": "FileLu přes WebDAV",
+            "fileluS3Desc": "FileLu S5 úložiště kompatibilní s S3"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -3089,6 +3098,45 @@
                     "installed": "Nainstalované"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Nastavit heslo souboru",
+            "enterFilePassword": "Zadejte heslo (ponechte prázdné pro odstranění):",
+            "filePasswordSet": "Heslo souboru bylo nastaveno",
+            "filePasswordRemoved": "Heslo souboru bylo odstraněno",
+            "filePasswordError": "Nepodařilo se nastavit heslo souboru",
+            "togglePrivate": "Nastavit jako soukromý",
+            "fileSetPrivate": "Soubor je nyní soukromý",
+            "makePublic": "Nastavit jako veřejný",
+            "fileSetPublic": "Soubor je nyní veřejný",
+            "cloneFile": "Klonovat soubor (na serveru)",
+            "cloneSuccess": "Soubor byl klonován — URL zkopírováno do schránky",
+            "cloneError": "Klonování se nezdařilo",
+            "setFolderPassword": "Nastavit heslo složky",
+            "enterFolderPassword": "Zadejte heslo složky (ponechte prázdné pro odstranění):",
+            "folderPasswordSet": "Heslo složky bylo nastaveno",
+            "folderPasswordRemoved": "Heslo složky bylo odstraněno",
+            "folderPasswordError": "Nepodařilo se nastavit heslo složky",
+            "folderSettings": "Nastavení složky",
+            "filedrop": "FileDrop (umožnit nahrávání komukoli)",
+            "filedropDesc": "Ostatní mohou nahrávat soubory do této složky bez účtu",
+            "folderPublic": "Veřejná složka",
+            "folderPublicDesc": "Kdokoli může procházet obsah této složky",
+            "folderSettingsSaved": "Nastavení složky bylo uloženo",
+            "viewTrash": "Zobrazit smazané soubory",
+            "remoteUrlUpload": "Nahrát z URL",
+            "remoteUrlUploadDesc": "Vložte přímý odkaz — FileLu stáhne soubor na straně serveru",
+            "remoteUrlDest": "Cíl",
+            "remoteUrlUploaded": "Nahrávání zahájeno (file_code: {code})",
+            "remoteUrlError": "Nahrávání ze vzdálené URL se nezdařilo",
+            "startUpload": "Zahájit nahrávání",
+            "trashTitle": "FileLu Smazané soubory",
+            "restoreSelected": "Obnovit vybrané",
+            "permanentDelete": "Trvale smazat",
+            "permanentDeleteOne": "Trvale smazat",
+            "trashEmpty": "Žádné smazané soubory",
+            "restore": "Obnovit",
+            "trashFooter": "Obnovené soubory se znovu zobrazí ve své původní složce"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Kapcsolat neve (opcionális)",
             "cancelEditing": "Szerkesztés megszakítása",
             "saveChanges": "Változtatások mentése",
+            "createAccount": "Fiók létrehozása",
             "docs": "Dokumentáció",
             "minutes": "perc",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Összes kijelölése",
             "deselectAll": "Összes kijelölés megszüntetése",
             "selected": "kijelölve",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ha nincs ikon beállítva, a kiszolgálóról a favicon vagy az icon.png automatikusan kerül felismerésre.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Nem sikerült kukába helyezni",
             "batchRenameResult": "{success} átnevezve, {errors} sikertelen",
             "copyCompleted": "Másolás befejezve",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "A(z) \"{path}\" helyi mappa nem található. Átnavigálva a saját könyvtárba."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideális önhoszolt felhőkhöz, NAS eszközökhöz és fájlmegosztáshoz.",
             "selectProviderPrompt": "Válasszon egy szolgáltatót fent vagy válassza a \"Custom\" opciót",
             "seafileDesc": "Nyílt forrású felhőtárhely",
-            "seafileTooltip": "Seafile - Önkiszolgáló nyílt forrású felhő WebDAV támogatással"
+            "seafileTooltip": "Seafile - Önkiszolgáló nyílt forrású felhő WebDAV támogatással",
+            "fileluDesc": "Többprotokollos felhőtárhely",
+            "fileluTooltip": "FileLu - 20GB ingyenes tárhely FTP, FTPS, WebDAV, S3 és natív API támogatással",
+            "fileluFtpDesc": "FileLu FTP-n keresztül",
+            "fileluFtpsDesc": "FileLu biztonságos FTPS-en keresztül",
+            "fileluWebdavDesc": "FileLu WebDAV-on keresztül",
+            "fileluS3Desc": "FileLu S5 S3-kompatibilis tárhely"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3089,6 +3098,45 @@
                     "installed": "Telepített"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Fájljelszó beállítása",
+            "enterFilePassword": "Adja meg a jelszót (hagyja üresen az eltávolításhoz):",
+            "filePasswordSet": "Fájljelszó beállítva",
+            "filePasswordRemoved": "Fájljelszó eltávolítva",
+            "filePasswordError": "A fájljelszó beállítása nem sikerült",
+            "togglePrivate": "Beállítás privátra",
+            "fileSetPrivate": "A fájl most privát",
+            "makePublic": "Beállítás nyilvánosra",
+            "fileSetPublic": "A fájl most nyilvános",
+            "cloneFile": "Fájl klónozása (szerver oldalon)",
+            "cloneSuccess": "Fájl klónozva — URL vágólapra másolva",
+            "cloneError": "Klónozás sikertelen",
+            "setFolderPassword": "Mappajelszó beállítása",
+            "enterFolderPassword": "Adja meg a mappajelszót (hagyja üresen az eltávolításhoz):",
+            "folderPasswordSet": "Mappajelszó beállítva",
+            "folderPasswordRemoved": "Mappajelszó eltávolítva",
+            "folderPasswordError": "A mappajelszó beállítása nem sikerült",
+            "folderSettings": "Mappabeállítások",
+            "filedrop": "FileDrop (feltöltés engedélyezése bárki számára)",
+            "filedropDesc": "Mások fiók nélkül is feltölthetnek fájlokat ebbe a mappába",
+            "folderPublic": "Nyilvános mappa",
+            "folderPublicDesc": "Bárki böngészheti a mappa tartalmát",
+            "folderSettingsSaved": "Mappabeállítások mentve",
+            "viewTrash": "Törölt fájlok megtekintése",
+            "remoteUrlUpload": "Feltöltés URL-ről",
+            "remoteUrlUploadDesc": "Illesszen be egy közvetlen hivatkozást — a FileLu szerver oldalon tölti le a fájlt",
+            "remoteUrlDest": "Cél",
+            "remoteUrlUploaded": "Feltöltés elindítva (file_code: {code})",
+            "remoteUrlError": "Távoli URL feltöltése sikertelen",
+            "startUpload": "Feltöltés indítása",
+            "trashTitle": "FileLu törölt fájlok",
+            "restoreSelected": "Kijelöltek visszaállítása",
+            "permanentDelete": "Végleges törlés",
+            "permanentDeleteOne": "Végleges törlés",
+            "trashEmpty": "Nincsenek törölt fájlok",
+            "restore": "Visszaállítás",
+            "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nafn tengingar (valfrjálst)",
             "cancelEditing": "Hætta við breytingar",
             "saveChanges": "Vista breytingar",
+            "createAccount": "Búa til aðgang",
             "docs": "Skjöl",
             "minutes": "mínútur",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Velja Allt",
             "deselectAll": "Afvelja Allt",
             "selected": "valið",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ef engin tákn er stillt, er favicon eða icon.png frá þjóninum greint sjálfkrafa.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Ekki tókst að færa í ruslið",
             "batchRenameResult": "{success} endurnefnt, {errors} mistókst",
             "copyCompleted": "Afritun lokið",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Staðbundin mappa \"{path}\" fannst ekki. Fór í heimamöppuna."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Kjalkki fyrir sjálfsorkrá skýi, NAS-tæki og skráarmiðlun.",
             "selectProviderPrompt": "Veldu þjónustuveitanda hér að ofan eða veldu \"Custom\"",
             "seafileDesc": "Opinn skjalageymsluský",
-            "seafileTooltip": "Seafile - Sjálfshjálað opinn skjalageymsluský með WebDAV stuðningi"
+            "seafileTooltip": "Seafile - Sjálfshjálað opinn skjalageymsluský með WebDAV stuðningi",
+            "fileluDesc": "Fjölreglugeymsla í skýi",
+            "fileluTooltip": "FileLu - 20GB ókeypis geymsla með FTP, FTPS, WebDAV, S3 og native API",
+            "fileluFtpDesc": "FileLu í gegnum FTP",
+            "fileluFtpsDesc": "FileLu í gegnum öruggt FTPS",
+            "fileluWebdavDesc": "FileLu í gegnum WebDAV",
+            "fileluS3Desc": "FileLu S5 S3-samhæf geymsla"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3108,6 +3117,45 @@
         "plugins.browser.manageInSettings": {},
         "plugins.browser.search": {},
         "plugins.browser.subtitle": {},
-        "plugins.browser.title": {}
+        "plugins.browser.title": {},
+        "filelu": {
+            "setFilePassword": "Stilla lykilorð skráar",
+            "enterFilePassword": "Sláðu inn lykilorð (skildu eftir autt til að fjarlægja):",
+            "filePasswordSet": "Lykilorð skráar stillt",
+            "filePasswordRemoved": "Lykilorð skráar fjarlægt",
+            "filePasswordError": "Mistókst að stilla lykilorð skráar",
+            "togglePrivate": "Stilla sem einkamál",
+            "fileSetPrivate": "Skráin er nú einkamál",
+            "makePublic": "Stilla sem opinbert",
+            "fileSetPublic": "Skráin er nú opinber",
+            "cloneFile": "Afrita skrá (á miðlara)",
+            "cloneSuccess": "Skrá afrituð — URL afritað á klippiborð",
+            "cloneError": "Afritun mistókst",
+            "setFolderPassword": "Stilla lykilorð möppu",
+            "enterFolderPassword": "Sláðu inn lykilorð möppu (skildu eftir autt til að fjarlægja):",
+            "folderPasswordSet": "Lykilorð möppu stillt",
+            "folderPasswordRemoved": "Lykilorð möppu fjarlægt",
+            "folderPasswordError": "Mistókst að stilla lykilorð möppu",
+            "folderSettings": "Stillingar möppu",
+            "filedrop": "FileDrop (leyfa upphleðslur frá hverjum sem er)",
+            "filedropDesc": "Aðrir geta hlaðið upp skrám í þessa möppu án reiknings",
+            "folderPublic": "Opinber mappa",
+            "folderPublicDesc": "Allir geta skoðað innihald þessarar möppu",
+            "folderSettingsSaved": "Stillingar möppu vistaðar",
+            "viewTrash": "Skoða eyddar skrár",
+            "remoteUrlUpload": "Hlaða upp frá URL",
+            "remoteUrlUploadDesc": "Límdu beinan hlekk — FileLu mun sækja skrána á miðlarann",
+            "remoteUrlDest": "Áfangastaður",
+            "remoteUrlUploaded": "Upphleðsla hafin (file_code: {code})",
+            "remoteUrlError": "Upphleðsla frá fjarURL mistókst",
+            "startUpload": "Hefja upphleðslu",
+            "trashTitle": "FileLu eyddar skrár",
+            "restoreSelected": "Endurheimta valið",
+            "permanentDelete": "Eyða varanlega",
+            "permanentDeleteOne": "Eyða varanlega",
+            "trashEmpty": "Engar eyddar skrár",
+            "restore": "Endurheimta",
+            "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni"
+        }
     }
 }

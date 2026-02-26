@@ -144,6 +144,7 @@
             "connectionNameOptional": "Ühenduse nimi (valikuline)",
             "cancelEditing": "Tühista muutmine",
             "saveChanges": "Salvesta muudatused",
+            "createAccount": "Loo konto",
             "docs": "Dokumendid",
             "minutes": "minutit",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Vali kõik",
             "deselectAll": "Tühista kõigi valik",
             "selected": "valitud",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Kui ühtegi ikooni pole määratud, tuvastatakse serveri favicon või icon.png automaatselt.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Prügikasti teisaldamine ebaõnnestus",
             "batchRenameResult": "{success} ümber nimetatud, {errors} ebaõnnestus",
             "copyCompleted": "Kopeerimine lõpetatud",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Kohalikku kausta \"{path}\" ei leitud. Liiguti kodukataloogile."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ideaalne isehooldatavate pilvede, NAS-seadmete ja failide jagamise jaoks.",
             "selectProviderPrompt": "Valige ülalpool pakkuja või valige \"Custom\"",
             "seafileDesc": "Avatud lähtekoodiga pilvesalvestus",
-            "seafileTooltip": "Seafile - Ise majutatav avatud lähtekoodiga pilv WebDAV toega"
+            "seafileTooltip": "Seafile - Ise majutatav avatud lähtekoodiga pilv WebDAV toega",
+            "fileluDesc": "Mitmeprotokollne pilvsalvestus",
+            "fileluTooltip": "FileLu - 20GB tasuta salvestusruum koos FTP, FTPS, WebDAV, S3 ja natiivsete API-ga",
+            "fileluFtpDesc": "FileLu FTP kaudu",
+            "fileluFtpsDesc": "FileLu turvalise FTPS kaudu",
+            "fileluWebdavDesc": "FileLu WebDAV kaudu",
+            "fileluS3Desc": "FileLu S5 S3-ühilduv salvestusruum"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3092,6 +3101,45 @@
                     "installed": "Paigaldatud"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Määra faili parool",
+            "enterFilePassword": "Sisesta parool (jäta tühjaks eemaldamiseks):",
+            "filePasswordSet": "Faili parool määratud",
+            "filePasswordRemoved": "Faili parool eemaldatud",
+            "filePasswordError": "Faili parooli määramine ebaõnnestus",
+            "togglePrivate": "Määra privaatseks",
+            "fileSetPrivate": "Fail on nüüd privaatne",
+            "makePublic": "Määra avalikuks",
+            "fileSetPublic": "Fail on nüüd avalik",
+            "cloneFile": "Klooni fail (serveripoolne)",
+            "cloneSuccess": "Fail kloonitud — URL kopeeritud lõikelauale",
+            "cloneError": "Kloonimine ebaõnnestus",
+            "setFolderPassword": "Määra kausta parool",
+            "enterFolderPassword": "Sisesta kausta parool (jäta tühjaks eemaldamiseks):",
+            "folderPasswordSet": "Kausta parool määratud",
+            "folderPasswordRemoved": "Kausta parool eemaldatud",
+            "folderPasswordError": "Kausta parooli määramine ebaõnnestus",
+            "folderSettings": "Kausta seaded",
+            "filedrop": "FileDrop (luba üleslaadimist kõigile)",
+            "filedropDesc": "Teised saavad selles kaustas faile üles laadida ilma kontota",
+            "folderPublic": "Avalik kaust",
+            "folderPublicDesc": "Kõik saavad selle kausta sisu sirvida",
+            "folderSettingsSaved": "Kausta seaded salvestatud",
+            "viewTrash": "Vaata kustutatud faile",
+            "remoteUrlUpload": "Lae üles URL-ist",
+            "remoteUrlUploadDesc": "Kleebi otselink — FileLu laeb faili alla serveripoolselt",
+            "remoteUrlDest": "Sihtkoht",
+            "remoteUrlUploaded": "Üleslaadimine alustatud (file_code: {code})",
+            "remoteUrlError": "Kaugse URL-i üleslaadimine ebaõnnestus",
+            "startUpload": "Alusta üleslaadimist",
+            "trashTitle": "FileLu Kustutatud failid",
+            "restoreSelected": "Taasta valitud",
+            "permanentDelete": "Kustuta jäädavalt",
+            "permanentDeleteOne": "Kustuta jäädavalt",
+            "trashEmpty": "Kustutatud faile pole",
+            "restore": "Taasta",
+            "trashFooter": "Taastatud failid ilmuvad uuesti oma algses kaustas"
         }
     }
 }

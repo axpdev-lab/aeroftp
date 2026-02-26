@@ -144,6 +144,7 @@
             "connectionNameOptional": "Όνομα σύνδεσης (προαιρετικό)",
             "cancelEditing": "Ακύρωση Επεξεργασίας",
             "saveChanges": "Αποθήκευση Αλλαγών",
+            "createAccount": "Δημιουργία λογαριασμού",
             "docs": "Τεκμηρίωση",
             "minutes": "λεπτά",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Επιλογή όλων",
             "deselectAll": "Αποεπιλογή όλων",
             "selected": "επιλεγμένα",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Εάν δεν έχει οριστεί εικονίδιο, το favicon ή το icon.png από τον διακομιστή ανιχνεύεται αυτόματα.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Αποτυχία μετακίνησης στον κάδο απορριμμάτων",
             "batchRenameResult": "{success} μετονομάστηκαν, {errors} απέτυχαν",
             "copyCompleted": "Η αντιγραφή ολοκληρώθηκε",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Ο τοπικός φάκελος \"{path}\" δεν βρέθηκε. Πλοηγήθηκε στον κατάλογο αρχικής σελίδας."
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Ιδανικό για αυτοφιλοξενούμενα clouds, συσκευές NAS και κοινή χρήση αρχείων.",
             "selectProviderPrompt": "Επιλέξτε έναν πάροχο παραπάνω ή επιλέξτε \"Custom\"",
             "seafileDesc": "Αποθηκευτικός χώρος cloud ανοιχτού κώδικα",
-            "seafileTooltip": "Seafile - Αυτο-φιλοξενούμενο cloud ανοιχτού κώδικα με υποστήριξη WebDAV"
+            "seafileTooltip": "Seafile - Αυτο-φιλοξενούμενο cloud ανοιχτού κώδικα με υποστήριξη WebDAV",
+            "fileluDesc": "Αποθήκευση νέφους πολλαπλών πρωτοκόλλων",
+            "fileluTooltip": "FileLu - 20GB δωρεάν αποθηκευτικός χώρος με FTP, FTPS, WebDAV, S3 και εγγενές API",
+            "fileluFtpDesc": "FileLu μέσω FTP",
+            "fileluFtpsDesc": "FileLu μέσω ασφαλούς FTPS",
+            "fileluWebdavDesc": "FileLu μέσω WebDAV",
+            "fileluS3Desc": "FileLu S5 αποθήκευση συμβατή με S3"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -3092,6 +3101,45 @@
                     "installed": "Εγκατεστημένα"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Ορισμός κωδικού πρόσβασης αρχείου",
+            "enterFilePassword": "Εισαγάγετε κωδικό πρόσβασης (αφήστε κενό για αφαίρεση):",
+            "filePasswordSet": "Ο κωδικός πρόσβασης αρχείου ορίστηκε",
+            "filePasswordRemoved": "Ο κωδικός πρόσβασης αρχείου αφαιρέθηκε",
+            "filePasswordError": "Αποτυχία ορισμού κωδικού πρόσβασης αρχείου",
+            "togglePrivate": "Ορισμός ως ιδιωτικό",
+            "fileSetPrivate": "Το αρχείο είναι πλέον ιδιωτικό",
+            "makePublic": "Ορισμός ως δημόσιο",
+            "fileSetPublic": "Το αρχείο είναι πλέον δημόσιο",
+            "cloneFile": "Κλωνοποίηση αρχείου (από τον διακομιστή)",
+            "cloneSuccess": "Το αρχείο κλωνοποιήθηκε — Το URL αντιγράφηκε στο πρόχειρο",
+            "cloneError": "Η κλωνοποίηση απέτυχε",
+            "setFolderPassword": "Ορισμός κωδικού πρόσβασης φακέλου",
+            "enterFolderPassword": "Εισαγάγετε κωδικό πρόσβασης φακέλου (αφήστε κενό για αφαίρεση):",
+            "folderPasswordSet": "Ο κωδικός πρόσβασης φακέλου ορίστηκε",
+            "folderPasswordRemoved": "Ο κωδικός πρόσβασης φακέλου αφαιρέθηκε",
+            "folderPasswordError": "Αποτυχία ορισμού κωδικού πρόσβασης φακέλου",
+            "folderSettings": "Ρυθμίσεις φακέλου",
+            "filedrop": "FileDrop (να επιτρέπονται μεταφορτώσεις από οποιονδήποτε)",
+            "filedropDesc": "Άλλοι μπορούν να μεταφορτώσουν αρχεία σε αυτόν τον φάκελο χωρίς λογαριασμό",
+            "folderPublic": "Δημόσιος φάκελος",
+            "folderPublicDesc": "Ο καθένας μπορεί να περιηγηθεί στα περιεχόμενα αυτού του φακέλου",
+            "folderSettingsSaved": "Οι ρυθμίσεις φακέλου αποθηκεύτηκαν",
+            "viewTrash": "Προβολή διαγραμμένων αρχείων",
+            "remoteUrlUpload": "Μεταφόρτωση από URL",
+            "remoteUrlUploadDesc": "Επικολλήστε έναν άμεσο σύνδεσμο — Το FileLu θα κατεβάσει το αρχείο από την πλευρά του διακομιστή",
+            "remoteUrlDest": "Προορισμός",
+            "remoteUrlUploaded": "Η μεταφόρτωση ξεκίνησε (file_code: {code})",
+            "remoteUrlError": "Η μεταφόρτωση από απομακρυσμένο URL απέτυχε",
+            "startUpload": "Έναρξη μεταφόρτωσης",
+            "trashTitle": "FileLu Διαγραμμένα αρχεία",
+            "restoreSelected": "Επαναφορά επιλεγμένων",
+            "permanentDelete": "Οριστική διαγραφή",
+            "permanentDeleteOne": "Οριστική διαγραφή",
+            "trashEmpty": "Δεν υπάρχουν διαγραμμένα αρχεία",
+            "restore": "Επαναφορά",
+            "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο"
         }
     }
 }

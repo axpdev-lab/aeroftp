@@ -13,7 +13,7 @@
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, and kDrive. 18 protocols, 30+ presets, one app.
+      Internxt Drive, kDrive, and FileLu. 19 protocols, 30+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.7.0" date="2026-02-26">
+      <description>
+        <p>FileLu Native API — 19th Protocol: Added FileLu cloud storage as the 19th supported protocol via its native REST API. Includes privacy-focused features: per-file and per-folder password protection, public/private visibility toggle, server-side file cloning, trash management with restore and permanent delete, and remote URL upload. Also adds FileLu FTP, FTPS, WebDAV, and S3 presets for users who prefer standard protocols.</p>
+      </description>
+    </release>
     <release version="2.6.10" date="2026-02-25">
       <description>
         <p>CI Recovery and Release Realignment: Fixed a TypeScript parsing issue in ProtocolSelector that interrupted release builds, and re-aligned the release pipeline to publish downloadable artifacts correctly across supported platforms.</p>

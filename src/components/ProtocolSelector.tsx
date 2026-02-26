@@ -13,12 +13,13 @@ import {
     ShieldAlert,
     HardDrive,
     ChevronDown,
-    ExternalLink
+    ExternalLink,
+    Pencil
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -209,6 +210,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.megaTooltip'),
     },
     {
+        type: 'filelu',
+        name: 'FileLu',
+        icon: <FileLuLogo size={18} />,
+        description: t('protocol.fileluDesc'),
+        defaultPort: 443,
+        badge: 'API',
+        color: 'text-violet-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.fileluTooltip'),
+    },
+    {
         type: 'filen',
         name: 'Filen',
         icon: <FilenLogo size={18} />,
@@ -236,7 +248,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <KDriveLogo size={18} />,
         description: t('protocol.kdriveDesc'),
         defaultPort: 443,
-        badge: 'TLS',
+        badge: 'API',
         color: 'text-blue-500',
         isCloudStorage: true,
         tooltip: t('protocol.kdriveTooltip'),
@@ -247,7 +259,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <JottacloudLogo size={18} />,
         description: t('protocol.jottacloudDesc'),
         defaultPort: 443,
-        badge: 'TLS',
+        badge: 'API',
         color: 'text-purple-500',
         isCloudStorage: true,
         tooltip: t('protocol.jottacloudTooltip'),
@@ -281,7 +293,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <DrimeCloudLogo size={18} />,
         description: t('protocol.drimeDesc'),
         defaultPort: 443,
-        badge: 'TLS',
+        badge: 'API',
         color: 'text-green-500',
         isCloudStorage: true,
         tooltip: t('protocol.drimeTooltip'),
@@ -313,14 +325,15 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Connect with Dropbox Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'Connect with Microsoft Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
     { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: 'E2E', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
+    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud Storage', defaultPort: 443, badge: 'API', color: 'text-violet-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 20GB free' },
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Connect with Box Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
-    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Swiss Cloud Storage', defaultPort: 443, badge: 'TLS', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
-    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5GB free)', defaultPort: 443, badge: 'TLS', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
+    { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Swiss Cloud Storage', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
+    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '15 GB Free Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Team Cloud Storage', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
-    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: 'TLS', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
+    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Secure Cloud Storage', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'Connect with pCloud Account', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
 ];
 
@@ -482,6 +495,8 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                         ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                                         : protocol.badge === 'OAuth'
                                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                                            : protocol.badge === 'API'
+                                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                                             : ['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
                                                 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                                                 : protocol.badge === 'Soon'
@@ -504,6 +519,8 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                         : effectiveBadge === 'OAuth'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                            : effectiveBadge === 'API'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                             : effectiveBadge === 'Sync'
                                 ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                                 : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
@@ -538,6 +555,8 @@ interface ProtocolFieldsProps {
     onBrowseKeyFile?: () => void;  // Callback for key file selection
     selectedProviderId?: string | null;  // Provider preset ID for customized hints/placeholders
     isEditing?: boolean;  // Hide help links when editing existing server
+    presetUnlocked?: Record<string, boolean>;  // Which preset fields are unlocked for editing
+    onPresetUnlock?: (field: string) => void;  // Callback to unlock a preset field
 }
 
 export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
@@ -548,6 +567,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     onBrowseKeyFile,
     selectedProviderId,
     isEditing = false,
+    presetUnlocked = {},
+    onPresetUnlock,
 }) => {
     const t = useTranslation();
     const providerConfig = selectedProviderId ? getProviderById(selectedProviderId) : null;
@@ -678,68 +699,126 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         </div>
                     )}
                     <div>
+                        {(() => {
+                            const hasPresetEndpoint = providerConfig && providerConfig.defaults?.endpoint && !providerConfig.isGeneric;
+                            const endpointLocked = hasPresetEndpoint && !presetUnlocked['endpoint'] && !isEditing;
+                            return (
+                                <>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                        <label className="block text-sm font-medium">
+                                            {endpointField?.label || t('protocol.customEndpoint')}
+                                        </label>
+                                        {endpointLocked && onPresetUnlock && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onPresetUnlock('endpoint')}
+                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
+                                            >
+                                                <Pencil size={10} />
+                                                {t('common.edit')}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {endpointField.type === 'select' && endpointField.options ? (
+                                        <select
+                                            value={options.endpoint || ''}
+                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                            disabled={disabled || !!endpointLocked}
+                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            <option value="">{t('protocol.selectRegion')}</option>
+                                            {endpointField.options.map(opt => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={options.endpoint || ''}
+                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                            disabled={disabled || !!endpointLocked}
+                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
+                                        />
+                                    )}
+                                    {!isEditing && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {endpointField?.helpText || t('protocol.endpointHelp')}
+                                        </p>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+                ) : (
+                <>
+                <div className={providerConfig?.defaults?.endpoint ? "grid grid-cols-2 gap-3" : ""}>
+                    <div>
                         <label className="block text-sm font-medium mb-1.5">
-                            {endpointField?.label || t('protocol.customEndpoint')}
+                            {regionField?.label || t('protocol.region')}
                         </label>
-                        {endpointField.type === 'select' && endpointField.options ? (
+                        {hasRegionSelect ? (
                             <select
-                                value={options.endpoint || ''}
-                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                value={options.region || ''}
+                                onChange={(e) => onChange({ ...options, region: e.target.value })}
                                 disabled={disabled}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
                             >
                                 <option value="">{t('protocol.selectRegion')}</option>
-                                {endpointField.options.map(opt => (
+                                {regionField!.options!.map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
                         ) : (
                             <input
                                 type="text"
-                                value={options.endpoint || ''}
-                                onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                value={options.region || ''}
+                                onChange={(e) => onChange({ ...options, region: e.target.value })}
                                 disabled={disabled}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                                placeholder={endpointField?.placeholder || t('protocol.endpointPlaceholder')}
+                                placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
                             />
                         )}
-                        {!isEditing && (
-                            <p className="text-xs text-gray-500 mt-1">
-                                {endpointField?.helpText || t('protocol.endpointHelp')}
-                            </p>
-                        )}
                     </div>
-                </div>
-                ) : (
-                <div>
-                    <label className="block text-sm font-medium mb-1.5">
-                        {regionField?.label || t('protocol.region')}
-                    </label>
-                    {hasRegionSelect ? (
-                        <select
-                            value={options.region || ''}
-                            onChange={(e) => onChange({ ...options, region: e.target.value })}
-                            disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                        >
-                            <option value="">{t('protocol.selectRegion')}</option>
-                            {regionField!.options!.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                    ) : (
-                        <input
-                            type="text"
-                            value={options.region || ''}
-                            onChange={(e) => onChange({ ...options, region: e.target.value })}
-                            disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
-                        />
+                    {providerConfig?.defaults?.endpoint && (
+                        <div>
+                            {(() => {
+                                const endpointLocked = !presetUnlocked['endpoint'] && !isEditing;
+                                return (
+                                    <>
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                            <label className="block text-sm font-medium">
+                                                {t('protocol.s3Endpoint')}
+                                            </label>
+                                            {endpointLocked && onPresetUnlock && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onPresetUnlock('endpoint')}
+                                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
+                                                >
+                                                    <Pencil size={10} />
+                                                    {t('common.edit')}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={options.endpoint || providerConfig.defaults.endpoint || ''}
+                                            onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                            disabled={disabled || !!endpointLocked}
+                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            placeholder={providerConfig.defaults.endpoint}
+                                        />
+                                    </>
+                                );
+                            })()}
+                        </div>
                     )}
                 </div>
+                </>
                 )}
-                {endpointField && (
+                {(endpointField || providerConfig?.defaults?.endpoint) && (
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                             type="checkbox"
@@ -751,16 +830,31 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         {t('protocol.pathStyle')}
                     </label>
                 )}
-                {!isEditing && providerConfig?.helpUrl && (
-                    <a
-                        href={providerConfig.helpUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 mt-1"
-                    >
-                        <ExternalLink size={12} />
-                        {t('protocol.providerDocumentation', { name: providerConfig.name })}
-                    </a>
+                {!isEditing && (providerConfig?.helpUrl || providerConfig?.signupUrl) && (
+                    <div className="flex items-center gap-3 mt-1">
+                        {providerConfig.signupUrl && (
+                            <a
+                                href={providerConfig.signupUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                            >
+                                <ExternalLink size={12} />
+                                {t('connection.createAccount')}
+                            </a>
+                        )}
+                        {providerConfig.helpUrl && (
+                            <a
+                                href={providerConfig.helpUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                                <ExternalLink size={12} />
+                                {t('protocol.providerDocumentation', { name: providerConfig.name })}
+                            </a>
+                        )}
+                    </div>
                 )}
             </div>
         );
@@ -1025,6 +1119,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         drime: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        filelu: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
     };
 
     return (

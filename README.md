@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 18 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 19 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <!-- Row 1: Project Identity -->
@@ -17,7 +17,7 @@
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-18-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/protocols-19-green" alt="Protocols" />
   <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
@@ -56,7 +56,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 18 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 19 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
@@ -64,7 +64,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (18 protocols, sync, share)
+├── AeroCloud    — Personal cloud (19 protocols, sync, share)
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
@@ -77,14 +77,14 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any server** into a private personal cloud. Connect to all 18 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Connect to all 19 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
 | **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
 | **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
 | **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA |
-| **WebDAV** | HTTPS | Nextcloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD. HTTP Digest auth (RFC 2617), file locking (RFC 4918) |
+| **WebDAV** | HTTPS | Nextcloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD, Seafile. HTTP Digest auth (RFC 2617), file locking (RFC 4918) |
 | **S3** | HTTPS | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
 | **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share permissions, workspace export |
 | **Dropbox** | OAuth2 PKCE | File versions, thumbnails, native sharing |
@@ -99,8 +99,9 @@ Turn **any server** into a private personal cloud. Connect to all 18 protocols t
 | **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, REST API |
 | **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, team drive management |
 | **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, unlimited storage plans |
+| **FileLu** | API Key (native REST) | 20GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
 
-**Cloud features**: Background sync works with all 18 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
+**Cloud features**: Background sync works with all 19 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -184,7 +185,7 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **45 provider-agnostic tools** that work across all 18 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
+An AI assistant with **45 provider-agnostic tools** that work across all 19 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 

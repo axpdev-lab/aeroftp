@@ -144,6 +144,7 @@
             "connectionNameOptional": "Կապի անուն (ընտրովի)",
             "cancelEditing": "Չեղարկել խմբագրումը",
             "saveChanges": "Պահպանել փոփոխությունները",
+            "createAccount": "Ստեղծել հաշիվ",
             "docs": "Փաստաթղթեր",
             "minutes": "րոպե",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Ընտրել բոլորը",
             "deselectAll": "Ապաընտրել բոլորը",
             "selected": "ընտրված",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Եթե պատկերակը չի սահմանվել, սերվերի favicon-ը կամ icon.png-ն ավտոմատ կերպով կհայտնաբերվի:",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -950,7 +953,7 @@
             "moveToTrashFailed": "Չհաջողվեց աղբարկղ տևալը",
             "batchRenameResult": "{success} վերանվանված, {errors} ձախողված",
             "copyCompleted": "Պատճենը ավարտված է",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "\"{path}\" տեղական թղթապանակը չի գտնվել: Անցում կատարվեց տնային թղթապանակ:"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -1181,7 +1184,13 @@
             "webdavInfoLine2": "Կոր համար ե հովսում ընթեր նոր կոսկ, NAS օղ նեծե եւ ֆայլի քրաց տոբ:",
             "selectProviderPrompt": "Կոր բաց բաց եւ բեր իս \"Custom\"-ի օղ",
             "seafileDesc": "Բաց կոդի ամպային պահոց",
-            "seafileTooltip": "Seafile - Ինքնահոսթինգ բաց կոդի ամպ WebDAV աջակցությամբ"
+            "seafileTooltip": "Seafile - Ինքնահոսթինգ բաց կոդի ամպ WebDAV աջակցությամբ",
+            "fileluDesc": "Բազմարձանագրային ամպային պահոց",
+            "fileluTooltip": "FileLu - 20ԳԲ անվճար պահոց FTP, FTPS, WebDAV, S3 և բնիկ API-ով",
+            "fileluFtpDesc": "FileLu FTP-ի միջոցով",
+            "fileluFtpsDesc": "FileLu անվտանգ FTPS-ի միջոցով",
+            "fileluWebdavDesc": "FileLu WebDAV-ի միջոցով",
+            "fileluS3Desc": "FileLu S5 S3-համատեղելի պահոց"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3089,6 +3098,45 @@
                     "installed": "Տեղադրված"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Սահմանել ֆայլի գաղտնաբառ",
+            "enterFilePassword": "Մուտքագրեք գաղտնաբառ (թողեք դատարկ հեռացնելու համար).",
+            "filePasswordSet": "Ֆայլի գաղտնաբառը սահմանված է",
+            "filePasswordRemoved": "Ֆայլի գաղտնաբառը հեռացված է",
+            "filePasswordError": "Ֆայլի գաղտնաբառի սահմանումը ձախողվեց",
+            "togglePrivate": "Սահմանել որպես անձնական",
+            "fileSetPrivate": "Ֆայլն այժմ անձնական է",
+            "makePublic": "Սահմանել որպես հանրային",
+            "fileSetPublic": "Ֆայլն այժմ հանրային է",
+            "cloneFile": "Կրկնօրինակել ֆայլը (սերվերի կողմից)",
+            "cloneSuccess": "Ֆայլը կրկնօրինակվեց — URL-ը պատճենվեց clipboard-ում",
+            "cloneError": "Կրկնօրինակումը ձախողվեց",
+            "setFolderPassword": "Սահմանել թղթապանակի գաղտնաբառ",
+            "enterFolderPassword": "Մուտքագրեք թղթապանակի գաղտնաբառ (թողեք դատարկ հեռացնելու համար).",
+            "folderPasswordSet": "Թղթապանակի գաղտնաբառը սահմանված է",
+            "folderPasswordRemoved": "Թղթապանակի գաղտնաբառը հեռացված է",
+            "folderPasswordError": "Թղթապանակի գաղտնաբառի սահմանումը ձախողվեց",
+            "folderSettings": "Թղթապանակի կարգավորումներ",
+            "filedrop": "FileDrop (թույլ տալ ֆայլ բեռնելը ցանկացածի կողմից)",
+            "filedropDesc": "Մյուսները կարող են բեռնել ֆայլեր այս թղթապանակ առանց հաշվի",
+            "folderPublic": "Հանրային թղթապանակ",
+            "folderPublicDesc": "Ցանկացածը կարող է դիտել այս թղթապանակի բովանդակությունը",
+            "folderSettingsSaved": "Թղթապանակի կարգավորումները պահպանվեցին",
+            "viewTrash": "Դիտել ջնջված ֆայլեր",
+            "remoteUrlUpload": "Բեռնել URL-ից",
+            "remoteUrlUploadDesc": "Տեղադրեք ուղղակի հղում — FileLu-ն կբեռնի ֆայլը սերվերի կողմից",
+            "remoteUrlDest": "Նպատակակետ",
+            "remoteUrlUploaded": "Բեռնումը սկսվեց (file_code: {code})",
+            "remoteUrlError": "Հեռակա URL-ից բեռնումը ձախողվեց",
+            "startUpload": "Սկսել բեռնումը",
+            "trashTitle": "FileLu ջնջված ֆայլեր",
+            "restoreSelected": "Վերականգնել ընտրվածը",
+            "permanentDelete": "Ջնջել վերջնականապես",
+            "permanentDeleteOne": "Ջնջել վերջնականապես",
+            "trashEmpty": "Ջնջված ֆայլեր չկան",
+            "restore": "Վերականգնել",
+            "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "კავშირის სახელი (სურვილისამებრ)",
             "cancelEditing": "რედაქტირების გაუქმება",
             "saveChanges": "ცვლილებების შენახვა",
+            "createAccount": "ანგარიშის შექმნა",
             "docs": "დოკუმენტები",
             "minutes": "წუთი",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "ყველას არჩევა",
             "deselectAll": "ყველას მოხსნა",
             "selected": "არჩეული",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "თუ ხატულა არ არის დაყენებული, სერვერიდან favicon ან icon.png ავტომატურად განისაზღვრება.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "სანაგვეში გადატანა ვერ მოხერხდა",
             "batchRenameResult": "{success} გადარქმეულია, {errors} ვერ შესრულდა",
             "copyCompleted": "კოპირება დასრულებულია",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "ლოკალური საქაღალდე \"{path}\" ვერ მოიძებნა. გადადით მთავარ დირექტორიაში."
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "იდეალური თვითჰოსტებული კლაუდებისთვის, NAS მოწყობილობებისთვის და ფაილის გაზიარებისთვის.",
             "selectProviderPrompt": "აირჩიეთ მომწოდებელი ზემოთ ან აირჩიეთ \"Custom\"",
             "seafileDesc": "ღია კოდის ღრუბლოვანი საცავი",
-            "seafileTooltip": "Seafile - თვითჰოსტინგის ღია კოდის ღრუბლი WebDAV მხარდაჭერით"
+            "seafileTooltip": "Seafile - თვითჰოსტინგის ღია კოდის ღრუბლი WebDAV მხარდაჭერით",
+            "fileluDesc": "მრავალპროტოკოლიანი ღრუბლოვანი საცავი",
+            "fileluTooltip": "FileLu - 20GB უფასო საცავი FTP, FTPS, WebDAV, S3 და native API-ით",
+            "fileluFtpDesc": "FileLu FTP-ის საშუალებით",
+            "fileluFtpsDesc": "FileLu უსაფრთხო FTPS-ის საშუალებით",
+            "fileluWebdavDesc": "FileLu WebDAV-ის საშუალებით",
+            "fileluS3Desc": "FileLu S5 S3-თავსებადი საცავი"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3092,6 +3101,45 @@
                     "installed": "დაინსტალირებული"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "ფაილის პაროლის დაყენება",
+            "enterFilePassword": "შეიყვანეთ პაროლი (დასაშლელად დატოვეთ ცარიელი):",
+            "filePasswordSet": "ფაილის პაროლი დაყენებულია",
+            "filePasswordRemoved": "ფაილის პაროლი წაშლილია",
+            "filePasswordError": "ფაილის პაროლის დაყენება ვერ მოხერხდა",
+            "togglePrivate": "კერძოდ მონიშვნა",
+            "fileSetPrivate": "ფაილი ახლა კერძოა",
+            "makePublic": "საჯაროდ მონიშვნა",
+            "fileSetPublic": "ფაილი ახლა საჯაროა",
+            "cloneFile": "ფაილის კლონირება (სერვერის მხარეს)",
+            "cloneSuccess": "ფაილი კლონირებულია — URL დაკოპირდა ბუფერში",
+            "cloneError": "კლონირება ვერ მოხერხდა",
+            "setFolderPassword": "საქაღალდის პაროლის დაყენება",
+            "enterFolderPassword": "შეიყვანეთ საქაღალდის პაროლი (დასაშლელად დატოვეთ ცარიელი):",
+            "folderPasswordSet": "საქაღალდის პაროლი დაყენებულია",
+            "folderPasswordRemoved": "საქაღალდის პაროლი წაშლილია",
+            "folderPasswordError": "საქაღალდის პაროლის დაყენება ვერ მოხერხდა",
+            "folderSettings": "საქაღალდის პარამეტრები",
+            "filedrop": "FileDrop (ნებისმიერისგან ატვირთვის დაშვება)",
+            "filedropDesc": "სხვებს შეუძლიათ ფაილების ატვირთვა ამ საქაღალდეში ანგარიშის გარეშე",
+            "folderPublic": "საჯარო საქაღალდე",
+            "folderPublicDesc": "ნებისმიერს შეუძლია ამ საქაღალდის შინაარსის დათვალიერება",
+            "folderSettingsSaved": "საქაღალდის პარამეტრები შენახულია",
+            "viewTrash": "წაშლილი ფაილების ნახვა",
+            "remoteUrlUpload": "URL-დან ატვირთვა",
+            "remoteUrlUploadDesc": "ჩასვით პირდაპირი ბმული — FileLu ჩამოტვირთავს ფაილს სერვერის მხარეს",
+            "remoteUrlDest": "დანიშნულება",
+            "remoteUrlUploaded": "ატვირთვა დაიწყო (file_code: {code})",
+            "remoteUrlError": "დისტანციური URL-ის ატვირთვა ვერ მოხერხდა",
+            "startUpload": "ატვირთვის დაწყება",
+            "trashTitle": "FileLu წაშლილი ფაილები",
+            "restoreSelected": "არჩეულის აღდგენა",
+            "permanentDelete": "სამუდამოდ წაშლა",
+            "permanentDeleteOne": "სამუდამოდ წაშლა",
+            "trashEmpty": "წაშლილი ფაილები არ არის",
+            "restore": "აღდგენა",
+            "trashFooter": "აღდგენილი ფაილები კვლავ გამოჩნდება მათ პირვანდელ საქაღალდეში"
         }
     }
 }

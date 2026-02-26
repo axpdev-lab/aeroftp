@@ -144,6 +144,7 @@
             "connectionNameOptional": "Nom de la connexion (optionnel)",
             "cancelEditing": "Annuler la modification",
             "saveChanges": "Enregistrer les modifications",
+            "createAccount": "Créer un compte",
             "docs": "Documentation",
             "minutes": "minutes",
             "localPathPlaceholder": "/home/user/projets",
@@ -724,7 +725,9 @@
             "selectAll": "Tout sélectionner",
             "deselectAll": "Tout désélectionner",
             "selected": "sélectionné",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Si aucune icône n'est définie, le favicon ou l'icon.png du serveur est détecté automatiquement.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Échec du déplacement vers la corbeille",
             "batchRenameResult": "{success} renommés, {errors} échoués",
             "copyCompleted": "Copie terminée",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Le dossier local \"{path}\" est introuvable. Navigation vers le répertoire personnel."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Idéal pour les clouds autohébergés, les appareils NAS et le partage de fichiers.",
             "selectProviderPrompt": "Sélectionnez un fournisseur ci-dessus ou choisissez \"Custom\"",
             "seafileDesc": "Stockage cloud open source",
-            "seafileTooltip": "Seafile - Cloud open source auto-hébergé avec prise en charge WebDAV"
+            "seafileTooltip": "Seafile - Cloud open source auto-hébergé avec prise en charge WebDAV",
+            "fileluDesc": "Stockage cloud multi-protocole",
+            "fileluTooltip": "FileLu - 20 Go de stockage gratuit avec FTP, FTPS, WebDAV, S3 et API native",
+            "fileluFtpDesc": "FileLu via FTP",
+            "fileluFtpsDesc": "FileLu via FTPS sécurisé",
+            "fileluWebdavDesc": "FileLu via WebDAV",
+            "fileluS3Desc": "FileLu S5 stockage compatible S3"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",
@@ -3082,6 +3091,45 @@
                     "installed": "Installés"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Définir le mot de passe du fichier",
+            "enterFilePassword": "Saisissez le mot de passe (laissez vide pour le supprimer) :",
+            "filePasswordSet": "Mot de passe du fichier défini",
+            "filePasswordRemoved": "Mot de passe du fichier supprimé",
+            "filePasswordError": "Impossible de définir le mot de passe du fichier",
+            "togglePrivate": "Définir comme privé",
+            "fileSetPrivate": "Le fichier est maintenant privé",
+            "makePublic": "Définir comme public",
+            "fileSetPublic": "Le fichier est maintenant public",
+            "cloneFile": "Cloner le fichier (côté serveur)",
+            "cloneSuccess": "Fichier cloné — URL copiée dans le presse-papiers",
+            "cloneError": "Le clonage a échoué",
+            "setFolderPassword": "Définir le mot de passe du dossier",
+            "enterFolderPassword": "Saisissez le mot de passe du dossier (laissez vide pour le supprimer) :",
+            "folderPasswordSet": "Mot de passe du dossier défini",
+            "folderPasswordRemoved": "Mot de passe du dossier supprimé",
+            "folderPasswordError": "Impossible de définir le mot de passe du dossier",
+            "folderSettings": "Paramètres du dossier",
+            "filedrop": "FileDrop (autoriser les envois par n'importe qui)",
+            "filedropDesc": "D'autres personnes peuvent envoyer des fichiers dans ce dossier sans compte",
+            "folderPublic": "Dossier public",
+            "folderPublicDesc": "N'importe qui peut parcourir le contenu de ce dossier",
+            "folderSettingsSaved": "Paramètres du dossier enregistrés",
+            "viewTrash": "Voir les fichiers supprimés",
+            "remoteUrlUpload": "Envoyer depuis une URL",
+            "remoteUrlUploadDesc": "Collez un lien direct — FileLu téléchargera le fichier côté serveur",
+            "remoteUrlDest": "Destination",
+            "remoteUrlUploaded": "Envoi démarré (file_code : {code})",
+            "remoteUrlError": "L'envoi depuis une URL distante a échoué",
+            "startUpload": "Démarrer l'envoi",
+            "trashTitle": "FileLu Fichiers supprimés",
+            "restoreSelected": "Restaurer la sélection",
+            "permanentDelete": "Supprimer définitivement",
+            "permanentDeleteOne": "Supprimer définitivement",
+            "trashEmpty": "Aucun fichier supprimé",
+            "restore": "Restaurer",
+            "trashFooter": "Les fichiers restaurés réapparaîtront dans leur dossier d'origine"
         }
     }
 }

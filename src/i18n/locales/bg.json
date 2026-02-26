@@ -144,6 +144,7 @@
             "connectionNameOptional": "Име на връзката (незадължително)",
             "cancelEditing": "Отказ от редактиране",
             "saveChanges": "Запазване на промените",
+            "createAccount": "Създай акаунт",
             "docs": "Документация",
             "minutes": "минути",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "Избери всички",
             "deselectAll": "Премахни избора от всички",
             "selected": "избрани",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ако не е зададена икона, favicon или icon.png от сървъра се разпознава автоматично.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Неуспешно преместване в кошчето",
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
             "copyCompleted": "Копирането завършено",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Локалната папка \"{path}\" не е намерена. Навигирано към домашната директория."
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Идеален за самостоятелни облаци, устройства NAS и споделяне на файлове.",
             "selectProviderPrompt": "Изберете доставчик по-горе или изберете \"Custom\"",
             "seafileDesc": "Облачно хранилище с отворен код",
-            "seafileTooltip": "Seafile - Самостоятелно хоствано облачно хранилище с отворен код с поддръжка на WebDAV"
+            "seafileTooltip": "Seafile - Самостоятелно хоствано облачно хранилище с отворен код с поддръжка на WebDAV",
+            "fileluDesc": "Многопротоколно облачно хранилище",
+            "fileluTooltip": "FileLu - 20GB безплатно хранилище с FTP, FTPS, WebDAV, S3 и нативен API",
+            "fileluFtpDesc": "FileLu чрез FTP",
+            "fileluFtpsDesc": "FileLu чрез защитен FTPS",
+            "fileluWebdavDesc": "FileLu чрез WebDAV",
+            "fileluS3Desc": "FileLu S5 съвместимо с S3 хранилище"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -3089,6 +3098,45 @@
                     "installed": "Инсталирани"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Задаване на парола за файл",
+            "enterFilePassword": "Въведете парола (оставете празно за премахване):",
+            "filePasswordSet": "Паролата за файла е зададена",
+            "filePasswordRemoved": "Паролата за файла е премахната",
+            "filePasswordError": "Неуспешно задаване на парола за файл",
+            "togglePrivate": "Задаване като частен",
+            "fileSetPrivate": "Файлът вече е частен",
+            "makePublic": "Задаване като публичен",
+            "fileSetPublic": "Файлът вече е публичен",
+            "cloneFile": "Клониране на файл (от страна на сървъра)",
+            "cloneSuccess": "Файлът е клониран — URL е копиран в клипборда",
+            "cloneError": "Клонирането е неуспешно",
+            "setFolderPassword": "Задаване на парола за папка",
+            "enterFolderPassword": "Въведете парола за папка (оставете празно за премахване):",
+            "folderPasswordSet": "Паролата за папката е зададена",
+            "folderPasswordRemoved": "Паролата за папката е премахната",
+            "folderPasswordError": "Неуспешно задаване на парола за папка",
+            "folderSettings": "Настройки на папката",
+            "filedrop": "FileDrop (разрешаване на качване от всеки)",
+            "filedropDesc": "Другите могат да качват файлове в тази папка без акаунт",
+            "folderPublic": "Публична папка",
+            "folderPublicDesc": "Всеки може да разглежда съдържанието на тази папка",
+            "folderSettingsSaved": "Настройките на папката са запазени",
+            "viewTrash": "Преглед на изтритите файлове",
+            "remoteUrlUpload": "Качване от URL",
+            "remoteUrlUploadDesc": "Поставете директна връзка — FileLu ще изтегли файла от страна на сървъра",
+            "remoteUrlDest": "Дестинация",
+            "remoteUrlUploaded": "Качването е започнато (file_code: {code})",
+            "remoteUrlError": "Качването от отдалечен URL е неуспешно",
+            "startUpload": "Започване на качването",
+            "trashTitle": "FileLu Изтрити файлове",
+            "restoreSelected": "Възстановяване на избраните",
+            "permanentDelete": "Изтриване завинаги",
+            "permanentDeleteOne": "Изтриване завинаги",
+            "trashEmpty": "Няма изтрити файлове",
+            "restore": "Възстановяване",
+            "trashFooter": "Възстановените файлове ще се появят отново в оригиналната си папка"
         }
     }
 }

@@ -144,6 +144,7 @@
             "connectionNameOptional": "连接名称（可选）",
             "cancelEditing": "取消编辑",
             "saveChanges": "保存更改",
+            "createAccount": "创建账户",
             "docs": "文档",
             "minutes": "分钟",
             "localPathPlaceholder": "/home/user/projects",
@@ -724,7 +725,9 @@
             "selectAll": "全选",
             "deselectAll": "取消全选",
             "selected": "已选择",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "如果未设置图标，将自动检测服务器的 favicon 或 icon.png。",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "移至废纸篓失败",
             "batchRenameResult": "{success} 个已重命名，{errors} 个失败",
             "copyCompleted": "复制完成",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "未找到本地文件夹 \"{path}\"。已导航至主目录。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "非常适合自托管云、NAS 设备和文件共享。",
             "selectProviderPrompt": "选择上方的提供商或选择 \"Custom\"",
             "seafileDesc": "开源云存储",
-            "seafileTooltip": "Seafile - 支持WebDAV的自托管开源云存储"
+            "seafileTooltip": "Seafile - 支持WebDAV的自托管开源云存储",
+            "fileluDesc": "多协议云存储",
+            "fileluTooltip": "FileLu - 支持 FTP、FTPS、WebDAV、S3 和原生 API 的 20GB 免费存储",
+            "fileluFtpDesc": "通过 FTP 连接 FileLu",
+            "fileluFtpsDesc": "通过安全 FTPS 连接 FileLu",
+            "fileluWebdavDesc": "通过 WebDAV 连接 FileLu",
+            "fileluS3Desc": "FileLu S5 S3 兼容存储"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3082,6 +3091,45 @@
                     "installed": "已安装"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "设置文件密码",
+            "enterFilePassword": "输入密码（留空以删除）：",
+            "filePasswordSet": "文件密码已设置",
+            "filePasswordRemoved": "文件密码已删除",
+            "filePasswordError": "设置文件密码失败",
+            "togglePrivate": "设为私有",
+            "fileSetPrivate": "文件现在是私有的",
+            "makePublic": "设为公开",
+            "fileSetPublic": "文件现在是公开的",
+            "cloneFile": "克隆文件（服务器端）",
+            "cloneSuccess": "文件已克隆 — URL 已复制到剪贴板",
+            "cloneError": "克隆失败",
+            "setFolderPassword": "设置文件夹密码",
+            "enterFolderPassword": "输入文件夹密码（留空以删除）：",
+            "folderPasswordSet": "文件夹密码已设置",
+            "folderPasswordRemoved": "文件夹密码已删除",
+            "folderPasswordError": "设置文件夹密码失败",
+            "folderSettings": "文件夹设置",
+            "filedrop": "FileDrop（允许任何人上传）",
+            "filedropDesc": "其他人无需账户即可向此文件夹上传文件",
+            "folderPublic": "公开文件夹",
+            "folderPublicDesc": "任何人都可以浏览此文件夹的内容",
+            "folderSettingsSaved": "文件夹设置已保存",
+            "viewTrash": "查看已删除文件",
+            "remoteUrlUpload": "从 URL 上传",
+            "remoteUrlUploadDesc": "粘贴直接链接 — FileLu 将在服务器端下载文件",
+            "remoteUrlDest": "目标位置",
+            "remoteUrlUploaded": "上传已开始（file_code: {code}）",
+            "remoteUrlError": "从远程 URL 上传失败",
+            "startUpload": "开始上传",
+            "trashTitle": "FileLu 已删除文件",
+            "restoreSelected": "恢复所选",
+            "permanentDelete": "永久删除",
+            "permanentDeleteOne": "永久删除",
+            "trashEmpty": "没有已删除的文件",
+            "restore": "恢复",
+            "trashFooter": "恢复的文件将重新出现在其原始文件夹中"
         }
     }
 }

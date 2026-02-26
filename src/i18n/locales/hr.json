@@ -144,6 +144,7 @@
             "connectionNameOptional": "Naziv veze (opcionalno)",
             "cancelEditing": "Odustani od uređivanja",
             "saveChanges": "Spremi promjene",
+            "createAccount": "Kreiraj račun",
             "docs": "Dokumentacija",
             "minutes": "minuta",
             "localPathPlaceholder": "/home/korisnik/projekti",
@@ -724,7 +725,9 @@
             "selectAll": "Odaberi sve",
             "deselectAll": "Poništi odabir svega",
             "selected": "odabrano",
-            "protocolSeafile": "Seafile"
+            "protocolSeafile": "Seafile",
+            "iconAutoDetectHint": "Ako ikona nije postavljena, favicon ili icon.png s poslužitelja se otkrivaju automatski.",
+            "protocolFilelu": "FileLu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -957,7 +960,7 @@
             "moveToTrashFailed": "Premještanje u smeće nije uspjelo",
             "batchRenameResult": "{success} preimenovano, {errors} neuspjelo",
             "copyCompleted": "Kopiranje dovršeno",
-            "localPathNotFound": "[NEEDS TRANSLATION] Local folder \"{path}\" not found. Navigated to home directory."
+            "localPathNotFound": "Lokalna mapa \"{path}\" nije pronađena. Navigirano na kućni direktorij."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -1188,7 +1191,13 @@
             "webdavInfoLine2": "Idealno za samohostirane oblake, NAS uređaje i dijeljenje datoteka.",
             "selectProviderPrompt": "Odaberite pružatelja gore ili odaberite \"Custom\"",
             "seafileDesc": "Otvoreni oblak za pohranu",
-            "seafileTooltip": "Seafile - Samohostirana pohrana otvorenog koda s WebDAV podrškom"
+            "seafileTooltip": "Seafile - Samohostirana pohrana otvorenog koda s WebDAV podrškom",
+            "fileluDesc": "Višeprotokolna pohrana u oblaku",
+            "fileluTooltip": "FileLu - 20GB besplatnog prostora s FTP, FTPS, WebDAV, S3 i izvornim API-jem",
+            "fileluFtpDesc": "FileLu putem FTP-a",
+            "fileluFtpsDesc": "FileLu putem sigurnog FTPS-a",
+            "fileluWebdavDesc": "FileLu putem WebDAV-a",
+            "fileluS3Desc": "FileLu S5 S3-kompatibilna pohrana"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3089,6 +3098,45 @@
                     "installed": "Instalirano"
                 }
             }
+        },
+        "filelu": {
+            "setFilePassword": "Postavi lozinku datoteke",
+            "enterFilePassword": "Unesite lozinku (ostavite prazno za uklanjanje):",
+            "filePasswordSet": "Lozinka datoteke postavljena",
+            "filePasswordRemoved": "Lozinka datoteke uklonjena",
+            "filePasswordError": "Postavljanje lozinke datoteke nije uspjelo",
+            "togglePrivate": "Postavi kao privatno",
+            "fileSetPrivate": "Datoteka je sada privatna",
+            "makePublic": "Postavi kao javno",
+            "fileSetPublic": "Datoteka je sada javna",
+            "cloneFile": "Kloniraj datoteku (na strani poslužitelja)",
+            "cloneSuccess": "Datoteka klonirana — URL kopiran u međuspremnik",
+            "cloneError": "Kloniranje nije uspjelo",
+            "setFolderPassword": "Postavi lozinku mape",
+            "enterFolderPassword": "Unesite lozinku mape (ostavite prazno za uklanjanje):",
+            "folderPasswordSet": "Lozinka mape postavljena",
+            "folderPasswordRemoved": "Lozinka mape uklonjena",
+            "folderPasswordError": "Postavljanje lozinke mape nije uspjelo",
+            "folderSettings": "Postavke mape",
+            "filedrop": "FileDrop (dopusti prijenos od bilo koga)",
+            "filedropDesc": "Drugi mogu prenositi datoteke u ovu mapu bez računa",
+            "folderPublic": "Javna mapa",
+            "folderPublicDesc": "Svi mogu pregledavati sadržaj ove mape",
+            "folderSettingsSaved": "Postavke mape spremljene",
+            "viewTrash": "Prikaži izbrisane datoteke",
+            "remoteUrlUpload": "Prenesi s URL-a",
+            "remoteUrlUploadDesc": "Zalijepite izravnu vezu — FileLu će preuzeti datoteku na strani poslužitelja",
+            "remoteUrlDest": "Odredište",
+            "remoteUrlUploaded": "Prijenos pokrenut (file_code: {code})",
+            "remoteUrlError": "Prijenos s udaljenog URL-a nije uspio",
+            "startUpload": "Pokreni prijenos",
+            "trashTitle": "FileLu izbrisane datoteke",
+            "restoreSelected": "Vrati odabrano",
+            "permanentDelete": "Trajno izbriši",
+            "permanentDeleteOne": "Trajno izbriši",
+            "trashEmpty": "Nema izbrisanih datoteka",
+            "restore": "Vrati",
+            "trashFooter": "Vraćene datoteke pojavit će se u izvornoj mapi"
         }
     }
 }

@@ -105,6 +105,7 @@ impl ProviderConnectionParams {
             "kdrive" => ProviderType::KDrive,
             "jottacloud" => ProviderType::Jottacloud,
             "drime" => ProviderType::DrimeCloud,
+            "filelu" => ProviderType::FileLu,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -216,6 +217,8 @@ impl ProviderConnectionParams {
             "jfs.jottacloud.com".to_string()
         } else if provider_type == ProviderType::DrimeCloud {
             "app.drime.cloud".to_string()
+        } else if provider_type == ProviderType::FileLu {
+            "filelu.com".to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {
@@ -2658,4 +2661,182 @@ pub async fn fourshared_logout() -> Result<(), String> {
     }
     info!("Logged out from 4shared");
     Ok(())
+}
+
+// ─── FileLu-Specific Commands ─────────────────────────────────────────────
+
+/// Set or unset a file password on FileLu.
+/// Pass empty string to remove the password.
+#[tauri::command]
+pub async fn filelu_set_file_password(
+    state: State<'_, ProviderState>,
+    path: String,
+    password: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.set_file_password(&path, &password).await.map_err(|e| e.to_string())
+}
+
+/// Toggle a FileLu file between private (only_me=true) and public.
+#[tauri::command]
+pub async fn filelu_set_file_privacy(
+    state: State<'_, ProviderState>,
+    path: String,
+    only_me: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.set_file_privacy(&path, only_me).await.map_err(|e| e.to_string())
+}
+
+/// Clone a FileLu file server-side. Returns the URL of the cloned file.
+#[tauri::command]
+pub async fn filelu_clone_file(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.clone_file(&path).await.map_err(|e| e.to_string())
+}
+
+/// Set or unset a FileLu folder password (requires folder sharing enabled).
+#[tauri::command]
+pub async fn filelu_set_folder_password(
+    state: State<'_, ProviderState>,
+    path: String,
+    password: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.set_folder_password(&path, &password).await.map_err(|e| e.to_string())
+}
+
+/// Configure FileLu folder settings: filedrop and public visibility.
+#[tauri::command]
+pub async fn filelu_set_folder_settings(
+    state: State<'_, ProviderState>,
+    path: String,
+    filedrop: bool,
+    is_public: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.set_folder_settings(&path, filedrop, is_public).await.map_err(|e| e.to_string())
+}
+
+/// List all deleted files in FileLu trash.
+#[tauri::command]
+pub async fn filelu_list_deleted(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::filelu::DeletedFileEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.list_deleted_files().await.map_err(|e| e.to_string())
+}
+
+/// Restore a deleted file from FileLu trash by file_code.
+#[tauri::command]
+pub async fn filelu_restore_file(
+    state: State<'_, ProviderState>,
+    file_code: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.restore_deleted_file(&file_code).await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete a FileLu file from trash by file_code.
+#[tauri::command]
+pub async fn filelu_permanent_delete(
+    state: State<'_, ProviderState>,
+    file_code: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.permanent_delete_file(&file_code).await.map_err(|e| e.to_string())
+}
+
+/// Upload a file from a remote URL to a FileLu folder. Returns file_code.
+#[tauri::command]
+pub async fn filelu_remote_url_upload(
+    state: State<'_, ProviderState>,
+    remote_url: String,
+    dest_path: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.remote_url_upload(&remote_url, &dest_path).await.map_err(|e| e.to_string())
+}
+
+/// Restore a deleted folder from FileLu trash by fld_id.
+#[tauri::command]
+pub async fn filelu_restore_folder(
+    state: State<'_, ProviderState>,
+    fld_id: u64,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::FileLu {
+        return Err("Only available for FileLu".to_string());
+    }
+    let fl = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
+        .ok_or_else(|| "FileLu downcast failed".to_string())?;
+    fl.restore_deleted_folder(fld_id).await.map_err(|e| e.to_string())
 }
