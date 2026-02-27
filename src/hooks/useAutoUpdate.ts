@@ -4,7 +4,6 @@
  *
  * Checks for app updates on startup (5s delay) and provides manual check.
  * Uses invoke('check_update') backend command and sends OS notifications.
- * Prevents duplicate checks via updateCheckedRef.
  *
  * When a newer version exists but the asset for the installed format (e.g. .deb)
  * is not yet available (CI still building), retries every hour instead of 24h.
@@ -37,8 +36,11 @@ const TWENTY_FOUR_HOURS = 24 * ONE_HOUR;
 
 export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
-  const updateCheckedRef = useRef(false);
   const pendingRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ref to always access latest activityLog without re-creating callbacks
+  const activityLogRef = useRef(activityLog);
+  activityLogRef.current = activityLog;
 
   const checkForUpdate = useCallback(async (manual = false) => {
     try {
@@ -51,7 +53,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
           body: `Version ${info.latest_version} is ready.`,
         });
         const checkType = manual ? '[Manual]' : '[Auto]';
-        activityLog.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+        activityLogRef.current.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         await invoke('log_update_detection', { version: info.latest_version || '' });
 
         // Asset found — clear any pending retry
@@ -63,7 +65,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
         // Newer version exists but asset not yet available — retry in 1 hour
         const assetPending = info.latest_version && info.latest_version !== info.current_version;
         if (assetPending) {
-          activityLog.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 1h`, 'pending');
+          activityLogRef.current.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 1h`, 'pending');
           if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
           pendingRetryRef.current = setTimeout(() => {
             pendingRetryRef.current = null;
@@ -71,36 +73,33 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
           }, ONE_HOUR);
         } else if (manual) {
           sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
-          activityLog.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
+          activityLogRef.current.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         }
       }
     } catch (error) {
       console.error('Update check failed:', error);
       if (manual) {
-        activityLog.log('ERROR', `Update check failed: ${error}`, 'error');
+        activityLogRef.current.log('ERROR', `Update check failed: ${error}`, 'error');
       }
     }
-  }, [activityLog]);
-
-  // Check on startup (5s delay, once) + periodic every 24h
-  useEffect(() => {
-    if (!updateCheckedRef.current) {
-      updateCheckedRef.current = true;
-      const timer = setTimeout(() => {
-        checkForUpdate(false);
-      }, 5000);
-
-      const interval = setInterval(() => {
-        checkForUpdate(false);
-      }, TWENTY_FOUR_HOURS);
-
-      return () => {
-        clearTimeout(timer);
-        clearInterval(interval);
-        if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
-      };
-    }
   }, []);
+
+  // Check on startup (5s delay) + periodic every 24h
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkForUpdate(false);
+    }, 5000);
+
+    const interval = setInterval(() => {
+      checkForUpdate(false);
+    }, TWENTY_FOUR_HOURS);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
+    };
+  }, [checkForUpdate]);
 
   return {
     updateAvailable,
