@@ -944,10 +944,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     return (
-        <div className="max-w-5xl mx-auto relative z-10">
+        <div className="max-w-5xl w-full mx-auto relative z-10">
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Quick Connect */}
-                <div className="min-w-0 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
+                <div className="min-w-0 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
                             <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
@@ -2309,7 +2309,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
 
                 {/* Saved Servers */}
-                <div className="min-w-0 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
+                <div className="min-w-0 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6">
                     <SavedServers
                         onConnect={onSavedServerConnect}
                         onEdit={handleEdit}

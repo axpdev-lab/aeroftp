@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.7.3" date="2026-02-27">
+      <description>
+        <p>Stabilized home intro panels that were resizing in certain circumstances.</p>
+      </description>
+    </release>
     <release version="2.7.2" date="2026-02-27">
       <description>
         <p>FileLu Provider Fixes and Provider UX: Corrects the FileLu free tier from 20 GB to the accurate 1 GB across all documentation and provider descriptions. Fixes a quota display bug where the StatusBar showed raw byte values instead of gigabytes. Fixes the connection name placeholder showing "My Filen Cloud" instead of "My FileLu Cloud". Cloud providers are now ordered by free storage tier, and every provider card description includes its free quota.</p>

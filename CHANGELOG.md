@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.3] - 2026-02-27
+
+### UI Stability
+
+Stabilized home intro panels that were resizing in certain circumstances.
+
+#### Fixed
+
+- **Home intro panels resizing**: Fixed panels in the home intro screen that were resizing unexpectedly in certain circumstances.
+
+---
+
 ## [2.7.2] - 2026-02-27
 
 ### FileLu Provider Fixes & Provider UX
