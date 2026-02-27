@@ -10,6 +10,8 @@ export interface ContextMenuItem {
     disabled?: boolean;
     danger?: boolean;
     divider?: boolean;
+    /** Small badge rendered after the label (e.g. PRO) */
+    badge?: React.ReactNode;
     /** Submenu items - renders a hover-expandable nested menu */
     children?: ContextMenuItem[];
 }
@@ -178,7 +180,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                             <span className="w-4 h-4 flex items-center justify-center opacity-70">
                                 {item.icon}
                             </span>
-                            <span className="font-medium flex-1">{item.label}</span>
+                            <span className="font-medium flex-1">{item.label}{item.badge && <>{' '}{item.badge}</>}</span>
                             {item.children && item.children.length > 0 && (
                                 <ChevronRight size={14} className="opacity-50" />
                             )}
@@ -226,7 +228,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                                 <span className="w-4 h-4 flex items-center justify-center opacity-70">
                                     {item.icon}
                                 </span>
-                                <span className="font-medium">{item.label}</span>
+                                <span className="font-medium">{item.label}{item.badge && <>{' '}{item.badge}</>}</span>
                             </button>
                         </React.Fragment>
                     ))}

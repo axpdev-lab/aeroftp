@@ -292,12 +292,87 @@ impl OneDriveProvider {
         }
     }
 
+    /// List items in the recycle bin
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let mut all_entries = Vec::new();
+        let mut url = format!("{}/me/drive/special/deleted/children", GRAPH_API_BASE);
+
+        loop {
+            let response = self.client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("List trash failed: {}", sanitize_api_error(&text))));
+            }
+
+            let result: ChildrenResponse = response.json().await
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+            for item in &result.value {
+                all_entries.push(self.to_remote_entry(item, "/Trash"));
+            }
+
+            match result.next_link {
+                Some(next) => url = next,
+                None => break,
+            }
+        }
+
+        info!("Listed {} trashed items", all_entries.len());
+        Ok(all_entries)
+    }
+
+    /// Move file(s) to trash (soft delete)
+    pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
+        let item_id = self.resolve_path(path).await?;
+        let url = self.api_item(&item_id);
+
+        let response = self.client
+            .delete(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() && response.status().as_u16() != 204 {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Trash failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Trashed: {}", path);
+        Ok(())
+    }
+
+    /// Restore an item from the recycle bin
+    pub async fn restore_from_trash(&mut self, item_id: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/me/drive/items/{}/restore", GRAPH_API_BASE, item_id);
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body("{}")
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() && response.status().as_u16() != 204 {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Restore failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Restored from trash: {}", item_id);
+        Ok(())
+    }
+
     /// Permanently delete an item by ID
     ///
-    /// OneDrive's DELETE endpoint moves items to the recycle bin.
-    /// Items already in the recycle bin are permanently deleted when
-    /// DELETE is called on them again.
-    #[allow(dead_code)]
+    /// OneDrive's DELETE on a trashed item permanently removes it.
     pub async fn permanent_delete(&mut self, item_id: &str) -> Result<(), ProviderError> {
         let url = self.api_item(item_id);
 

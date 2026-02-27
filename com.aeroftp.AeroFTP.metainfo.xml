@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.7.4" date="2026-02-28">
+      <description>
+        <p>Complete Provider Integration: Full feature sets for Box, Google Drive, OneDrive, and Zoho WorkDrive. Box gains trash, move, comments, collaborations, watermark, folder locks, tags. Google Drive adds starring with visible badge and comments dialog. OneDrive adds move-to-trash. Zoho WorkDrive adds file versioning. New Providers and Integrations dialog with feature matrix for all 31 providers. PRO badge system, 60+ new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.7.3" date="2026-02-27">
       <description>
         <p>Stabilized home intro panels that were resizing in certain circumstances.</p>

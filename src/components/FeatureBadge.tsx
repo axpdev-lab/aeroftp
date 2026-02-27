@@ -1,9 +1,10 @@
-import { Lock } from 'lucide-react';
+import { Lock, Droplets } from 'lucide-react';
 
 interface FeatureBadgeProps {
   value: string | null | undefined;
   emptyLabel?: string;
   locked?: boolean;
+  watermarked?: boolean;
 }
 
 const BADGE_COLORS: Record<string, string> = {
@@ -17,20 +18,36 @@ const BADGE_COLORS: Record<string, string> = {
   off: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
 };
 
-export function FeatureBadge({ value, emptyLabel = '-', locked = false }: FeatureBadgeProps) {
+export function FeatureBadge({ value, emptyLabel = '-', locked = false, watermarked = false }: FeatureBadgeProps) {
   const text = (value || '').trim();
   if (!text) {
-    if (!locked) {
+    const badges: React.ReactNode[] = [];
+    if (locked) {
+      badges.push(
+        <span
+          key="lock"
+          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          title="Password protected"
+        >
+          <Lock size={10} />
+        </span>
+      );
+    }
+    if (watermarked) {
+      badges.push(
+        <span
+          key="wm"
+          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+          title="Watermarked"
+        >
+          <Droplets size={10} />
+        </span>
+      );
+    }
+    if (badges.length === 0) {
       return <span className="text-xs text-gray-400">{emptyLabel}</span>;
     }
-    return (
-      <span
-        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-        title="Password protected"
-      >
-        <Lock size={10} />
-      </span>
-    );
+    return <span className="inline-flex items-center gap-1">{badges}</span>;
   }
 
   const badgeClass = BADGE_COLORS[text.toLowerCase()] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';

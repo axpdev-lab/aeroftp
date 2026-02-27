@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.4] - 2026-02-28
+
+### Complete Provider Integration
+
+Full feature integration for Box, Google Drive, OneDrive, and Zoho WorkDrive. Box provider gains trash, move, comments, collaborations, watermark, folder locks, and tags. Google Drive adds starring and comments. OneDrive adds move-to-trash. Zoho WorkDrive adds file versioning. Providers & Integrations dialog shows complete feature matrix. PRO badge system for Enterprise-only features.
+
+#### Added
+
+- **Box Trash Manager**: Full trash lifecycle — list, soft-delete, restore, permanent delete with dedicated `BoxTrashManager` modal dialog
+- **Box file move**: Server-side move between folders via `box_move_file` command
+- **Box comments**: List, add, and delete comments on files (`box_list_comments`, `box_add_comment`, `box_delete_comment`)
+- **Box collaborations**: Add and remove file/folder collaborators with role selection (`box_add_collaboration`, `box_remove_collaboration`, `box_list_collaborations`)
+- **Box watermark** (Enterprise): Apply/remove watermark on files with live status detection via `watermark_info` API field. Watermark badge (Droplets icon) shown in PERM column. Add/Remove conditionally enabled based on current state
+- **Box folder locks** (Enterprise): Lock folders to prevent move/delete (`box_lock_folder`, `box_unlock_folder`, `box_list_folder_locks`)
+- **Box tags**: Full tag management — tags fetched during file listing, displayed as blue chips next to filenames (max 3 + overflow), `BoxTagsDialog` for adding/removing tags with instant save
+- **Google Drive starring**: Star/unstar files directly from context menu with golden star badge in file list
+- **Google Drive comments**: Add comments to files via dedicated `GoogleDriveCommentDialog` modal with Ctrl+Enter submit
+- **OneDrive move to trash**: Move files to recycle bin via context menu
+- **Zoho WorkDrive versioning**: List file versions, download specific versions, restore/promote versions via standard StorageProvider trait methods
+- **Zoho WorkDrive OAuth scope**: Added `WorkDrive.labels.ALL` scope for future label management support
+- **PRO badge system**: Reusable gradient badge for Enterprise-only features in context menus. Applied to Box Watermark and Folder Lock items. `ContextMenuItem.badge` field available for all providers
+- **FeatureBadge enhancements**: New `watermarked` prop with Droplets icon badge. Multiple badges (lock + watermark) render side-by-side
+- **32 Tauri commands**: 18 Box + 6 Google Drive + 4 OneDrive + 4 Zoho WorkDrive labels + Zoho create label
+
+#### Changed
+
+- **Box API fields expanded**: File listing now requests `watermark_info` and `tags` fields — watermark status and tags are populated in file metadata without extra API calls
+- **Google Drive API fields expanded**: File listing now requests `starred`, `description`, and `properties` fields — star badge visible in file list
+- **Providers & Integrations dialog**: Tabbed modal (OAuth/API, S3, WebDAV) accessible from Help menu showing feature matrix for all 31 providers with logos, base/advanced checkmarks, and PRO badges
+- **Feature matrix accuracy**: Removed unsupported features from ProvidersDialog (OneDrive trash listing, Dropbox tags, Zoho labels) to reflect actual API capabilities
+- **60+ new i18n keys**: Box (20) + Google Drive (7) + Zoho (4) + providers dialog (27) translated in all 47 languages
+
+#### Fixed
+
+- **Auto-update not firing**: Fixed `useAutoUpdate` hook where `updateCheckedRef` survived React 18 strict mode remounts, preventing startup and manual update checks from ever executing
+- **Google Drive comments API**: Added required `fields` parameter to comments.create endpoint — comments now save successfully
+- **Dropbox tags API disabled**: Removed from context menu — Dropbox Tags API returns errors and native UI uses Star instead
+- **OneDrive trash listing disabled**: Removed "View Trash" — Microsoft Graph v1.0 has no recycle bin list endpoint; move-to-trash still works
+- **Zoho labels API**: Fixed endpoint from `/teams/{id}/labels` to `/users/{team_user_id}/labels` for listing. Disabled UI pending full API support (labels not included in file list response)
+- **Missing i18n keys**: Added `common.name`, `common.size`, `common.modified`, `common.retry` across all 47 languages
+
+---
+
 ## [2.7.3] - 2026-02-27
 
 ### UI Stability

@@ -2353,6 +2353,126 @@ pub async fn zoho_restore_from_trash(
     }
 }
 
+// ── Zoho WorkDrive Label Operations ───────────────────────────────────
+
+/// List all labels available in the Zoho WorkDrive team
+#[tauri::command]
+pub async fn zoho_list_team_labels(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    let labels = zoho.list_team_labels().await
+        .map_err(|e| format!("Failed to list team labels: {}", e))?;
+
+    Ok(labels.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+}
+
+/// List labels applied to a specific file in Zoho WorkDrive
+#[tauri::command]
+pub async fn zoho_get_file_labels(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    let labels = zoho.get_file_labels(&path).await
+        .map_err(|e| format!("Failed to get file labels: {}", e))?;
+
+    Ok(labels.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+}
+
+/// Add a label to a file in Zoho WorkDrive
+#[tauri::command]
+pub async fn zoho_add_file_label(
+    state: State<'_, ProviderState>,
+    path: String,
+    label_id: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    zoho.add_file_label(&path, &label_id).await
+        .map_err(|e| format!("Failed to add label: {}", e))
+}
+
+/// Create a new label in Zoho WorkDrive
+#[tauri::command]
+pub async fn zoho_create_label(
+    state: State<'_, ProviderState>,
+    name: String,
+    color: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    let label = zoho.create_label(&name, &color).await
+        .map_err(|e| format!("Failed to create label: {}", e))?;
+
+    serde_json::to_value(label).map_err(|e| format!("Serialize error: {}", e))
+}
+
+/// Remove a label from a file in Zoho WorkDrive
+#[tauri::command]
+pub async fn zoho_remove_file_label(
+    state: State<'_, ProviderState>,
+    path: String,
+    label_id: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    zoho.remove_file_label(&path, &label_id).await
+        .map_err(|e| format!("Failed to remove label: {}", e))
+}
+
 // ── Jottacloud Trash Operations ───────────────────────────────────────
 
 /// Move files to Jottacloud Trash (soft delete)
@@ -2647,6 +2767,327 @@ pub async fn google_drive_permanent_delete(
     Ok(())
 }
 
+// ─── Box-Specific Commands ────────────────────────────────────────────────
+
+/// List items in Box trash
+#[tauri::command]
+pub async fn box_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.list_trash().await.map_err(|e| format!("List trash failed: {}", e))
+}
+
+/// Move files/folders to Box trash (soft delete)
+#[tauri::command]
+pub async fn box_trash_files(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.trash_files(&paths).await.map_err(|e| format!("Trash failed: {}", e))
+}
+
+/// Restore an item from Box trash
+#[tauri::command]
+pub async fn box_restore_from_trash(
+    state: State<'_, ProviderState>,
+    item_id: String,
+    item_type: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.restore_from_trash(&item_id, &item_type).await
+        .map_err(|e| format!("Restore failed: {}", e))
+}
+
+/// Permanently delete an item from Box trash
+#[tauri::command]
+pub async fn box_permanent_delete(
+    state: State<'_, ProviderState>,
+    item_id: String,
+    item_type: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.permanent_delete_from_trash(&item_id, &item_type).await
+        .map_err(|e| format!("Permanent delete failed: {}", e))
+}
+
+/// Move a file or folder to a different parent folder on Box
+#[tauri::command]
+pub async fn box_move_file(
+    state: State<'_, ProviderState>,
+    from_path: String,
+    to_folder: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.move_item(&from_path, &to_folder).await
+        .map_err(|e| format!("Move failed: {}", e))
+}
+
+/// List comments on a Box file
+#[tauri::command]
+pub async fn box_list_comments(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    let comments = bx.list_comments(&path).await
+        .map_err(|e| format!("List comments failed: {}", e))?;
+    serde_json::to_value(&comments)
+        .map(|v| v.as_array().cloned().unwrap_or_default())
+        .map_err(|e| format!("Serialize failed: {}", e))
+}
+
+/// Add a comment to a Box file
+#[tauri::command]
+pub async fn box_add_comment(
+    state: State<'_, ProviderState>,
+    path: String,
+    message: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.add_comment(&path, &message).await
+        .map_err(|e| format!("Add comment failed: {}", e))
+}
+
+/// Delete a comment on Box
+#[tauri::command]
+pub async fn box_delete_comment(
+    state: State<'_, ProviderState>,
+    comment_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.delete_comment(&comment_id).await
+        .map_err(|e| format!("Delete comment failed: {}", e))
+}
+
+/// Add a collaboration on a Box file or folder
+#[tauri::command]
+pub async fn box_add_collaboration(
+    state: State<'_, ProviderState>,
+    path: String,
+    email: String,
+    role: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.add_collaboration(&path, &email, &role).await
+        .map_err(|e| format!("Add collaboration failed: {}", e))
+}
+
+/// Remove a collaboration from Box
+#[tauri::command]
+pub async fn box_remove_collaboration(
+    state: State<'_, ProviderState>,
+    collab_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.remove_collaboration(&collab_id).await
+        .map_err(|e| format!("Remove collaboration failed: {}", e))
+}
+
+/// Apply watermark to a Box file
+#[tauri::command]
+pub async fn box_set_watermark(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.set_watermark(&path).await
+        .map_err(|e| format!("Set watermark failed: {}", e))
+}
+
+/// Remove watermark from a Box file
+#[tauri::command]
+pub async fn box_remove_watermark(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.remove_watermark(&path).await
+        .map_err(|e| format!("Remove watermark failed: {}", e))
+}
+
+/// Set tags on a Box file or folder
+#[tauri::command]
+pub async fn box_set_tags(
+    state: State<'_, ProviderState>,
+    path: String,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.set_tags(&path, &tags).await
+        .map_err(|e| format!("Set tags failed: {}", e))
+}
+
+/// Lock a Box folder
+#[tauri::command]
+pub async fn box_lock_folder(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.lock_folder(&path).await
+        .map_err(|e| format!("Lock folder failed: {}", e))
+}
+
+/// Unlock a Box folder by lock ID
+#[tauri::command]
+pub async fn box_unlock_folder(
+    state: State<'_, ProviderState>,
+    lock_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    bx.unlock_folder(&lock_id).await
+        .map_err(|e| format!("Unlock folder failed: {}", e))
+}
+
+/// List collaborations on a Box file or folder
+#[tauri::command]
+pub async fn box_list_collaborations(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    let collabs = bx.list_collaborations(&path).await
+        .map_err(|e| format!("List collaborations failed: {}", e))?;
+    serde_json::to_value(&collabs)
+        .map(|v| v.as_array().cloned().unwrap_or_default())
+        .map_err(|e| format!("Serialize failed: {}", e))
+}
+
+/// List folder locks on a Box folder
+#[tauri::command]
+pub async fn box_list_folder_locks(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Box {
+        return Err("Only available for Box".to_string());
+    }
+    let bx = provider.as_any_mut()
+        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
+        .ok_or_else(|| "Box downcast failed".to_string())?;
+    let locks = bx.list_folder_locks(&path).await
+        .map_err(|e| format!("List folder locks failed: {}", e))?;
+    serde_json::to_value(&locks)
+        .map(|v| v.as_array().cloned().unwrap_or_default())
+        .map_err(|e| format!("Serialize failed: {}", e))
+}
+
 /// Check if 4shared tokens exist
 #[tauri::command]
 pub async fn fourshared_has_tokens() -> Result<bool, String> {
@@ -2839,4 +3280,277 @@ pub async fn filelu_restore_folder(
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
     fl.restore_deleted_folder(fld_id).await.map_err(|e| e.to_string())
+}
+
+// ─── Google Drive Extended Commands ───────────────────────────────────────
+
+/// Star or unstar files on Google Drive
+#[tauri::command]
+pub async fn google_drive_set_starred(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+    starred: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    for path in &paths {
+        gd.set_starred(path, starred).await.map_err(|e| format!("Star failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// List comments on a Google Drive file
+#[tauri::command]
+pub async fn google_drive_list_comments(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    gd.list_comments(&path).await.map_err(|e| e.to_string())
+}
+
+/// Add a comment to a Google Drive file
+#[tauri::command]
+pub async fn google_drive_add_comment(
+    state: State<'_, ProviderState>,
+    path: String,
+    message: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    gd.add_comment(&path, &message).await.map_err(|e| e.to_string())
+}
+
+/// Delete a comment from a Google Drive file
+#[tauri::command]
+pub async fn google_drive_delete_comment(
+    state: State<'_, ProviderState>,
+    path: String,
+    comment_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    gd.delete_comment(&path, &comment_id).await.map_err(|e| e.to_string())
+}
+
+/// Set custom properties on a Google Drive file
+#[tauri::command]
+pub async fn google_drive_set_properties(
+    state: State<'_, ProviderState>,
+    path: String,
+    properties: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    gd.set_properties(&path, &properties).await.map_err(|e| e.to_string())
+}
+
+/// Set description on a Google Drive file
+#[tauri::command]
+pub async fn google_drive_set_description(
+    state: State<'_, ProviderState>,
+    path: String,
+    description: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::GoogleDrive {
+        return Err("Only available for Google Drive".to_string());
+    }
+    let gd = provider.as_any_mut()
+        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
+        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
+    gd.set_description(&path, &description).await.map_err(|e| e.to_string())
+}
+
+// ─── Dropbox Extended Commands ────────────────────────────────────────────
+
+/// List items in Dropbox trash (deleted files)
+#[tauri::command]
+pub async fn dropbox_list_trash(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = provider.as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.list_deleted(&path).await.map_err(|e| e.to_string())
+}
+
+/// Restore a file from Dropbox trash
+#[tauri::command]
+pub async fn dropbox_restore_from_trash(
+    state: State<'_, ProviderState>,
+    path: String,
+    rev: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = provider.as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.restore_file(&path, &rev).await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete a file from Dropbox
+#[tauri::command]
+pub async fn dropbox_permanent_delete(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = provider.as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.permanent_delete(&path).await.map_err(|e| e.to_string())
+}
+
+/// Set tags on a Dropbox file (replaces existing tags)
+#[tauri::command]
+pub async fn dropbox_set_tags(
+    state: State<'_, ProviderState>,
+    path: String,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = provider.as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.set_tags(&path, &tags).await.map_err(|e| e.to_string())
+}
+
+/// Get tags for Dropbox files
+#[tauri::command]
+pub async fn dropbox_get_tags(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<Vec<(String, Vec<String>)>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = provider.as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.get_tags(&paths).await.map_err(|e| e.to_string())
+}
+
+// ─── OneDrive Extended Commands ───────────────────────────────────────────
+
+/// List items in OneDrive recycle bin
+#[tauri::command]
+pub async fn onedrive_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::OneDrive {
+        return Err("Only available for OneDrive".to_string());
+    }
+    let od = provider.as_any_mut()
+        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
+        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
+    od.list_trash().await.map_err(|e| e.to_string())
+}
+
+/// Move files to OneDrive recycle bin (soft delete)
+#[tauri::command]
+pub async fn onedrive_trash_files(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::OneDrive {
+        return Err("Only available for OneDrive".to_string());
+    }
+    let od = provider.as_any_mut()
+        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
+        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
+    for path in &paths {
+        od.trash_file(path).await.map_err(|e| format!("Trash failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// Restore an item from OneDrive recycle bin
+#[tauri::command]
+pub async fn onedrive_restore_from_trash(
+    state: State<'_, ProviderState>,
+    item_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::OneDrive {
+        return Err("Only available for OneDrive".to_string());
+    }
+    let od = provider.as_any_mut()
+        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
+        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
+    od.restore_from_trash(&item_id).await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete an item from OneDrive
+#[tauri::command]
+pub async fn onedrive_permanent_delete(
+    state: State<'_, ProviderState>,
+    item_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::OneDrive {
+        return Err("Only available for OneDrive".to_string());
+    }
+    let od = provider.as_any_mut()
+        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
+        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
+    od.permanent_delete(&item_id).await.map_err(|e| e.to_string())
 }

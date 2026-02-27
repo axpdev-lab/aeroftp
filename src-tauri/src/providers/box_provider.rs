@@ -20,6 +20,13 @@ use super::types::BoxConfig;
 const API_BASE: &str = "https://api.box.com/2.0";
 const UPLOAD_BASE: &str = "https://upload.box.com/api/2.0";
 
+/// Box watermark info (returned by fields=watermark_info)
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxWatermarkInfo {
+    is_watermarked: Option<bool>,
+}
+
 /// Box folder item
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -31,6 +38,9 @@ struct BoxItem {
     size: Option<u64>,
     modified_at: Option<String>,
     created_at: Option<String>,
+    watermark_info: Option<BoxWatermarkInfo>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 /// Box folder items response
@@ -96,6 +106,92 @@ struct BoxVersionCollection {
 #[derive(Debug, Deserialize)]
 struct BoxSearchResult {
     entries: Vec<BoxItem>,
+}
+
+/// Box trash item (includes trashed_at)
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxTrashItem {
+    #[serde(rename = "type")]
+    item_type: String,
+    id: String,
+    name: String,
+    size: Option<u64>,
+    modified_at: Option<String>,
+    trashed_at: Option<String>,
+}
+
+/// Box trash items collection
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxTrashCollection {
+    entries: Vec<BoxTrashItem>,
+    total_count: u64,
+    offset: u64,
+    limit: u64,
+}
+
+/// Box comment
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct BoxComment {
+    id: String,
+    message: Option<String>,
+    created_at: Option<String>,
+    created_by: Option<BoxCommentUser>,
+}
+
+/// Box comment user
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct BoxCommentUser {
+    name: Option<String>,
+    login: Option<String>,
+}
+
+/// Box comment collection
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxCommentCollection {
+    entries: Vec<BoxComment>,
+}
+
+/// Box collaboration
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct BoxCollaboration {
+    id: String,
+    role: Option<String>,
+    status: Option<String>,
+    accessible_by: Option<BoxCollabUser>,
+    created_at: Option<String>,
+}
+
+/// Box collaboration user
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct BoxCollabUser {
+    #[serde(rename = "type")]
+    user_type: Option<String>,
+    id: Option<String>,
+    name: Option<String>,
+    login: Option<String>,
+}
+
+/// Box collaboration collection
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxCollabCollection {
+    entries: Vec<BoxCollaboration>,
+}
+
+/// Box folder lock
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct BoxFolderLock {
+    id: String,
+}
+
+/// Box folder lock collection
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BoxFolderLockCollection {
+    entries: Vec<BoxFolderLock>,
 }
 
 /// Box Storage Provider
@@ -227,6 +323,479 @@ impl BoxProvider {
     fn normalize_path(path: &str) -> String {
         let p = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
         if p.len() > 1 { p.trim_end_matches('/').to_string() } else { p }
+    }
+
+    /// Resolve a path to (id, type) where type is "file" or "folder"
+    async fn resolve_item_id_and_type(&mut self, path: &str) -> Result<(String, String), ProviderError> {
+        let normalized = Self::normalize_path(path);
+        let (parent_path, item_name) = match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
+            _ => ("/", normalized.trim_start_matches('/')),
+        };
+
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/folders/{}/items?fields=name,type,id&limit=1000", API_BASE, parent_id);
+        let resp = self.client.get(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let items: BoxItemCollection = resp.json().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        items.entries.iter()
+            .find(|item| item.name == item_name)
+            .map(|item| (item.id.clone(), item.item_type.clone()))
+            .ok_or_else(|| ProviderError::NotFound(format!("Item not found: {}", item_name)))
+    }
+
+    // ── Box-Specific Features ───────────────────────────────────────
+
+    /// List items in trash (paginated)
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let mut all_entries = Vec::new();
+        let mut offset: u64 = 0;
+        const PAGE_LIMIT: u64 = 1000;
+
+        loop {
+            let token = self.get_token().await?;
+            let url = format!(
+                "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at&limit={}&offset={}",
+                API_BASE, PAGE_LIMIT, offset
+            );
+            let resp = self.client.get(&url)
+                .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                .send().await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("List trash failed: {}", sanitize_api_error(&body))));
+            }
+
+            let page: BoxTrashCollection = resp.json().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            for item in &page.entries {
+                let mut metadata = HashMap::new();
+                metadata.insert("id".to_string(), item.id.clone());
+                metadata.insert("item_type".to_string(), item.item_type.clone());
+                if let Some(ref t) = item.trashed_at {
+                    metadata.insert("trashed_at".to_string(), t.clone());
+                }
+
+                all_entries.push(RemoteEntry {
+                    name: item.name.clone(),
+                    path: format!("/Trash/{}", item.name),
+                    is_dir: item.item_type == "folder",
+                    size: item.size.unwrap_or(0),
+                    modified: item.modified_at.clone(),
+                    permissions: None, owner: None, group: None,
+                    is_symlink: false, link_target: None, mime_type: None,
+                    metadata,
+                });
+            }
+
+            if page.entries.is_empty() || all_entries.len() as u64 >= page.total_count {
+                break;
+            }
+            offset += page.entries.len() as u64;
+        }
+
+        info!("Box: listed {} trash items", all_entries.len());
+        Ok(all_entries)
+    }
+
+    /// Move files to trash (Box delete = soft delete to trash)
+    pub async fn trash_files(&mut self, paths: &[String]) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        for path in paths {
+            let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
+            let token = self.get_token().await?;
+
+            let endpoint = if item_type == "folder" { "folders" } else { "files" };
+            let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+
+            let resp = self.client.delete(&url)
+                .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                .send().await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Trash failed: {}", sanitize_api_error(&body))));
+            }
+            info!("Box: trashed {} {}", item_type, path);
+        }
+        Ok(())
+    }
+
+    /// Restore an item from trash
+    pub async fn restore_from_trash(&mut self, item_id: &str, item_type: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let token = self.get_token().await?;
+        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+
+        let resp = self.client.post(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body("{}")
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Restore failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: restored {} {} from trash", item_type, item_id);
+        Ok(())
+    }
+
+    /// Permanently delete an item from trash
+    pub async fn permanent_delete_from_trash(&mut self, item_id: &str, item_type: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let token = self.get_token().await?;
+        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let url = format!("{}/{}/{}/trash", API_BASE, endpoint, item_id);
+
+        let resp = self.client.delete(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Permanent delete failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: permanently deleted {} {} from trash", item_type, item_id);
+        Ok(())
+    }
+
+    /// Move a file or folder to a different parent folder
+    pub async fn move_item(&mut self, from_path: &str, to_folder: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let (item_id, item_type) = self.resolve_item_id_and_type(from_path).await?;
+        let target_id = self.resolve_folder_id(to_folder).await?;
+        let token = self.get_token().await?;
+
+        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+
+        let resp = self.client.put(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(format!(r#"{{"parent":{{"id":"{}"}}}}"#, target_id))
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Move failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: moved {} {} -> {}", item_type, from_path, to_folder);
+        Ok(())
+    }
+
+    /// List comments on a file
+    pub async fn list_comments(&mut self, path: &str) -> Result<Vec<BoxComment>, ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let file_id = self.resolve_file_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/files/{}/comments?fields=message,created_at,created_by&limit=100", API_BASE, file_id);
+        let resp = self.client.get(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List comments failed: {}", sanitize_api_error(&body))));
+        }
+
+        let result: BoxCommentCollection = resp.json().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        Ok(result.entries)
+    }
+
+    /// Add a comment to a file
+    pub async fn add_comment(&mut self, path: &str, message: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let file_id = self.resolve_file_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/comments", API_BASE);
+        let body = serde_json::json!({
+            "item": { "id": file_id, "type": "file" },
+            "message": message,
+        });
+
+        let resp = self.client.post(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body.to_string())
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Add comment failed: {}", sanitize_api_error(&body_text))));
+        }
+        info!("Box: added comment to {}", path);
+        Ok(())
+    }
+
+    /// Delete a comment by ID
+    pub async fn delete_comment(&mut self, comment_id: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let token = self.get_token().await?;
+        let url = format!("{}/comments/{}", API_BASE, comment_id);
+
+        let resp = self.client.delete(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Delete comment failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: deleted comment {}", comment_id);
+        Ok(())
+    }
+
+    /// List collaborations on a file or folder
+    pub async fn list_collaborations(&mut self, path: &str) -> Result<Vec<BoxCollaboration>, ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
+        let token = self.get_token().await?;
+
+        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let url = format!("{}/{}/{}/collaborations", API_BASE, endpoint, item_id);
+
+        let resp = self.client.get(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List collaborations failed: {}", sanitize_api_error(&body))));
+        }
+
+        let result: BoxCollabCollection = resp.json().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        Ok(result.entries)
+    }
+
+    /// Add a collaboration (invite user by email)
+    pub async fn add_collaboration(&mut self, path: &str, email: &str, role: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/collaborations", API_BASE);
+        let body = serde_json::json!({
+            "item": { "id": item_id, "type": item_type },
+            "accessible_by": { "type": "user", "login": email },
+            "role": role,
+        });
+
+        let resp = self.client.post(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body.to_string())
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Add collaboration failed: {}", sanitize_api_error(&body_text))));
+        }
+        info!("Box: added collaboration for {} on {}", email, path);
+        Ok(())
+    }
+
+    /// Remove a collaboration by ID
+    pub async fn remove_collaboration(&mut self, collab_id: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let token = self.get_token().await?;
+        let url = format!("{}/collaborations/{}", API_BASE, collab_id);
+
+        let resp = self.client.delete(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Remove collaboration failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: removed collaboration {}", collab_id);
+        Ok(())
+    }
+
+    /// Apply watermark to a file
+    pub async fn set_watermark(&mut self, path: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let file_id = self.resolve_file_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/files/{}/watermark", API_BASE, file_id);
+        let body = r#"{"watermark":{"imprint":"default"}}"#;
+
+        let resp = self.client.put(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Set watermark failed: {}", sanitize_api_error(&body_text))));
+        }
+        info!("Box: watermark applied to {}", path);
+        Ok(())
+    }
+
+    /// Remove watermark from a file
+    pub async fn remove_watermark(&mut self, path: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let file_id = self.resolve_file_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/files/{}/watermark", API_BASE, file_id);
+
+        let resp = self.client.delete(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Remove watermark failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: watermark removed from {}", path);
+        Ok(())
+    }
+
+    /// Set tags on a file or folder
+    pub async fn set_tags(&mut self, path: &str, tags: &[String]) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
+        let token = self.get_token().await?;
+
+        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+        let body = serde_json::json!({ "tags": tags });
+
+        let resp = self.client.put(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body.to_string())
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Set tags failed: {}", sanitize_api_error(&body_text))));
+        }
+        info!("Box: tags set on {} -> {:?}", path, tags);
+        Ok(())
+    }
+
+    /// Lock a folder (prevent move/delete)
+    pub async fn lock_folder(&mut self, path: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let folder_id = self.resolve_folder_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/folder_locks", API_BASE);
+        let body = serde_json::json!({
+            "folder": { "type": "folder", "id": folder_id },
+            "locked_operations": { "move": true, "delete": true },
+        });
+
+        let resp = self.client.post(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .body(body.to_string())
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Lock folder failed: {}", sanitize_api_error(&body_text))));
+        }
+        info!("Box: folder locked {}", path);
+        Ok(())
+    }
+
+    /// Unlock a folder by lock ID
+    pub async fn unlock_folder(&mut self, lock_id: &str) -> Result<(), ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let token = self.get_token().await?;
+        let url = format!("{}/folder_locks/{}", API_BASE, lock_id);
+
+        let resp = self.client.delete(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Unlock folder failed: {}", sanitize_api_error(&body))));
+        }
+        info!("Box: folder unlocked (lock {})", lock_id);
+        Ok(())
+    }
+
+    /// List folder locks
+    pub async fn list_folder_locks(&mut self, path: &str) -> Result<Vec<BoxFolderLock>, ProviderError> {
+        if !self.connected { return Err(ProviderError::NotConnected); }
+
+        let folder_id = self.resolve_folder_id(path).await?;
+        let token = self.get_token().await?;
+
+        let url = format!("{}/folder_locks?folder_id={}", API_BASE, folder_id);
+
+        let resp = self.client.get(&url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List folder locks failed: {}", sanitize_api_error(&body))));
+        }
+
+        let result: BoxFolderLockCollection = resp.json().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        Ok(result.entries)
     }
 
     /// Upload data in chunks via a Box upload session, then commit
@@ -408,7 +977,7 @@ impl StorageProvider for BoxProvider {
         loop {
             let token = self.get_token().await?;
             let url = format!(
-                "{}/folders/{}/items?fields=name,type,id,size,modified_at&limit={}&offset={}",
+                "{}/folders/{}/items?fields=name,type,id,size,modified_at,watermark_info,tags&limit={}&offset={}",
                 API_BASE, folder_id, PAGE_LIMIT, offset
             );
 
@@ -443,6 +1012,10 @@ impl StorageProvider for BoxProvider {
             } else {
                 format!("{}/{}", base_path, item.name)
             };
+            let is_watermarked = item.watermark_info
+                .as_ref()
+                .and_then(|wi| wi.is_watermarked)
+                .unwrap_or(false);
 
             RemoteEntry {
                 name: item.name,
@@ -459,6 +1032,12 @@ impl StorageProvider for BoxProvider {
                 metadata: {
                     let mut m = HashMap::new();
                     m.insert("id".to_string(), item.id);
+                    if is_watermarked {
+                        m.insert("watermarked".to_string(), "true".to_string());
+                    }
+                    if !item.tags.is_empty() {
+                        m.insert("box_tags".to_string(), item.tags.join(","));
+                    }
                     m
                 },
             }

@@ -43,6 +43,12 @@ struct DriveFile {
     parents: Vec<String>,
     #[serde(default)]
     trashed: bool,
+    #[serde(default)]
+    starred: bool,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    properties: Option<HashMap<String, String>>,
 }
 
 /// Google Drive file list response
@@ -151,7 +157,7 @@ impl GoogleDriveProvider {
 
         loop {
             let mut url = format!(
-                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=1000",
+                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties),nextPageToken&pageSize=1000",
                 DRIVE_API_BASE, folder_id
             );
 
@@ -449,6 +455,265 @@ impl GoogleDriveProvider {
         Ok(())
     }
 
+    /// Star or unstar a file by path
+    pub async fn set_starred(&mut self, path: &str, starred: bool) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let body = serde_json::json!({ "starred": starred });
+
+        let response = self.client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Set starred failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("{} file: {}", if starred { "Starred" } else { "Unstarred" }, path);
+        Ok(())
+    }
+
+    /// List comments on a file
+    pub async fn list_comments(&mut self, path: &str) -> Result<Vec<serde_json::Value>, ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!(
+            "{}/files/{}/comments?fields=comments(id,content,createdTime,author(displayName),resolved)&pageSize=100",
+            DRIVE_API_BASE, file.id
+        );
+
+        let response = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("List comments failed: {}", sanitize_api_error(&text))));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Author {
+            display_name: Option<String>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Comment {
+            id: String,
+            content: Option<String>,
+            created_time: Option<String>,
+            author: Option<Author>,
+            #[serde(default)]
+            resolved: bool,
+        }
+        #[derive(Deserialize)]
+        struct CommentList {
+            comments: Vec<Comment>,
+        }
+
+        let list: CommentList = response.json().await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        Ok(list.comments.iter().map(|c| serde_json::json!({
+            "id": c.id,
+            "message": c.content.clone().unwrap_or_default(),
+            "created_at": c.created_time.clone().unwrap_or_default(),
+            "author": c.author.as_ref().and_then(|a| a.display_name.clone()).unwrap_or_default(),
+            "resolved": c.resolved,
+        })).collect())
+    }
+
+    /// Add a comment to a file
+    pub async fn add_comment(&mut self, path: &str, message: &str) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}/comments?fields=id,content,createdTime", DRIVE_API_BASE, file.id);
+        let body = serde_json::json!({ "content": message });
+
+        let response = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Add comment failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Added comment to: {}", path);
+        Ok(())
+    }
+
+    /// Delete a comment by ID
+    pub async fn delete_comment(&mut self, path: &str, comment_id: &str) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}/comments/{}", DRIVE_API_BASE, file.id, comment_id);
+
+        let response = self.client
+            .delete(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Delete comment failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Deleted comment {} from: {}", comment_id, path);
+        Ok(())
+    }
+
+    /// Set custom file properties (key-value pairs)
+    pub async fn set_properties(&mut self, path: &str, properties: &HashMap<String, String>) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let body = serde_json::json!({ "properties": properties });
+
+        let response = self.client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Set properties failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Set properties on: {}", path);
+        Ok(())
+    }
+
+    /// Set file description
+    pub async fn set_description(&mut self, path: &str, description: &str) -> Result<(), ProviderError> {
+        let path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self.find_by_name(file_name, &parent_id).await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let body = serde_json::json!({ "description": description });
+
+        let response = self.client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!("Set description failed: {}", sanitize_api_error(&text))));
+        }
+
+        info!("Set description on: {}", path);
+        Ok(())
+    }
+
     /// Permanently delete a file by file ID (bypasses trash)
     pub async fn permanent_delete(&mut self, file_id: &str) -> Result<(), ProviderError> {
         let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
@@ -485,6 +750,17 @@ impl GoogleDriveProvider {
         let mut metadata = HashMap::new();
         metadata.insert("id".to_string(), file.id.clone());
         metadata.insert("mimeType".to_string(), file.mime_type.clone());
+        if file.starred {
+            metadata.insert("starred".to_string(), "true".to_string());
+        }
+        if let Some(ref desc) = file.description {
+            metadata.insert("description".to_string(), desc.clone());
+        }
+        if let Some(ref props) = file.properties {
+            for (k, v) in props {
+                metadata.insert(format!("prop:{}", k), v.clone());
+            }
+        }
         if let Some((export_mime, ext)) = Self::workspace_export_info(&file.mime_type) {
             metadata.insert("exportMimeType".to_string(), export_mime.to_string());
             metadata.insert("exportExtension".to_string(), ext.to_string());

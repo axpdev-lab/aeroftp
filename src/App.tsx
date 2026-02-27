@@ -30,6 +30,7 @@ import { ConnectionScreen } from './components/ConnectionScreen';
 import { AboutDialog } from './components/AboutDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ProvidersDialog } from './components/ProvidersDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
@@ -43,10 +44,15 @@ import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
+import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
 import { FileLuTrashManager } from './components/FileLuTrashManager';
 import { GoogleDriveTrashManager } from './components/GoogleDriveTrashManager';
+import { BoxTrashManager } from './components/BoxTrashManager';
+import { BoxTagsDialog } from './components/BoxTagsDialog';
+import { DropboxTrashManager } from './components/DropboxTrashManager';
+import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
@@ -66,11 +72,11 @@ import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen,
   Download, Upload, Pencil, Trash2, X,
-  Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, Cloud,
+  Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare
 } from 'lucide-react';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
@@ -254,6 +260,7 @@ const App: React.FC = () => {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
+  const [showProvidersDialog, setShowProvidersDialog] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles, fileExistsAction });
   // Folder overwrite dialog state
@@ -279,9 +286,14 @@ const App: React.FC = () => {
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
+  const [showGDriveComment, setShowGDriveComment] = useState<{ path: string; name: string } | null>(null);
   const [showJottaTrash, setShowJottaTrash] = useState(false);
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
+  const [showBoxTrash, setShowBoxTrash] = useState(false);
+  const [boxTagsTarget, setBoxTagsTarget] = useState<{ path: string; tags: string[]; command?: string; providerName?: string } | null>(null);
+  const [showDropboxTrash, setShowDropboxTrash] = useState(false);
+  const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
   const [showFileLuTrash, setShowFileLuTrash] = useState(false);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
@@ -450,6 +462,8 @@ const App: React.FC = () => {
     if (!metadata) return false;
     return parseMetadataBool(metadata.filelu_password_protected);
   };
+
+  const proBadge = <span className="inline-block px-1 py-0 text-[9px] font-bold rounded bg-gradient-to-r from-amber-400 to-orange-500 text-white leading-tight align-middle">PRO</span>;
 
   // Check if local path is coherent with the connected remote server
   // Returns true if they match (or we can't determine), false if mismatch
@@ -4442,7 +4456,7 @@ const App: React.FC = () => {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: currentProtocol === 'zohoworkdrive' ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive'].includes(currentProtocol || '') },
+      { label: currentProtocol === 'zohoworkdrive' ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
       ...(currentProtocol === 'jottacloud' ? [{
         label: t('contextMenu.moveToTrash'),
@@ -4492,6 +4506,25 @@ const App: React.FC = () => {
               return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
             });
             await invoke('google_drive_trash_file', { paths });
+            notify.success(t('toast.movedToTrash', { count: paths.length }));
+            loadRemoteFiles(undefined, true);
+          } catch (err) {
+            notify.error(t('toast.moveToTrashFailed'), String(err));
+          }
+        },
+        divider: true,
+      }] : []),
+      // Box: Move to Trash (soft delete — recoverable)
+      ...(currentProtocol === 'box' ? [{
+        label: t('contextMenu.moveToTrash'),
+        icon: <Trash2 size={14} className="text-blue-500" />,
+        action: async () => {
+          try {
+            const paths = filesToUse.map(name => {
+              const f = remoteFiles.find(rf => rf.name === name);
+              return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
+            });
+            await invoke('box_trash_files', { paths });
             notify.success(t('toast.movedToTrash', { count: paths.length }));
             loadRemoteFiles(undefined, true);
           } catch (err) {
@@ -4825,14 +4858,15 @@ const App: React.FC = () => {
       }
     }
 
-    // Cloud provider: View Trash
+    // Cloud provider: View Trash + Labels
     if (currentProtocol === 'zohoworkdrive') {
       items.push({
         label: t('contextMenu.viewTrash'),
         icon: <Trash2 size={14} />,
         action: () => setShowZohoTrash(true),
-        divider: true,
       });
+      // Divider after trash
+      items[items.length - 1].divider = true;
     }
     if (currentProtocol === 'jottacloud') {
       items.push({
@@ -4857,6 +4891,123 @@ const App: React.FC = () => {
         action: () => setShowGDriveTrash(true),
         divider: true,
       });
+    }
+    if (currentProtocol === 'box') {
+      // View Trash
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} className="text-blue-500" />,
+        action: () => setShowBoxTrash(true),
+      });
+      // Box-specific: Tags (single file or folder)
+      if (filesToUse.length === 1) {
+        const currentTags = file.metadata?.box_tags ? file.metadata.box_tags.split(',') : [];
+        items.push({
+          label: t('box.manageTags'),
+          icon: <Tag size={14} className="text-blue-500" />,
+          action: () => setBoxTagsTarget({ path: file.path, tags: currentTags }),
+        });
+      }
+      // Box-specific: Watermark (single file only)
+      if (!file.is_dir && filesToUse.length === 1) {
+        const hasWatermark = file.metadata?.watermarked === 'true';
+        items.push({
+          label: t('box.addWatermark'),
+          icon: <Shield size={14} className={hasWatermark ? 'text-gray-400' : 'text-blue-500'} />,
+          badge: proBadge,
+          disabled: hasWatermark,
+          action: async () => {
+            try {
+              await invoke('box_set_watermark', { path: file.path });
+              notify.success(t('box.watermarkApplied'));
+              loadRemoteFiles(undefined, true);
+            } catch (err) { notify.error(String(err)); }
+          },
+        });
+        items.push({
+          label: t('box.removeWatermark'),
+          icon: <ShieldOff size={14} className={!hasWatermark ? 'text-gray-400' : 'text-blue-500'} />,
+          badge: proBadge,
+          disabled: !hasWatermark,
+          action: async () => {
+            try {
+              await invoke('box_remove_watermark', { path: file.path });
+              notify.success(t('box.watermarkRemoved'));
+              loadRemoteFiles(undefined, true);
+            } catch (err) { notify.error(String(err)); }
+          },
+        });
+      }
+      // Box-specific: Lock Folder (single folder only)
+      if (file.is_dir && filesToUse.length === 1) {
+        items.push({
+          label: t('box.lockFolder'),
+          icon: <Lock size={14} className="text-amber-500" />,
+          badge: proBadge,
+          action: async () => {
+            try {
+              await invoke('box_lock_folder', { path: file.path });
+              notify.success(t('box.folderLocked'));
+            } catch (err) { notify.error(String(err)); }
+          },
+          divider: true,
+        });
+      }
+    }
+    if (currentProtocol === 'dropbox') {
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} className="text-blue-500" />,
+        action: () => setShowDropboxTrash(true),
+        divider: true,
+      });
+      // Note: Dropbox tags API exists but returns errors — disabled for now
+    }
+    if (currentProtocol === 'onedrive') {
+      // OneDrive: Move to Trash
+      items.push({
+        label: t('contextMenu.moveToTrash'),
+        icon: <Trash2 size={14} className="text-blue-500" />,
+        action: async () => {
+          const paths = filesToUse.map(name => {
+            const f = remoteFiles.find(rf => rf.name === name);
+            return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
+          });
+          try {
+            await invoke('onedrive_trash_files', { paths });
+            notify.success(t('toast.movedToTrash', { count: paths.length }));
+            loadRemoteFiles(undefined, true);
+          } catch (err) { notify.error(String(err)); }
+        },
+      });
+      // Note: OneDrive "View Trash" not available — Microsoft Graph v1.0 has no recycle bin list endpoint
+    }
+    if (currentProtocol === 'googledrive') {
+      // Google Drive: Star/Unstar (single file)
+      if (filesToUse.length === 1) {
+        const isStarred = file.metadata?.starred === 'true';
+        items.push({
+          label: isStarred ? t('googledrive.unstar') : t('googledrive.star'),
+          icon: <Star size={14} className={isStarred ? 'text-yellow-400 fill-yellow-400' : 'text-yellow-400'} />,
+          action: async () => {
+            try {
+              await invoke('google_drive_set_starred', { paths: [file.path], starred: !isStarred });
+              notify.success(isStarred ? t('googledrive.unstarred') : t('googledrive.starred'));
+              loadRemoteFiles(undefined, true);
+            } catch (err) { notify.error(String(err)); }
+          },
+        });
+        // Google Drive: Add Comment (single file only)
+        if (!file.is_dir) {
+          items.push({
+            label: t('googledrive.addComment'),
+            icon: <MessageSquare size={14} className="text-blue-500" />,
+            action: () => {
+              setShowGDriveComment({ path: file.path, name: file.name });
+            },
+          });
+        }
+      }
     }
 
     // Ask AeroAgent
@@ -5477,6 +5628,7 @@ const App: React.FC = () => {
           onShowAbout={() => setShowAboutDialog(true)}
           onShowShortcuts={() => setShowShortcutsDialog(true)}
           onShowDependencies={() => setShowDependenciesPanel(true)}
+          onShowProviders={() => setShowProvidersDialog(true)}
           masterPasswordSet={masterPasswordSet}
           onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
@@ -5831,6 +5983,7 @@ const App: React.FC = () => {
         {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
         <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
+        <ProvidersDialog isOpen={showProvidersDialog} onClose={() => setShowProvidersDialog(false)} />
         {showCommandPalette && (
           <CommandPalette
             commands={commandPaletteItems}
@@ -5932,6 +6085,13 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showGDriveComment && (
+          <GoogleDriveCommentDialog
+            filePath={showGDriveComment.path}
+            fileName={showGDriveComment.name}
+            onClose={() => setShowGDriveComment(null)}
+          />
+        )}
         {showJottaTrash && (
           <JottacloudTrashManager
             onClose={() => setShowJottaTrash(false)}
@@ -5948,6 +6108,35 @@ const App: React.FC = () => {
           <GoogleDriveTrashManager
             onClose={() => setShowGDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showBoxTrash && (
+          <BoxTrashManager
+            onClose={() => setShowBoxTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showDropboxTrash && (
+          <DropboxTrashManager
+            onClose={() => setShowDropboxTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+            currentPath={currentRemotePath}
+          />
+        )}
+        {showOneDriveTrash && (
+          <OneDriveTrashManager
+            onClose={() => setShowOneDriveTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {boxTagsTarget && (
+          <BoxTagsDialog
+            filePath={boxTagsTarget.path}
+            currentTags={boxTagsTarget.tags}
+            onClose={() => setBoxTagsTarget(null)}
+            onUpdated={() => loadRemoteFiles(undefined, true)}
+            command={boxTagsTarget.command}
+            providerName={boxTagsTarget.providerName}
           />
         )}
         {showFileLuTrash && (
@@ -6803,12 +6992,19 @@ const App: React.FC = () => {
                                     {displayName(file.name, file.is_dir)}
                                   </span>
                                 )}
+                                {file.metadata?.starred === 'true' && <Star size={12} className="text-yellow-400 fill-yellow-400" />}
+                                {file.metadata?.box_tags && file.metadata.box_tags.split(',').slice(0, 3).map(tag => (
+                                  <span key={tag} className="inline-block px-1.5 py-0 text-[9px] rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 leading-tight">{tag}</span>
+                                ))}
+                                {file.metadata?.box_tags && file.metadata.box_tags.split(',').length > 3 && (
+                                  <span className="text-[9px] text-gray-400">+{file.metadata.box_tags.split(',').length - 3}</span>
+                                )}
                                 {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
                                 {getSyncBadge(file.path, file.modified || undefined, false)}
                               </td>
                               {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
                               {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} /></td>}
+                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>}
                               {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                             </tr>
                           ))}

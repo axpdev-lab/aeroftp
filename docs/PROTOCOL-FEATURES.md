@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 26 February 2026
-> Version: v2.7.2 (FileLu Provider Fixes & Provider UX)
+> Last Updated: 27 February 2026
+> Version: v2.7.4 (Complete Provider Integration)
 
 ---
 
@@ -77,7 +77,7 @@
 | **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
 | **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
 | **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
-| **Locking** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Locking** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - |
 | **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
 | **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
 | **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -89,8 +89,13 @@
 | **Remote URL Fetch** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
 | **File Password** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
 | **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
+| **Tags** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **Watermark** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - |
+| **Comments** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| **Collaborations** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
 
 †FileLu Server Copy = server-side clone (`filelu_clone_file`)
+‡Box Enterprise only (Business/Enterprise plan required)
 
 ---
 
@@ -132,6 +137,25 @@ FileLu exposes privacy and management features beyond generic file operations:
 | **Restore Folder** | `/folder/restore` | `filelu_restore_folder` | Restore by `fld_id` |
 | **Permanent Delete** | `/file/remove` | `filelu_permanent_delete` | Bypass trash, irrecoverable |
 | **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |
+
+## Box Special Features (v2.7.4)
+
+Box exposes management and collaboration features beyond generic file operations:
+
+| Feature | API Endpoint | Tauri Command | Notes |
+|---------|-------------|---------------|-------|
+| **Trash Management** | `/folders/trash/items` | `box_list_trash` | Paginated listing with trashed_at timestamps |
+| **Soft Delete** | `DELETE /files/{id}` | `box_trash_files` | Moves to trash (recoverable) |
+| **Restore from Trash** | `POST /files/{id}` | `box_restore_from_trash` | Supports file and folder types |
+| **Permanent Delete** | `DELETE /files/{id}/trash` | `box_permanent_delete` | Irrecoverable deletion |
+| **Move Item** | `PUT /files/{id}` | `box_move_file` | Server-side move between folders |
+| **Tags** | `PUT /files/{id}` | `box_set_tags` | Free-text tags, shown as inline chips |
+| **Comments** | `/files/{id}/comments` | `box_add_comment` / `box_delete_comment` | File-level comments |
+| **Collaborations** | `/collaborations` | `box_add_collaboration` / `box_remove_collaboration` | Role-based sharing |
+| **Watermark** ‡ | `/files/{id}/watermark` | `box_set_watermark` / `box_remove_watermark` | Enterprise: viewer email overlay |
+| **Folder Lock** ‡ | `/folder_locks` | `box_lock_folder` / `box_unlock_folder` | Enterprise: prevent move/delete |
+
+‡ Requires Box Business or Enterprise plan
 
 ---
 
@@ -319,10 +343,12 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 - Chunk-based upload/download (1MB chunks)
 - API: `https://gateway.filen.io/`
 
-### Zoho WorkDrive (v2.4.0)
+### Zoho WorkDrive (v2.4.0, labels/versioning v2.7.4)
 - OAuth2 PKCE with 8 regional endpoints (US/EU/IN/AU/JP/UK/CA/SA)
 - Team-based storage with team ID auto-detection
 - Share links, trash management, storage quota
+- Labels: team-level color labels, add/remove from files (v2.7.4)
+- Versioning: list/download/restore file versions (v2.7.4)
 - API: `https://www.zohoapis.{region}/workdrive/api/v1/`
 
 ### Internxt Drive (v2.6.0)
@@ -559,6 +585,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.6.0 | **AeroAgent Ecosystem** — 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
 
 | v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
+| v2.7.4 | **Complete Provider Integration** — Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
 
 ### Planned
 

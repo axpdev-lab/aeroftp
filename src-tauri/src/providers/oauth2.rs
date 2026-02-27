@@ -279,6 +279,7 @@ impl OAuthConfig {
                 "WorkDrive.teamfolders.ALL".to_string(),
                 "WorkDrive.links.CREATE".to_string(),
                 "WorkDrive.links.READ".to_string(),
+                "WorkDrive.labels.ALL".to_string(),
                 "ZohoFiles.files.ALL".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
