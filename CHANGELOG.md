@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.2] - 2026-02-27
+
+### FileLu Provider Fixes & Provider UX
+
+Corrects incorrect free-tier data for FileLu across the codebase, fixes a quota display bug where the StatusBar showed bytes instead of gigabytes, and reorders cloud providers by free storage tier with accurate quota info in each card description.
+
+#### Fixed
+
+- **FileLu free tier corrected to 1 GB**: README and all provider descriptions now accurately reflect the 1 GB free tier (was incorrectly listed as 20 GB)
+- **FileLu quota display**: StatusBar and storage progress bar now correctly show GB values — the FileLu API returns storage in GB, which is now properly converted to bytes before being passed to the frontend formatter
+- **FileLu connection name placeholder**: "Save to Saved Servers" input now shows `e.g. My FileLu Cloud` instead of the incorrect `e.g. My Filen Cloud`
+
+#### Changed
+
+- **Cloud provider order**: Providers in the connection screen are now sorted by free storage tier — Google Drive (15 GB) → OneDrive (5 GB) → Dropbox (2 GB) → MEGA (20 GB) → Box (10 GB) → Filen (10 GB) → Drime (20 GB) → 4shared (15 GB) → kDrive (15 GB) → Zoho WorkDrive (5 GB) → Jottacloud (5 GB) → FileLu (1 GB) → Internxt (1 GB) → pCloud (10 GB, dev-only)
+- **Provider card descriptions**: All cloud provider cards now include free storage quota in the description (e.g. `Google Drive (15 GB free)`, `MEGA (20 GB free)`)
+
+---
+
 ## [2.7.1] - 2026-02-26
 
 ### S3 Provider Preset UX & Cloudflare R2 Account ID

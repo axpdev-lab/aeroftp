@@ -99,7 +99,7 @@ Turn **any server** into a private personal cloud. Connect to all 19 protocols t
 | **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, REST API |
 | **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, team drive management |
 | **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, unlimited storage plans |
-| **FileLu** | API Key (native REST) | 20GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
+| **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
 
 **Cloud features**: Background sync works with all 19 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 

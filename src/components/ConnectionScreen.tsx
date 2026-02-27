@@ -1319,7 +1319,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        placeholder={t('filelu.connectionNamePlaceholder')}
                                                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}

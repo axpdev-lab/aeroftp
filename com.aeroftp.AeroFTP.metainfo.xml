@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.7.2" date="2026-02-27">
+      <description>
+        <p>FileLu Provider Fixes and Provider UX: Corrects the FileLu free tier from 20 GB to the accurate 1 GB across all documentation and provider descriptions. Fixes a quota display bug where the StatusBar showed raw byte values instead of gigabytes. Fixes the connection name placeholder showing "My Filen Cloud" instead of "My FileLu Cloud". Cloud providers are now ordered by free storage tier, and every provider card description includes its free quota.</p>
+      </description>
+    </release>
     <release version="2.7.1" date="2026-02-26">
       <description>
         <p>S3 Provider Preset UX and Cloudflare R2 Account ID: Overhauled S3 connection forms so all preset fields (endpoint, region) are visible, pre-filled, and follow the disabled-plus-Edit pattern. Cloudflare R2 now has a dedicated Account ID input that auto-computes the endpoint with an Edit escape hatch for future-proofing. Fixed endpoint resolution for endpointTemplate providers and backward-compatible editing of saved servers.</p>

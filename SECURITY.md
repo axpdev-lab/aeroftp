@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-| Version | Supported |
-| ------- | --------- |
-| 2.6.x   | Yes (current) |
-| 2.5.x   | Security fixes only |
-| 2.4.x   | Security fixes only |
-| < 2.4   | No  |
+| Version | Supported           |
+| ------- | ------------------- |
+| 2.7.x   | Yes (current)       |
+| 2.6.x   | Security fixes only |
+| 2.5.x   | No                  |
+| < 2.5   | No                  |
 
 ## Security Architecture
 

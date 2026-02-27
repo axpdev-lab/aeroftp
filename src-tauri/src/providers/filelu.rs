@@ -1323,15 +1323,16 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_with_retry(&url).await?;
         let info = Self::parse_api::<AccountInfo>(resp).await?;
 
+        // FileLu API returns storage values already in GB
         let used = info.storage_used.unwrap_or(0);
         let left = info.storage_left.unwrap_or(0);
         let total = used + left;
 
         Ok(format!(
-            "FileLu | {} | Used: {:.1} GB / {:.1} GB",
+            "FileLu | {} | Used: {} GB / {} GB",
             info.email.unwrap_or_else(|| "user".to_string()),
-            used as f64 / 1_073_741_824.0,
-            total as f64 / 1_073_741_824.0
+            used,
+            total
         ))
     }
 
@@ -1364,8 +1365,9 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_with_retry(&url).await?;
         let info = Self::parse_api::<AccountInfo>(resp).await?;
 
-        let used = info.storage_used.unwrap_or(0);
-        let free = info.storage_left.unwrap_or(0);
+        // FileLu API returns storage values in GB; convert to bytes for StorageInfo
+        let used = info.storage_used.unwrap_or(0).saturating_mul(1_073_741_824);
+        let free = info.storage_left.unwrap_or(0).saturating_mul(1_073_741_824);
         Ok(StorageInfo { used, free, total: used + free })
     }
 

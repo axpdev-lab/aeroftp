@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 26 February 2026
-> Version: v2.7.0 (FileLu Native API — 19th Protocol)
+> Version: v2.7.2 (FileLu Provider Fixes & Provider UX)
 
 ---
 
