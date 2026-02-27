@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Végleges törlés",
             "trashEmpty": "Nincsenek törölt fájlok",
             "restore": "Visszaállítás",
-            "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra"
+            "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

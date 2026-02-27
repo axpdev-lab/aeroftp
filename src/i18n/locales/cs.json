@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Trvale smazat",
             "trashEmpty": "Žádné smazané soubory",
             "restore": "Obnovit",
-            "trashFooter": "Obnovené soubory se znovu zobrazí ve své původní složce"
+            "trashFooter": "Obnovené soubory se znovu zobrazí ve své původní složce",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

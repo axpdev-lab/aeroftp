@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "ลบถาวร",
             "trashEmpty": "ไม่มีไฟล์ที่ลบแล้ว",
             "restore": "กู้คืน",
-            "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม"
+            "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

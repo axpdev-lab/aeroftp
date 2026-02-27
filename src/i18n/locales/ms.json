@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Padam secara kekal",
             "trashEmpty": "Tiada fail yang dipadam",
             "restore": "Pulihkan",
-            "trashFooter": "Fail yang dipulihkan akan muncul semula dalam folder asalnya"
+            "trashFooter": "Fail yang dipulihkan akan muncul semula dalam folder asalnya",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

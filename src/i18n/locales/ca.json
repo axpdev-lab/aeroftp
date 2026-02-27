@@ -3155,7 +3155,8 @@
             "permanentDeleteOne": "Eliminar permanentment",
             "trashEmpty": "Cap fitxer eliminat",
             "restore": "Restaurar",
-            "trashFooter": "Els fitxers restaurats reapareixeran a la seva carpeta original"
+            "trashFooter": "Els fitxers restaurats reapareixeran a la seva carpeta original",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

@@ -3158,7 +3158,8 @@
             "permanentDeleteOne": "លុបជាអចិន្ត្រៃយ៍",
             "trashEmpty": "គ្មានឯកសារដែលបានលុប",
             "restore": "ស្ដារ",
-            "trashFooter": "ឯកសារដែលបានស្ដារនឹងបង្ហាញឡើងវិញនៅក្នុងថតដើមរបស់ពួកវា"
+            "trashFooter": "ឯកសារដែលបានស្ដារនឹងបង្ហាញឡើងវិញនៅក្នុងថតដើមរបស់ពួកវា",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

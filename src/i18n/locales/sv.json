@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Ta bort permanent",
             "trashEmpty": "Inga borttagna filer",
             "restore": "Återställ",
-            "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp"
+            "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

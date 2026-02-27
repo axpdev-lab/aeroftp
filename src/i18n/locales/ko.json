@@ -3129,7 +3129,8 @@
             "permanentDeleteOne": "영구 삭제",
             "trashEmpty": "삭제된 파일 없음",
             "restore": "복원",
-            "trashFooter": "복원된 파일은 원래 폴더에 다시 나타납니다"
+            "trashFooter": "복원된 파일은 원래 폴더에 다시 나타납니다",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

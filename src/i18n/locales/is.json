@@ -3155,7 +3155,8 @@
             "permanentDeleteOne": "Eyða varanlega",
             "trashEmpty": "Engar eyddar skrár",
             "restore": "Endurheimta",
-            "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni"
+            "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

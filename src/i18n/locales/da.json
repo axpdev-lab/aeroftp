@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Slet permanent",
             "trashEmpty": "Ingen slettede filer",
             "restore": "Gendan",
-            "trashFooter": "Gendannede filer vises igen i deres originale mappe"
+            "trashFooter": "Gendannede filer vises igen i deres originale mappe",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

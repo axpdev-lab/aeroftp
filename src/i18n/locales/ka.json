@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "სამუდამოდ წაშლა",
             "trashEmpty": "წაშლილი ფაილები არ არის",
             "restore": "აღდგენა",
-            "trashFooter": "აღდგენილი ფაილები კვლავ გამოჩნდება მათ პირვანდელ საქაღალდეში"
+            "trashFooter": "აღდგენილი ფაილები კვლავ გამოჩნდება მათ პირვანდელ საქაღალდეში",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

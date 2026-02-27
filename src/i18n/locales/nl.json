@@ -3129,7 +3129,8 @@
             "permanentDeleteOne": "Permanent verwijderen",
             "trashEmpty": "Geen verwijderde bestanden",
             "restore": "Herstellen",
-            "trashFooter": "Herstelde bestanden verschijnen opnieuw in hun oorspronkelijke map"
+            "trashFooter": "Herstelde bestanden verschijnen opnieuw in hun oorspronkelijke map",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

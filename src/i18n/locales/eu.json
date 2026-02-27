@@ -3158,7 +3158,8 @@
             "permanentDeleteOne": "Ezabatu betirako",
             "trashEmpty": "Ez dago ezabatutako fitxategirik",
             "restore": "Leheneratu",
-            "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira"
+            "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

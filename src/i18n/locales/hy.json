@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Ջնջել վերջնականապես",
             "trashEmpty": "Ջնջված ֆայլեր չկան",
             "restore": "Վերականգնել",
-            "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում"
+            "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Kalıcı olarak sil",
             "trashEmpty": "Silinmiş dosya yok",
             "restore": "Geri Yükle",
-            "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir"
+            "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

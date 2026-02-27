@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "স্থায়ীভাবে মুছুন",
             "trashEmpty": "কোনো মুছে ফেলা ফাইল নেই",
             "restore": "পুনরুদ্ধার করুন",
-            "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে"
+            "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

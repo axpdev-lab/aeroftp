@@ -3158,7 +3158,8 @@
             "permanentDeleteOne": "Трајно бришење",
             "trashEmpty": "Нема избришани датотеки",
             "restore": "Врати",
-            "trashFooter": "Вратените датотеки ќе се повторно прикажат во нивната оригинална папка"
+            "trashFooter": "Вратените датотеки ќе се повторно прикажат во нивната оригинална папка",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

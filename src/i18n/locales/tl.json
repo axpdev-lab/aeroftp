@@ -3158,7 +3158,8 @@
             "permanentDeleteOne": "Permanenteng tanggalin",
             "trashEmpty": "Walang tinanggal na mga file",
             "restore": "I-restore",
-            "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder"
+            "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

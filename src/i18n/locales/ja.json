@@ -3126,7 +3126,8 @@
             "permanentDeleteOne": "完全に削除",
             "trashEmpty": "削除済みファイルはありません",
             "restore": "復元",
-            "trashFooter": "復元されたファイルは元のフォルダーに再表示されます"
+            "trashFooter": "復元されたファイルは元のフォルダーに再表示されます",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

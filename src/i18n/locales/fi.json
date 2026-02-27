@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Poista pysyvästi",
             "trashEmpty": "Ei poistettuja tiedostoja",
             "restore": "Palauta",
-            "trashFooter": "Palautetut tiedostot näkyvät uudelleen alkuperäisessä kansiossaan"
+            "trashFooter": "Palautetut tiedostot näkyvät uudelleen alkuperäisessä kansiossaan",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

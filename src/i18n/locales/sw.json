@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Futa kabisa",
             "trashEmpty": "Hakuna faili zilizofutwa",
             "restore": "Rejesha",
-            "trashFooter": "Faili zilizorejeshwa zitaonekana tena katika folda yake ya asili"
+            "trashFooter": "Faili zilizorejeshwa zitaonekana tena katika folda yake ya asili",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

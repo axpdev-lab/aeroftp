@@ -3155,7 +3155,8 @@
             "permanentDeleteOne": "Dileu'n barhaol",
             "trashEmpty": "Dim ffeiliau wedi'u dileu",
             "restore": "Adfer",
-            "trashFooter": "Bydd ffeiliau a adferirwyd yn ailymddangos yn eu ffolder wreiddiol"
+            "trashFooter": "Bydd ffeiliau a adferirwyd yn ailymddangos yn eu ffolder wreiddiol",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

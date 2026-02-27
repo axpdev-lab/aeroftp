@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Ištrinti visam laikui",
             "trashEmpty": "Nėra ištrintų failų",
             "restore": "Atkurti",
-            "trashFooter": "Atkurti failai vėl pasirodys pradiniame aplanke"
+            "trashFooter": "Atkurti failai vėl pasirodys pradiniame aplanke",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

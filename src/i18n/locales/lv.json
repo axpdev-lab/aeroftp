@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Dzēst neatgriezeniski",
             "trashEmpty": "Nav dzēstu failu",
             "restore": "Atjaunot",
-            "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē"
+            "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

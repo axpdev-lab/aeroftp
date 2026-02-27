@@ -3129,7 +3129,8 @@
             "permanentDeleteOne": "Eliminar permanentemente",
             "trashEmpty": "No hay archivos eliminados",
             "restore": "Restaurar",
-            "trashFooter": "Los archivos restaurados reaparecerán en su carpeta original"
+            "trashFooter": "Los archivos restaurados reaparecerán en su carpeta original",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

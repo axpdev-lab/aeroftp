@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Οριστική διαγραφή",
             "trashEmpty": "Δεν υπάρχουν διαγραμμένα αρχεία",
             "restore": "Επαναφορά",
-            "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο"
+            "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

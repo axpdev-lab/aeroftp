@@ -3129,7 +3129,8 @@
             "permanentDeleteOne": "永久删除",
             "trashEmpty": "没有已删除的文件",
             "restore": "恢复",
-            "trashFooter": "恢复的文件将重新出现在其原始文件夹中"
+            "trashFooter": "恢复的文件将重新出现在其原始文件夹中",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

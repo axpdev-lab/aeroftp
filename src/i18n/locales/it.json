@@ -3125,7 +3125,8 @@
             "permanentDeleteOne": "Elimina definitivamente",
             "trashEmpty": "Nessun file eliminato",
             "restore": "Ripristina",
-            "trashFooter": "I file ripristinati riappariranno nella cartella originale"
+            "trashFooter": "I file ripristinati riappariranno nella cartella originale",
+            "connectionNamePlaceholder": "Nome Connessione (es. Il Mio FileLu Cloud)"
         }
     }
 }

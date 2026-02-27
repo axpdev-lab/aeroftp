@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Hapus permanen",
             "trashEmpty": "Tidak ada file yang dihapus",
             "restore": "Pulihkan",
-            "trashFooter": "File yang dipulihkan akan muncul kembali di folder aslinya"
+            "trashFooter": "File yang dipulihkan akan muncul kembali di folder aslinya",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

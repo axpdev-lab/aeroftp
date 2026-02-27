@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Kustuta jäädavalt",
             "trashEmpty": "Kustutatud faile pole",
             "restore": "Taasta",
-            "trashFooter": "Taastatud failid ilmuvad uuesti oma algses kaustas"
+            "trashFooter": "Taastatud failid ilmuvad uuesti oma algses kaustas",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "Xóa vĩnh viễn",
             "trashEmpty": "Không có tệp đã xóa",
             "restore": "Khôi phục",
-            "trashFooter": "Các tệp đã khôi phục sẽ xuất hiện lại trong thư mục gốc của chúng"
+            "trashFooter": "Các tệp đã khôi phục sẽ xuất hiện lại trong thư mục gốc của chúng",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

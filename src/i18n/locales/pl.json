@@ -3126,7 +3126,8 @@
             "permanentDeleteOne": "Usuń trwale",
             "trashEmpty": "Brak usuniętych plików",
             "restore": "Przywróć",
-            "trashFooter": "Przywrócone pliki pojawią się ponownie w swoim oryginalnym folderze"
+            "trashFooter": "Przywrócone pliki pojawią się ponownie w swoim oryginalnym folderze",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

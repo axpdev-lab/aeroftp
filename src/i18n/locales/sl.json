@@ -3136,7 +3136,8 @@
             "permanentDeleteOne": "Trajno izbriši",
             "trashEmpty": "Ni izbrisanih datotek",
             "restore": "Obnovi",
-            "trashFooter": "Obnovljene datoteke se bodo znova pojavile v svoji izvorni mapi"
+            "trashFooter": "Obnovljene datoteke se bodo znova pojavile v svoji izvorni mapi",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

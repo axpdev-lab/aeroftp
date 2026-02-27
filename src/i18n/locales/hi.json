@@ -3139,7 +3139,8 @@
             "permanentDeleteOne": "स्थायी रूप से हटाएं",
             "trashEmpty": "कोई हटाई गई फ़ाइलें नहीं",
             "restore": "पुनर्स्थापित करें",
-            "trashFooter": "पुनर्स्थापित फ़ाइलें अपने मूल फ़ोल्डर में फिर से दिखाई देंगी"
+            "trashFooter": "पुनर्स्थापित फ़ाइलें अपने मूल फ़ोल्डर में फिर से दिखाई देंगी",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

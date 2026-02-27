@@ -3126,7 +3126,8 @@
             "permanentDeleteOne": "Dauerhaft löschen",
             "trashEmpty": "Keine gelöschten Dateien",
             "restore": "Wiederherstellen",
-            "trashFooter": "Wiederhergestellte Dateien erscheinen wieder in ihrem ursprünglichen Ordner"
+            "trashFooter": "Wiederhergestellte Dateien erscheinen wieder in ihrem ursprünglichen Ordner",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

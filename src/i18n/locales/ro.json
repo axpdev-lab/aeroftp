@@ -3126,7 +3126,8 @@
             "permanentDeleteOne": "Ștergeți definitiv",
             "trashEmpty": "Nu există fișiere șterse",
             "restore": "Restaurați",
-            "trashFooter": "Fișierele restaurate vor reapărea în folderul lor original"
+            "trashFooter": "Fișierele restaurate vor reapărea în folderul lor original",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }

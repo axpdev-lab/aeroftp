@@ -3126,7 +3126,8 @@
             "permanentDeleteOne": "Удалить навсегда",
             "trashEmpty": "Нет удалённых файлов",
             "restore": "Восстановить",
-            "trashFooter": "Восстановленные файлы снова появятся в исходной папке"
+            "trashFooter": "Восстановленные файлы снова появятся в исходной папке",
+            "connectionNamePlaceholder": "[NEEDS TRANSLATION] Connection Name (e.g. My FileLu Cloud)"
         }
     }
 }
