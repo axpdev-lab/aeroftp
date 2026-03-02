@@ -17,6 +17,50 @@ use crate::providers::{
 use secrecy::SecretString;
 use tracing::info;
 
+/// Parse a server field that may contain an embedded port.
+///
+/// Handles formats saved by CloudPanel:
+/// - `"hostname"` → `("hostname", None)`
+/// - `"hostname:22"` → `("hostname", Some(22))`
+/// - `"hostname/webdav/path"` → `("hostname/webdav/path", None)`
+/// - `"hostname/webdav/path:80"` → `("hostname/webdav/path", Some(80))` (CloudPanel bug)
+/// - `"hostname:80/webdav/path"` → `("hostname/webdav/path", Some(80))` (correct format)
+fn parse_server_field(server: &str) -> (String, Option<u16>) {
+    // If server contains a path (slash), handle host:port/path vs host/path:port
+    if let Some(slash_pos) = server.find('/') {
+        let host_part = &server[..slash_pos];
+        let path_part = &server[slash_pos..];
+
+        // Check for port in host part: "hostname:80/path"
+        if let Some(colon_pos) = host_part.rfind(':') {
+            if let Ok(port) = host_part[colon_pos + 1..].parse::<u16>() {
+                let hostname = &host_part[..colon_pos];
+                return (format!("{}{}", hostname, path_part), Some(port));
+            }
+        }
+
+        // Check for port appended to end (CloudPanel bug): "hostname/path:80"
+        if let Some(colon_pos) = server.rfind(':') {
+            if colon_pos > slash_pos {
+                if let Ok(port) = server[colon_pos + 1..].parse::<u16>() {
+                    return (server[..colon_pos].to_string(), Some(port));
+                }
+            }
+        }
+
+        return (server.to_string(), None);
+    }
+
+    // No path — just "hostname" or "hostname:port"
+    if let Some(colon_pos) = server.rfind(':') {
+        if let Ok(port) = server[colon_pos + 1..].parse::<u16>() {
+            return (server[..colon_pos].to_string(), Some(port));
+        }
+    }
+
+    (server.to_string(), None)
+}
+
 /// Create and connect a provider for AeroCloud background sync.
 ///
 /// Dispatches based on `config.protocol_type`:
@@ -86,6 +130,10 @@ async fn create_via_factory(
     let creds: SavedCreds = serde_json::from_str(&creds_json)
         .map_err(|e| format!("Failed to parse credentials: {}", e))?;
 
+    // Parse host and embedded port from server field
+    // CloudPanel may save "host:port" or "host/path:port" concatenated
+    let (parsed_host, embedded_port) = parse_server_field(&creds.server);
+
     // Merge connection_params into extra map
     let mut extra = std::collections::HashMap::new();
     if let Some(obj) = config.connection_params.as_object() {
@@ -100,14 +148,16 @@ async fn create_via_factory(
         }
     }
 
+    // Port priority: connection_params > embedded in server field > provider default
     let port = extra
         .get("port")
-        .and_then(|p| p.parse::<u16>().ok());
+        .and_then(|p| p.parse::<u16>().ok())
+        .or(embedded_port);
 
     let provider_config = ProviderConfig {
         name: config.cloud_name.clone(),
         provider_type,
-        host: creds.server.clone(),
+        host: parsed_host.clone(),
         port,
         username: Some(creds.username.clone()),
         password: Some(creds.password.clone()),
@@ -118,7 +168,7 @@ async fn create_via_factory(
     let mut provider = ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
 
-    info!("AeroCloud: connecting via {:?} to {}", provider_type, creds.server);
+    info!("AeroCloud: connecting via {:?} to {}", provider_type, parsed_host);
     provider
         .connect()
         .await
@@ -237,4 +287,60 @@ async fn create_fourshared(config: &CloudConfig) -> Result<Box<dyn StorageProvid
     p.connect().await.map_err(|e| format!("4shared: {}", e))?;
     info!("AeroCloud: connected to 4shared");
     Ok(Box::new(p))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_server_field_hostname_only() {
+        let (host, port) = parse_server_field("axpnas.ddns.net");
+        assert_eq!(host, "axpnas.ddns.net");
+        assert_eq!(port, None);
+    }
+
+    #[test]
+    fn test_parse_server_field_with_port() {
+        let (host, port) = parse_server_field("axpnas.ddns.net:22");
+        assert_eq!(host, "axpnas.ddns.net");
+        assert_eq!(port, Some(22));
+    }
+
+    #[test]
+    fn test_parse_server_field_webdav_path_no_port() {
+        let (host, port) = parse_server_field("axpnas.ddns.net/axpdev/dav");
+        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        assert_eq!(port, None);
+    }
+
+    #[test]
+    fn test_parse_server_field_webdav_port_after_path() {
+        // CloudPanel bug: port appended after path
+        let (host, port) = parse_server_field("axpnas.ddns.net/axpdev/dav:80");
+        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        assert_eq!(port, Some(80));
+    }
+
+    #[test]
+    fn test_parse_server_field_webdav_port_after_host() {
+        // Correct format: port after hostname before path
+        let (host, port) = parse_server_field("axpnas.ddns.net:80/axpdev/dav");
+        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        assert_eq!(port, Some(80));
+    }
+
+    #[test]
+    fn test_parse_server_field_ip_with_port() {
+        let (host, port) = parse_server_field("192.168.1.100:2222");
+        assert_eq!(host, "192.168.1.100");
+        assert_eq!(port, Some(2222));
+    }
+
+    #[test]
+    fn test_parse_server_field_ip_no_port() {
+        let (host, port) = parse_server_field("192.168.1.100");
+        assert_eq!(host, "192.168.1.100");
+        assert_eq!(port, None);
+    }
 }

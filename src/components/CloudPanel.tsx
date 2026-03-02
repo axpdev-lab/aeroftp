@@ -262,9 +262,6 @@ const SetupWizard: React.FC<{
                     // Server protocol with saved profile: load & re-save credentials
                     const selectedServer = savedServers.find(s => s.name === serverProfile);
                     if (selectedServer?.username) {
-                        const serverString = selectedServer.port && selectedServer.port !== 21
-                            ? `${selectedServer.host}:${selectedServer.port}`
-                            : selectedServer.host;
                         let password = '';
                         try {
                             password = await invoke<string>('get_credential', { account: `server_${selectedServer.id}` });
@@ -272,18 +269,23 @@ const SetupWizard: React.FC<{
                             password = selectedServer.password || '';
                         }
                         if (password) {
+                            // Save hostname only — port goes in connectionParams
                             await invoke('save_server_credentials', {
-                                profileName: profile, server: serverString,
+                                profileName: profile, server: selectedServer.host,
                                 username: selectedServer.username, password,
                             });
+                        }
+                        // Ensure port from saved profile is in connectionParams
+                        if (selectedServer.port) {
+                            connectionParams.port = String(selectedServer.port);
                         }
                     }
                 } else if (connHost || connUsername) {
                     // Manual entry or email/password provider
-                    const serverString = connPort ? `${connHost}:${connPort}` : connHost;
+                    // Save hostname only — port is already in connectionParams via buildConnectionParams()
                     await invoke('save_server_credentials', {
                         profileName: profile,
-                        server: serverString || selectedProtocol,
+                        server: connHost || selectedProtocol,
                         username: connUsername,
                         password: connPassword,
                     });

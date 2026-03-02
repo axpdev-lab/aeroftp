@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.5] - 2026-03-02
+
+### AeroCloud Multi-Protocol Fix & CLI JSON Output
+
+Critical fixes for AeroCloud background sync with non-FTP protocols. WebDAV and SFTP connections now work correctly by properly parsing embedded ports from server fields. CLI gains `--json` output for automation pipelines.
+
+#### Fixed
+
+- **AeroCloud SFTP connection failure**: `parse_server_field()` separates hostname from embedded port — fixes DNS lookup failure when vault stored `host:port` as hostname
+- **AeroCloud WebDAV malformed URL**: Port appended after WebDAV path (`host/path:80`) now correctly parsed — fixes `error sending request` with mangled URLs
+- **WebDAV DNS resolution log noise**: Hostname extraction in App.tsx strips path and port for WebDAV-style servers — eliminates spurious "DNS resolution failed" warnings on successful connections
+- **WebDAV root boundary enforcement**: `cd()` and `cd_up()` now respect `initial_path` — prevents navigation above the configured WebDAV root
+- **CloudPanel port handling**: Host and port saved separately — hostname stored without port, port goes into `connectionParams`
+
+#### Added
+
+- **CLI `--json` flag**: Global `--json` / `--format json` flag on all 5 CLI commands (connect, ls, get, put, sync) with structured JSON output for CI/CD automation
+- **7 unit tests**: `parse_server_field()` coverage for hostname, port, WebDAV path, IP address formats
+
+---
+
 ## [2.7.4] - 2026-02-28
 
 ### Complete Provider Integration

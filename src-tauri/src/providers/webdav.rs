@@ -723,7 +723,23 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
+        // Enforce initial_path boundary — reject paths above WebDAV root
+        if let Some(ref initial_path) = self.config.initial_path {
+            if !initial_path.is_empty() {
+                let root_trimmed = initial_path.trim_end_matches('/');
+                let path_trimmed = path.trim_end_matches('/');
+                if !root_trimmed.is_empty()
+                    && !path_trimmed.starts_with(root_trimmed)
+                    && path_trimmed != root_trimmed
+                {
+                    return Err(ProviderError::InvalidPath(
+                        format!("Cannot navigate above WebDAV root: {}", initial_path),
+                    ));
+                }
+            }
+        }
+
         // Verify the path exists and is a directory
         let response = self.request(webdav_methods::propfind(), path)
             .header("Depth", "0")
@@ -763,12 +779,32 @@ impl StorageProvider for WebDavProvider {
     }
     
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
+        // Determine the root boundary — initial_path if set, otherwise "/"
+        let root = self.config.initial_path.as_deref()
+            .filter(|p| !p.is_empty())
+            .unwrap_or("/");
+
+        // Already at root — cannot go higher
+        let current_trimmed = self.current_path.trim_end_matches('/');
+        let root_trimmed = root.trim_end_matches('/');
+        if current_trimmed == root_trimmed || current_trimmed.is_empty() {
+            return Ok(());
+        }
+
         let parent = std::path::Path::new(&self.current_path)
             .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string());
-        
-        self.current_path = if parent.is_empty() { "/".to_string() } else { parent };
+        let parent = if parent.is_empty() { "/".to_string() } else { parent };
+
+        // Clamp: if parent would go above root, stay at root
+        let parent_trimmed = parent.trim_end_matches('/');
+        if !parent_trimmed.starts_with(root_trimmed) {
+            self.current_path = root.to_string();
+        } else {
+            self.current_path = parent;
+        }
+
         Ok(())
     }
     

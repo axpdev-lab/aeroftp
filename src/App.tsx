@@ -1751,10 +1751,17 @@ const App: React.FC = () => {
     protocol: string,
   ): Promise<{ resolvedIp: string | null; connectingLogId: string | null }> => {
     if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return { resolvedIp: null, connectingLogId: null };
-    // Extract pure hostname for DNS resolution — WebDAV servers are stored as full URLs
-    // e.g. "https://webdav.cloudme.com/path/" → "webdav.cloudme.com"
+    // Extract pure hostname for DNS resolution
+    // Full URLs: "https://webdav.cloudme.com/path/" → "webdav.cloudme.com"
+    // Path-style: "axpnas.ddns.net/axpdev/dav" → "axpnas.ddns.net"
     let hostname = server;
-    try { hostname = new URL(server).hostname; } catch { /* not a URL, use as-is */ }
+    try { hostname = new URL(server).hostname; } catch {
+      // Not a full URL — strip path and port for DNS lookup
+      const slashIdx = hostname.indexOf('/');
+      if (slashIdx > 0) hostname = hostname.substring(0, slashIdx);
+      const colonIdx = hostname.indexOf(':');
+      if (colonIdx > 0) hostname = hostname.substring(0, colonIdx);
+    }
     const dnsLogId = humanLog.logRaw('activity.dns_resolving', 'INFO', { hostname }, 'running');
     let resolvedIp: string | null = null;
     try {
