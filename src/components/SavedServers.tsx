@@ -8,6 +8,7 @@ import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourS
 import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
+import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
@@ -579,16 +580,20 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                 ? t('savedServers.e2eAes128', { username: server.username || '' })
                                                 : server.protocol === 's3'
                                                     ? (() => {
-                                                        const bucket = server.options?.bucket || 'S3';
+                                                        const bucket = server.options?.bucket || '';
+                                                        const registryProvider = server.providerId ? getProviderById(server.providerId) : null;
                                                         const host = server.host?.replace(/^https?:\/\//, '') || '';
-                                                        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2'
+                                                        const providerName = registryProvider?.name
+                                                            || (host.includes('cloudflarestorage') ? 'Cloudflare R2'
                                                             : host.includes('backblazeb2') ? 'Backblaze B2'
                                                             : host.includes('amazonaws') ? 'AWS S3'
                                                             : host.includes('wasabisys') ? 'Wasabi'
                                                             : host.includes('digitaloceanspaces') ? 'DigitalOcean'
+                                                            : host.includes('storjshare') ? 'Storj'
+                                                            : host.includes('idrivee2') ? 'iDrive e2'
                                                             : (host.includes('minio') || host.includes(':9000')) ? 'MinIO'
-                                                            : host.split('.')[0];
-                                                        return `${bucket} — ${provider}`;
+                                                            : 'S3');
+                                                        return bucket ? `${bucket} — ${providerName}` : providerName;
                                                     })()
                                                     : server.protocol === 'webdav'
                                                         ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
