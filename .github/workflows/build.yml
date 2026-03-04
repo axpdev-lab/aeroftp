@@ -173,8 +173,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Publish Snap to Snapcraft Store (only on tags)
+      # continue-on-error: Snap Store publish should not block the release
       - name: Publish to Snap Store
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
+        continue-on-error: true
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
