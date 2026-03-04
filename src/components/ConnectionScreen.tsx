@@ -225,6 +225,22 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                         </div>
                     </div>
                 </div>
+                {/* Local Folder */}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">{t('connection.fourshared.localFolderOptional')}</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={localPath}
+                            onChange={(e) => { setLocalPath(e.target.value); onLocalPathChange?.(e.target.value); }}
+                            placeholder="~/Downloads"
+                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+                        />
+                        <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl" title={t('common.browse')}>
+                            <FolderOpen size={18} />
+                        </button>
+                    </div>
+                </div>
                 <button
                     onClick={handleConnect}
                     disabled={isConnecting || isAuthenticating}

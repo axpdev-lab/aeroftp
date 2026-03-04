@@ -418,6 +418,28 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           </button>
         </div>
 
+        {/* Account Summary */}
+        {clientId && (
+          <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">{t('settings.clientId')}</span>
+              <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{clientId.slice(0, 12)}{'…'}</span>
+            </div>
+            {clientSecret && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">{t('settings.clientSecret')}</span>
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{clientSecret.slice(0, 4)}{'••••••••'}</span>
+              </div>
+            )}
+            {isZoho && zohoRegion && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">{t('protocol.pcloudRegion')}</span>
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{ZOHO_REGIONS.find(r => r.value === zohoRegion)?.label || zohoRegion}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error Display */}
         {error && (
           <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">

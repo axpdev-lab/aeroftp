@@ -7788,8 +7788,8 @@ const App: React.FC = () => {
           onClose={() => setShowDependenciesPanel(false)}
         />
 
-        {/* License nag banner for free users */}
-        <NagBanner />
+        {/* License nag banner for free users (dev-only until license system goes live) */}
+        {import.meta.env.DEV && <NagBanner />}
       </div>
     </>
   );
