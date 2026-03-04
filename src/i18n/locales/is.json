@@ -189,7 +189,10 @@
                 "signInWith": "Skrá inn með {provider}",
                 "useDifferentAccount": "Nota annan reikning",
                 "zohoRegion": "Zoho svæði",
-                "zohoRegionHelp": "Veldu svæðið sem passar við Zoho reikninginn þinn (t.d. zoho.eu fyrir Evrópu)."
+                "zohoRegionHelp": "Veldu svæðið sem passar við Zoho reikninginn þinn (t.d. zoho.eu fyrir Evrópu).",
+                "redirectUri": "Tilvísunar-URI",
+                "redirectUriHelp": "Afritaðu þessa slóð og límiðu hana sem tilvísunar-URI í stillingum forritarans þíns.",
+                "redirectUriNoteGoogle": "Google samþykkir hvaða loopback-gatt sem er. Afritaðu þetta sem heimilaða tilvísunar-URI í Google Cloud Console."
             },
             "activeSessions": "Virkar lotur",
             "internxtEmailPlaceholder": "your.email@example.com",

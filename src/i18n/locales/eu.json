@@ -189,7 +189,10 @@
                 "signInWith": "Hasi saioa {provider}-ekin",
                 "useDifferentAccount": "Erabili beste kontu bat",
                 "zohoRegion": "Zoho eskualdea",
-                "zohoRegionHelp": "Hautatu zure Zoho kontuarekin bat datorren eskualdea (adib. zoho.eu Europarako)."
+                "zohoRegionHelp": "Hautatu zure Zoho kontuarekin bat datorren eskualdea (adib. zoho.eu Europarako).",
+                "redirectUri": "Birbideratze URIa",
+                "redirectUriHelp": "Kopiatu URL hau eta itsatsi Birbideratze URI gisa zure garatzaile aplikazioaren ezarpenetan.",
+                "redirectUriNoteGoogle": "Google-k edozein loopback ataka onartzen du. Kopiatu hau Baimendutako Birbideratze URI gisa zure Google Cloud Console-n."
             },
             "activeSessions": "Saio aktiboak",
             "internxtEmailPlaceholder": "your.email@example.com",

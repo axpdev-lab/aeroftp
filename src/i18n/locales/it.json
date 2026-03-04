@@ -202,6 +202,9 @@
                 "continue": "Continua",
                 "configureCredentials": "Configura credenziali OAuth2",
                 "backToExistingAccount": "Torna all'account esistente",
+                "redirectUri": "URI di Reindirizzamento",
+                "redirectUriHelp": "Copia questo URL e incollalo come URI di Reindirizzamento nelle impostazioni della tua app sviluppatore.",
+                "redirectUriNoteGoogle": "Google accetta qualsiasi porta loopback. Copia questo come URI di Reindirizzamento Autorizzato nella tua Google Cloud Console.",
                 "zohoRegion": "Regione Zoho",
                 "zohoRegionHelp": "Seleziona la regione corrispondente al tuo account Zoho (es. zoho.eu per l'Europa)."
             },

@@ -189,7 +189,10 @@
                 "signInWith": "Prisijungti su {provider}",
                 "useDifferentAccount": "Naudoti kitą paskyrą",
                 "zohoRegion": "Zoho regionas",
-                "zohoRegionHelp": "Pasirinkite regioną, atitinkantį jūsų Zoho paskyrą (pvz., zoho.eu Europai)."
+                "zohoRegionHelp": "Pasirinkite regioną, atitinkantį jūsų Zoho paskyrą (pvz., zoho.eu Europai).",
+                "redirectUri": "Peradresavimo URI",
+                "redirectUriHelp": "Nukopijuokite šį URL ir įklijuokite jį kaip peradresavimo URI savo kūrėjo programos nustatymuose.",
+                "redirectUriNoteGoogle": "Google priima bet kurį loopback portą. Nukopijuokite tai kaip įgaliotą peradresavimo URI savo Google Cloud Console."
             },
             "activeSessions": "Aktyvios sesijos",
             "internxtEmailPlaceholder": "your.email@example.com",

@@ -189,7 +189,10 @@
                 "signInWith": "Pierakstīties ar {provider}",
                 "useDifferentAccount": "Izmantot citu kontu",
                 "zohoRegion": "Zoho reģions",
-                "zohoRegionHelp": "Atlasiet reģionu, kas atbilst jūsu Zoho kontam (piem., zoho.eu Eiropai)."
+                "zohoRegionHelp": "Atlasiet reģionu, kas atbilst jūsu Zoho kontam (piem., zoho.eu Eiropai).",
+                "redirectUri": "Pāradresācijas URI",
+                "redirectUriHelp": "Nokopējiet šo URL un ielīmējiet to kā pāradresācijas URI savas izstrādātāja lietotnes iestatījumos.",
+                "redirectUriNoteGoogle": "Google pieņem jebkuru loopback portu. Nokopējiet šo kā autorizēto pāradresācijas URI savā Google Cloud Console."
             },
             "activeSessions": "Aktīvās sesijas",
             "internxtEmailPlaceholder": "your.email@example.com",

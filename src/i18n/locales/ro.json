@@ -189,7 +189,10 @@
                 "signInWith": "Autentifica-te cu {provider}",
                 "useDifferentAccount": "Foloseste alt cont",
                 "zohoRegion": "Regiune Zoho",
-                "zohoRegionHelp": "Selectati regiunea corespunzatoare contului dvs. Zoho (de ex. zoho.eu pentru Europa)."
+                "zohoRegionHelp": "Selectati regiunea corespunzatoare contului dvs. Zoho (de ex. zoho.eu pentru Europa).",
+                "redirectUri": "URI de redirectare",
+                "redirectUriHelp": "Copiați acest URL și lipiți-l ca URI de redirectare în setările aplicației de dezvoltator.",
+                "redirectUriNoteGoogle": "Google acceptă orice port loopback. Copiați aceasta ca URI de redirectare autorizat în Google Cloud Console."
             },
             "activeSessions": "Sesiuni active",
             "internxtEmailPlaceholder": "your.email@example.com",

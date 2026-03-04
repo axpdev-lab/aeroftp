@@ -189,7 +189,10 @@
                 "signInWith": "{provider} দিয়ে সাইন ইন করুন",
                 "useDifferentAccount": "অন্য অ্যাকাউন্ট ব্যবহার করুন",
                 "zohoRegion": "Zoho অঞ্চল",
-                "zohoRegionHelp": "আপনার Zoho অ্যাকাউন্টের সাথে মিলে যায় এমন অঞ্চল নির্বাচন করুন (যেমন ইউরোপের জন্য zoho.eu)।"
+                "zohoRegionHelp": "আপনার Zoho অ্যাকাউন্টের সাথে মিলে যায় এমন অঞ্চল নির্বাচন করুন (যেমন ইউরোপের জন্য zoho.eu)।",
+                "redirectUri": "রিডাইরেক্ট URI",
+                "redirectUriHelp": "এই URL কপি করুন এবং আপনার ডেভেলপার অ্যাপ সেটিংসে রিডাইরেক্ট URI হিসেবে পেস্ট করুন।",
+                "redirectUriNoteGoogle": "Google যেকোনো loopback পোর্ট গ্রহণ করে। আপনার Google Cloud Console-এ অনুমোদিত রিডাইরেক্ট URI হিসেবে এটি কপি করুন।"
             },
             "activeSessions": "সক্রিয় সেশন",
             "internxtEmailPlaceholder": "your.email@example.com",

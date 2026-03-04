@@ -189,7 +189,10 @@
                 "signInWith": "Log masuk dengan {provider}",
                 "useDifferentAccount": "Gunakan Akaun Lain",
                 "zohoRegion": "Rantau Zoho",
-                "zohoRegionHelp": "Pilih rantau yang sepadan dengan akaun Zoho anda (cth. zoho.eu untuk Eropah)."
+                "zohoRegionHelp": "Pilih rantau yang sepadan dengan akaun Zoho anda (cth. zoho.eu untuk Eropah).",
+                "redirectUri": "URI Ubah Hala",
+                "redirectUriHelp": "Salin URL ini dan tampalkan sebagai URI Ubah Hala dalam tetapan aplikasi pembangun anda.",
+                "redirectUriNoteGoogle": "Google menerima mana-mana port loopback. Salin ini sebagai URI Ubah Hala Dibenarkan dalam Google Cloud Console anda."
             },
             "activeSessions": "Sesi Aktif",
             "internxtEmailPlaceholder": "your.email@example.com",

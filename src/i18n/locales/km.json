@@ -189,7 +189,10 @@
                 "signInWith": "ចូលដោយ {provider}",
                 "useDifferentAccount": "ប្រើគណនីផ្សេង",
                 "zohoRegion": "ជំនាន់ Zoho",
-                "zohoRegionHelp": "ជ្រើសរើសជំនាន់ដែលត្រូវនឹងគណត់ Zoho របស់អ្នក (ឧទាហរណ៍ zoho.eu សម្រាប់អឺរ៉ុប)."
+                "zohoRegionHelp": "ជ្រើសរើសជំនាន់ដែលត្រូវនឹងគណត់ Zoho របស់អ្នក (ឧទាហរណ៍ zoho.eu សម្រាប់អឺរ៉ុប).",
+                "redirectUri": "URI ការបញ្ជូនប្តិ",
+                "redirectUriHelp": "ចំលង URL នេះ ហើយបិទិតអ៊ីជា URI ការបញ្ជូនប្តិនៅក្នុងការកំណត់កម្មវិដីអ្នកបង្កើតរបស់អ្នក។",
+                "redirectUriNoteGoogle": "Google ទទួលយកលេខ loopback port ណាមួយ។ ចំលងវាជា URI បញ្ជូនប្តិដែលបានអនុញ្ញាតនៅក្នុង Google Cloud Console របស់អ្នក។"
             },
             "activeSessions": "សម័យកាលសកម្ម",
             "internxtEmailPlaceholder": "your.email@example.com",

@@ -189,7 +189,10 @@
                 "signInWith": "Prihlasit sa cez {provider}",
                 "useDifferentAccount": "Pouzit iny ucet",
                 "zohoRegion": "Region Zoho",
-                "zohoRegionHelp": "Vyberte region zodpovedajuci vasmu uctu Zoho (napr. zoho.eu pre Europu)."
+                "zohoRegionHelp": "Vyberte region zodpovedajuci vasmu uctu Zoho (napr. zoho.eu pre Europu).",
+                "redirectUri": "URI presmerovania",
+                "redirectUriHelp": "Skopírujte túto URL adresu a vložte ju ako URI presmerovania v nastaveniach vašej vývojárskej aplikácie.",
+                "redirectUriNoteGoogle": "Google akceptuje akýkoľvek port loopback. Skopírujte toto ako autorizované URI presmerovania v Google Cloud Console."
             },
             "activeSessions": "Aktívne relácie",
             "internxtEmailPlaceholder": "your.email@example.com",

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
@@ -63,6 +63,16 @@ const ZOHO_REGIONS = [
   { value: 'ca', label: 'Canada (zohocloud.ca)' },
   { value: 'sa', label: 'Saudi Arabia (zoho.sa)' },
 ];
+
+// Redirect URIs that users must configure in their OAuth2 developer app dashboard
+const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
+  googledrive: { uri: 'http://127.0.0.1', note: 'redirectUriNoteGoogle' },
+  dropbox: { uri: 'http://127.0.0.1:17548/callback' },
+  onedrive: { uri: 'http://127.0.0.1:27154/callback' },
+  box: { uri: 'http://127.0.0.1:9484/callback' },
+  pcloud: { uri: 'http://localhost:17384/callback' },
+  zohoworkdrive: { uri: 'http://127.0.0.1:18765/callback' },
+};
 
 // Provider icons as SVG components (white fill for buttons)
 const ProviderIcon: React.FC<{ provider: string; className?: string; white?: boolean }> = ({ provider, className = "w-5 h-5", white = false }) => {
@@ -167,6 +177,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
+  const [copiedUri, setCopiedUri] = useState(false);
 
   const isZoho = provider === 'zohoworkdrive';
   const oauthProvider = providerMap[provider];
@@ -573,6 +584,35 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {t('connection.oauth.createAppInstructions', { provider: providerNames[provider] })}
           </p>
+
+          {/* Redirect URI — required for developer app configuration */}
+          {REDIRECT_URIS[provider] && (
+            <div>
+              <label className="block text-xs font-medium mb-1">{t('connection.oauth.redirectUri')}</label>
+              <div className="flex items-center gap-1.5">
+                <code className="flex-1 px-3 py-2 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg select-all truncate">
+                  {REDIRECT_URIS[provider].uri}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(REDIRECT_URIS[provider].uri);
+                    setCopiedUri(true);
+                    setTimeout(() => setCopiedUri(false), 2000);
+                  }}
+                  className="shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title={t('common.copy')}
+                >
+                  {copiedUri ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {REDIRECT_URIS[provider].note
+                  ? t(`connection.oauth.${REDIRECT_URIS[provider].note}`)
+                  : t('connection.oauth.redirectUriHelp')}
+              </p>
+            </div>
+          )}
 
           {/* Zoho Region selector */}
           {isZoho && (

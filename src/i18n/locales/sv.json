@@ -189,7 +189,10 @@
                 "signInWith": "Logga in med {provider}",
                 "useDifferentAccount": "Anvand ett annat konto",
                 "zohoRegion": "Zoho-region",
-                "zohoRegionHelp": "Valj den region som matchar ditt Zoho-konto (t.ex. zoho.eu for Europa)."
+                "zohoRegionHelp": "Valj den region som matchar ditt Zoho-konto (t.ex. zoho.eu for Europa).",
+                "redirectUri": "Omdirigerings-URI",
+                "redirectUriHelp": "Kopiera denna URL och klistra in den som omdirigerings-URI i inställningarna för din utvecklarapp.",
+                "redirectUriNoteGoogle": "Google accepterar vilken loopback-port som helst. Kopiera detta som auktoriserad omdirigerings-URI i Google Cloud Console."
             },
             "activeSessions": "Aktiva sessioner",
             "internxtEmailPlaceholder": "your.email@example.com",

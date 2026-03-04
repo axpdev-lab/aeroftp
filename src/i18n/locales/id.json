@@ -189,7 +189,10 @@
                 "signInWith": "Masuk dengan {provider}",
                 "useDifferentAccount": "Gunakan Akun Lain",
                 "zohoRegion": "Wilayah Zoho",
-                "zohoRegionHelp": "Pilih wilayah yang sesuai dengan akun Zoho Anda (mis. zoho.eu untuk Eropa)."
+                "zohoRegionHelp": "Pilih wilayah yang sesuai dengan akun Zoho Anda (mis. zoho.eu untuk Eropa).",
+                "redirectUri": "URI Pengalihan",
+                "redirectUriHelp": "Salin URL ini dan tempelkan sebagai URI Pengalihan di pengaturan aplikasi pengembang Anda.",
+                "redirectUriNoteGoogle": "Google menerima port loopback apa pun. Salin ini sebagai URI Pengalihan Resmi di Google Cloud Console Anda."
             },
             "activeSessions": "Sesi Aktif",
             "internxtEmailPlaceholder": "your.email@example.com",

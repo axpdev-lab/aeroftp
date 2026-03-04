@@ -189,7 +189,10 @@
                 "signInWith": "Mag-sign in gamit ang {provider}",
                 "useDifferentAccount": "Gumamit ng Ibang Account",
                 "zohoRegion": "Rehiyon ng Zoho",
-                "zohoRegionHelp": "Piliin ang rehiyon na tumutugma sa iyong Zoho account (hal. zoho.eu para sa Europa)."
+                "zohoRegionHelp": "Piliin ang rehiyon na tumutugma sa iyong Zoho account (hal. zoho.eu para sa Europa).",
+                "redirectUri": "URI ng pag-redirect",
+                "redirectUriHelp": "Kopyahin ang URL na ito at i-paste bilang Redirect URI sa mga setting ng iyong developer app.",
+                "redirectUriNoteGoogle": "Tinatanggap ng Google ang anumang loopback port. Kopyahin ito bilang Authorized Redirect URI sa iyong Google Cloud Console."
             },
             "activeSessions": "Aktibong mga Sesyon",
             "internxtEmailPlaceholder": "your.email@example.com",

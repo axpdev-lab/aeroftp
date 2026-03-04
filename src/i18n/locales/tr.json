@@ -189,7 +189,10 @@
                 "signInWith": "{provider} ile oturum aç",
                 "useDifferentAccount": "Farklı Hesap Kullan",
                 "zohoRegion": "Zoho Bolgesi",
-                "zohoRegionHelp": "Zoho hesabinizla eslesen bolgeyi secin (orn. Avrupa icin zoho.eu)."
+                "zohoRegionHelp": "Zoho hesabinizla eslesen bolgeyi secin (orn. Avrupa icin zoho.eu).",
+                "redirectUri": "Yönlendirme URI'si",
+                "redirectUriHelp": "Bu URL'yi kopyalayın ve geliştirici uygulama ayarlarınıza Yönlendirme URI'si olarak yapıştırın.",
+                "redirectUriNoteGoogle": "Google herhangi bir loopback portunu kabul eder. Bunu Google Cloud Console'da Yetkili Yönlendirme URI'si olarak kopyalayın."
             },
             "activeSessions": "Etkin Oturumlar",
             "internxtEmailPlaceholder": "your.email@example.com",

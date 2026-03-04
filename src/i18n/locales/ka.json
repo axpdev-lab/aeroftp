@@ -189,7 +189,10 @@
                 "signInWith": "{provider}-ით შესვლა",
                 "useDifferentAccount": "სხვა ანგარიშის გამოყენება",
                 "zohoRegion": "Zoho რეგიონი",
-                "zohoRegionHelp": "აირჩიეთ თქვენი Zoho ანგარიშის შესაბამისი რეგიონი (მაგ. zoho.eu ევროპისთვის)."
+                "zohoRegionHelp": "აირჩიეთ თქვენი Zoho ანგარიშის შესაბამისი რეგიონი (მაგ. zoho.eu ევროპისთვის).",
+                "redirectUri": "გადამისამართებელი URI",
+                "redirectUriHelp": "დააკოპირეთ ეს URL და ჩასვით როგორც გადამისამართებელი URI თქვენი დეველოპერ აპლიკაციის პარამეტრებში.",
+                "redirectUriNoteGoogle": "Google იღებს ნებისმიერ loopback პორტს. დააკოპირეთ ეს როგორც ავტორიზებული გადამისამართებელი URI თქვენს Google Cloud Console-ში."
             },
             "activeSessions": "აქტიური სესიები",
             "internxtEmailPlaceholder": "your.email@example.com",

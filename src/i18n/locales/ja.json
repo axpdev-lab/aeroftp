@@ -189,7 +189,10 @@
                 "signInWith": "{provider} でサインイン",
                 "useDifferentAccount": "別のアカウントを使用",
                 "zohoRegion": "Zoho リージョン",
-                "zohoRegionHelp": "Zoho アカウントに対応するリージョンを選択してください（例: ヨーロッパの場合は zoho.eu）。"
+                "zohoRegionHelp": "Zoho アカウントに対応するリージョンを選択してください（例: ヨーロッパの場合は zoho.eu）。",
+                "redirectUri": "リダイレクト URI",
+                "redirectUriHelp": "この URL をコピーし、開発者アプリの設定でリダイレクト URI として貼り付けてください。",
+                "redirectUriNoteGoogle": "Google は任意のループバックポートを受け入れます。Google Cloud Console で承認済みリダイレクト URI としてこれをコピーしてください。"
             },
             "activeSessions": "アクティブなセッション",
             "internxtEmailPlaceholder": "your.email@example.com",

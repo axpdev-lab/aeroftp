@@ -189,7 +189,10 @@
                 "signInWith": "Bejelentkezés: {provider}",
                 "useDifferentAccount": "Másik fiók használata",
                 "zohoRegion": "Zoho régió",
-                "zohoRegionHelp": "Válassza ki a Zoho fiókjának megfelelő régiót (pl. zoho.eu Európa esetén)."
+                "zohoRegionHelp": "Válassza ki a Zoho fiókjának megfelelő régiót (pl. zoho.eu Európa esetén).",
+                "redirectUri": "Átirányítási URI",
+                "redirectUriHelp": "Másolja ki ezt az URL-t, és illessze be átirányítási URI-ként a fejlesztői alkalmazás beállításaiban.",
+                "redirectUriNoteGoogle": "A Google bármely loopback portot elfogadja. Másolja ezt engedélyezett átirányítási URI-ként a Google Cloud Console-ban."
             },
             "activeSessions": "Aktív munkamenetek",
             "internxtEmailPlaceholder": "your.email@example.com",

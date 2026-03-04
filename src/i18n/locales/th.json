@@ -189,7 +189,10 @@
                 "signInWith": "เข้าสู่ระบบด้วย {provider}",
                 "useDifferentAccount": "ใช้บัญชีอื่น",
                 "zohoRegion": "ภูมิภาค Zoho",
-                "zohoRegionHelp": "เลือกภูมิภาคที่ตรงกับบัญชี Zoho ของคุณ (เช่น zoho.eu สำหรับยุโรป)"
+                "zohoRegionHelp": "เลือกภูมิภาคที่ตรงกับบัญชี Zoho ของคุณ (เช่น zoho.eu สำหรับยุโรป)",
+                "redirectUri": "URI เปลี่ยนเส้นทาง",
+                "redirectUriHelp": "คัดลอก URL นี้และวางเป็น URI เปลี่ยนเส้นทางในการตั้งค่าแอปนักพัฒนาของคุณ",
+                "redirectUriNoteGoogle": "Google ยอมรับพอร์ต loopback ใดๆ ก็ได้ คัดลอกสิ่งนี้เป็น URI เปลี่ยนเส้นทางที่อนุญาตใน Google Cloud Console"
             },
             "activeSessions": "เซสชันที่ทำงาน",
             "internxtEmailPlaceholder": "your.email@example.com",

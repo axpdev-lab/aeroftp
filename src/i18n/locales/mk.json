@@ -189,7 +189,10 @@
                 "signInWith": "Најави се со {provider}",
                 "useDifferentAccount": "Користи друга сметка",
                 "zohoRegion": "Zoho регион",
-                "zohoRegionHelp": "Изберете го регионот што одговара на вашата Zoho сметка (нпр. zoho.eu за Европа)."
+                "zohoRegionHelp": "Изберете го регионот што одговара на вашата Zoho сметка (нпр. zoho.eu за Европа).",
+                "redirectUri": "URI за пренасочување",
+                "redirectUriHelp": "Копирајте го овој URL и залепете го како URI за пренасочување во поставките на вашата развојна апликација.",
+                "redirectUriNoteGoogle": "Google прифаќа било кој loopback порт. Копирајте го ова како овластен URI за пренасочување во вашата Google Cloud конзола."
             },
             "activeSessions": "Активни сесии",
             "internxtEmailPlaceholder": "your.email@example.com",

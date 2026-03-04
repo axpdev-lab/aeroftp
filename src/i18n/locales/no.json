@@ -189,7 +189,10 @@
                 "signInWith": "Logg inn med {provider}",
                 "useDifferentAccount": "Bruk annen konto",
                 "zohoRegion": "Zoho-region",
-                "zohoRegionHelp": "Velg regionen som samsvarer med Zoho-kontoen din (f.eks. zoho.eu for Europa)."
+                "zohoRegionHelp": "Velg regionen som samsvarer med Zoho-kontoen din (f.eks. zoho.eu for Europa).",
+                "redirectUri": "Videresendings-URI",
+                "redirectUriHelp": "Kopier denne URL-en og lim den inn som videresendings-URI i utviklerappens innstillinger.",
+                "redirectUriNoteGoogle": "Google godtar alle loopback-porter. Kopier dette som autorisert videresendings-URI i Google Cloud Console."
             },
             "activeSessions": "Aktive sesjoner",
             "internxtEmailPlaceholder": "your.email@example.com",

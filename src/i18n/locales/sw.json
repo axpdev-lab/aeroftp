@@ -189,7 +189,10 @@
                 "signInWith": "Ingia na {provider}",
                 "useDifferentAccount": "Tumia Akaunti Nyingine",
                 "zohoRegion": "Eneo la Zoho",
-                "zohoRegionHelp": "Chagua eneo linalolingana na akaunti yako ya Zoho (mf. zoho.eu kwa Ulaya)."
+                "zohoRegionHelp": "Chagua eneo linalolingana na akaunti yako ya Zoho (mf. zoho.eu kwa Ulaya).",
+                "redirectUri": "URI ya kuelekeza upya",
+                "redirectUriHelp": "Nakili URL hii na uibandike kama URI ya kuelekeza upya katika mipangilio ya programu yako ya msanidi.",
+                "redirectUriNoteGoogle": "Google inakubali bandari yoyote ya loopback. Nakili hii kama URI ya kuelekeza upya iliyoidhinishwa katika Google Cloud Console."
             },
             "activeSessions": "Vikurasa vya kufa",
             "internxtEmailPlaceholder": "your.email@example.com",

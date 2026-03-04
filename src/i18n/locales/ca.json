@@ -189,7 +189,10 @@
                 "signInWith": "Iniciar sessió amb {provider}",
                 "useDifferentAccount": "Utilitzar un altre compte",
                 "zohoRegion": "Regio de Zoho",
-                "zohoRegionHelp": "Seleccioneu la regio que coincideixi amb el vostre compte de Zoho (p. ex. zoho.eu per a Europa)."
+                "zohoRegionHelp": "Seleccioneu la regio que coincideixi amb el vostre compte de Zoho (p. ex. zoho.eu per a Europa).",
+                "redirectUri": "URI de redirecció",
+                "redirectUriHelp": "Copieu aquest URL i enganxeu-lo com a URI de redirecció a la configuració de la vostra aplicació de desenvolupador.",
+                "redirectUriNoteGoogle": "Google accepta qualsevol port loopback. Copieu-lo com a URI de redirecció autoritzat a la vostra Google Cloud Console."
             },
             "activeSessions": "Sessions Actives",
             "internxtEmailPlaceholder": "your.email@example.com",

@@ -189,7 +189,10 @@
                 "signInWith": "Logi sisse {provider}-ga",
                 "useDifferentAccount": "Kasuta teist kontot",
                 "zohoRegion": "Zoho piirkond",
-                "zohoRegionHelp": "Valige oma Zoho kontoga sobiv piirkond (nt zoho.eu Euroopa jaoks)."
+                "zohoRegionHelp": "Valige oma Zoho kontoga sobiv piirkond (nt zoho.eu Euroopa jaoks).",
+                "redirectUri": "Ümbersuunamise URI",
+                "redirectUriHelp": "Kopeerige see URL ja kleepige see ümbersuunamise URI-na oma arendajarakenduse seadetesse.",
+                "redirectUriNoteGoogle": "Google aktsepteerib mis tahes loopback-porti. Kopeerige see volitatud ümbersuunamise URI-na oma Google Cloud Console'is."
             },
             "activeSessions": "Aktiivsed seansid",
             "internxtEmailPlaceholder": "your.email@example.com",

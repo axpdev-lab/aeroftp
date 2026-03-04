@@ -189,7 +189,10 @@
                 "signInWith": "Մուտք գործել {provider}-ով",
                 "useDifferentAccount": "Օգտագործել այլ հաշիվ",
                 "zohoRegion": "Հաշվի Zoho տարածաշրջան",
-                "zohoRegionHelp": "Ընտրեք ձեր Zoho հաշվին համապատասխանող տարածաշրջանը (օրինակ՝ zoho.eu Եվրոպայի համար):"
+                "zohoRegionHelp": "Ընտրեք ձեր Zoho հաշվին համապատասխանող տարածաշրջանը (օրինակ՝ zoho.eu Եվրոպայի համար):",
+                "redirectUri": "Վերահղման URI",
+                "redirectUriHelp": "Պատճենեկ այս URL-ը և տեղադրեք այն այնտեղ ղատահղման URI-ի պես ձեր ծրագրավորման հավելվածի կարգավորումներում։",
+                "redirectUriNoteGoogle": "Google-ը ընդունում է ցանկացած loopback պորտ։ Պատճենեկ սա որպես լիազորված վերահղման URI ձեր Google Cloud Console-ում։"
             },
             "activeSessions": "Մեիը դրի լնաղրշ",
             "internxtEmailPlaceholder": "your.email@example.com",

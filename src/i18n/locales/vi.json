@@ -189,7 +189,10 @@
                 "signInWith": "Đăng nhập bằng {provider}",
                 "useDifferentAccount": "Sử dụng tài khoản khác",
                 "zohoRegion": "Khu vuc Zoho",
-                "zohoRegionHelp": "Chon khu vuc phu hop voi tai khoan Zoho cua ban (vd: zoho.eu cho Chau Au)."
+                "zohoRegionHelp": "Chon khu vuc phu hop voi tai khoan Zoho cua ban (vd: zoho.eu cho Chau Au).",
+                "redirectUri": "URI chuyển hướng",
+                "redirectUriHelp": "Sao chép URL này và dán làm URI chuyển hướng trong cài đặt ứng dụng nhà phát triển của bạn.",
+                "redirectUriNoteGoogle": "Google chấp nhận bất kỳ cổng loopback nào. Sao chép địa chỉ này làm URI chuyển hướng được ủy quyền trong Google Cloud Console."
             },
             "activeSessions": "Các phiên hoạt động",
             "internxtEmailPlaceholder": "your.email@example.com",

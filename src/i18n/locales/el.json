@@ -189,7 +189,10 @@
                 "signInWith": "Σύνδεση με {provider}",
                 "useDifferentAccount": "Χρήση διαφορετικού λογαριασμού",
                 "zohoRegion": "Περιοχή Zoho",
-                "zohoRegionHelp": "Επιλέξτε την περιοχή που αντιστοιχεί στον λογαριασμό σας Zoho (π.χ. zoho.eu για Ευρώπη)."
+                "zohoRegionHelp": "Επιλέξτε την περιοχή που αντιστοιχεί στον λογαριασμό σας Zoho (π.χ. zoho.eu για Ευρώπη).",
+                "redirectUri": "URI Ανακατεύθυνσης",
+                "redirectUriHelp": "Αντιγράψτε αυτό το URL και επικολλήστε το ως URI Ανακατεύθυνσης στις ρυθμίσεις της εφαρμογής σας για προγραμματιστές.",
+                "redirectUriNoteGoogle": "Η Google δέχεται οποιαδήποτε θύρα loopback. Αντιγράψτε αυτό ως εξουσιοδοτημένο URI Ανακατεύθυνσης στην Google Cloud Console σας."
             },
             "activeSessions": "Ενεργές συνεδρίες",
             "internxtEmailPlaceholder": "your.email@example.com",

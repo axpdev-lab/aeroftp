@@ -189,7 +189,10 @@
                 "signInWith": "Přihlásit se přes {provider}",
                 "useDifferentAccount": "Použít jiný účet",
                 "zohoRegion": "Region Zoho",
-                "zohoRegionHelp": "Vyberte region odpovidajici vasemu uctu Zoho (napr. zoho.eu pro Evropu)."
+                "zohoRegionHelp": "Vyberte region odpovidajici vasemu uctu Zoho (napr. zoho.eu pro Evropu).",
+                "redirectUri": "URI přesměrování",
+                "redirectUriHelp": "Zkopírujte tuto URL a vložte ji jako URI přesměrování v nastavení vaší vývojářské aplikace.",
+                "redirectUriNoteGoogle": "Google přijímá jakýkoli loopback port. Zkopírujte toto jako autorizované URI přesměrování ve vaší Google Cloud Console."
             },
             "activeSessions": "Aktivní relace",
             "internxtEmailPlaceholder": "your.email@example.com",

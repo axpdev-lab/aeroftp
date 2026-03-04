@@ -189,7 +189,10 @@
                 "signInWith": "Mewngofnodi gyda {provider}",
                 "useDifferentAccount": "Defnyddio cyfrif gwahanol",
                 "zohoRegion": "Rhanbarth Zoho",
-                "zohoRegionHelp": "Dewiswch y rhanbarth sy'n cyfateb i'ch cyfrif Zoho (e.e. zoho.eu ar gyfer Ewrop)."
+                "zohoRegionHelp": "Dewiswch y rhanbarth sy'n cyfateb i'ch cyfrif Zoho (e.e. zoho.eu ar gyfer Ewrop).",
+                "redirectUri": "URI Ailgyfeirio",
+                "redirectUriHelp": "Copïwch yr URL hwn a'i ludo fel yr URI Ailgyfeirio yng ngosodiadau eich ap datblygwr.",
+                "redirectUriNoteGoogle": "Mae Google yn derbyn unrhyw borth loopback. Copïwch hwn fel yr URI Ailgyfeirio Awdurdodedig yn eich Google Cloud Console."
             },
             "activeSessions": "Sesiynau Gweithredol",
             "internxtEmailPlaceholder": "your.email@example.com",

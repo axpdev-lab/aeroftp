@@ -189,7 +189,10 @@
                 "signInWith": "Kirjaudu palvelulla {provider}",
                 "useDifferentAccount": "Käytä toista tiliä",
                 "zohoRegion": "Zoho-alue",
-                "zohoRegionHelp": "Valitse Zoho-tilisi mukainen alue (esim. zoho.eu Euroopalle)."
+                "zohoRegionHelp": "Valitse Zoho-tilisi mukainen alue (esim. zoho.eu Euroopalle).",
+                "redirectUri": "Uudelleenohjaus-URI",
+                "redirectUriHelp": "Kopioi tämä URL ja liitä se uudelleenohjaus-URI:ksi kehittäjäsovelluksesi asetuksiin.",
+                "redirectUriNoteGoogle": "Google hyväksyy minkä tahansa loopback-portin. Kopioi tämä valtuutetuksi uudelleenohjaus-URI:ksi Google Cloud Console -hallintapaneelissa."
             },
             "activeSessions": "Aktiiviset istunnot",
             "internxtEmailPlaceholder": "your.email@example.com",
