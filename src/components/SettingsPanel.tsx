@@ -1827,8 +1827,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.googledrive ? <PROVIDER_LOGOS.googledrive size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">Google Drive</h4>
@@ -1870,8 +1870,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.dropbox ? <PROVIDER_LOGOS.dropbox size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">Dropbox</h4>
@@ -1913,8 +1913,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-sky-500 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.onedrive ? <PROVIDER_LOGOS.onedrive size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">OneDrive</h4>
@@ -1956,8 +1956,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.box ? <PROVIDER_LOGOS.box size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">Box</h4>
@@ -1999,8 +1999,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.pcloud ? <PROVIDER_LOGOS.pcloud size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">pCloud</h4>
@@ -2042,8 +2042,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                                                    <Cloud size={16} className="text-white" />
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.fourshared ? <PROVIDER_LOGOS.fourshared size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-medium">4shared</h4>
