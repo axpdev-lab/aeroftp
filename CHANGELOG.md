@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.4] - 2026-03-04
+
+### OAuth Setup & UI Consistency
+
+#### Added
+
+- **OAuth redirect URI in credentials form**: Each OAuth provider's setup form now displays the exact Redirect URI to paste into the developer console, with a one-click copy button and per-provider notes (e.g. Google accepts any loopback port)
+
+#### Fixed
+
+- **S3 saved server subtitle incomplete**: S3 servers filtered in Saved Servers now show the provider name (AWS S3, Backblaze B2, Wasabi, etc.) resolved from the registry via `providerId`, with hostname pattern matching as fallback
+- **Settings server list missing favicons**: The Settings > Servers panel now shows custom icons and auto-detected favicons instead of generic letter avatars, matching the home Saved Servers panel
+- **Cloud Providers settings generic icons**: Settings > Cloud Providers tab now displays official provider logos (Google Drive, Dropbox, OneDrive, Box, pCloud, 4shared) instead of generic Cloud icons
+- **Dark theme total black in 4 modal dialogs**: CryptomatorCreateDialog, BoxTagsDialog, ChatHistoryManager, and FileLu dialogs converted from CSS custom properties (`--color-bg-primary` = `#000000`) to standard Tailwind `dark:bg-gray-800` matching all other modals
+
+---
+
 ## [2.8.3] - 2026-03-04
 
 ### OAuth UX Polish & Pro Banner Fix
