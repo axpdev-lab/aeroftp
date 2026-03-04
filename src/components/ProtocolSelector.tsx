@@ -308,7 +308,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isCloudStorage: true,
         tooltip: t('protocol.internxtTooltip'),
     },
-    // Disabled in production (dev-only)
     {
         type: 'pcloud',
         name: 'pCloud',
@@ -319,7 +318,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isOAuth: true,
         isCloudStorage: true,
         tooltip: t('protocol.pcloudTooltip'),
-        disabled: !import.meta.env.DEV,
     },
 ];
 

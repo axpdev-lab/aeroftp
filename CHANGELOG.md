@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.2] - 2026-03-04
+
+### pCloud Production Activation
+
+#### Changed
+
+- **pCloud enabled in production**: Removed dev-only gate from ProtocolSelector. pCloud OAuth2 with automatic region detection (US/EU) is now available to all users
+
+---
+
 ## [2.8.1] - 2026-03-04
 
 ### Auto-Update Reliability, pCloud OAuth & AeroCloud Sync Fix
