@@ -894,14 +894,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group"
                                                     >
                                                         <div className="flex items-center gap-3">
-                                                            {/* Protocol-colored avatar */}
+                                                            {/* Protocol-colored avatar with favicon/custom icon support */}
                                                             {(() => {
                                                                 const logoKey = server.providerId || protocol;
                                                                 const LogoComponent = PROVIDER_LOGOS[logoKey];
                                                                 const hasLogo = !!LogoComponent;
+                                                                const hasCustomIcon = !!server.customIconUrl;
+                                                                const hasFavicon = !!server.faviconUrl;
+                                                                const hasIcon = hasCustomIcon || hasFavicon;
                                                                 return (
-                                                                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
-                                                                        {hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
+                                                                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
+                                                                        {hasCustomIcon ? (
+                                                                            <img src={server.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                                        ) : hasFavicon ? (
+                                                                            <img src={server.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                                        ) : hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
                                                                     </div>
                                                                 );
                                                             })()}
