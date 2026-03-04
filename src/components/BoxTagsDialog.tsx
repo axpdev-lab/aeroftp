@@ -65,22 +65,22 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg shadow-2xl w-[400px] flex flex-col animate-scale-in"
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[400px] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Tag size={16} className="text-blue-500" />
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {t('box.tagsTitle')}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
           >
             <X size={14} />
           </button>
@@ -96,7 +96,7 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('box.tagsPlaceholder')}
-              className="flex-1 px-3 py-1.5 text-xs rounded border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
               maxLength={50}
               autoFocus
             />
@@ -113,7 +113,7 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
           {/* Tag list */}
           <div className="flex flex-wrap gap-1.5 min-h-[32px]">
             {tags.length === 0 ? (
-              <span className="text-xs text-[var(--color-text-tertiary)] italic">{t('box.noTags')}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-500 italic">{t('box.noTags')}</span>
             ) : (
               tags.map(tag => (
                 <span
@@ -138,10 +138,10 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)]">
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] rounded"
+            className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
           >
             {t('common.cancel')}
           </button>

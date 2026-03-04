@@ -54,7 +54,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
       onKeyDown={handleKeyDown}
     >
       <div
-        className="w-full max-w-lg rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] p-6 animate-scale-in"
+        className="w-full max-w-lg rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -64,36 +64,36 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Lock size={20} className="text-emerald-500" />
-            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               {t('cryptomator.createVault') || 'Create Cryptomator Vault'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]">
-            <X size={18} className="text-[var(--color-text-secondary)]" />
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+            <X size={18} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
 
         {/* Vault Name */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+          <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {t('cryptomator.vaultName') || 'Vault Name'}
           </label>
           <input
             type="text"
             value={vaultName}
             onChange={e => setVaultName(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             placeholder="MyVault"
             autoFocus
           />
-          <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
             {outputDir}/{vaultName || '...'}
           </p>
         </div>
 
         {/* Password */}
         <div className="mb-3">
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+          <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {t('common.password') || 'Password'}
           </label>
           <div className="relative">
@@ -101,15 +101,15 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              className="w-full px-3 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               placeholder={t('cryptomator.minPassword') || 'Min 8 characters'}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[var(--color-bg-tertiary)]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              {showPassword ? <EyeOff size={16} className="text-[var(--color-text-secondary)]" /> : <Eye size={16} className="text-[var(--color-text-secondary)]" />}
+              {showPassword ? <EyeOff size={16} className="text-gray-600 dark:text-gray-400" /> : <Eye size={16} className="text-gray-600 dark:text-gray-400" />}
             </button>
           </div>
           {password.length > 0 && password.length < 8 && (
@@ -119,14 +119,14 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
 
         {/* Confirm Password */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
+          <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {t('cryptomator.confirmPassword') || 'Confirm Password'}
           </label>
           <input
             type={showPassword ? 'text' : 'password'}
             value={confirmPassword}
             onChange={e => setConfirmPassword(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             placeholder={t('cryptomator.repeatPassword') || 'Repeat password'}
           />
           {confirmPassword.length > 0 && password !== confirmPassword && (
@@ -153,7 +153,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+            className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             {t('common.cancel') || 'Cancel'}
           </button>

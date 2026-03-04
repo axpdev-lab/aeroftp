@@ -98,10 +98,10 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label={t('ai.history.manager')}
-            className="flex flex-col w-[90%] max-w-2xl max-h-[70vh] rounded-lg shadow-2xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]"
+            className="flex flex-col w-[90%] max-w-2xl max-h-[70vh] rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] rounded-t-lg">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 rounded-t-lg">
                 <div className="flex items-center gap-2">
                     <Database size={14} className="text-purple-400" />
                     <span className="text-xs font-medium">{t('ai.history.manager')}</span>
@@ -109,7 +109,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                 <button
                     onClick={onClose}
                     aria-label="Close"
-                    className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                     <X size={14} />
                 </button>
@@ -117,7 +117,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
 
             {/* Stats bar — UX-005: flex-wrap for narrow panels */}
             {stats && (
-                <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+                <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 text-[10px] text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                     <span>{t('ai.history.sessions')}: <strong>{stats.total_sessions}</strong></span>
                     <span>{t('ai.history.messagesCount')}: <strong>{stats.total_messages}</strong></span>
                     <span>{t('ai.history.totalTokens')}: <strong>{stats.total_tokens.toLocaleString()}</strong></span>
@@ -127,26 +127,26 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
             )}
 
             {/* Search bar */}
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--color-border)]">
-                <Search size={13} className="text-[var(--color-text-secondary)] shrink-0 opacity-60" />
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
+                <Search size={13} className="text-gray-600 dark:text-gray-400 shrink-0 opacity-60" />
                 <input
                     type="text"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder={t('ai.history.searchPlaceholder')}
-                    className="flex-1 bg-transparent text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] focus:outline-none"
+                    className="flex-1 bg-transparent text-xs text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
                     autoComplete="off"
                     autoFocus
                 />
                 {searching && (
-                    <span className="text-[10px] text-[var(--color-text-secondary)]" aria-live="polite">{t('ai.history.searching')}</span>
+                    <span className="text-[10px] text-gray-600 dark:text-gray-400" aria-live="polite">{t('ai.history.searching')}</span>
                 )}
             </div>
 
             {/* Search results */}
             <div className="flex-1 overflow-y-auto">
                 {searchResults.length > 0 ? (
-                    <div className="divide-y divide-[var(--color-border)]">
+                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
                         {searchResults.map(result => (
                             <button
                                 key={result.message_id}
@@ -154,7 +154,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                                     onNavigateToSession(result.session_id);
                                     onClose();
                                 }}
-                                className="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                                className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
                                 <div className="flex items-center gap-2 mb-0.5">
                                     {/* I18N-001: Use translated role labels; THEME-003: theme-compatible colors */}
@@ -165,25 +165,25 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                                     }`}>
                                         {result.role === 'user' ? t('ai.history.roleUser') : t('ai.history.roleAI')}
                                     </span>
-                                    <span className="text-[10px] text-[var(--color-text-secondary)] truncate">{result.session_title}</span>
-                                    <span className="text-[9px] text-[var(--color-text-secondary)] opacity-60 ml-auto shrink-0">
+                                    <span className="text-[10px] text-gray-600 dark:text-gray-400 truncate">{result.session_title}</span>
+                                    <span className="text-[9px] text-gray-600 dark:text-gray-400 opacity-60 ml-auto shrink-0">
                                         {new Date(result.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
                                 {/* SEC-001/UX-001: Snippet is pre-sanitized by Rust backend */}
                                 <p
-                                    className="text-[11px] text-[var(--color-text-primary)] line-clamp-2 [&_mark]:bg-purple-500/30 [&_mark]:text-inherit [&_mark]:rounded-sm"
+                                    className="text-[11px] text-gray-900 dark:text-gray-100 line-clamp-2 [&_mark]:bg-purple-500/30 [&_mark]:text-inherit [&_mark]:rounded-sm"
                                     dangerouslySetInnerHTML={{ __html: result.snippet }}
                                 />
                             </button>
                         ))}
                     </div>
                 ) : searchQuery.length >= 2 && !searching ? (
-                    <div className="flex items-center justify-center h-32 text-xs text-[var(--color-text-secondary)] opacity-60">
+                    <div className="flex items-center justify-center h-32 text-xs text-gray-600 dark:text-gray-400 opacity-60">
                         {t('ai.history.noResults')}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-32 gap-2 text-[var(--color-text-secondary)] opacity-60">
+                    <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-600 dark:text-gray-400 opacity-60">
                         <Search size={24} className="opacity-30" />
                         <span className="text-xs">{t('ai.history.searchHint')}</span>
                     </div>
@@ -191,7 +191,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
             </div>
 
             {/* Actions bar */}
-            <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                 {showCleanup ? (
                     <div className="flex items-center gap-2 flex-1">
                         <Calendar size={12} className="text-yellow-400 shrink-0" />
@@ -199,7 +199,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                         <select
                             value={cleanupDays}
                             onChange={e => setCleanupDays(Number(e.target.value))}
-                            className="text-[10px] bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[var(--color-text-primary)]"
+                            className="text-[10px] bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-600 rounded px-1 py-0.5 text-gray-900 dark:text-gray-100"
                         >
                             <option value={30}>30 {t('ai.history.days')}</option>
                             <option value={60}>60 {t('ai.history.days')}</option>
@@ -215,7 +215,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                         </button>
                         <button
                             onClick={() => setShowCleanup(false)}
-                            className="text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                            className="text-[10px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                         >
                             {t('ai.history.cancel')}
                         </button>
@@ -232,7 +232,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                         </button>
                         <button
                             onClick={() => setConfirmClearAll(false)}
-                            className="text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                            className="text-[10px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                         >
                             {t('ai.history.cancel')}
                         </button>
@@ -241,7 +241,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                     <>
                         <button
                             onClick={() => setShowCleanup(true)}
-                            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+                            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
                         >
                             <Calendar size={11} />
                             {t('ai.history.cleanupOld')}

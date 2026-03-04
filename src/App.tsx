@@ -6293,9 +6293,9 @@ const App: React.FC = () => {
         {/* FileLu: Folder Settings Dialog */}
         {fileLuFolderSettingsDialog && (
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] animate-scale-in p-6">
-              <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-4">
-                {t('filelu.folderSettings')}: <span className="text-[var(--color-accent)]">{fileLuFolderSettingsDialog.name}</span>
+            <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in p-6">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                {t('filelu.folderSettings')}: <span className="text-blue-600 dark:text-blue-400">{fileLuFolderSettingsDialog.name}</span>
               </h2>
               <div className="space-y-3 mb-5">
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -6303,11 +6303,11 @@ const App: React.FC = () => {
                     type="checkbox"
                     checked={fileLuFolderSettingsDialog.filedrop}
                     onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, filedrop: e.target.checked } : null)}
-                    className="w-4 h-4 accent-[var(--color-accent)]"
+                    className="w-4 h-4 accent-blue-600"
                   />
                   <div>
-                    <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('filelu.filedrop')}</div>
-                    <div className="text-xs text-[var(--color-text-muted)]">{t('filelu.filedropDesc')}</div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('filelu.filedrop')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('filelu.filedropDesc')}</div>
                   </div>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -6315,16 +6315,16 @@ const App: React.FC = () => {
                     type="checkbox"
                     checked={fileLuFolderSettingsDialog.isPublic}
                     onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, isPublic: e.target.checked } : null)}
-                    className="w-4 h-4 accent-[var(--color-accent)]"
+                    className="w-4 h-4 accent-blue-600"
                   />
                   <div>
-                    <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('filelu.folderPublic')}</div>
-                    <div className="text-xs text-[var(--color-text-muted)]">{t('filelu.folderPublicDesc')}</div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('filelu.folderPublic')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('filelu.folderPublicDesc')}</div>
                   </div>
                 </label>
               </div>
               <div className="flex gap-3 justify-end">
-                <button onClick={() => setFileLuFolderSettingsDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+                <button onClick={() => setFileLuFolderSettingsDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                   {t('common.cancel')}
                 </button>
                 <button
@@ -6337,7 +6337,7 @@ const App: React.FC = () => {
                     } catch (err) { notify.error(String(err)); }
                     setFileLuFolderSettingsDialog(null);
                   }}
-                  className="px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                 >
                   {t('common.save')}
                 </button>
@@ -6348,21 +6348,21 @@ const App: React.FC = () => {
         {/* FileLu: Remote URL Upload Dialog */}
         {fileLuRemoteUploadDialog && (
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-md mx-4 rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] animate-scale-in p-6">
-              <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-4">🌐 {t('filelu.remoteUrlUpload')}</h2>
-              <p className="text-sm text-[var(--color-text-muted)] mb-4">{t('filelu.remoteUrlUploadDesc')}</p>
+            <div className="w-full max-w-md mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in p-6">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">🌐 {t('filelu.remoteUrlUpload')}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('filelu.remoteUrlUploadDesc')}</p>
               <input
                 id="filelu-remote-url-input"
                 type="url"
                 placeholder="https://example.com/file.zip"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] mb-2"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
                 autoFocus
               />
-              <p className="text-xs text-[var(--color-text-muted)] mb-5">
-                {t('filelu.remoteUrlDest')}: <span className="font-mono text-[var(--color-accent)]">{fileLuRemoteUploadDialog.destPath}</span>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">
+                {t('filelu.remoteUrlDest')}: <span className="font-mono text-blue-600 dark:text-blue-400">{fileLuRemoteUploadDialog.destPath}</span>
               </p>
               <div className="flex gap-3 justify-end">
-                <button onClick={() => setFileLuRemoteUploadDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+                <button onClick={() => setFileLuRemoteUploadDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                   {t('common.cancel')}
                 </button>
                 <button
@@ -6378,7 +6378,7 @@ const App: React.FC = () => {
                       loadRemoteFiles(undefined, true);
                     } catch (err) { notify.error(t('filelu.remoteUrlError'), String(err)); }
                   }}
-                  className="px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                 >
                   {t('filelu.startUpload')}
                 </button>
