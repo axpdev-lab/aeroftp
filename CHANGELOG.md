@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.3] - 2026-03-04
+
+### OAuth UX Polish & Pro Banner Fix
+
+#### Fixed
+
+- **Pro nag banner visible in production**: NagBanner was not gated behind `import.meta.env.DEV`, showing "Unlock AeroFTP Pro" toast to all users. Now dev-only
+- **4shared missing local folder in active state**: FourSharedConnect active view had no Local Folder field, preventing users from changing the local path without re-authenticating
+
+#### Added
+
+- **OAuth account summary**: Active OAuth providers now show Client ID (truncated) and Client Secret (masked) below the Connect button for quick reference
+
+---
+
 ## [2.8.2] - 2026-03-04
 
 ### pCloud Production Activation

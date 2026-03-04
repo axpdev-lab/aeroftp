@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.8.3" date="2026-03-04">
+      <description>
+        <p>OAuth UX Polish: Pro nag banner hidden in production (dev-only). 4shared local folder field restored in active state. OAuth account summary with masked credentials shown below Connect button.</p>
+      </description>
+    </release>
     <release version="2.8.2" date="2026-03-04">
       <description>
         <p>pCloud Production Activation: pCloud OAuth2 with automatic US/EU region detection is now available to all users. Previously gated behind dev-only flag.</p>
