@@ -326,6 +326,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         drime: '### Drime Cloud\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
         filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 1GB free.',
+        koofr: '### Koofr\n- **Auth**: Email + App Password (Basic Auth). Mount-centric REST API v2.1. Path-based operations. 10GB free. Also accessible via WebDAV.',
     };
 
     const active = activeProvider ? sections[activeProvider.toLowerCase()] || '' : '';

@@ -35,10 +35,12 @@ export function useFaviconDetection(
     const isProviderProtocol = PROVIDER_PROTOCOLS.has(protocol);
     if (!isServerProtocol && !isProviderProtocol) return;
 
-    const serverKey = session.serverId;
-    if (checkedRef.current.has(serverKey)) return;
+    // Use session.id (unique per connection) so each new connection gets a fresh check.
+    // Previously used serverId which cached negative results across connections.
+    const cacheKey = session.id;
+    if (checkedRef.current.has(cacheKey)) return;
     if (session.faviconUrl) {
-      checkedRef.current.add(serverKey);
+      checkedRef.current.add(cacheKey);
       return;
     }
 
@@ -52,7 +54,7 @@ export function useFaviconDetection(
           const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
           if (servers) {
             const match = servers.find(s =>
-              s.id === serverKey || s.name === serverKey || s.host === serverKey
+              s.id === session.serverId || s.name === session.serverId || s.host === session.serverId
             );
             if (match?.initialPath) {
               searchPaths.push(match.initialPath);
@@ -76,15 +78,15 @@ export function useFaviconDetection(
         const result = await invoke<string | null>(command, { searchPaths });
 
         if (cancelled) return;
-        checkedRef.current.add(serverKey);
+        checkedRef.current.add(cacheKey);
 
         if (result) {
-          callbackRef.current(serverKey, result);
+          callbackRef.current(session.serverId, result);
         }
       } catch {
         // Detection failed silently — server has no favicon
         if (!cancelled) {
-          checkedRef.current.add(serverKey);
+          checkedRef.current.add(cacheKey);
         }
       }
     };

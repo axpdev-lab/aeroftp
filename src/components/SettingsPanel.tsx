@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Sparkles, Copy } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -23,6 +23,8 @@ import { TotpSetup } from './TotpSetup';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { useLicense } from '../hooks/useLicense';
+import LicenseTab from './LicenseTab';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -192,7 +194,7 @@ const defaultSettings: AppSettings = {
     launchOnStartup: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy';
+type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy' | 'license';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -558,6 +560,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'security', label: t('settings.security'), icon: <Lock size={16} /> },
         { id: 'backup', label: t('settings.backup'), icon: <Key size={16} /> },
         { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
+        ...(import.meta.env.DEV ? [{ id: 'license' as TabId, label: t('license.title'), icon: <Sparkles size={16} /> }] : []),
     ];
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
@@ -575,7 +578,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
                 {/* Panel */}
-                <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
+                <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-3">
@@ -963,7 +966,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         const isKDrive = protocol === 'kdrive';
                                         const isJottacloud = protocol === 'jottacloud';
                                         const isDrime = protocol === 'drime';
-                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime;
+                                        const isKoofr = protocol === 'koofr';
+                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr;
                                         const needsPassword = !isOAuth;
                                         const isNewServer = !servers.some(s => s.id === editingServer.id);
                                         const logoKey = editingServer.providerId || protocol;
@@ -988,6 +992,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             { value: 'internxt', label: 'Internxt Drive', port: 443 },
                                             { value: 'kdrive', label: 'kDrive', port: 443 },
                                             { value: 'jottacloud', label: 'Jottacloud', port: 443 },
+                                            { value: 'koofr', label: 'Koofr', port: 443 },
                                             { value: 'drime', label: 'Drime Cloud', port: 443 },
                                             { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                         ];
@@ -1288,6 +1293,38 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     </div>
                                                                 </div>
                                                                 <p className="text-xs text-gray-400">{t('connection.jottacloudTokenHelp')}</p>
+                                                            </>
+                                                        )}
+
+                                                        {/* Koofr - Email + App Password */}
+                                                        {isKoofr && (
+                                                            <>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrEmail')}</label>
+                                                                    <input
+                                                                        type="email"
+                                                                        placeholder={t('connection.koofrEmailPlaceholder')}
+                                                                        value={editingServer.username || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'app.koofr.net', port: 443 })}
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrAppPassword')}</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type={showEditPassword ? 'text' : 'password'}
+                                                                            placeholder={t('connection.koofrAppPasswordPlaceholder')}
+                                                                            value={editingServer.password || ''}
+                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'app.koofr.net', port: 443 })}
+                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-xs text-gray-400">{t('connection.koofrHelp')}</p>
                                                             </>
                                                         )}
 
@@ -3265,6 +3302,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
                                 </div>
+                            )}
+
+                            {activeTab === 'license' && (
+                                <LicenseTab />
                             )}
                         </div>
                     </div>

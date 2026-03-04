@@ -113,20 +113,20 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg shadow-2xl w-[600px] max-h-[80vh] flex flex-col animate-scale-in"
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[600px] max-h-[80vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={t('contextMenu.trashTitle')}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-red-500" />
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {t('contextMenu.trashTitle')} — MEGA
             </h2>
-            <span className="text-xs text-[var(--color-text-tertiary)]">
+            <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})
             </span>
           </div>
@@ -134,14 +134,14 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
             <button
               onClick={loadTrash}
               disabled={loading}
-              className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
               title="Refresh"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
             >
               <X size={14} />
             </button>
@@ -150,10 +150,10 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
 
         {/* Toolbar */}
         {items.length > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
             <button
               onClick={toggleSelectAll}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
             >
               {selected.size === items.length ? <CheckSquare size={12} /> : <Square size={12} />}
               {selected.size === items.length ? t('contextMenu.trashDeselectAll') : t('contextMenu.trashSelectAll')}
@@ -181,7 +181,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
+            <div className="flex items-center justify-center py-12 text-gray-600 dark:text-gray-400">
               <Loader2 size={20} className="animate-spin mr-2" />
               {t('contextMenu.trashLoading')}
             </div>
@@ -191,14 +191,14 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
               {error}
             </div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-[var(--color-text-tertiary)]">
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-500">
               <Trash2 size={32} className="mb-2 opacity-30" />
               {t('contextMenu.trashEmpty')}
             </div>
           ) : (
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
-                <tr className="text-left text-[var(--color-text-tertiary)]">
+              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                <tr className="text-left text-gray-500 dark:text-gray-500">
                   <th className="w-8 px-2 py-1.5"></th>
                   <th className="px-2 py-1.5">{t('common.name')}</th>
                   <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
@@ -209,16 +209,16 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
                 {items.map(item => (
                   <tr
                     key={item.name}
-                    className={`cursor-pointer hover:bg-[var(--color-bg-tertiary)] border-b border-[var(--color-border)]/30 ${
-                      selected.has(item.name) ? 'bg-[var(--color-accent)]/10' : ''
+                    className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30 ${
+                      selected.has(item.name) ? 'bg-blue-500/10' : ''
                     }`}
                     onClick={() => toggleSelect(item)}
                   >
                     <td className="px-2 py-1.5 text-center">
                       {selected.has(item.name) ? (
-                        <CheckSquare size={13} className="text-[var(--color-accent)]" />
+                        <CheckSquare size={13} className="text-blue-500" />
                       ) : (
-                        <Square size={13} className="text-[var(--color-text-tertiary)]" />
+                        <Square size={13} className="text-gray-500 dark:text-gray-500" />
                       )}
                     </td>
                     <td className="px-2 py-1.5">
@@ -226,15 +226,15 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
                         {item.is_dir ? (
                           <Folder size={13} className="text-yellow-500 shrink-0" />
                         ) : (
-                          <File size={13} className="text-[var(--color-text-tertiary)] shrink-0" />
+                          <File size={13} className="text-gray-500 dark:text-gray-500 shrink-0" />
                         )}
-                        <span className="truncate text-[var(--color-text-primary)]">{item.name}</span>
+                        <span className="truncate text-gray-900 dark:text-gray-100">{item.name}</span>
                       </div>
                     </td>
-                    <td className="px-2 py-1.5 text-right text-[var(--color-text-secondary)] tabular-nums">
+                    <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
                       {item.is_dir ? '—' : formatSize(item.size)}
                     </td>
-                    <td className="px-2 py-1.5 text-[var(--color-text-tertiary)]">
+                    <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
                       {item.modified || '—'}
                     </td>
                   </tr>
@@ -248,14 +248,14 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
       {/* Styled confirmation dialog (replaces window.confirm) */}
       {pendingDeleteConfirm && (
         <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
-          <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
-            <p className="text-[var(--color-text-primary)] mb-4">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setPendingDeleteConfirm(false)}
-                className="px-4 py-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg"
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
                 {t('common.cancel')}
               </button>

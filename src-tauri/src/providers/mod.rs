@@ -41,6 +41,7 @@ pub mod kdrive;
 pub mod jottacloud;
 pub mod drime_cloud;
 pub mod filelu;
+pub mod koofr;
 pub mod http_retry;
 
 pub use types::*;
@@ -66,6 +67,7 @@ pub use kdrive::KDriveProvider;
 pub use jottacloud::JottacloudProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use filelu::FileLuProvider;
+pub use koofr::KoofrProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -576,6 +578,10 @@ impl ProviderFactory {
                 let filelu_config = FileLuConfig::from_provider_config(config)?;
                 Ok(Box::new(FileLuProvider::new(filelu_config)))
             }
+            ProviderType::Koofr => {
+                let koofr_config = koofr::KoofrConfig::from_provider_config(config)?;
+                Ok(Box::new(KoofrProvider::new(koofr_config)))
+            }
         }
     }
     
@@ -603,6 +609,7 @@ impl ProviderFactory {
             ProviderType::KDrive,
             ProviderType::DrimeCloud,
             ProviderType::FileLu,
+            ProviderType::Koofr,
         ]
     }
 }

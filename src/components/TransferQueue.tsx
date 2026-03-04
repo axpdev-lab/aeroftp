@@ -265,7 +265,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
     return (
         <>
-            <div className="fixed bottom-12 right-6 z-40 w-[33rem] max-h-[28rem] flex flex-col bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
+            <div className="fixed bottom-12 right-6 z-40 w-[33rem] max-h-[28rem] flex flex-col bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
                 {/* Header - Terminal Style */}
                 <div
                     className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 cursor-pointer select-none"

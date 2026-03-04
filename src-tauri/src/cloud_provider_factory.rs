@@ -25,7 +25,7 @@ use tracing::info;
 /// - `"hostname/webdav/path"` → `("hostname/webdav/path", None)`
 /// - `"hostname/webdav/path:80"` → `("hostname/webdav/path", Some(80))` (CloudPanel bug)
 /// - `"hostname:80/webdav/path"` → `("hostname/webdav/path", Some(80))` (correct format)
-fn parse_server_field(server: &str) -> (String, Option<u16>) {
+pub(crate) fn parse_server_field(server: &str) -> (String, Option<u16>) {
     // If server contains a path (slash), handle host:port/path vs host/path:port
     if let Some(slash_pos) = server.find('/') {
         let host_part = &server[..slash_pos];

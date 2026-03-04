@@ -14,7 +14,7 @@ use reqwest::Client as HttpClient;
 use secrecy::{ExposeSecret, SecretString};
 
 mod ftp;
-mod sync;
+pub mod sync;
 mod ai;
 mod cloud_config;
 mod file_watcher;
@@ -23,7 +23,7 @@ mod transfer_pool;
 mod delta_sync;
 mod cloud_service;
 mod cloud_provider_factory;
-mod providers;
+pub mod providers;
 mod provider_commands;
 mod session_manager;
 mod session_commands;
@@ -54,6 +54,7 @@ mod totp;
 mod chat_history;
 mod file_tags;
 mod image_edit;
+mod license;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -7558,6 +7559,9 @@ pub fn run() {
             provider_commands::filelu_restore_folder,
             provider_commands::filelu_permanent_delete,
             provider_commands::filelu_remote_url_upload,
+            providers::koofr::koofr_list_trash,
+            providers::koofr::koofr_restore_trash,
+            providers::koofr::koofr_empty_trash,
             provider_commands::google_drive_trash_file,
             provider_commands::google_drive_list_trash,
             provider_commands::google_drive_restore_from_trash,
@@ -7600,6 +7604,8 @@ pub fn run() {
             provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,
             provider_commands::provider_disk_usage,
+            provider_commands::provider_calculate_folder_size,
+            provider_commands::provider_cancel_folder_size,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
             provider_commands::provider_get_speed_limit,
@@ -7731,6 +7737,12 @@ pub fn run() {
             file_tags::file_tags_get_label_counts,
             // AeroImage
             image_edit::process_image,
+            // License System
+            license::license_activate,
+            license::license_check,
+            license::license_deactivate,
+            license::license_get_device_fingerprint,
+            license::license_get_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

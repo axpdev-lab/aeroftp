@@ -53,6 +53,7 @@ import { BoxTrashManager } from './components/BoxTrashManager';
 import { BoxTagsDialog } from './components/BoxTagsDialog';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
+import { KoofrTrashManager } from './components/KoofrTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
@@ -108,6 +109,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
+import NagBanner from './components/NagBanner';
 import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
@@ -295,6 +297,7 @@ const App: React.FC = () => {
   const [showDropboxTrash, setShowDropboxTrash] = useState(false);
   const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
   const [showFileLuTrash, setShowFileLuTrash] = useState(false);
+  const [showKoofrTrash, setShowKoofrTrash] = useState(false);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -1406,6 +1409,50 @@ const App: React.FC = () => {
     }
   }, [notify, t]);
 
+  // Remote folder size calculation via provider
+  const calculateRemoteFolderSize = useCallback(async (path: string) => {
+    if (folderSizeCalculatingRef.current.has(path)) return;
+    folderSizeCalculatingRef.current.add(path);
+    setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+
+    // Listen for progress events
+    const unlisten = await listen<{ total_bytes: number; file_count: number; dir_count: number; scanning: boolean }>(
+      'folder-size-progress',
+      (event) => {
+        const p = event.payload;
+        // Update cache with partial results during scan
+        setFolderSizeCache(prev => {
+          const next = new Map(prev);
+          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count });
+          return next;
+        });
+      }
+    );
+
+    try {
+      await invoke<{ total_bytes: number; file_count: number; dir_count: number }>('provider_calculate_folder_size', { path });
+    } catch (err) {
+      notify.error(t('toast.sizeFailed'), String(err));
+    } finally {
+      unlisten();
+      folderSizeCalculatingRef.current.delete(path);
+      setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+    }
+  }, [notify, t]);
+
+  // Auto-start folder size calculation when properties dialog opens on a folder
+  useEffect(() => {
+    if (!propertiesDialog || !propertiesDialog.is_dir) return;
+    const p = propertiesDialog.path;
+    // Skip if already cached or calculating
+    if (folderSizeCache.has(p) || folderSizeCalculatingRef.current.has(p)) return;
+    if (propertiesDialog.isRemote) {
+      calculateRemoteFolderSize(p);
+    } else {
+      calculateFolderSize(p);
+    }
+  }, [propertiesDialog?.path, propertiesDialog?.is_dir]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
 
   // Update download progress listener
@@ -1705,9 +1752,9 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr'];
   // Providers that support server-side copy (for context menu)
-  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime'];
+  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr'];
 
   const getProviderHostFallback = (protocol?: string, username?: string): string => {
     switch (protocol) {
@@ -1727,6 +1774,8 @@ const App: React.FC = () => {
         return 'filen.io';
       case 'filelu':
         return 'filelu.com';
+      case 'koofr':
+        return 'app.koofr.net';
       default:
         return 'localhost';
     }
@@ -1740,6 +1789,13 @@ const App: React.FC = () => {
         server: params.server || 'filelu.com',
         port: params.port || 443,
         username: params.username || 'api-key',
+      };
+    }
+    if (protocol === 'koofr') {
+      return {
+        ...params,
+        server: params.server || 'app.koofr.net',
+        port: params.port || 443,
       };
     }
     return params;
@@ -1913,6 +1969,8 @@ const App: React.FC = () => {
           ? effectiveParams.options?.bucket || 'Azure'
           : protocol === 'filelu'
             ? 'FileLu'
+          : protocol === 'koofr'
+            ? `Koofr ${effectiveParams.username}`
           : protocol === 'kdrive'
             ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
@@ -2523,6 +2581,7 @@ const App: React.FC = () => {
   };
 
   // Handle click on Cloud Tab - auto-connect to cloud server profile
+  // Supports all protocols: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.
   const handleCloudTabClick = async () => {
     logger.debug('Cloud Tab clicked');
 
@@ -2533,6 +2592,7 @@ const App: React.FC = () => {
         local_folder: string;
         remote_folder: string;
         server_profile: string;
+        protocol_type?: string;
       }>('get_cloud_config');
 
       logger.debug('Cloud config:', cloudConfig);
@@ -2558,8 +2618,15 @@ const App: React.FC = () => {
         return;
       }
 
-      // Build connection params for cloud server
-      const cloudServerString = cloudServer.port && cloudServer.port !== 21
+      // Determine protocol (from cloud config, server profile, or default)
+      const protocol = (cloudConfig.protocol_type || cloudServer.protocol || 'ftp') as ProviderType;
+      const isProvider = isNonFtpProvider(protocol);
+      const isFtp = isFtpProtocol(protocol);
+      const protocolLabel = protocol.toUpperCase();
+
+      // Build connection server string
+      const defaultPort = protocol === 'sftp' ? 22 : protocol === 'ftps' ? 990 : 21;
+      const cloudServerString = cloudServer.port && cloudServer.port !== defaultPort
         ? `${cloudServer.host}:${cloudServer.port}`
         : cloudServer.host;
 
@@ -2571,38 +2638,92 @@ const App: React.FC = () => {
         console.warn('Failed to load cloud server credential from keyring:', e);
       }
 
-      // If already connected, check if it's the same server
+      // Helper: connect to cloud server using the correct protocol
+      const connectToCloudServer = async (): Promise<void> => {
+        if (isProvider) {
+          // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
+          const providerParams = {
+            protocol,
+            server: cloudServer.host,
+            port: cloudServer.port || (protocol === 'sftp' ? 22 : 443),
+            username: cloudServer.username || '',
+            password: cloudPassword,
+            initial_path: cloudConfig.remote_folder || null,
+            bucket: cloudServer.options?.bucket,
+            region: cloudServer.options?.region || (protocol === 's3' ? 'us-east-1' : undefined),
+            endpoint: cloudServer.options?.endpoint || null,
+            path_style: cloudServer.options?.pathStyle || false,
+            private_key_path: cloudServer.options?.private_key_path || null,
+            key_passphrase: cloudServer.options?.key_passphrase || null,
+            timeout: cloudServer.options?.timeout || 30,
+            tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+            verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
+            two_factor_code: cloudServer.options?.two_factor_code || null,
+          };
+          await invoke('provider_connect', { params: providerParams });
+        } else {
+          // FTP/FTPS: use connect_ftp
+          const ftpParams = {
+            server: cloudServerString,
+            username: cloudServer.username || '',
+            password: cloudPassword,
+            protocol,
+          };
+          await invoke('connect_ftp', { params: ftpParams });
+        }
+      };
+
+      // Helper: navigate to remote folder using correct API
+      const navigateToRemoteFolder = async (folder: string): Promise<void> => {
+        if (isProvider) {
+          const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null });
+          const files = response.files.map((f: any) => ({
+            name: f.name, path: f.path || f.name, size: f.size, is_dir: f.is_dir,
+            modified: f.modified, permissions: f.permissions || null,
+          }));
+          setRemoteFiles(files);
+          setCurrentRemotePath(response.current_path);
+        } else {
+          const response: FileListResponse = await invoke('change_directory', { path: folder });
+          setRemoteFiles(response.files);
+          setCurrentRemotePath(response.current_path);
+        }
+      };
+
+      // Connection params to set (for protocol detection in other parts of the app)
+      const connParams = {
+        server: cloudServerString,
+        username: cloudServer.username || '',
+        password: cloudPassword,
+        protocol,
+        port: cloudServer.port,
+        options: cloudServer.options,
+      };
+
+      // === SCENARIO 1: ALREADY CONNECTED ===
       if (isConnected) {
         logger.debug('Already connected, checking if same server...');
 
-        // Compare current connection with cloud server
         const currentServer = connectionParams.server;
-        const isSameServer = currentServer === cloudServerString;
+        const isSameServer = currentServer === cloudServerString
+          && connectionParams.protocol === protocol;
 
-        logger.debug(`Current server: ${currentServer}, Cloud server: ${cloudServerString}, Same: ${isSameServer}`);
+        logger.debug(`Current: ${currentServer} (${connectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
 
-        // IMPORTANT: Save current session state before navigating to cloud
-        // Capture current state values for the closure
-        const capturedRemoteFiles = remoteFiles;
-        const capturedLocalFiles = localFiles;
-        const capturedRemotePath = currentRemotePath;
-        const capturedLocalPath = currentLocalPath;
+        // Save current session state before switching
         const capturedSessionId = activeSessionId;
-        const capturedSyncNav = isSyncNavigation;
-        const capturedSyncPaths = syncBasePaths;
-
         if (capturedSessionId) {
           setSessions(prev => prev.map(s =>
             s.id === capturedSessionId
               ? {
                 ...s,
-                status: 'cached',  // Mark as cached since we're switching away
-                remoteFiles: [...capturedRemoteFiles],
-                localFiles: [...capturedLocalFiles],
-                remotePath: capturedRemotePath,
-                localPath: capturedLocalPath,
-                isSyncNavigation: capturedSyncNav,
-                syncBasePaths: capturedSyncPaths
+                status: 'cached',
+                remoteFiles: [...remoteFiles],
+                localFiles: [...localFiles],
+                remotePath: currentRemotePath,
+                localPath: currentLocalPath,
+                isSyncNavigation,
+                syncBasePaths,
               }
               : s
           ));
@@ -2611,28 +2732,20 @@ const App: React.FC = () => {
         // Deselect current session tab since we're going to AeroCloud
         setActiveSessionId(null);
 
-        // If different server, we need to reconnect to the cloud server
+        // If different server/protocol, reconnect
         if (!isSameServer) {
           logger.debug('Different server, reconnecting to cloud server...');
-          // Disconnect any active provider/FTP before switching to AeroCloud
           try { await invoke('provider_disconnect'); } catch { }
           try { await invoke('disconnect_ftp'); } catch { }
 
-          const params = {
-            server: cloudServerString,
-            username: cloudServer.username || '',
-            password: cloudPassword,
-            protocol: cloudServer.protocol || 'ftp',
-          };
-
           try {
             setLoading(true);
-            await invoke('connect_ftp', { params });
-            setConnectionParams(params);
-            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: params.protocol?.toUpperCase() || 'FTP' }, 'success');
+            await connectToCloudServer();
+            setConnectionParams(connParams);
+            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
             logger.error('Failed to connect to cloud server:', connError);
-            notify.error(t('toast.connectionFailedTitle'), t('toast.cloudConnectionFailed', { error: String(connError) }));
+            notify.error(t('toast.connectionFailedTitle'), String(connError));
             // Restore previous session
             if (capturedSessionId) {
               setActiveSessionId(capturedSessionId);
@@ -2647,72 +2760,66 @@ const App: React.FC = () => {
           }
         }
 
+        // Ensure panels are visible (user might have been in local-only mode)
+        setShowRemotePanel(true);
+        setShowLocalPreview(false);
+        setShowConnectionScreen(false);
+        setIsSyncNavigation(false);
+        setSyncBasePaths(null);
+
         // Navigate to cloud folders
         try {
-          const remoteResponse: FileListResponse = await invoke('change_directory', { path: cloudConfig.remote_folder });
-          setRemoteFiles(remoteResponse.files);
-          setCurrentRemotePath(remoteResponse.current_path);
-
+          await navigateToRemoteFolder(cloudConfig.remote_folder);
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-
-          // Update cloud folder state for badge display
           setCloudRemoteFolder(cloudConfig.remote_folder);
           setCloudLocalFolder(cloudConfig.local_folder);
-
-          // Avoid duplicate connect-success log when we already logged it in the reconnect block above.
           if (isSameServer) {
-            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: connectionParams.protocol || 'FTP' }, 'success');
+            humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
-          logger.error('Navigation error:', navError);
+          logger.error('Cloud navigation error:', navError);
+          notify.error('AeroCloud', t('toast.navigationFailed', { error: String(navError) }));
         }
 
         // Trigger sync
-        try {
-          await invoke('trigger_cloud_sync');
-        } catch (syncError) {
-          logger.error('Sync error:', syncError);
-        }
+        try { await invoke('trigger_cloud_sync'); } catch { }
         return;
       }
 
-      // Not connected yet - connect to cloud server
-      const params = {
-        server: cloudServerString,
-        username: cloudServer.username || '',
-        password: cloudPassword,
-        protocol: cloudServer.protocol || 'ftp',
-      };
-
-      // Connect
+      // === SCENARIO 2: NOT CONNECTED (AeroFile mode or connection screen) ===
       setLoading(true);
-      const logId = humanLog.logStart('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})` });
+      const logId = humanLog.logStart('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel });
       if (showToastNotifications) {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      await invoke('connect_ftp', { params });
-      setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-      setConnectionParams(params);
-      setShowConnectionScreen(false);  // Hide connection screen to show file browser
+      // Disconnect any stale connections
+      try { await invoke('provider_disconnect'); } catch { }
+      try { await invoke('disconnect_ftp'); } catch { }
+
+      await connectToCloudServer();
+      setIsConnected(true);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      setConnectionParams(connParams);
+      setShowConnectionScreen(false);
+      setIsSyncNavigation(false);
+      setSyncBasePaths(null);
 
       // Navigate to cloud folders
-      // Remote: navigate to cloud remote folder
-      const remoteResponse: FileListResponse = await invoke('change_directory', { path: cloudConfig.remote_folder });
-      setRemoteFiles(remoteResponse.files);
-      setCurrentRemotePath(remoteResponse.current_path);
-
-      // Local: navigate to cloud local folder
+      await navigateToRemoteFolder(cloudConfig.remote_folder);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
+      setCloudRemoteFolder(cloudConfig.remote_folder);
+      setCloudLocalFolder(cloudConfig.local_folder);
 
-      humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: 'FTP' }, logId);
+      humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));
 
-      // Trigger a sync after connecting to cloud
+      // Trigger sync
       try {
         if (showToastNotifications) {
           toast.info(t('toast.syncStartedTitle'), t('toast.syncingCloudFiles'));
@@ -2723,6 +2830,7 @@ const App: React.FC = () => {
       }
 
     } catch (error) {
+      logger.error('Cloud tab click error:', error);
       notify.error(t('connection.connectionFailed'), String(error));
       setShowCloudPanel(true);
     } finally {
@@ -4989,6 +5097,14 @@ const App: React.FC = () => {
       });
       // Note: OneDrive "View Trash" not available — Microsoft Graph v1.0 has no recycle bin list endpoint
     }
+    if (currentProtocol === 'koofr') {
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} className="text-green-500" />,
+        action: () => setShowKoofrTrash(true),
+        divider: true,
+      });
+    }
     if (currentProtocol === 'googledrive') {
       // Google Drive: Star/Unstar (single file)
       if (filesToUse.length === 1) {
@@ -5869,7 +5985,13 @@ const App: React.FC = () => {
         {propertiesDialog && (
           <PropertiesDialog
             file={propertiesDialog}
-            onClose={() => setPropertiesDialog(null)}
+            onClose={() => {
+              // Cancel remote folder size scan if active
+              if (propertiesDialog.isRemote && propertiesDialog.is_dir) {
+                invoke('provider_cancel_folder_size').catch(() => {});
+              }
+              setPropertiesDialog(null);
+            }}
             onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => {
               if (!propertiesDialog || propertiesDialog.isRemote) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
@@ -5891,6 +6013,16 @@ const App: React.FC = () => {
                 setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
               }
             }}
+            onCalculateFolderSize={propertiesDialog.is_dir ? () => {
+              const p = propertiesDialog.path;
+              if (propertiesDialog.isRemote) {
+                calculateRemoteFolderSize(p);
+              } else {
+                calculateFolderSize(p);
+              }
+            } : undefined}
+            folderSize={propertiesDialog.is_dir ? folderSizeCache.get(propertiesDialog.path) ?? null : null}
+            folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesDialog.path) : false}
           />
         )}
         {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
@@ -6152,6 +6284,12 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showKoofrTrash && (
+          <KoofrTrashManager
+            onClose={() => setShowKoofrTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
         {/* FileLu: Folder Settings Dialog */}
         {fileLuFolderSettingsDialog && (
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
@@ -6364,6 +6502,8 @@ const App: React.FC = () => {
                       ? normalizedParams.options?.bucket || 'Azure'
                       : normalizedParams.protocol === 'filelu'
                         ? 'FileLu'
+                        : normalizedParams.protocol === 'koofr'
+                          ? `Koofr ${normalizedParams.username}`
                         : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'
                           ? normalizedParams.username
                           : normalizedParams.server.split(':')[0]);
@@ -7647,6 +7787,9 @@ const App: React.FC = () => {
           isVisible={showDependenciesPanel}
           onClose={() => setShowDependenciesPanel(false)}
         />
+
+        {/* License nag banner for free users */}
+        <NagBanner />
       </div>
     </>
   );

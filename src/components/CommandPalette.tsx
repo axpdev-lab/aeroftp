@@ -125,7 +125,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ commands, onClos
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             <div
                 className="relative w-full max-w-lg rounded-xl overflow-hidden
-                    bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700
+                    bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
                     shadow-2xl flex flex-col max-h-[60vh] animate-scale-in"
                 onClick={e => e.stopPropagation()}
                 onKeyDown={handleKeyDown}

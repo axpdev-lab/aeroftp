@@ -1,15 +1,15 @@
 name: aeroftp
-version: '2.7.5'
-summary: Multi-Protocol File Transfer & Cloud Client — 18 Protocols, AI, Encryption
+version: '2.8.0'
+summary: Multi-Protocol File Transfer & Cloud Client — 20 Protocols, AI, Encryption
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
   Connect to FTP/FTPS servers, SFTP, WebDAV, S3-compatible storage, and major
   cloud providers — all from a single, elegant interface.
 
-  Supported Protocols (18):
+  Supported Protocols (20):
   - FTP / FTPS (TLS 1.3)
   - SFTP (SSH File Transfer)
-  - WebDAV (Nextcloud, CloudMe, Koofr, DriveHQ)
+  - WebDAV (Nextcloud, CloudMe, Seafile, DriveHQ)
   - 4shared (OAuth 1.0, 15 GB free)
   - S3-compatible (AWS, Backblaze B2, Wasabi, MinIO)
   - Google Drive, Dropbox, OneDrive (OAuth2)
@@ -19,6 +19,9 @@ description: |
   - Zoho WorkDrive (OAuth2, 8 regional endpoints)
   - Internxt Drive (E2E encrypted, zero-knowledge)
   - kDrive (Infomaniak, 15 GB free)
+  - Koofr (EU-based, OAuth2 PKCE, 10 GB free)
+  - Jottacloud (Norwegian-hosted, unlimited plans)
+  - FileLu (API Key, file passwords, privacy toggle)
 
   Security Features:
   - AeroVault v2: Military-grade encrypted containers (AES-256-GCM-SIV, Argon2id)

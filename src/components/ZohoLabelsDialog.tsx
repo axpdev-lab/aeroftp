@@ -123,7 +123,7 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
-        className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
       >
@@ -205,7 +205,7 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCreateLabel(); }}
                 placeholder={t('zohoworkdrive.labelName')}
-                className="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                className="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
               />
               <div className="flex items-center gap-1.5 mt-2">
                 {PRESET_COLORS.map(c => (

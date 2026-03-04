@@ -22,13 +22,16 @@ struct SshHandler {
     host: String,
     /// The port being connected to
     port: u16,
+    /// CLI mode: auto-accept unknown hosts and save to known_hosts
+    trust_unknown_hosts: bool,
 }
 
 impl SshHandler {
-    fn new(host: &str, port: u16) -> Self {
+    fn with_trust(host: &str, port: u16, trust: bool) -> Self {
         Self {
             host: host.to_string(),
             port,
+            trust_unknown_hosts: trust,
         }
     }
 }
@@ -47,13 +50,25 @@ impl Handler for SshHandler {
                 Ok(true)
             }
             Ok(false) => {
-                // SEC-P1-06: Host not in known_hosts — reject here.
-                // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
-                tracing::warn!(
-                    "SFTP: Host key for {} not pre-approved via TOFU dialog — rejecting",
-                    self.host
-                );
-                Ok(false)
+                if self.trust_unknown_hosts {
+                    // CLI --trust-host-key mode: accept and learn
+                    tracing::info!(
+                        "SFTP: Auto-accepting host key for {} (--trust-host-key)",
+                        self.host
+                    );
+                    if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
+                        tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
+                    }
+                    Ok(true)
+                } else {
+                    // SEC-P1-06: Host not in known_hosts — reject here.
+                    // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
+                    tracing::warn!(
+                        "SFTP: Host key for {} not pre-approved via TOFU dialog — rejecting",
+                        self.host
+                    );
+                    Ok(false)
+                }
             }
             Err(keys::Error::KeyChanged { line }) => {
                 tracing::error!(
@@ -275,7 +290,7 @@ impl StorageProvider for SftpProvider {
 
         // Connect to SSH server
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::new(&self.config.host, self.config.port)).await
+        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::with_trust(&self.config.host, self.config.port, self.config.trust_unknown_hosts)).await
             .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
@@ -914,6 +929,7 @@ mod tests {
             key_passphrase: None,
             initial_path: None,
             timeout_secs: 30,
+            trust_unknown_hosts: false,
         };
 
         let provider = SftpProvider::new(config);
@@ -932,6 +948,7 @@ mod tests {
             key_passphrase: None,
             initial_path: None,
             timeout_secs: 30,
+            trust_unknown_hosts: false,
         };
 
         let mut provider = SftpProvider::new(config);

@@ -59,6 +59,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'internxt', label: 'Internxt' },
             { id: 'kdrive', label: 'kDrive' },
             { id: 'jottacloud', label: 'Jottacloud' },
+            { id: 'koofr', label: 'Koofr' },
         ],
     },
     {
@@ -492,6 +493,33 @@ const SetupWizard: React.FC<{
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
                                 placeholder="/" className="wizard-input-editable" />
                         </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Koofr
+        if (selectedProtocol === 'koofr') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Koofr {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Email</label>
+                            <input type="email" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                placeholder="user@example.com" className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">App Password</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                        <p className="text-xs opacity-50">{t('connection.koofrHelp')}</p>
                     </div>
                 </div>
             );

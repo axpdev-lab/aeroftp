@@ -106,6 +106,7 @@ impl ProviderConnectionParams {
             "jottacloud" => ProviderType::Jottacloud,
             "drime" => ProviderType::DrimeCloud,
             "filelu" => ProviderType::FileLu,
+            "koofr" => ProviderType::Koofr,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -219,6 +220,8 @@ impl ProviderConnectionParams {
             "app.drime.cloud".to_string()
         } else if provider_type == ProviderType::FileLu {
             "filelu.com".to_string()
+        } else if provider_type == ProviderType::Koofr {
+            "app.koofr.net".to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {
@@ -3553,4 +3556,111 @@ pub async fn onedrive_permanent_delete(
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
     od.permanent_delete(&item_id).await.map_err(|e| e.to_string())
+}
+
+// ─── Folder Size Calculation ───
+
+/// Global cancellation flag for folder size scan
+static FOLDER_SIZE_CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Progress payload emitted during folder size scan
+#[derive(Clone, Serialize)]
+pub struct FolderSizeProgress {
+    total_bytes: u64,
+    file_count: u64,
+    dir_count: u64,
+    scanning: bool,
+}
+
+/// Recursively calculate folder size via provider list() — BFS with progress events.
+/// Safety: max 50,000 entries, max depth 50.
+#[tauri::command]
+pub async fn provider_calculate_folder_size(
+    state: State<'_, ProviderState>,
+    app: AppHandle,
+    path: String,
+) -> Result<FolderSizeProgress, String> {
+    FOLDER_SIZE_CANCEL.store(false, Ordering::Relaxed);
+
+    let mut total_bytes: u64 = 0;
+    let mut file_count: u64 = 0;
+    let mut dir_count: u64 = 0;
+    let mut entries_scanned: u64 = 0;
+
+    const MAX_ENTRIES: u64 = 50_000;
+    const MAX_DEPTH: usize = 50;
+
+    // BFS queue: (path, depth)
+    let mut queue: Vec<(String, usize)> = vec![(path, 0)];
+
+    while let Some((current_path, depth)) = queue.pop() {
+        if FOLDER_SIZE_CANCEL.load(Ordering::Relaxed) {
+            // Cancelled — return partial results
+            let result = FolderSizeProgress {
+                total_bytes,
+                file_count,
+                dir_count,
+                scanning: false,
+            };
+            let _ = app.emit("folder-size-progress", &result);
+            return Ok(result);
+        }
+
+        if depth > MAX_DEPTH || entries_scanned > MAX_ENTRIES {
+            break;
+        }
+
+        // List directory contents
+        let entries = {
+            let mut provider_lock = state.provider.lock().await;
+            let provider = provider_lock
+                .as_mut()
+                .ok_or("Not connected to any provider")?;
+            provider.list(&current_path).await
+                .map_err(|e| format!("Failed to list {}: {}", current_path, e))?
+        };
+
+        for entry in &entries {
+            entries_scanned += 1;
+            if entry.is_dir {
+                dir_count += 1;
+                let subpath = if current_path == "/" || current_path.is_empty() {
+                    format!("/{}", entry.name)
+                } else if current_path.ends_with('/') {
+                    format!("{}{}", current_path, entry.name)
+                } else {
+                    format!("{}/{}", current_path, entry.name)
+                };
+                queue.push((subpath, depth + 1));
+            } else {
+                file_count += 1;
+                total_bytes += entry.size;
+            }
+        }
+
+        // Emit progress every directory listing
+        let progress = FolderSizeProgress {
+            total_bytes,
+            file_count,
+            dir_count,
+            scanning: true,
+        };
+        let _ = app.emit("folder-size-progress", &progress);
+    }
+
+    let result = FolderSizeProgress {
+        total_bytes,
+        file_count,
+        dir_count,
+        scanning: false,
+    };
+    let _ = app.emit("folder-size-progress", &result);
+    Ok(result)
+}
+
+/// Cancel an in-progress folder size calculation
+#[tauri::command]
+pub async fn provider_cancel_folder_size() -> Result<(), String> {
+    FOLDER_SIZE_CANCEL.store(true, Ordering::Relaxed);
+    Ok(())
 }

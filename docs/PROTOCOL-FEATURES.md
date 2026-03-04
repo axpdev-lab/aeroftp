@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 27 February 2026
-> Version: v2.7.4 (Complete Provider Integration)
+> Last Updated: 4 March 2026
+> Version: v2.8.0 (Koofr Native API, Production CLI & AeroAgent Server Exec)
 
 ---
 
@@ -28,6 +28,7 @@
 | **Zoho WorkDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Internxt Drive** | Client-side AES-256-CTR | Password (PBKDF2 + BIP39) | secrecy (zero-on-drop) | E2E Encrypted |
 | **kDrive** | HTTPS | API Token (Bearer) | Universal Vault | TLS Certificate |
+| **Koofr** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **FileLu** | HTTPS | API Key | Universal Vault | TLS Certificate |
 
 ### Security Features by Protocol
@@ -117,6 +118,7 @@
 | **Zoho WorkDrive** | Native | `provider_create_share_link` | Team share link |
 | **Internxt Drive** | Native | `provider_create_share_link` | E2E encrypted share link |
 | **kDrive** | — | — | Not yet implemented |
+| **Koofr** | Native | `provider_create_share_link` | Share link via Koofr API |
 | **FileLu** | Native | `provider_create_share_link` | Public share link via FileLu API |
 
 ---
@@ -264,6 +266,7 @@ Bidirectional directory synchronization compares local and remote files by times
 | **Zoho WorkDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Internxt Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **kDrive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **Koofr** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **FileLu** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 
 ### Sync Modes
@@ -293,7 +296,7 @@ Persistent JSON index stored at `~/.config/aeroftp/sync-index/` enables:
 
 ## Provider Keep-Alive (v1.5.1)
 
-All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt Drive, kDrive, and FileLu.
+All non-FTP providers receive periodic keep-alive pings to prevent connection timeouts during idle sessions. This applies to WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt Drive, kDrive, Koofr, and FileLu.
 
 ---
 
@@ -363,6 +366,15 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 - ID-based file system, cursor-based pagination, server-side copy
 - API: `https://api.infomaniak.com/`
 
+### Koofr (v2.8.0)
+
+- EU-based cloud storage (Slovenia) with 10 GB free
+- Auth: OAuth2 PKCE (authorization code flow)
+- Native REST API with full `StorageProvider` trait implementation
+- Trash management: list, restore, empty trash
+- Also available as WebDAV preset for standard protocol access
+- API: `https://app.koofr.net/api/v2/`
+
 ### FileLu (v2.7.0)
 
 - Privacy-focused cloud storage with 20 GB free
@@ -402,7 +414,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 45 tools work identically across all 19 protocols via the `StorageProvider` trait:
+All 47 tools work identically across all 20 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -433,6 +445,8 @@ All 45 tools work identically across all 19 protocols via the `StorageProvider` 
 | `remote_delete` | High | Delete remote file |
 | `terminal_exec` | High | Execute terminal command |
 | `local_delete` | High | Delete local file/directory |
+| `server_list_saved` | Safe | List all saved server profiles |
+| `server_exec` | High | Execute operation on any saved server |
 
 ### AI Features
 
@@ -497,7 +511,7 @@ All 45 tools work identically across all 19 protocols via the `StorageProvider` 
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (45 tools)
+### AeroAgent Tool Categories (47 tools)
 
 | Category | Tools | Danger Level |
 |----------|-------|-------------|
@@ -511,6 +525,7 @@ All 45 tools work identically across all 19 protocols via the `StorageProvider` 
 | Sync & Compare | sync_preview | medium |
 | RAG | rag_index, rag_search | medium |
 | Memory | agent_memory_write | medium |
+| Server Exec | server_list_saved, server_exec | safe-high |
 
 ---
 
@@ -586,12 +601,13 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 
 | v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
 | v2.7.4 | **Complete Provider Integration** — Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
+| v2.8.0 | **Koofr Native API** (20th protocol), **Production CLI** (13 commands, 20 protocols), **AeroAgent Server Exec** (2 new tools, vault-secured), Ed25519 license foundation | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.8.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
+| v2.9.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
 
 ---
 

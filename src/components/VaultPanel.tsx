@@ -573,7 +573,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="AeroVault" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
@@ -689,7 +689,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                         <div className="relative">
                             <button
                                 onClick={() => setShowLevelDropdown(!showLevelDropdown)}
-                                className={`w-full flex items-center justify-between px-3 py-2.5 rounded border ${securityLevels[securityLevel].borderColor} bg-gray-50 dark:bg-gray-900 text-left`}
+                                className={`w-full flex items-center justify-between px-3 py-2.5 rounded border ${securityLevels[securityLevel].borderColor} bg-gray-50 dark:bg-gray-800 text-left`}
                             >
                                 <div className="flex items-center gap-2">
                                     {React.createElement(securityLevels[securityLevel].icon, {
@@ -709,7 +709,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
                             {/* Dropdown */}
                             {showLevelDropdown && (
-                                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl overflow-hidden">
+                                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl overflow-hidden">
                                     {(Object.keys(securityLevels) as SecurityLevel[]).map((level) => {
                                         const config = securityLevels[level];
                                         const Icon = config.icon;
@@ -744,12 +744,12 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
                         <label className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('vault.description_label')}</label>
                         <input value={description} onChange={e => setDescription(e.target.value)}
-                            className="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
+                            className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
 
                         <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
                         <div className="relative">
                             <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
+                                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
                             <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                 {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>
@@ -757,7 +757,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
                         <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.confirmPassword')}</label>
                         <input type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                            className="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" />
+                            className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" />
 
                         <div className="flex gap-2 justify-end mt-2">
                             <button onClick={() => setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
@@ -781,7 +781,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             const levelConfig = securityLevels[vaultSecurity.level];
                             const LevelIcon = levelConfig.icon;
                             return (
-                                <div className={`flex items-center gap-2 px-3 py-2 rounded border ${levelConfig.borderColor} bg-gray-100/50 dark:bg-gray-900/30`}>
+                                <div className={`flex items-center gap-2 px-3 py-2 rounded border ${levelConfig.borderColor} bg-gray-100/50 dark:bg-gray-800/30`}>
                                     <LevelIcon size={16} className={levelConfig.color} />
                                     <span className={`text-sm ${levelConfig.color}`}>
                                         AeroVault v{vaultSecurity.version} ({levelConfig.label})
@@ -795,7 +795,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             <input type={showPassword ? 'text' : 'password'} value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleUnlock()}
-                                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
+                                className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
                             <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                 {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>
@@ -871,7 +871,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                 </button>
                             )}
                             {currentLevelConfig && (
-                                <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-900/50`}>
+                                <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-800/50`}>
                                     <LevelIcon size={12} />
                                     <span>v{vaultSecurity?.version}</span>
                                     {vaultSecurity?.cascadeMode && (
@@ -893,7 +893,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                     onChange={e => setNewDirName(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') handleCreateDirectory(); if (e.key === 'Escape') setShowNewDirDialog(false); }}
                                     placeholder={t('vault.folderName')}
-                                    className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs"
+                                    className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs"
                                 />
                                 <button onClick={handleCreateDirectory} disabled={loading || !newDirName.trim()} className="px-2 py-1 bg-yellow-700 hover:bg-yellow-600 rounded text-xs disabled:opacity-50">
                                     {t('vault.create')}
@@ -940,7 +940,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                     <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.newPassword')}</label>
                                     <div className="relative">
                                         <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
+                                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
                                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                                             {showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
                                         </button>
@@ -950,7 +950,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                                     <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.confirmNew')}</label>
                                     <div className="relative">
                                         <input type={showPassword ? 'text' : 'password'} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}
-                                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
+                                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
                                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                                             {showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
                                         </button>

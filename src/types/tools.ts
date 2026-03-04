@@ -489,6 +489,27 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'safe',
     },
+    // Server management (cross-server operations via saved profiles)
+    {
+        name: 'server_list_saved',
+        description: 'List all saved server profiles (names, protocols, hosts, usernames). Passwords are never exposed. Use this to discover which servers are available before using server_exec.',
+        parameters: [],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'server_exec',
+        description: 'Execute a file operation on any saved server. Creates a temporary connection using credentials from the vault, executes the operation, then disconnects. Passwords are resolved internally and never exposed. Operations: ls (list files), cat (read file content), get (download), put (upload), mkdir (create directory), rm (delete), mv (rename/move), stat (metadata), find (search by pattern), df (disk usage).',
+        parameters: [
+            { name: 'server', type: 'string', description: 'Server name or ID from server_list_saved', required: true },
+            { name: 'operation', type: 'string', description: 'Operation: ls, cat, get, put, mkdir, rm, mv, stat, find, df', required: true },
+            { name: 'path', type: 'string', description: 'Remote path for the operation', required: false },
+            { name: 'local_path', type: 'string', description: 'Local file path (required for get/put)', required: false },
+            { name: 'destination', type: 'string', description: 'Destination path (required for mv)', required: false },
+            { name: 'pattern', type: 'string', description: 'Search pattern (required for find)', required: false },
+            { name: 'recursive', type: 'boolean', description: 'Recursive delete (default: false)', required: false },
+        ],
+        dangerLevel: 'high',
+    },
 ];
 
 // Get tool by name (searches built-in AGENT_TOOLS only)

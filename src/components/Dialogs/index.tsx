@@ -515,8 +515,13 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                     <div className="flex-1 min-w-0">
                                         <div className="text-xs text-gray-500 dark:text-gray-400">{t('properties.size')}</div>
                                         {folderSize ? (
-                                            <div className="text-sm text-gray-900 dark:text-gray-100">
-                                                {formatBytes(folderSize.total_bytes)} ({folderSize.file_count.toLocaleString()} {t('properties.files')}, {folderSize.dir_count.toLocaleString()} {t('properties.folders')})
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-sm text-gray-900 dark:text-gray-100">
+                                                    {formatBytes(folderSize.total_bytes)} ({folderSize.file_count.toLocaleString()} {t('properties.files')}, {folderSize.dir_count.toLocaleString()} {t('properties.folders')})
+                                                </div>
+                                                {folderSizeCalculating && (
+                                                    <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
+                                                )}
                                             </div>
                                         ) : onCalculateFolderSize ? (
                                             <button
@@ -531,7 +536,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                                 )}
                                             </button>
                                         ) : (
-                                            <span className="text-sm text-gray-500">—</span>
+                                            <span className="text-sm text-gray-500">{'\u2014'}</span>
                                         )}
                                     </div>
                                 </div>

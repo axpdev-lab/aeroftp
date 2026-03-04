@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.0] - 2026-03-04
+
+### Koofr Native API, Production CLI & AeroAgent Server Exec
+
+Koofr joins as the 20th protocol with a native REST API provider. The CLI binary graduates from stub to production-grade with 13 commands across all 20 protocols, tested live against 5 real servers. AeroAgent gains the ability to connect to any saved server — passwords resolved securely from the vault, never exposed to the AI model. License infrastructure laid for future Pro features.
+
+#### Added
+
+- **Koofr native REST API** (20th protocol): Full `StorageProvider` implementation with OAuth2 PKCE authentication, EU-based privacy (10 GB free). File operations, trash management (list/restore/empty), storage quota display. Dedicated `koofr.rs` provider with 3 Tauri commands
+- **Production CLI** (`aeroftp-cli`): 13 commands (connect, ls, get, put, mkdir, rm, mv, cat, find, stat, df, tree, sync) across all 20 protocols. URL-based connections (`sftp://user@host/path`), progress bars with indicatif, `--json` output for automation, glob pattern matching, recursive operations. 13 unit tests, all passing
+- **AeroAgent `server_list_saved` tool**: Lists all saved server profiles (names, protocols, hosts) without exposing passwords. Danger level: safe
+- **AeroAgent `server_exec` tool**: Executes operations (ls/cat/get/put/mkdir/rm/mv/stat/find/df) on any saved server. Creates temporary connection using vault-stored credentials — password never transits to the AI model. Fuzzy server name matching with ambiguity detection. Danger level: high (requires ToolApproval)
+- **Ed25519 license verification**: Offline-first token verification in Rust with `ed25519-dalek`. Tokens are self-contained signed payloads — no network required for validation
+- **License UI (dev-only)**: License tab in Settings, NagBanner for free users, activation dialog — all gated behind `import.meta.env.DEV`
+- **Supabase Edge Functions**: `verify-purchase` (Google Play purchase verification + token signing) and `activate-device` (multi-device management with max 5 devices)
+- **PostgreSQL schema**: `licenses` and `device_activations` tables with RLS policies and `enforce_max_devices` trigger for atomic device limit enforcement
+- **Human-readable license keys**: `AERO-XXXX-XXXX-XXXX-XXXX` format derived from SHA-256 + BASE32, consistent between Rust and TypeScript
+- **Grace period mechanism**: 30-day grace window on key rotation, based on stored `last_verified` timestamp (not unsigned payload)
+- **License i18n**: 34 license keys translated in all 47 languages
+- **`useLicense` hook**: React Context provider with `isPro`, `tier`, `activate`, `deactivate`, `refresh`, human-readable key display
+- **Device fingerprint**: SHA-256 of `hostname:username:OS:arch` for non-invasive device identification
+- **AeroAgent tool count**: 45 → 47 (+ server_list_saved, server_exec)
+- **2 new i18n keys**: `server_list_saved` and `server_exec` tool labels in all 47 languages
+
+#### Fixed
+
+- **Dark theme modal alignment**: AeroVault and Settings modals now use consistent `dark:bg-gray-900` matching all other dark theme modals
+- **WebDAV CLI URL handling**: URL path correctly included in effective host for WebDAV connections; initial_path set to `/` to prevent double-path
+- **CLI rpassword v5 compatibility**: Manual prompt with `eprint!` + `read_password()` replacing unavailable `prompt_password()`
+- **SEC-CRITICAL: Grace period forgery**: Grace period no longer parses unsigned token payloads. Uses vault-stored `license_last_verified` timestamp, preventing fake token injection
+- **SEC-CRITICAL: tokenToHumanReadable mismatch**: TypeScript Edge Function now uses SHA-256 + BASE32 (matching Rust) instead of DJB2 hash. Keys are identical on all platforms
+- **SEC-HIGH: CORS wildcard on Edge Functions**: Replaced `Access-Control-Allow-Origin: *` with origin whitelist (Capacitor iOS/Android, localhost dev)
+- **SEC-HIGH: Rate limiting IP spoofing**: Edge Functions now use `x-real-ip` / `cf-connecting-ip` headers (not spoofable `x-forwarded-for`)
+- **SEC-HIGH: TOCTOU device activation**: Atomic upsert + PostgreSQL trigger replaces separate count-then-insert pattern
+- **SEC-HIGH: Missing rate limiting**: `activate-device` now has per-IP rate limiting (10 req/min)
+- **SEC-HIGH: DB insert errors ignored**: `verify-purchase` now checks and returns database insert errors
+- **SEC-MEDIUM: Dead code removed**: `ProBadge.tsx` and `LicenseActivationDialog.tsx` deleted (never imported)
+- **SEC-MEDIUM: Fingerprint exposure**: LicenseTab truncates device fingerprint display (16...8 chars)
+- **SEC-MEDIUM: Timer memory leak**: NagBanner timer cleanup on unmount and state change
+- **SEC-MEDIUM: LicenseContext exposure**: Internal context no longer exported — only `useLicense` and `LicenseProvider` are public API
+- **SEC-MEDIUM: Device list disclosure**: `activate-device` error responses no longer expose device names and timestamps
+- **Token validation hardened**: Added `tier` validation (must be "pro") and `iat` future-date check (5-min clock skew tolerance)
+
+#### Security
+
+- **3-auditor security review**: Backend (23 findings), Frontend (26 findings), Architecture (22 findings) — all CRITICAL and HIGH resolved
+- **Security grade**: C+/D elevated to B+ after remediation
+- **AeroAgent server_exec security**: Passwords resolved from vault in Rust — never exposed to AI model. OAuth providers excluded with clear error message. Path validation on local_path (get/put). Vault-must-be-unlocked guard
+
+---
+
 ## [2.7.5] - 2026-03-02
 
 ### AeroCloud Multi-Protocol Fix & CLI JSON Output

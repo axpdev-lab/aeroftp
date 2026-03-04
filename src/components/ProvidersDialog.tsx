@@ -103,6 +103,12 @@ const OAUTH_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
     advanced: ['filePassword'],
   },
+  {
+    name: 'Koofr',
+    logoId: 'koofr',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [],
+  },
 ];
 
 const S3_PROVIDERS: ProviderFeatures[] = [
@@ -124,7 +130,7 @@ const WEBDAV_PROVIDERS: ProviderFeatures[] = [
   { name: '4shared', logoId: '4shared', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'], advanced: [] },
   { name: 'CloudMe', logoId: 'cloudme', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
   { name: 'DriveHQ', logoId: 'drivehq', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
-  { name: 'Koofr', logoId: 'koofr', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
+  { name: 'Koofr (WebDAV)', logoId: 'koofr', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
   { name: 'Jianguoyun', logoId: 'jianguoyun', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
   { name: 'InfiniCloud', logoId: 'infinicloud', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
   { name: 'Seafile', logoId: 'seafile', base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'], advanced: [] },
@@ -140,7 +146,7 @@ function FeatureTable({ providers, t }: { providers: ProviderFeatures[]; t: (k: 
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-gray-200 dark:border-gray-700">
-            <th className="text-left py-2 px-2 font-medium text-gray-500 dark:text-gray-400 sticky left-0 bg-white dark:bg-gray-900 min-w-[160px]">
+            <th className="text-left py-2 px-2 font-medium text-gray-500 dark:text-gray-400 sticky left-0 bg-white dark:bg-gray-800 min-w-[160px]">
               {t('providers.provider')}
             </th>
             {BASE_FEATURES.map(f => (
@@ -160,7 +166,7 @@ function FeatureTable({ providers, t }: { providers: ProviderFeatures[]; t: (k: 
             const Logo = PROVIDER_LOGOS[provider.logoId];
             return (
               <tr key={provider.logoId} className="border-b border-gray-200 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                <td className="py-2 px-2 sticky left-0 bg-white dark:bg-gray-900">
+                <td className="py-2 px-2 sticky left-0 bg-white dark:bg-gray-800">
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
                       {Logo ? <Logo size={18} /> : <div className="w-4 h-4 rounded bg-gray-400" />}
@@ -236,7 +242,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       <div
-        className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[1140px] overflow-hidden flex flex-col animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[1140px] overflow-hidden flex flex-col animate-scale-in"
         style={{ maxHeight: '85vh' }}
         role="dialog"
         aria-modal="true"

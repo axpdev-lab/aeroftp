@@ -97,17 +97,17 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl mx-4 rounded-xl shadow-2xl bg-[var(--color-bg-primary)] border border-[var(--color-border)] animate-scale-in">
+      <div className="relative w-full max-w-xl mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-red-500" />
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
               {t('filelu.trashTitle')}
             </h2>
             {!loading && (
-              <span className="text-xs text-[var(--color-text-muted)] ml-1">
+              <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
                 ({items.length})
               </span>
             )}
@@ -116,12 +116,12 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
             <button
               onClick={loadTrash}
               disabled={loading}
-              className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+              className="p-1.5 rounded text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:bg-gray-800 transition-colors"
               title={t('common.refresh')}
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] transition-colors">
+            <button onClick={onClose} className="p-1.5 rounded text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:bg-gray-800 transition-colors">
               <X size={14} />
             </button>
           </div>
@@ -129,12 +129,12 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
         {/* Toolbar */}
         {items.length > 0 && (
-          <div className="flex items-center gap-2 px-5 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-            <button onClick={toggleAll} className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+          <div className="flex items-center gap-2 px-5 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <button onClick={toggleAll} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 transition-colors">
               {allSelected ? <CheckSquare size={14} /> : <Square size={14} />}
               {t('common.selectAll')}
             </button>
-            <span className="text-[var(--color-border)]">|</span>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
             {selected.size > 0 && (
               <>
                 <button
@@ -162,41 +162,41 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         <div className="max-h-[50vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 size={22} className="animate-spin text-[var(--color-accent)]" />
+              <Loader2 size={22} className="animate-spin text-blue-500" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center gap-2 py-10 text-sm text-red-500 px-6 text-center">
               <span>{error}</span>
-              <button onClick={loadTrash} className="mt-2 text-xs underline text-[var(--color-text-muted)]">{t('common.retry')}</button>
+              <button onClick={loadTrash} className="mt-2 text-xs underline text-gray-500 dark:text-gray-400">{t('common.retry')}</button>
             </div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-[var(--color-text-muted)]">
+            <div className="flex flex-col items-center gap-2 py-12 text-gray-500 dark:text-gray-400">
               <Trash2 size={32} className="opacity-30" />
               <span className="text-sm">{t('filelu.trashEmpty')}</span>
             </div>
           ) : (
-            <ul className="divide-y divide-[var(--color-border)]">
+            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
               {items.map(item => {
                 const code = item.file_code ?? '';
                 const isSelected = selected.has(code);
                 return (
                   <li
                     key={code}
-                    className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors ${isSelected ? 'bg-[var(--color-bg-secondary)]' : ''}`}
+                    className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:bg-gray-800 transition-colors ${isSelected ? 'bg-gray-50 dark:bg-gray-800' : ''}`}
                     onClick={() => toggleSelect(code)}
                   >
-                    <div className="flex-shrink-0 text-[var(--color-text-muted)]">
-                      {isSelected ? <CheckSquare size={15} className="text-[var(--color-accent)]" /> : <Square size={15} />}
+                    <div className="flex-shrink-0 text-gray-500 dark:text-gray-400">
+                      {isSelected ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} />}
                     </div>
-                    <File size={15} className="flex-shrink-0 text-[var(--color-text-muted)]" />
+                    <File size={15} className="flex-shrink-0 text-gray-500 dark:text-gray-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[var(--color-text-primary)] truncate">{item.name ?? code}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{item.name ?? code}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Clock size={11} className="text-[var(--color-text-muted)]" />
-                        <span className="text-xs text-[var(--color-text-muted)]">
+                        <Clock size={11} className="text-gray-500 dark:text-gray-400" />
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           {item.deleted ?? formatDeletedAgo(item.deleted_ago_sec)}
                         </span>
-                        <span className="text-xs text-[var(--color-text-muted)] opacity-60 font-mono">{code}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 opacity-60 font-mono">{code}</span>
                       </div>
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
@@ -223,7 +223,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
           {t('filelu.trashFooter')}
         </div>
       </div>

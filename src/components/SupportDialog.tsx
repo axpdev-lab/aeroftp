@@ -153,7 +153,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
             />
 
             {/* Dialog - Theme aware */}
-            <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
                     <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                                                     {crypto.name}
                                                 </span>
                                             </div>
-                                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2 mb-2">
+                                            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 mb-2">
                                                 <code className="text-xs text-green-600 dark:text-green-400 font-mono break-all select-all block">
                                                     {crypto.address}
                                                 </code>

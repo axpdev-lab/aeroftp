@@ -13,7 +13,7 @@
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, kDrive, and FileLu. 19 protocols, 30+ presets, one app.
+      Internxt Drive, kDrive, Koofr, and FileLu. 20 protocols, 30+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -25,7 +25,7 @@
     </ul>
     <p>AI Assistant:</p>
     <ul>
-      <li>AeroAgent Pro: AI-powered assistant with 45 tools, shell command execution, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
+      <li>AeroAgent Pro: AI-powered assistant with 47 tools, shell command execution, server exec, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
       <li>19 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.8.0" date="2026-03-04">
+      <description>
+        <p>Koofr Native API, Production CLI and AeroAgent Server Exec: Koofr joins as the 20th protocol with native REST API and OAuth2 PKCE (10 GB free, EU-based). Production CLI binary (aeroftp-cli) with 13 commands across all 20 protocols, URL-based connections, progress bars, and --json output. AeroAgent gains server_list_saved and server_exec tools to operate on any saved server — credentials resolved securely from vault, never exposed to AI. Ed25519 license infrastructure (dev-only). 3-auditor security review with all findings resolved. Dark theme modal alignment fix. 36 new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.7.5" date="2026-03-02">
       <description>
         <p>AeroCloud Multi-Protocol Fix and CLI JSON Output: Critical fixes for AeroCloud background sync with SFTP and WebDAV protocols. Server field parsing now correctly separates hostname from embedded port, fixing DNS resolution failures and malformed WebDAV URLs. WebDAV navigation enforces root boundary. CLI gains --json flag for machine-readable output on all 5 commands.</p>

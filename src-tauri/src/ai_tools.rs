@@ -41,6 +41,8 @@ const ALLOWED_TOOLS: &[&str] = &[
     "set_theme", "app_info", "sync_control", "vault_peek",
     // Shell execution
     "shell_execute",
+    // Server management (cross-server operations via saved profiles)
+    "server_list_saved", "server_exec",
 ];
 
 /// Validate a path argument — reject null bytes, traversal, excessive length
@@ -626,6 +628,220 @@ pub async fn shell_execute(
         "timed_out": false,
         "command": command
     }))
+}
+
+fn format_bytes_human(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    for unit in UNITS {
+        if size < 1024.0 {
+            return format!("{:.1} {}", size, unit);
+        }
+        size /= 1024.0;
+    }
+    format!("{:.1} PB", size)
+}
+
+// ── Server Exec helpers ──────────────────────────────────────────────
+
+/// Saved server info (credentials excluded — never exposed to AI)
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct SavedServerInfo {
+    id: String,
+    name: String,
+    host: String,
+    port: u16,
+    username: String,
+    protocol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    initial_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_id: Option<String>,
+}
+
+/// Load saved server profiles from vault. Returns list WITHOUT credentials.
+fn load_saved_servers() -> Result<Vec<SavedServerInfo>, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
+
+    let json = store.get("config_server_profiles")
+        .map_err(|_| "No saved servers found in vault.".to_string())?;
+
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+
+    let servers: Vec<SavedServerInfo> = profiles.iter().filter_map(|p| {
+        Some(SavedServerInfo {
+            id: p.get("id")?.as_str()?.to_string(),
+            name: p.get("name")?.as_str()?.to_string(),
+            host: p.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
+            username: p.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            protocol: p.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp").to_string(),
+            initial_path: p.get("initialPath").and_then(|v| v.as_str()).map(String::from),
+            provider_id: p.get("providerId").and_then(|v| v.as_str()).map(String::from),
+        })
+    }).collect();
+
+    Ok(servers)
+}
+
+/// Find a saved server by name (case-insensitive, fuzzy) or exact ID.
+fn find_server_by_name_or_id(servers: &[SavedServerInfo], query: &str) -> Result<SavedServerInfo, String> {
+    // 1. Exact ID match
+    if let Some(s) = servers.iter().find(|s| s.id == query) {
+        return Ok(s.clone());
+    }
+
+    // 2. Exact name match (case-insensitive)
+    let query_lower = query.to_lowercase();
+    if let Some(s) = servers.iter().find(|s| s.name.to_lowercase() == query_lower) {
+        return Ok(s.clone());
+    }
+
+    // 3. Fuzzy name match (contains, case-insensitive)
+    let matches: Vec<&SavedServerInfo> = servers.iter()
+        .filter(|s| s.name.to_lowercase().contains(&query_lower))
+        .collect();
+
+    match matches.len() {
+        0 => Err(format!(
+            "Server '{}' not found. Available: {}",
+            query,
+            servers.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ")
+        )),
+        1 => Ok(matches[0].clone()),
+        _ => Err(format!(
+            "Ambiguous server name '{}'. Matches: {}. Use exact name or ID.",
+            query,
+            matches.iter().map(|s| format!("'{}'", s.name)).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
+/// Load provider-specific extra options from the full server profile in vault.
+fn load_provider_extra_options(server_id: &str) -> Result<std::collections::HashMap<String, String>, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not open".to_string())?;
+
+    let json = store.get("config_server_profiles").unwrap_or_default();
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
+
+    let mut extra = std::collections::HashMap::new();
+
+    if let Some(profile) = profiles.iter().find(|p| p.get("id").and_then(|v| v.as_str()) == Some(server_id)) {
+        if let Some(options) = profile.get("options").and_then(|v| v.as_object()) {
+            for (k, v) in options {
+                let key = match k.as_str() {
+                    "tlsMode" => "tls_mode",
+                    "verifyCert" => "verify_cert",
+                    "pathStyle" => "path_style",
+                    "private_key_path" => "private_key_path",
+                    "key_passphrase" => "key_passphrase",
+                    "accountName" => "account_name",
+                    "accessKey" => "access_key",
+                    "sasToken" => "sas_token",
+                    "pcloudRegion" | "region" => "region",
+                    "two_factor_code" => "two_factor_code",
+                    "drive_id" => "drive_id",
+                    "trust_unknown_hosts" => "trust_unknown_hosts",
+                    other => other,
+                };
+                if let Some(s) = v.as_str() {
+                    extra.insert(key.to_string(), s.to_string());
+                } else if let Some(b) = v.as_bool() {
+                    extra.insert(key.to_string(), b.to_string());
+                } else if let Some(n) = v.as_u64() {
+                    extra.insert(key.to_string(), n.to_string());
+                }
+            }
+        }
+    }
+
+    Ok(extra)
+}
+
+/// Create a temporary StorageProvider from a saved server profile.
+/// Credentials resolved internally from vault — never exposed to caller.
+async fn create_temp_provider(
+    server: &SavedServerInfo,
+) -> Result<Box<dyn crate::providers::StorageProvider>, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Credential vault not open".to_string())?;
+
+    let creds_json = store
+        .get(&format!("server_{}", server.id))
+        .map_err(|_| format!("No credentials stored for server '{}'. Re-save the server with password.", server.name))?;
+
+    #[derive(serde::Deserialize)]
+    struct SavedCreds {
+        #[serde(default)]
+        server: String,
+        #[serde(default)]
+        username: String,
+        #[serde(default)]
+        password: String,
+    }
+
+    let creds: SavedCreds = serde_json::from_str(&creds_json)
+        .map_err(|e| format!("Failed to parse credentials for '{}': {}", server.name, e))?;
+
+    use crate::providers::ProviderType;
+    let provider_type = match server.protocol.as_str() {
+        "ftp" => ProviderType::Ftp,
+        "ftps" => ProviderType::Ftps,
+        "sftp" => ProviderType::Sftp,
+        "webdav" => ProviderType::WebDav,
+        "s3" => ProviderType::S3,
+        "mega" => ProviderType::Mega,
+        "azure" => ProviderType::Azure,
+        "filen" => ProviderType::Filen,
+        "internxt" => ProviderType::Internxt,
+        "kdrive" => ProviderType::KDrive,
+        "jottacloud" => ProviderType::Jottacloud,
+        "filelu" => ProviderType::FileLu,
+        "koofr" => ProviderType::Koofr,
+        "googledrive" | "dropbox" | "onedrive" | "box" | "pcloud"
+        | "zohoworkdrive" | "fourshared" => {
+            return Err(format!(
+                "OAuth provider '{}' requires browser authentication. Use the connected session's remote_* tools instead.",
+                server.protocol
+            ));
+        }
+        other => return Err(format!("Unsupported protocol: {}", other)),
+    };
+
+    let (parsed_host, embedded_port) =
+        crate::cloud_provider_factory::parse_server_field(&creds.server);
+
+    let mut extra = load_provider_extra_options(&server.id)?;
+
+    // SFTP: auto-trust host keys for AI-initiated connections
+    if provider_type == ProviderType::Sftp {
+        extra.entry("trust_unknown_hosts".to_string()).or_insert_with(|| "true".to_string());
+    }
+
+    let host = if parsed_host.is_empty() { server.host.clone() } else { parsed_host };
+    let port = embedded_port.or(if server.port > 0 { Some(server.port) } else { None });
+
+    let provider_config = crate::providers::ProviderConfig {
+        name: server.name.clone(),
+        provider_type,
+        host,
+        port,
+        username: Some(creds.username),
+        password: Some(creds.password),
+        initial_path: server.initial_path.clone(),
+        extra,
+    };
+
+    let mut provider = crate::providers::ProviderFactory::create(&provider_config)
+        .map_err(|e| format!("Failed to create provider: {}", e))?;
+
+    provider.connect().await
+        .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
+
+    Ok(provider)
 }
 
 #[tauri::command]
@@ -2820,6 +3036,202 @@ pub async fn execute_ai_tool(
                 .unwrap_or(30)
                 .min(120);
             let result = shell_execute(command, working_dir, Some(timeout_secs)).await?;
+            Ok(result)
+        }
+
+        // ── Server management tools ────────────────────────────────────
+
+        "server_list_saved" => {
+            let servers = load_saved_servers()?;
+            let items: Vec<Value> = servers.iter().map(|s| json!({
+                "id": s.id,
+                "name": s.name,
+                "protocol": s.protocol,
+                "host": s.host,
+                "port": s.port,
+                "username": s.username,
+            })).collect();
+
+            Ok(json!({
+                "servers": items,
+                "count": items.len(),
+            }))
+        }
+
+        "server_exec" => {
+            let server_query = get_str(&args, "server")?;
+            let operation = get_str(&args, "operation")?;
+
+            let valid_ops = ["ls", "cat", "get", "put", "mkdir", "rm", "mv", "stat", "find", "df"];
+            if !valid_ops.contains(&operation.as_str()) {
+                return Err(format!(
+                    "Invalid operation '{}'. Supported: {}",
+                    operation, valid_ops.join(", ")
+                ));
+            }
+
+            let servers = load_saved_servers()?;
+            let server = find_server_by_name_or_id(&servers, &server_query)?;
+
+            let mut provider = create_temp_provider(&server).await?;
+
+            let result = match operation.as_str() {
+                "ls" => {
+                    let path = get_str_opt(&args, "path").unwrap_or_else(|| "/".to_string());
+                    let entries = provider.list(&path).await.map_err(|e| e.to_string())?;
+                    let items: Vec<Value> = entries.iter().take(200).map(|e| json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                        "modified": e.modified,
+                        "permissions": e.permissions,
+                    })).collect();
+                    json!({
+                        "operation": "ls",
+                        "server": server.name,
+                        "path": path,
+                        "entries": items,
+                        "total": entries.len(),
+                        "truncated": entries.len() > 200,
+                    })
+                }
+                "stat" => {
+                    let path = get_str(&args, "path")?;
+                    let entry = provider.stat(&path).await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "stat",
+                        "server": server.name,
+                        "name": entry.name,
+                        "path": entry.path,
+                        "is_dir": entry.is_dir,
+                        "size": entry.size,
+                        "modified": entry.modified,
+                        "permissions": entry.permissions,
+                    })
+                }
+                "cat" => {
+                    let path = get_str(&args, "path")?;
+                    let tmp_dir = std::env::temp_dir();
+                    let tmp_file = tmp_dir.join(format!("aeroftp_cat_{}", uuid::Uuid::new_v4()));
+                    let tmp_path = tmp_file.to_string_lossy().to_string();
+
+                    provider.download(&path, &tmp_path, None).await
+                        .map_err(|e| e.to_string())?;
+
+                    let bytes = std::fs::read(&tmp_file).map_err(|e| e.to_string())?;
+                    let _ = std::fs::remove_file(&tmp_file);
+
+                    let max_display = 5120;
+                    let truncated = bytes.len() > max_display;
+                    let content = String::from_utf8_lossy(&bytes[..bytes.len().min(max_display)]).to_string();
+                    json!({
+                        "operation": "cat",
+                        "server": server.name,
+                        "path": path,
+                        "content": content,
+                        "size": bytes.len(),
+                        "truncated": truncated,
+                    })
+                }
+                "get" => {
+                    let path = get_str(&args, "path")?;
+                    let local_path = get_str(&args, "local_path")?;
+                    validate_path(&local_path, "local_path")?;
+                    provider.download(&path, &local_path, None).await
+                        .map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "get",
+                        "server": server.name,
+                        "success": true,
+                        "message": format!("Downloaded {} → {}", path, local_path),
+                    })
+                }
+                "put" => {
+                    let local_path = get_str(&args, "local_path")?;
+                    let path = get_str(&args, "path")?;
+                    validate_path(&local_path, "local_path")?;
+                    provider.upload(&local_path, &path, None).await
+                        .map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "put",
+                        "server": server.name,
+                        "success": true,
+                        "message": format!("Uploaded {} → {}", local_path, path),
+                    })
+                }
+                "mkdir" => {
+                    let path = get_str(&args, "path")?;
+                    provider.mkdir(&path).await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "mkdir",
+                        "server": server.name,
+                        "success": true,
+                        "message": format!("Created directory {}", path),
+                    })
+                }
+                "rm" => {
+                    let path = get_str(&args, "path")?;
+                    let recursive = args.get("recursive").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if recursive {
+                        provider.rmdir_recursive(&path).await.map_err(|e| e.to_string())?;
+                    } else if provider.delete(&path).await.is_err() {
+                        provider.rmdir(&path).await.map_err(|e| e.to_string())?;
+                    }
+                    json!({
+                        "operation": "rm",
+                        "server": server.name,
+                        "success": true,
+                        "message": format!("Deleted {}{}", path, if recursive { " (recursive)" } else { "" }),
+                    })
+                }
+                "mv" => {
+                    let path = get_str(&args, "path")?;
+                    let destination = get_str(&args, "destination")?;
+                    provider.rename(&path, &destination).await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "mv",
+                        "server": server.name,
+                        "success": true,
+                        "message": format!("Moved {} → {}", path, destination),
+                    })
+                }
+                "find" => {
+                    let path = get_str_opt(&args, "path").unwrap_or_else(|| "/".to_string());
+                    let pattern = get_str(&args, "pattern")?;
+                    let results = provider.find(&path, &pattern).await.map_err(|e| e.to_string())?;
+                    let items: Vec<Value> = results.iter().take(100).map(|e| json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                    })).collect();
+                    json!({
+                        "operation": "find",
+                        "server": server.name,
+                        "path": path,
+                        "pattern": pattern,
+                        "results": items,
+                        "total": results.len(),
+                        "truncated": results.len() > 100,
+                    })
+                }
+                "df" => {
+                    let info = provider.storage_info().await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "df",
+                        "server": server.name,
+                        "used_bytes": info.used,
+                        "total_bytes": info.total,
+                        "free_bytes": info.free,
+                        "used_human": format_bytes_human(info.used),
+                        "total_human": format_bytes_human(info.total),
+                    })
+                }
+                _ => unreachable!(),
+            };
+
+            let _ = provider.disconnect().await;
             Ok(result)
         }
 

@@ -138,6 +138,12 @@ pub struct SyncResult {
     pub errors: Vec<String>,
 }
 
+impl Default for SyncResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(dead_code)]
 impl SyncResult {
     pub fn new() -> Self {

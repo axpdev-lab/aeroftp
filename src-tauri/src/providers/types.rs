@@ -53,6 +53,8 @@ pub enum ProviderType {
     DrimeCloud,
     /// FileLu Cloud Storage (API key authentication)
     FileLu,
+    /// Koofr Cloud Storage (European, 10 GB free)
+    Koofr,
 }
 
 impl fmt::Display for ProviderType {
@@ -79,6 +81,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Jottacloud => write!(f, "Jottacloud"),
             ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
             ProviderType::FileLu => write!(f, "FileLu"),
+            ProviderType::Koofr => write!(f, "Koofr"),
         }
     }
 }
@@ -108,6 +111,7 @@ impl ProviderType {
             ProviderType::Jottacloud => 443,
             ProviderType::DrimeCloud => 443,
             ProviderType::FileLu => 443,
+            ProviderType::Koofr => 443,
         }
     }
     
@@ -134,7 +138,8 @@ impl ProviderType {
             ProviderType::KDrive |
             ProviderType::Jottacloud |
             ProviderType::DrimeCloud |
-            ProviderType::FileLu
+            ProviderType::FileLu |
+            ProviderType::Koofr
         )
     }
 
@@ -375,6 +380,8 @@ pub struct SftpConfig {
     pub initial_path: Option<String>,
     /// Connection timeout in seconds
     pub timeout_secs: u64,
+    /// CLI mode: auto-accept unknown host keys and save to known_hosts
+    pub trust_unknown_hosts: bool,
 }
 
 impl SftpConfig {
@@ -390,6 +397,10 @@ impl SftpConfig {
             .and_then(|v| v.parse().ok())
             .unwrap_or(30);
 
+        let trust_unknown_hosts = config.extra.get("trust_unknown_hosts")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
         Ok(Self {
             host: config.host.clone(),
             port: config.effective_port(),
@@ -399,6 +410,7 @@ impl SftpConfig {
             key_passphrase,
             initial_path: config.initial_path.clone(),
             timeout_secs,
+            trust_unknown_hosts,
         })
     }
 }
