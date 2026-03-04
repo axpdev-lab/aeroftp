@@ -374,12 +374,13 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
             None
         };
 
-        // Only notify when the asset for the installed format is actually available.
-        // GitHub releases are published before CI finishes building all artifacts,
-        // so the .deb/.rpm/etc. may not exist yet.
-        if download_url.is_none() && !extension.is_empty() {
+        // Only notify when the downloadable asset is actually available.
+        // GitHub releases are created by the first CI job to finish (often macOS),
+        // but .deb/.rpm/.exe artifacts may not exist yet until their platform job completes.
+        // Never show the toast without a valid download URL.
+        if download_url.is_none() {
             info!("Update v{} exists but {} asset not yet available, skipping notification",
-                  latest_tag, extension);
+                  latest_tag, if extension.is_empty() { &install_format } else { extension });
             return Ok(UpdateInfo {
                 has_update: false,
                 latest_version: Some(latest_tag.to_string()),
@@ -584,6 +585,13 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
         return Err("Downloaded file not found".to_string());
     }
 
+    // Capture exe path BEFORE dpkg replaces it — after dpkg, /proc/self/exe
+    // returns the path with " (deleted)" suffix because the old binary was unlinked.
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Cannot find current exe: {}", e))?
+        .display().to_string()
+        .trim_end_matches(" (deleted)").to_string();
+
     let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
     let status = if helper.exists() {
         info!("Installing .deb update via branded Polkit helper: {}", downloaded_path);
@@ -603,17 +611,13 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
             status.code(), downloaded_path));
     }
 
-    info!(".deb installed successfully, restarting...");
+    info!(".deb installed successfully, restarting from: {}", exe_path);
     let _ = std::fs::remove_file(downloaded);
 
     // Restart via setsid-detached process — survives parent exit
     #[cfg(unix)]
-    {
-        let current_exe = std::env::current_exe()
-            .map_err(|e| format!("Cannot find current exe: {}", e))?;
-        let exe_path = current_exe.display().to_string();
-        spawn_detached_relaunch(&exe_path);
-    }
+    spawn_detached_relaunch(&exe_path);
+
     app.exit(0);
 
     Ok(())
@@ -627,6 +631,12 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
     if !downloaded.exists() {
         return Err("Downloaded file not found".to_string());
     }
+
+    // Capture exe path BEFORE rpm replaces it (same /proc/self/exe issue as .deb)
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Cannot find current exe: {}", e))?
+        .display().to_string()
+        .trim_end_matches(" (deleted)").to_string();
 
     let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
     let status = if helper.exists() {
@@ -647,17 +657,13 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
             status.code(), downloaded_path));
     }
 
-    info!(".rpm installed successfully, restarting...");
+    info!(".rpm installed successfully, restarting from: {}", exe_path);
     let _ = std::fs::remove_file(downloaded);
 
     // Restart via setsid-detached process — survives parent exit
     #[cfg(unix)]
-    {
-        let current_exe = std::env::current_exe()
-            .map_err(|e| format!("Cannot find current exe: {}", e))?;
-        let exe_path = current_exe.display().to_string();
-        spawn_detached_relaunch(&exe_path);
-    }
+    spawn_detached_relaunch(&exe_path);
+
     app.exit(0);
 
     Ok(())
@@ -4684,9 +4690,19 @@ async fn get_remote_files_recursive_with_progress(
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
-    let mut dirs_to_process = vec![base_path.to_string()];
+    // (absolute_path, depth) — depth limit prevents infinite loops on servers
+    // that list the current directory itself as a child entry.
+    let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(base_path.to_string());
+    const MAX_DEPTH: u32 = 64;
 
-    while let Some(current_dir) = dirs_to_process.pop() {
+    while let Some((current_dir, depth)) = dirs_to_process.pop() {
+        if depth > MAX_DEPTH {
+            info!("Remote scan depth limit reached at {}", current_dir);
+            continue;
+        }
+
         // Check cancellation flag — release FTP lock immediately on cancel
         if let Some(flag) = cancel_flag {
             if flag.load(std::sync::atomic::Ordering::Relaxed) {
@@ -4744,7 +4760,12 @@ async fn get_remote_files_recursive_with_progress(
             files.insert(relative_path, file_info);
 
             if entry.is_dir {
-                dirs_to_process.push(format!("{}/{}", current_dir, entry.name));
+                let child_path = format!("{}/{}", current_dir, entry.name);
+                if visited.insert(child_path.clone()) {
+                    dirs_to_process.push((child_path, depth + 1));
+                } else {
+                    info!("Skipping already-visited directory: {}", child_path);
+                }
             }
         }
 

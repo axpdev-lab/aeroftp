@@ -6,7 +6,7 @@
  * Uses invoke('check_update') backend command and sends OS notifications.
  *
  * When a newer version exists but the asset for the installed format (e.g. .deb)
- * is not yet available (CI still building), retries every hour instead of 24h.
+ * is not yet available (CI still building), retries every 30 minutes instead of 24h.
  *
  * Props: activityLog (for logging update check results)
  * Returns: updateAvailable (UpdateInfo | null), setUpdateAvailable, checkForUpdate
@@ -31,8 +31,8 @@ interface UseAutoUpdateProps {
   };
 }
 
-const ONE_HOUR = 60 * 60 * 1000;
-const TWENTY_FOUR_HOURS = 24 * ONE_HOUR;
+const THIRTY_MINUTES = 30 * 60 * 1000;
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
@@ -62,15 +62,15 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
           pendingRetryRef.current = null;
         }
       } else {
-        // Newer version exists but asset not yet available — retry in 1 hour
+        // Newer version exists but asset not yet available — retry in 30 minutes
         const assetPending = info.latest_version && info.latest_version !== info.current_version;
         if (assetPending) {
-          activityLogRef.current.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 1h`, 'pending');
+          activityLogRef.current.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 30min`, 'pending');
           if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
           pendingRetryRef.current = setTimeout(() => {
             pendingRetryRef.current = null;
             checkForUpdate(false);
-          }, ONE_HOUR);
+          }, THIRTY_MINUTES);
         } else if (manual) {
           sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
           activityLogRef.current.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');

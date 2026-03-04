@@ -531,10 +531,21 @@ impl CloudService {
         let mut files = HashMap::new();
         let base_path = &config.remote_folder;
 
-        // Stack-based recursive scan
-        let mut stack = vec![(base_path.clone(), String::new())];
+        // Stack-based recursive scan with depth tracking
+        // (base_path, relative_prefix, depth)
+        let mut stack: Vec<(String, String, u32)> = vec![(base_path.clone(), String::new(), 0)];
+        // Track visited absolute paths to prevent infinite loops caused by
+        // servers that list the current directory itself as a child entry.
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(base_path.clone());
+        const MAX_DEPTH: u32 = 64;
 
-        while let Some((current_path, relative_prefix)) = stack.pop() {
+        while let Some((current_path, relative_prefix, depth)) = stack.pop() {
+            if depth > MAX_DEPTH {
+                tracing::warn!("Remote scan depth limit reached at {}", current_path);
+                continue;
+            }
+
             // Navigate to directory
             if ftp_manager.change_dir(&current_path).await.is_err() {
                 continue;
@@ -579,10 +590,12 @@ impl CloudService {
                 );
 
                 if entry.is_dir {
-                    stack.push((
-                        format!("{}/{}", current_path, entry.name),
-                        relative_path,
-                    ));
+                    let child_path = format!("{}/{}", current_path, entry.name);
+                    if visited.insert(child_path.clone()) {
+                        stack.push((child_path, relative_path, depth + 1));
+                    } else {
+                        tracing::warn!("Skipping already-visited directory: {}", child_path);
+                    }
                 }
             }
         }
@@ -731,10 +744,21 @@ impl CloudService {
         let mut files = HashMap::new();
         let base_path = &config.remote_folder;
 
-        // Stack-based recursive scan
-        let mut stack = vec![(base_path.clone(), String::new())];
+        // Stack-based recursive scan with depth tracking
+        // (base_path, relative_prefix, depth)
+        let mut stack: Vec<(String, String, u32)> = vec![(base_path.clone(), String::new(), 0)];
+        // Track visited absolute paths to prevent infinite loops caused by
+        // servers that list the current directory itself as a child entry.
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(base_path.clone());
+        const MAX_DEPTH: u32 = 64;
 
-        while let Some((current_path, relative_prefix)) = stack.pop() {
+        while let Some((current_path, relative_prefix, depth)) = stack.pop() {
+            if depth > MAX_DEPTH {
+                tracing::warn!("Remote scan depth limit reached at {}", current_path);
+                continue;
+            }
+
             // Navigate to directory
             if provider.cd(&current_path).await.is_err() {
                 continue;
@@ -779,10 +803,12 @@ impl CloudService {
                 );
 
                 if entry.is_dir {
-                    stack.push((
-                        format!("{}/{}", current_path, entry.name),
-                        relative_path,
-                    ));
+                    let child_path = format!("{}/{}", current_path, entry.name);
+                    if visited.insert(child_path.clone()) {
+                        stack.push((child_path, relative_path, depth + 1));
+                    } else {
+                        tracing::warn!("Skipping already-visited directory: {}", child_path);
+                    }
                 }
             }
         }

@@ -237,7 +237,7 @@ impl OAuthConfig {
             auth_url: "https://my.pcloud.com/oauth2/authorize".to_string(),
             token_url: token_url.to_string(),
             scopes: vec![],
-            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            redirect_uri: format!("http://localhost:{}/callback", port),
             extra_auth_params: vec![],
         }
     }

@@ -1197,10 +1197,18 @@ pub async fn oauth2_connect(
             Box::new(p)
         }
         "pcloud" => {
+            // Use saved region from token exchange if params.region is empty
+            let region = if params.region.is_empty() {
+                crate::credential_store::CredentialStore::from_cache()
+                    .and_then(|store| store.get("oauth_pcloud_region").ok())
+                    .unwrap_or_else(|| "us".to_string())
+            } else {
+                params.region.clone()
+            };
             let config = PCloudConfig {
                 client_id: params.client_id.clone(),
                 client_secret: params.client_secret.clone(),
-                region: params.region.clone(),
+                region,
             };
             let mut p = PCloudProvider::new(config);
             p.connect().await
@@ -1242,6 +1250,7 @@ pub async fn oauth2_full_auth(
         "box" => 9484,
         "dropbox" => 17548,
         "onedrive" | "microsoft" => 27154,
+        "pcloud" => 17384,
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => 18765,
         _ => 0,
     };
@@ -1313,12 +1322,119 @@ pub async fn oauth2_full_auth(
     
     info!("Callback received, completing authentication...");
     
-    // Complete the flow using the SAME manager instance (which has the PKCE verifier stored)
-    manager.complete_auth_flow(&config, &code, &expected_state).await
-        .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
-    
+    // pCloud uses non-standard token exchange (GET, no PKCE, no expiry)
+    if params.provider.to_lowercase() == "pcloud" {
+        pcloud_exchange_code(&config, &code).await
+            .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
+    } else {
+        // Standard OAuth2 flow using the SAME manager instance (which has the PKCE verifier stored)
+        manager.complete_auth_flow(&config, &code, &expected_state).await
+            .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
+    }
+
     info!("OAuth2 authentication completed successfully for {}", params.provider);
     Ok("Authentication successful! You can now connect.".to_string())
+}
+
+/// pCloud uses a non-standard OAuth2 token exchange:
+/// - GET request (not POST)
+/// - No PKCE support
+/// - Tokens never expire (no refresh_token or expires_in)
+/// - Response: {"access_token": "...", "userid": ..., "token_type": "bearer", "result": 0}
+/// - Region-aware: tries configured endpoint first, then fallback (US↔EU)
+async fn pcloud_exchange_code(
+    config: &crate::providers::OAuthConfig,
+    code: &str,
+) -> Result<(), crate::providers::ProviderError> {
+    use crate::providers::{OAuth2Manager, oauth2::StoredTokens, ProviderError};
+
+    let client_secret = config.client_secret.as_deref()
+        .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string()))?;
+
+    // pCloud accounts are region-locked (US=api.pcloud.com, EU=eapi.pcloud.com).
+    // The auth code is only valid on the account's region endpoint.
+    // Try configured endpoint first, fallback to the other region.
+    let endpoints = if config.token_url.contains("eapi.pcloud.com") {
+        vec!["https://eapi.pcloud.com/oauth2_token", "https://api.pcloud.com/oauth2_token"]
+    } else {
+        vec!["https://api.pcloud.com/oauth2_token", "https://eapi.pcloud.com/oauth2_token"]
+    };
+
+    let http = reqwest::Client::new();
+    let mut last_error = String::new();
+
+    for endpoint in &endpoints {
+        let url = format!(
+            "{}?client_id={}&client_secret={}&code={}",
+            endpoint,
+            urlencoding::encode(&config.client_id),
+            urlencoding::encode(client_secret),
+            urlencoding::encode(code),
+        );
+
+        let resp = match http.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("HTTP error on {}: {}", endpoint, e);
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            last_error = format!("HTTP {} from {}", resp.status(), endpoint);
+            continue;
+        }
+
+        let text = match resp.text().await {
+            Ok(t) => t,
+            Err(e) => {
+                last_error = format!("Read error from {}: {}", endpoint, e);
+                continue;
+            }
+        };
+
+        let body: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(e) => {
+                last_error = format!("Parse error from {}: {}", endpoint, e);
+                continue;
+            }
+        };
+
+        // Check for pCloud error response — error 2012 means wrong region, try next
+        if let Some(result) = body["result"].as_i64() {
+            if result != 0 {
+                let error_msg = body["error"].as_str().unwrap_or("Unknown error");
+                last_error = format!("pCloud error {} ({}): {}", result, endpoint, error_msg);
+                continue;
+            }
+        }
+
+        let access_token = body["access_token"].as_str()
+            .ok_or_else(|| ProviderError::AuthenticationFailed("pCloud: missing access_token".to_string()))?;
+
+        let tokens = StoredTokens {
+            access_token: access_token.to_string(),
+            refresh_token: None,  // pCloud tokens don't expire
+            expires_at: None,
+            token_type: "Bearer".to_string(),
+            scopes: vec![],
+        };
+
+        let manager = OAuth2Manager::new();
+        manager.store_tokens(config.provider, &tokens)?;
+
+        // Persist detected region so oauth2_connect uses the correct API endpoint
+        let region = if endpoint.contains("eapi") { "eu" } else { "us" };
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            let _ = store.store("oauth_pcloud_region", region);
+        }
+
+        info!("pCloud OAuth tokens obtained via {} ({}, permanent, no expiry)", endpoint, region.to_uppercase());
+        return Ok(());
+    }
+
+    Err(ProviderError::AuthenticationFailed(format!("pCloud token exchange failed on all endpoints: {}", last_error)))
 }
 
 /// Check if OAuth2 tokens exist for a provider

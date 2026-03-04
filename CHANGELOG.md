@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.1] - 2026-03-04
+
+### Auto-Update Reliability, pCloud OAuth & AeroCloud Sync Fix
+
+#### Added
+
+- **pCloud OAuth2 integration**: Full OAuth2 flow with automatic region detection (US/EU). Token exchange tries both `api.pcloud.com` and `eapi.pcloud.com` endpoints, persists detected region in credential store for subsequent API calls
+
+#### Fixed
+
+- **Update toast shown without downloadable asset**: When CI publishes a release but the platform-specific binary (e.g. `.deb`) is not yet uploaded, the toast no longer appears. `has_update` now requires a valid `download_url` in all cases
+- **Post-install restart on Linux**: `.deb` and `.rpm` install-and-restart now captures the executable path *before* `dpkg`/`rpm` runs. Previously, `/proc/self/exe` returned the path with `(deleted)` suffix after the package manager replaced the binary, causing the relaunch to fail silently
+- **AeroCloud empty folder duplication**: Remote directory scan could enter infinite loops when FTP/NAS servers list the current directory as a child entry, causing nested duplicates (e.g. `/dir/dir/dir/`). All 3 scan functions now use a visited `HashSet` and depth limit (64) to prevent recursion
+- **pCloud region-locked OAuth codes**: Authorization codes are bound to the data center region (US or EU). Token exchange now falls back to the alternate endpoint on error 2012, ensuring cross-region compatibility
+
+#### Changed
+
+- **Asset pending retry interval**: Reduced from 1 hour to 30 minutes when a new version exists but the platform binary is not yet available
+- **WinGet Releaser**: Added `publish-winget` CI job for automatic Windows Package Manager updates on tag push via `vedantmgoyal9/winget-releaser`
+- **aws-lc-sys 0.37.1 to 0.38.0**: Fixes 3 High CVEs (PKCS7 certificate chain bypass, AES-CCM timing side-channel, PKCS7 signature bypass)
+- **suppaftp pinned at 8.0.1**: v8.0.2 uses Unix-only `std::os::fd::AsFd`, breaking Windows builds
+
+---
+
 ## [2.8.0] - 2026-03-04
 
 ### Koofr Native API, Production CLI & AeroAgent Server Exec
