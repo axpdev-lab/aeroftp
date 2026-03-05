@@ -1197,14 +1197,11 @@ pub async fn oauth2_connect(
             Box::new(p)
         }
         "pcloud" => {
-            // Use saved region from token exchange if params.region is empty
-            let region = if params.region.is_empty() {
-                crate::credential_store::CredentialStore::from_cache()
-                    .and_then(|store| store.get("oauth_pcloud_region").ok())
-                    .unwrap_or_else(|| "us".to_string())
-            } else {
-                params.region.clone()
-            };
+            // pCloud tokens are region-locked — always prefer vault-stored region
+            // (detected during token exchange) over serde default "us"
+            let region = crate::credential_store::CredentialStore::from_cache()
+                .and_then(|store| store.get("oauth_pcloud_region").ok())
+                .unwrap_or(params.region.clone());
             let config = PCloudConfig {
                 client_id: params.client_id.clone(),
                 client_secret: params.client_secret.clone(),

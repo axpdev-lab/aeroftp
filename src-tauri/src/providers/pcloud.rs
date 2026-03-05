@@ -247,6 +247,8 @@ impl PCloudProvider {
             let raw_msg = resp.error.clone().unwrap_or_else(|| format!("Error code: {}", resp.result));
             let msg = sanitize_api_error(&raw_msg);
             return Err(match resp.result {
+                // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
+                1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
                 2009 | 2010 => ProviderError::NotFound(msg),
                 2003 | 2028 => ProviderError::PermissionDenied(msg),
                 2004 => ProviderError::AlreadyExists(msg),
@@ -280,11 +282,21 @@ impl StorageProvider for PCloudProvider {
             return Err(ProviderError::AuthenticationFailed("pCloud authentication failed".to_string()));
         }
 
-        // Parse email from userinfo
-        if let Ok(body) = resp.json::<serde_json::Value>().await {
-            if let Some(email) = body["email"].as_str() {
-                self.account_email = Some(email.to_string());
+        // pCloud returns HTTP 200 even for errors — must check JSON result field
+        let body: serde_json::Value = resp.json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if let Some(result) = body["result"].as_i64() {
+            if result != 0 {
+                let error_msg = body["error"].as_str().unwrap_or("Authentication failed");
+                return Err(ProviderError::AuthenticationFailed(
+                    sanitize_api_error(error_msg)
+                ));
             }
+        }
+
+        if let Some(email) = body["email"].as_str() {
+            self.account_email = Some(email.to_string());
         }
 
         self.connected = true;
@@ -464,7 +476,14 @@ impl StorageProvider for PCloudProvider {
             _ => ("/", resolved.trim_start_matches('/')),
         };
 
-        let auth = self.auth_header().await?;
+        // pCloud uploadfile requires access_token as a form field (not Authorization header)
+        let token = {
+            use secrecy::ExposeSecret;
+            let config = OAuthConfig::pcloud(&self.config.client_id, &self.config.client_secret, &self.config.region);
+            let secret = self.oauth_manager.get_valid_token(&config).await
+                .map_err(|e| ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e)))?;
+            secret.expose_secret().to_string()
+        };
 
         // PA-005: Get file size for progress tracking
         let file_metadata = tokio::fs::metadata(local_path).await
@@ -477,8 +496,11 @@ impl StorageProvider for PCloudProvider {
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
+        // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
         let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::stream(body).file_name(file_name.to_string()));
+            .text("access_token", token)
+            .part("file", reqwest::multipart::Part::stream_with_length(body, file_size)
+                .file_name(file_name.to_string()));
 
         let url = format!("{}/uploadfile?path={}&filename={}&nopartial=1",
             self.config.api_base(),
@@ -488,7 +510,6 @@ impl StorageProvider for PCloudProvider {
         // Note: multipart uploads cannot use send_with_retry because the stream body
         // is consumed on first attempt and cannot be cloned/replayed.
         let resp = self.client.post(&url)
-            .header("Authorization", auth)
             .multipart(form)
             .send().await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;

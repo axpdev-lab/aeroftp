@@ -307,8 +307,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
                 } catch (connectErr) {
                     const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
-                    if (errMsg.includes('Token expired') || errMsg.includes('token') && errMsg.includes('refresh')) {
-                        logger.debug('[SavedServers] Token expired, re-authenticating...');
+                    const lower = errMsg.toLowerCase();
+                    // Retry with full re-auth for: expired tokens, invalid tokens, auth failures
+                    if (lower.includes('token expired') ||
+                        (lower.includes('token') && lower.includes('refresh')) ||
+                        lower.includes('authentication failed') ||
+                        (lower.includes('invalid') && lower.includes('access_token'))) {
+                        logger.debug('[SavedServers] Token invalid/expired, re-authenticating...');
                         await invoke('oauth2_full_auth', { params });
                         result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
                     } else {

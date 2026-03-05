@@ -200,6 +200,7 @@ const App: React.FC = () => {
   const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
   const previewResizing = useRef(false);
   const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number } | null>(null);
+  const quotaVersionRef = useRef(0); // Guard against stale async quota responses
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
   const [remoteSearching, setRemoteSearching] = useState(false);
@@ -1060,13 +1061,19 @@ const App: React.FC = () => {
 
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
   const fetchStorageQuota = async (protocol?: string) => {
+    const version = ++quotaVersionRef.current;
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       try {
         const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
-        setStorageQuota(info);
+        // Discard stale response if a newer fetch was triggered (e.g., session switch)
+        if (version === quotaVersionRef.current) {
+          setStorageQuota(info);
+        }
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
-        setStorageQuota(null);
+        if (version === quotaVersionRef.current) {
+          setStorageQuota(null);
+        }
       }
     } else {
       setStorageQuota(null);
@@ -2287,6 +2294,7 @@ const App: React.FC = () => {
 
     // Set active session immediately
     setActiveSessionId(sessionId);
+    quotaVersionRef.current++; // Invalidate any in-flight quota response
     setStorageQuota(null); // Clear stale quota while reconnecting
 
     // Load cached data immediately (zero latency UX)
@@ -2389,14 +2397,29 @@ const App: React.FC = () => {
             }
           }
 
-          await invoke('oauth2_connect', {
-            params: {
-              provider: oauthProvider,
-              client_id: clientId,
-              client_secret: clientSecret,
-              ...(region && { region }),
+          const oauthParams = {
+            provider: oauthProvider,
+            client_id: clientId,
+            client_secret: clientSecret,
+            ...(region && { region }),
+          };
+          try {
+            await invoke('oauth2_connect', { params: oauthParams });
+          } catch (connectErr) {
+            const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+            const lower = errMsg.toLowerCase();
+            // Token invalid/expired — re-authenticate and retry
+            if (lower.includes('authentication failed') ||
+                (lower.includes('invalid') && lower.includes('access_token')) ||
+                lower.includes('token expired') ||
+                (lower.includes('token') && lower.includes('refresh'))) {
+              logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
+              await invoke('oauth2_full_auth', { params: oauthParams });
+              await invoke('oauth2_connect', { params: oauthParams });
+            } else {
+              throw connectErr;
             }
-          });
+          }
         }
 
         // Now navigate to the session's path

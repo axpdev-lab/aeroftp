@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.5] - 2026-03-05
+
+### pCloud Fix & UX Polish
+
+#### Fixed
+
+- **pCloud connection with invalid/expired token**: `connect()` now validates pCloud JSON `result` field instead of only HTTP status, since pCloud returns HTTP 200 even for auth errors. Maps error codes 1000/2000/2094 to `AuthenticationFailed`
+- **pCloud upload timeout**: Upload endpoint now sends `access_token` as a multipart form field (per pCloud API spec) instead of Authorization header, and uses `stream_with_length` to set Content-Length preventing chunked encoding timeout
+- **pCloud EU region detection ignored**: `oauth2_connect` now reads the vault-stored region detected during token exchange instead of always using the serde default "us", fixing connections for EU accounts
+- **pCloud OAuth re-authentication not triggering**: Frontend retry logic in SavedServers and App.tsx session switching now catches "authentication failed" and "invalid access_token" errors to trigger browser re-auth flow
+- **Status bar quota stale on server switch**: Added version counter guard to `fetchStorageQuota` to discard stale async responses when switching between servers with and without quota support
+- **AeroVault password Tab key trapped on toggle**: Password visibility toggle buttons now have `tabIndex={-1}` in create, open, and change password forms, so Tab moves directly to the next input field
+
+---
+
 ## [2.8.4] - 2026-03-04
 
 ### OAuth Setup & UI Consistency
