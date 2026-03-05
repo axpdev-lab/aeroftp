@@ -1899,7 +1899,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.appSecret')}</label>
                                                 <input
-                                                    type="password"
+                                                    type={showOAuthSecrets ? 'text' : 'password'}
                                                     value={oauthSettings.dropbox.clientSecret}
                                                     onChange={e => updateOAuthSetting('dropbox', 'clientSecret', e.target.value)}
                                                     placeholder={t('settings.dropboxClientSecretPlaceholder')}

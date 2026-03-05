@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.8.6" date="2026-03-05">
+      <description>
+        <p>Cloud Provider Audit and Security Hardening: Comprehensive audit of all 13 cloud providers with all findings resolved. Google Drive no longer creates duplicates on upload. OneDrive resume upload now works correctly. MEGA delete operations unified to use recycle bin. Box rename supports cross-folder moves. Internxt HTTP calls now have exponential backoff retry. FileLu upload uses streaming to prevent OOM. Shell command injection via newlines blocked. CSP tightened by removing unsafe-eval.</p>
+      </description>
+    </release>
     <release version="2.8.5" date="2026-03-05">
       <description>
         <p>pCloud Fix and UX Polish: Fixed pCloud connection, upload, and EU region detection. OAuth re-authentication now triggers automatically on invalid tokens. Status bar quota no longer shows stale data when switching servers. AeroVault password Tab key no longer gets trapped on visibility toggle.</p>

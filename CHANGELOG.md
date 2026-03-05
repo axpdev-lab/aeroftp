@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.6] - 2026-03-05
+
+### Cloud Provider Audit & Security Hardening
+
+Comprehensive audit of all 13 cloud providers (Google Drive, Dropbox, OneDrive, Box, MEGA, pCloud, Azure Blob, Filen, Internxt, kDrive, Koofr, FileLu, 4shared) plus security review. All findings resolved.
+
+#### Fixed
+
+- **Google Drive upload creates duplicates**: `upload()` now checks for existing file via `find_by_name()` and uses PATCH (update) instead of POST (create) for both resumable and multipart uploads
+- **OneDrive resume_upload ignores offset**: `resume_upload()` now seeks past already-uploaded bytes using the `start_offset` parameter instead of always starting from zero
+- **MEGA inconsistent delete semantics**: `delete()` and `rmdir()` now use soft delete (rubbish bin) consistent with `rmdir_recursive()`. Permanent deletion only via `permanent_delete_from_trash()`
+- **Box rename fails for cross-folder moves**: `rename()` now detects parent folder change and includes `"parent": {"id": "..."}` in the PUT body for cross-folder move+rename
+- **Internxt HTTP calls not retried**: Activated `send_retryable()` with exponential backoff on ~20 HTTP calls that previously had no retry logic
+- **FileLu upload OOM on large files**: Replaced full-memory `tokio::fs::read()` with streaming `ReaderStream` + `stream_with_length`
+- **FileLu server_copy ignores destination**: `server_copy()` now clones file and moves to the correct destination folder with proper rename
+- **OneDrive special characters in paths**: Added `encode_path_segments()` helper for per-segment URL encoding instead of encoding the full path
+- **Shell command injection via newlines**: Added `\n` and `\r` to `shell_execute` meta-character denylist preventing command injection via line separators
+- **CSP unsafe-eval unnecessarily broad**: Removed `'unsafe-eval'` from CSP, keeping only `'wasm-unsafe-eval'` for WebAssembly
+- **AI SFTP auto-trusts unknown hosts**: Removed automatic `trust_unknown_hosts` override for AI server_exec SFTP connections, preserving user's TOFU verification
+- **Sensitive paths accessible via AI tools**: Extended deny list with `.docker`, `.config/aeroftp`, `.vault-token`, and `/run/secrets`
+- **Dropbox secret not toggling in Settings**: Fixed hardcoded `type="password"` to use `showOAuthSecrets` state
+
+---
+
 ## [2.8.5] - 2026-03-05
 
 ### pCloud Fix & UX Polish

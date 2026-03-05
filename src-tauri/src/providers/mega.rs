@@ -555,17 +555,17 @@ impl StorageProvider for MegaProvider {
     }
 
     async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
-        // CQ-07: Resolve path
         let p = self.resolve_path(p);
-        // Permanent delete: -f bypasses rubbish bin. Soft delete available via move_to_trash().
-        self.run_mega_cmd_with_reauth("mega-rm", &["-f", &p]).await?;
+        // Soft delete: moves to rubbish bin (consistent with rmdir_recursive)
+        // Permanent delete available via permanent_delete_from_trash()
+        self.run_mega_cmd_with_reauth("mega-rm", &[&p]).await?;
         Ok(())
     }
 
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
-        // CQ-08: -r for recursive, -f for permanent delete (bypasses rubbish bin).
         let p = self.resolve_path(p);
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &p]).await?;
+        // Soft delete: -r for recursive, moves to rubbish bin
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p]).await?;
         Ok(())
     }
 

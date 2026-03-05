@@ -1317,14 +1317,32 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        // Try as file first, then as folder
+        // Supports both simple rename and cross-folder move+rename
         let token = self.get_token().await?;
         let new_name = std::path::Path::new(to).file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| to.to_string());
 
+        // Resolve destination parent folder ID for cross-folder moves
+        let from_parent = std::path::Path::new(from).parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let to_parent = std::path::Path::new(to).parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let cross_folder = from_parent != to_parent;
+
         if let Ok(file_id) = self.resolve_file_id(from).await {
-            let body = serde_json::json!({"name": new_name});
+            let mut body = serde_json::json!({"name": new_name});
+            if cross_folder {
+                let dest_folder_id = if to_parent.is_empty() || to_parent == "/" {
+                    "0".to_string()
+                } else {
+                    self.resolve_folder_id(&to_parent).await?
+                };
+                body["parent"] = serde_json::json!({"id": dest_folder_id});
+            }
             let resp = self.client.put(format!("{}/files/{}", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
@@ -1332,11 +1350,20 @@ impl StorageProvider for BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!("Rename failed: {}", resp.status())));
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Rename failed: {}", text)));
             }
         } else {
             let folder_id = self.resolve_folder_id(from).await?;
-            let body = serde_json::json!({"name": new_name});
+            let mut body = serde_json::json!({"name": new_name});
+            if cross_folder {
+                let dest_folder_id = if to_parent.is_empty() || to_parent == "/" {
+                    "0".to_string()
+                } else {
+                    self.resolve_folder_id(&to_parent).await?
+                };
+                body["parent"] = serde_json::json!({"id": dest_folder_id});
+            }
             let resp = self.client.put(format!("{}/folders/{}", API_BASE, folder_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
@@ -1344,7 +1371,8 @@ impl StorageProvider for BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!("Rename failed: {}", resp.status())));
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!("Rename failed: {}", text)));
             }
         }
 

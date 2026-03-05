@@ -696,10 +696,7 @@ impl InternxtProvider {
             let url = format!("/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
                 parent_uuid, offset);
 
-            let resp = self.drive_request(reqwest::Method::GET, &url)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to list folders: {}", e)))?;
+            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -790,10 +787,7 @@ impl InternxtProvider {
             let url = format!("/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
                 folder_uuid, offset);
 
-            let resp = self.drive_request(reqwest::Method::GET, &url)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to list files: {}", e)))?;
+            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -1174,10 +1168,7 @@ impl StorageProvider for InternxtProvider {
             let full_url = format!("{}/drive{}", self.api_base, url);
             tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
 
-            let resp = self.drive_request(reqwest::Method::GET, &url)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List folders failed: {}", e)))?;
+            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
 
             let status = resp.status();
             tracing::debug!(target: "internxt", "[LIST FOLDERS] Status: {}", status);
@@ -1248,10 +1239,7 @@ impl StorageProvider for InternxtProvider {
             let full_url = format!("{}/drive{}", self.api_base, url);
             tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
 
-            let resp = self.drive_request(reqwest::Method::GET, &url)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List files failed: {}", e)))?;
+            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
 
             let status = resp.status();
             tracing::debug!(target: "internxt", "[LIST FILES] Status: {}", status);
@@ -1349,11 +1337,8 @@ impl StorageProvider for InternxtProvider {
 
         // Get bucket file info (shards + encryption index)
         let info_url = format!("/buckets/{}/files/{}/info", file_bucket, file_id);
-        let info_resp = self.network_request(reqwest::Method::GET, &info_url)
-            .header("x-api-version", "2")
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to get file info: {}", e)))?;
+        let info_resp = self.send_retryable(self.network_request(reqwest::Method::GET, &info_url)
+            .header("x-api-version", "2")).await?;
 
         if !info_resp.status().is_success() {
             let status = info_resp.status();
@@ -1386,11 +1371,7 @@ impl StorageProvider for InternxtProvider {
         // sequential shard download and concatenation. Not implemented yet.
         // TODO: Multi-shard download support for very large files
         let shard = &bucket_info.shards[0];
-        let dl_resp = self.client
-            .get(&shard.url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Download failed: {}", e)))?;
+        let dl_resp = self.send_retryable(self.client.get(&shard.url)).await?;
 
         if !dl_resp.status().is_success() {
             return Err(ProviderError::ServerError(format!("Shard download failed: {}", dl_resp.status())));
@@ -1474,8 +1455,9 @@ impl StorageProvider for InternxtProvider {
         // during the upload/encryption phase.
         if let Some((existing_uuid, _, _)) = self.find_file_in_folder(&parent_uuid, &filename).await? {
             internxt_log(&format!("[UPLOAD] File {} exists, deleting before overwrite...", filename));
-            let _ = self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", existing_uuid))
-                .send().await;
+            let _ = self.send_retryable(
+                self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", existing_uuid))
+            ).await;
         }
 
         if plain_size == 0 {
@@ -1589,13 +1571,11 @@ impl StorageProvider for InternxtProvider {
         }
 
         // Transfer encrypted data
-        let transfer_resp = self.client
-            .put(&upload_url)
-            .header(CONTENT_TYPE, "application/octet-stream")
-            .body(encrypted.clone())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Upload transfer failed: {}", e)))?;
+        let transfer_resp = self.send_retryable(
+            self.client.put(&upload_url)
+                .header(CONTENT_TYPE, "application/octet-stream")
+                .body(encrypted.clone())
+        ).await?;
 
         if !transfer_resp.status().is_success() {
             let status = transfer_resp.status();
@@ -1622,12 +1602,9 @@ impl StorageProvider for InternxtProvider {
             "shards": [{ "hash": ripemd_hash, "uuid": part.uuid }]
         });
 
-        let finish_resp = self.network_request(reqwest::Method::POST, &finish_url)
+        let finish_resp = self.send_retryable(self.network_request(reqwest::Method::POST, &finish_url)
             .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .json(&finish_body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Finish upload failed: {}", e)))?;
+            .json(&finish_body)).await?;
 
         if !finish_resp.status().is_success() {
             let status = finish_resp.status();
@@ -1672,12 +1649,9 @@ impl StorageProvider for InternxtProvider {
             "modificationTime": now,
         });
 
-        let resp = self.drive_request(reqwest::Method::POST, "/folders")
+        let resp = self.send_retryable(self.drive_request(reqwest::Method::POST, "/folders")
             .header(CONTENT_TYPE, "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Create folder failed: {}", e)))?;
+            .json(&body)).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1708,10 +1682,9 @@ impl StorageProvider for InternxtProvider {
         let file_info = self.find_file_in_folder(&parent_uuid, &filename).await?
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
 
-        let resp = self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0))
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Delete failed: {}", e)))?;
+        let resp = self.send_retryable(
+            self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0))
+        ).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1727,10 +1700,9 @@ impl StorageProvider for InternxtProvider {
         let resolved = self.resolve_path(path);
         let uuid = self.resolve_folder_uuid(&resolved).await?;
 
-        let resp = self.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid))
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Delete folder failed: {}", e)))?;
+        let resp = self.send_retryable(
+            self.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid))
+        ).await?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
             let status = resp.status();
@@ -1789,12 +1761,11 @@ impl StorageProvider for InternxtProvider {
                 let move_payload = serde_json::json!({
                     "destinationFolder": to_parent_uuid
                 });
-                let move_resp = self.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
-                    .header(CONTENT_TYPE, "application/json")
-                    .json(&move_payload)
-                    .send()
-                    .await
-                    .map_err(|e| ProviderError::ConnectionFailed(format!("Move file failed: {}", e)))?;
+                let move_resp = self.send_retryable(
+                    self.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
+                        .header(CONTENT_TYPE, "application/json")
+                        .json(&move_payload)
+                ).await?;
 
                 if !move_resp.status().is_success() {
                     let status = move_resp.status();
@@ -1812,12 +1783,11 @@ impl StorageProvider for InternxtProvider {
                     payload["type"] = serde_json::Value::String(new_type);
                 }
 
-                let resp = self.drive_request(reqwest::Method::PUT, &format!("/files/{}/meta", file_uuid))
-                    .header(CONTENT_TYPE, "application/json")
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| ProviderError::ConnectionFailed(format!("Rename file failed: {}", e)))?;
+                let resp = self.send_retryable(
+                    self.drive_request(reqwest::Method::PUT, &format!("/files/{}/meta", file_uuid))
+                        .header(CONTENT_TYPE, "application/json")
+                        .json(&payload)
+                ).await?;
 
                 if !resp.status().is_success() {
                     let status = resp.status();
@@ -1841,12 +1811,11 @@ impl StorageProvider for InternxtProvider {
             let move_payload = serde_json::json!({
                 "destinationFolder": to_parent_uuid
             });
-            let move_resp = self.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
-                .header(CONTENT_TYPE, "application/json")
-                .json(&move_payload)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Move folder failed: {}", e)))?;
+            let move_resp = self.send_retryable(
+                self.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&move_payload)
+            ).await?;
 
             if !move_resp.status().is_success() {
                 let status = move_resp.status();
@@ -1859,12 +1828,11 @@ impl StorageProvider for InternxtProvider {
         // Rename folder if name changed
         if from_name != to_name {
             let rename_payload = serde_json::json!({ "plainName": to_name });
-            let rename_resp = self.drive_request(reqwest::Method::PUT, &format!("/folders/{}/meta", folder_uuid))
-                .header(CONTENT_TYPE, "application/json")
-                .json(&rename_payload)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Rename folder failed: {}", e)))?;
+            let rename_resp = self.send_retryable(
+                self.drive_request(reqwest::Method::PUT, &format!("/folders/{}/meta", folder_uuid))
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&rename_payload)
+            ).await?;
 
             if !rename_resp.status().is_success() {
                 let status = rename_resp.status();
@@ -1936,9 +1904,9 @@ impl StorageProvider for InternxtProvider {
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // Attempt token refresh. JWT tokens last ~7 days but refreshing proactively
         // prevents expiration during long sessions.
-        let resp = self.drive_request(reqwest::Method::GET, "/users/refresh")
-            .send()
-            .await;
+        let resp = self.send_retryable(
+            self.drive_request(reqwest::Method::GET, "/users/refresh")
+        ).await;
 
         match resp {
             Ok(r) if r.status().is_success() => {
@@ -1972,10 +1940,7 @@ impl StorageProvider for InternxtProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         // GET /drive/users/usage
-        let usage_resp = self.drive_request(reqwest::Method::GET, "/users/usage")
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Usage request failed: {}", e)))?;
+        let usage_resp = self.send_retryable(self.drive_request(reqwest::Method::GET, "/users/usage")).await?;
 
         let used = if usage_resp.status().is_success() {
             let data: UsageResponse = usage_resp.json().await.unwrap_or(UsageResponse { drive: None, total: None });
@@ -1985,10 +1950,7 @@ impl StorageProvider for InternxtProvider {
         };
 
         // GET /drive/users/limit
-        let limit_resp = self.drive_request(reqwest::Method::GET, "/users/limit")
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Limit request failed: {}", e)))?;
+        let limit_resp = self.send_retryable(self.drive_request(reqwest::Method::GET, "/users/limit")).await?;
 
         let total = if limit_resp.status().is_success() {
             let data: LimitResponse = limit_resp.json().await.unwrap_or(LimitResponse { max_space_bytes: 0 });
@@ -2046,12 +2008,9 @@ impl InternxtProvider {
             body["fileId"] = serde_json::Value::String(id.to_string());
         }
 
-        let resp = self.drive_request(reqwest::Method::POST, "/files")
+        let resp = self.send_retryable(self.drive_request(reqwest::Method::POST, "/files")
             .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Create file meta failed: {}", e)))?;
+            .json(&body)).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2065,13 +2024,15 @@ impl InternxtProvider {
         })
     }
 
-    /// Send an HTTP request with retry on 429/5xx using the shared http_retry module (INT-021).
-    /// Wraps `send_with_retry()` for integration with provider request patterns.
-    #[allow(dead_code)]
+    /// Build and send an HTTP request with retry on 429/5xx.
+    /// Accepts a RequestBuilder (from drive_request/network_request + chained modifiers),
+    /// builds the final Request, and sends it through the shared http_retry module.
     async fn send_retryable(
         &self,
-        request: reqwest::Request,
+        rb: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
+        let request = rb.build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &self.retry_config)
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -2092,10 +2053,7 @@ impl InternxtProvider {
 
         loop {
             let url = format!("/storage/trash/paginated?offset={}&limit={}", offset, limit);
-            let resp = self.drive_request(reqwest::Method::GET, &url)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List trash failed: {}", e)))?;
+            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();

@@ -79,12 +79,19 @@ fn validate_path(path: &str, param: &str) -> Result<(), String> {
         }
         // Block sensitive home-relative paths
         if let Ok(home) = std::env::var("HOME") {
-            let home_denied = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud"];
+            let home_denied = [
+                ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
+                ".docker", ".config/aeroftp", ".vault-token",
+            ];
             for sensitive in &home_denied {
                 if s.starts_with(&format!("{}/{}", home, sensitive)) {
                     return Err(format!("{}: access to sensitive path denied: {}", param, s));
                 }
             }
+        }
+        // Block runtime secrets directory
+        if s.starts_with("/run/secrets") {
+            return Err(format!("{}: access to system path denied: {}", param, s));
         }
     }
     Ok(())
@@ -534,10 +541,10 @@ pub async fn shell_execute(
 
     // Defense-in-depth: reject shell meta-characters that enable denylist bypass
     // (pipes, subshells, backticks, semicolons, eval chains, base64 decode, etc.)
-    let meta_chars = ['|', ';', '`', '$', '&', '(', ')', '{', '}'];
+    let meta_chars = ['|', ';', '`', '$', '&', '(', ')', '{', '}', '\n', '\r'];
     if meta_chars.iter().any(|c| command.contains(*c)) {
         return Err(
-            "Command contains shell meta-characters (|;&`$(){}). Use simple commands only."
+            "Command contains shell meta-characters (|;&`$(){}\\n\\r). Use simple commands only."
                 .to_string(),
         );
     }
@@ -814,12 +821,10 @@ async fn create_temp_provider(
     let (parsed_host, embedded_port) =
         crate::cloud_provider_factory::parse_server_field(&creds.server);
 
-    let mut extra = load_provider_extra_options(&server.id)?;
+    let extra = load_provider_extra_options(&server.id)?;
 
-    // SFTP: auto-trust host keys for AI-initiated connections
-    if provider_type == ProviderType::Sftp {
-        extra.entry("trust_unknown_hosts".to_string()).or_insert_with(|| "true".to_string());
-    }
+    // SFTP: rely on the saved server's trust configuration — do not override
+    // (auto-trusting host keys would bypass TOFU verification and enable MITM)
 
     let host = if parsed_host.is_empty() { server.host.clone() } else { parsed_host };
     let port = embedded_port.or(if server.port > 0 { Some(server.port) } else { None });

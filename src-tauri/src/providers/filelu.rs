@@ -1050,16 +1050,21 @@ impl StorageProvider for FileLuProvider {
             ProviderError::TransferFailed("Upload server returned no URL".to_string())
         })?;
 
-        // Step 2: Read file bytes
-        let file_bytes = tokio::fs::read(local_path).await.map_err(ProviderError::IoError)?;
-        let total_size = file_bytes.len() as u64;
+        // Step 2: Stream file — avoid reading entire file into memory (OOM on large files)
+        let total_size = tokio::fs::metadata(local_path).await
+            .map_err(ProviderError::IoError)?.len();
 
         if let Some(ref cb) = on_progress {
             cb(0, total_size);
         }
 
-        // Step 3: Upload via multipart
-        let part = multipart::Part::bytes(file_bytes)
+        let file = tokio::fs::File::open(local_path).await
+            .map_err(ProviderError::IoError)?;
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+
+        // Step 3: Upload via multipart with streaming body
+        let part = multipart::Part::stream_with_length(body, total_size)
             .file_name(filename.clone())
             .mime_str("application/octet-stream")
             .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
@@ -1375,14 +1380,53 @@ impl StorageProvider for FileLuProvider {
         true
     }
 
-    async fn server_copy(&mut self, from: &str, _to: &str) -> Result<(), ProviderError> {
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        let norm = self.resolve_path(from);
-        let file_code = self.resolve_file_code(&norm).await?;
-        let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
-        self.get_with_retry(&url).await?;
+        // Step 1: Clone the file (creates copy in same folder)
+        let norm_from = self.resolve_path(from);
+        let file_code = self.resolve_file_code(&norm_from).await?;
+        let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
+        let resp = self.get_with_retry(&clone_url).await?;
+        let body: serde_json::Value = resp.json().await
+            .map_err(|e| ProviderError::ParseError(format!("Clone response parse error: {}", e)))?;
+
+        // Step 2: Move the clone to the destination folder if needed
+        let norm_to = self.resolve_path(to);
+        let (dest_dir, dest_name) = match norm_to.rfind('/') {
+            Some(0) => ("/".to_string(), norm_to[1..].to_string()),
+            Some(idx) => (norm_to[..idx].to_string(), norm_to[idx + 1..].to_string()),
+            None => ("/".to_string(), norm_to.clone()),
+        };
+
+        // Extract cloned file code from response (array format)
+        if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
+            if let Some(cloned) = arr.first().and_then(|e| e.get("filecode").or_else(|| e.get("file_code"))).and_then(|v| v.as_str()) {
+                // Move to destination folder
+                let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
+                let fld_id_str = dest_fld_id.to_string();
+                let move_url = self.api_url_with(
+                    "file/set_folder",
+                    &[("file_code", cloned), ("fld_id", &fld_id_str)],
+                );
+                let move_resp = self.get_with_retry(&move_url).await?;
+                Self::ensure_api_ok(move_resp).await?;
+
+                // Rename if destination filename differs from source
+                let src_name = norm_from.rsplit('/').next().unwrap_or("");
+                if !dest_name.is_empty() && dest_name != src_name {
+                    let rename_url = self.api_url_with(
+                        "file/rename",
+                        &[("file_code", cloned), ("name", &dest_name)],
+                    );
+                    let rename_resp = self.get_with_retry(&rename_url).await?;
+                    Self::ensure_api_ok(rename_resp).await?;
+                }
+            }
+        }
+
+        self.invalidate_cache_under(&dest_dir);
         Ok(())
     }
 }

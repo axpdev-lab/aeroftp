@@ -1000,23 +1000,39 @@ impl StorageProvider for GoogleDriveProvider {
             self.resolve_path(parent_path).await?
         };
 
+        // Check if file already exists in target folder — update instead of creating duplicate
+        let existing_file_id = self.find_by_name(file_name, &parent_id).await?
+            .filter(|f| f.mime_type != "application/vnd.google-apps.folder")
+            .map(|f| f.id);
+
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
         if total_size > RESUMABLE_THRESHOLD {
             // Resumable upload for large files — stream from file handle
-            let metadata = serde_json::json!({
-                "name": file_name,
-                "parents": [parent_id]
-            });
+            let metadata = if existing_file_id.is_some() {
+                // Update: only send name, no parents (already in correct folder)
+                serde_json::json!({ "name": file_name })
+            } else {
+                serde_json::json!({
+                    "name": file_name,
+                    "parents": [parent_id]
+                })
+            };
 
             // Step 1: Initiate resumable upload session
-            let init_url = format!(
-                "{}/files?uploadType=resumable",
-                UPLOAD_API_BASE
-            );
+            let init_url = if let Some(ref fid) = existing_file_id {
+                format!("{}/files/{}?uploadType=resumable", UPLOAD_API_BASE, fid)
+            } else {
+                format!("{}/files?uploadType=resumable", UPLOAD_API_BASE)
+            };
 
-            let init_response = self.client
-                .post(&init_url)
+            let init_request = if existing_file_id.is_some() {
+                self.client.patch(&init_url)
+            } else {
+                self.client.post(&init_url)
+            };
+
+            let init_response = init_request
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, "application/json; charset=UTF-8")
                 .header("X-Upload-Content-Length", total_size.to_string())
@@ -1079,10 +1095,14 @@ impl StorageProvider for GoogleDriveProvider {
             let content = tokio::fs::read(local_path).await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
-            let metadata = serde_json::json!({
-                "name": file_name,
-                "parents": [parent_id]
-            });
+            let metadata = if existing_file_id.is_some() {
+                serde_json::json!({ "name": file_name })
+            } else {
+                serde_json::json!({
+                    "name": file_name,
+                    "parents": [parent_id]
+                })
+            };
 
             let boundary = "aeroftp_boundary";
             let mut body = Vec::new();
@@ -1095,10 +1115,19 @@ impl StorageProvider for GoogleDriveProvider {
             body.extend_from_slice(&content);
             body.extend_from_slice(format!("\r\n--{}--", boundary).as_bytes());
 
-            let url = format!("{}/files?uploadType=multipart", UPLOAD_API_BASE);
+            let url = if let Some(ref fid) = existing_file_id {
+                format!("{}/files/{}?uploadType=multipart", UPLOAD_API_BASE, fid)
+            } else {
+                format!("{}/files?uploadType=multipart", UPLOAD_API_BASE)
+            };
 
-            let response = self.client
-                .post(&url)
+            let request = if existing_file_id.is_some() {
+                self.client.patch(&url)
+            } else {
+                self.client.post(&url)
+            };
+
+            let response = request
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, format!("multipart/related; boundary={}", boundary))
                 .body(body)

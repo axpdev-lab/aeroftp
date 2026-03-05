@@ -156,14 +156,24 @@ impl OneDriveProvider {
         Ok(())
     }
 
-    /// Build path for Graph API
+    /// Build path for Graph API — encode each path segment individually
+    /// (encoding the full path would corrupt '/' separators)
     fn api_path(&self, path: &str) -> String {
         let clean = path.trim_matches('/');
         if clean.is_empty() {
             format!("{}/me/drive/root", GRAPH_API_BASE)
         } else {
-            format!("{}/me/drive/root:/{}", GRAPH_API_BASE, clean)
+            let encoded = Self::encode_path_segments(clean);
+            format!("{}/me/drive/root:/{}", GRAPH_API_BASE, encoded)
         }
+    }
+
+    /// Encode each segment of a path individually, preserving '/' separators
+    fn encode_path_segments(path: &str) -> String {
+        path.split('/')
+            .map(|seg| urlencoding::encode(seg))
+            .collect::<Vec<_>>()
+            .join("/")
     }
 
     /// Build path for item ID
@@ -1287,10 +1297,10 @@ impl StorageProvider for OneDriveProvider {
         &mut self,
         local_path: &str,
         remote_path: &str,
-        _offset: u64,
+        start_offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncReadExt;
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         // OneDrive resumable upload via upload session — read chunks from file, not all in memory
         let total_size = tokio::fs::metadata(local_path).await
@@ -1299,9 +1309,10 @@ impl StorageProvider for OneDriveProvider {
             .map_err(ProviderError::IoError)?;
 
         let path_str = remote_path.trim_matches('/');
+        let encoded = Self::encode_path_segments(path_str);
         let url = format!(
             "{}/me/drive/root:/{}:/createUploadSession",
-            GRAPH_API_BASE, urlencoding::encode(path_str)
+            GRAPH_API_BASE, encoded
         );
 
         let body = serde_json::json!({
@@ -1335,7 +1346,13 @@ impl StorageProvider for OneDriveProvider {
 
         // Upload in 10MB chunks — read each chunk from file
         let chunk_size = 10 * 1024 * 1024u64;
-        let mut offset = 0u64;
+        let mut offset = start_offset;
+
+        // Seek past already-uploaded bytes
+        if offset > 0 {
+            file.seek(std::io::SeekFrom::Start(offset)).await
+                .map_err(ProviderError::IoError)?;
+        }
 
         while offset < total_size {
             let end = std::cmp::min(offset + chunk_size, total_size);
