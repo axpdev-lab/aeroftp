@@ -1,7 +1,7 @@
 # AeroFTP — Independent Security & Quality Audit Reports
 
 > **Classification**: Public
-> **Last Updated**: 24 February 2026
+> **Last Updated**: 7 March 2026
 
 This document contains all public security and quality audit reports for AeroFTP releases.
 
@@ -356,7 +356,7 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Category | Tests | Framework | CI Status |
 |----------|-------|-----------|-----------|
-| Rust unit tests | 96 | `#[test]` / `#[tokio::test]` | Integrated |
+| Rust unit tests | 117 | `#[test]` / `#[tokio::test]` | Integrated |
 | Security regression | 5 checks | Custom Node.js script | Integrated |
 | TypeScript type checking | Full | `tsc --noEmit` (strict) | Integrated |
 | i18n validation | 47 langs | Custom validator | Integrated |
@@ -435,6 +435,8 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Version | Date | Auditors | Grade |
 |---------|------|----------|-------|
+| v2.8.7 | 7 Mar 2026 | 8-area Opus 4.6 + GPT-5.4 counter-audit | **A-** (45+ findings, all fixed) |
+| v2.8.6 | 5 Mar 2026 | 13-provider audit | **All fixed** (upload/delete/CSP) |
 | v2.6.4 | 24 Feb 2026 | 8x Opus 4.6 + GPT-5.3-Codex (DEIA) | **A-** (148 findings, 94 fixed) |
 | v2.6.0 | 22 Feb 2026 | 8x Claude Opus 4.6 (per-provider) | **147/147 remediated** |
 | v2.5.0 | 20 Feb 2026 | 6x Claude Opus 4.6 (PIMDR) | **A-** (post-remediation) |
@@ -461,7 +463,7 @@ This audit was conducted by AI-powered code review agents with full source acces
 ---
 
 **Document**: AeroFTP Independent Security & Quality Audit Reports
-**Revision**: 3.0
-**Date**: 24 February 2026
+**Revision**: 4.0
+**Date**: 7 March 2026
 **Classification**: Public
 **Repository**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)
